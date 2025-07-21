@@ -5,4 +5,6 @@ export type Retirada = {
     contato: string;
     radios: string[];
     status: boolean;
+    devolvidos?: string[];
+    trocas?: { antigo: string; novo: string }[];
 } 
