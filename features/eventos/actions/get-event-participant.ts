@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { apiClient } from "@/lib/api-client";
 import { EventParticipant, PaginationParams } from "../types";
 
@@ -51,5 +52,44 @@ export const getEventParticipantByCpf = async (
   } catch (error) {
     console.error("Erro ao buscar participante por CPF:", error);
     return null;
+  }
+};
+
+// Buscar todos os participantes de um evento pelo id do evento
+
+/**
+ * Busca todos os participantes de um evento pelo ID do evento.
+ * Retorna um array de participantes ou lança erro se não encontrar.
+ *
+ * @param eventId - O ID do evento (UUID)
+ * @returns Promise<EventParticipant[]>
+ * @throws {Error} Se não encontrar participantes ou erro interno
+ */
+export const getEventParticipantsByEvent = async (
+  eventId: string
+): Promise<EventParticipant[]> => {
+  try {
+    const { data } = await apiClient.get<EventParticipant[]>(
+      `/event-participants/event/${eventId}`
+    );
+    console.log(data);
+    if (!Array.isArray(data) || data.length === 0) {
+      // Simula resposta 404 do backend
+      const error = new Error(
+        "Nenhum participante encontrado para este evento"
+      );
+      (error as any).status = 404;
+      throw error;
+    }
+
+    return data;
+  } catch (error: any) {
+    if (error?.status === 404) {
+      // Lida com "não encontrado"
+      throw new Error("Nenhum participante encontrado para este evento");
+    }
+    // Loga erro e lança erro genérico
+    console.error("Erro ao buscar participantes por evento:", error);
+    throw new Error("Erro interno do servidor");
   }
 };

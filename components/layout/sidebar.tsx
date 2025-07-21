@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
-import { Home, History, ChevronDown, ChevronRight, Trello } from "lucide-react";
+import { Home, History, ChevronDown, ChevronRight, Trello, Users, UserCog, Calendar, ImageIcon, Ticket } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Badge } from "../ui/badge";
 
 type MenuItem = {
     label: string;
@@ -13,20 +14,20 @@ type MenuItem = {
 
 const menu: MenuItem[] = [
     { label: "Dashboard", href: "/dashboard", icon: Home },
-    // { label: "Eventos", href: "/dashboard/eventos", icon: Calendar },
-    // { label: "Coordenadores", href: "/dashboard/event-managers", icon: UserCog },
-    // { label: "Operador", href: "/dashboard/event-staff", icon: Users },
-    // {
-    //     label: "Credenciais",
-    //     icon: Badge,
-    //     children: [
-    //         { label: "Credenciais distribuídas", href: "/dashboard/event-wristbands", icon: Badge },
-    //         { label: "Modelos de Credenciais", href: "/dashboard/event-wristband-models", icon: Ticket },
-    //     ],
-    // },
-    // { label: "Calendário", href: "/dashboard/calendar", icon: Calendar },
-    // { label: "Staff Geral", href: "/dashboard/event-participants", icon: Users },
-    // { label: "Galeria", href: "/dashboard/gallery", icon: ImageIcon },
+    { label: "Eventos", href: "/dashboard/eventos", icon: Calendar },
+    { label: "Coordenadores", href: "/dashboard/event-managers", icon: UserCog },
+    { label: "Operador", href: "/dashboard/event-staff", icon: Users },
+    {
+        label: "Credenciais",
+        icon: Badge,
+        children: [
+            { label: "Credenciais distribuídas", href: "/dashboard/event-wristbands", icon: Badge },
+            { label: "Modelos de Credenciais", href: "/dashboard/event-wristband-models", icon: Ticket },
+        ],
+    },
+    { label: "Calendário", href: "/dashboard/calendar", icon: Calendar },
+    { label: "Staff Geral", href: "/dashboard/event-participants", icon: Users },
+    { label: "Galeria", href: "/dashboard/gallery", icon: ImageIcon },
     { label: "Histórico", href: "/dashboard/event-histories", icon: History },
     { label: "Histórico OPERADORES", href: "/dashboard/operator-actions-history", icon: History },
     { label: "Relatorio", href: "/dashboard/relatorio", icon: Trello }
