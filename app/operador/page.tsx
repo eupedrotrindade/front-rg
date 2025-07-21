@@ -88,7 +88,7 @@ const OperatorPage = () => {
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br bg-purple-400 px-4 py-12">
-            <Card className="w-full max-w-md shadow-lg">
+            <Card className="w-full max-w-md shadow-lg bg-white">
                 <CardHeader className="flex flex-col items-center">
                     <User className="h-12 w-12 text-pink-600 mb-2" />
                     <CardTitle className="text-2xl font-bold text-gray-900 mb-1">
@@ -134,9 +134,9 @@ const OperatorPage = () => {
                                 </Button>
                             </div>
                             <Button
-                                className="w-full"
+                                className="w-full bg-pink-600 hover:bg-pink-700"
                                 size="lg"
-                                variant="ghost"
+                                variant="secondary"
                                 onClick={() => router.push("/")}
                             >
                                 Voltar para o início

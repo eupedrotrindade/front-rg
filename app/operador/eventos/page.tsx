@@ -129,10 +129,10 @@ const OperadorEventosPage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-[#ffe7fe] text-[#610e5c] font-fira p-4 text-center flex flex-col justify-between">
+        <div className="min-h-screen bg-[#ffe7fe] text-[#fff] font-fira p-4 text-center flex flex-col justify-between">
             <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-2">
                 {operadorInfo ? (
-                    <div className="text-sm text-black bg-fuchsia-900 rounded px-4 py-2 font-semibold">
+                    <div className="text-sm text-white bg-fuchsia-900 rounded px-4 py-2 font-semibold">
                         Logado como: {operadorInfo.nome} | CPF: {operadorInfo.cpf}
                     </div>
                 ) : (

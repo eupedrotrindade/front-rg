@@ -1030,7 +1030,7 @@ export default function Painel() {
     };
 
     return (
-        <div className="min-h-screen bg-[#ffe7fe] text-[#610e5c] font-fira flex flex-col">
+        <div className="min-h-screen bg-[#ffe7fe] text-[#fff] font-fira flex flex-col">
             {preLoading && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
                     <Loader2 className="animate-spin w-16 h-16 text-fuchsia-700" />
@@ -1053,12 +1053,12 @@ export default function Painel() {
                         <div className="text-2xl font-bold text-center  flex justify-center items-center" ><p className="p-4 bg-fuchsia-900 opacity-90 rounded-2xl">{nomeEvento}</p></div>
                         <div className="flex items-center gap-4 p-4 bg-fuchsia-900 opacity-90 rounded-2xl">
                             {operadorInfo && (
-                                <span className="text-sm font-medium text-black flex flex-col items-end mr-2">
+                                <span className="text-sm font-medium flex flex-col items-end mr-2">
                                     <span>Operador: {operadorInfo.nome}</span>
                                     <span>CPF: {operadorInfo.cpf}</span>
                                 </span>
                             )}
-                            <span className="text-sm font-medium text-black">
+                            <span className="text-sm font-medium">
                                 Total: {colaboradores.length} registros
                             </span>
                             <button onClick={sair} className="bg-fuchsia-950 text-white px-4 py-2 rounded">Trocar evento</button>
@@ -1120,7 +1120,7 @@ export default function Painel() {
                                 placeholder="Buscar por nome, CPF ou pulseira"
                                 value={filtro.nome}
                                 onChange={(e) => handleBusca(e.target.value)}
-                                className="w-full md:w-1/2"
+                                className="w-full md:w-1/2 bg-white text-black border-none"
                             />
                             {countFiltrosAtivos() > 0 && (
                                 <div className="flex items-center gap-2">
@@ -1138,20 +1138,20 @@ export default function Painel() {
                                     >
                                         Limpar filtros
                                     </Button>
-                                    <span className="text-xs bg-black text-gray-700 rounded-full px-2 py-1 font-semibold">{countFiltrosAtivos()}</span>
+                                    <span className="text-xs bg-white border-black text-gray-700 rounded-full px-2 py-1 font-semibold">{countFiltrosAtivos()}</span>
                                 </div>
                             )}
                         </div>
 
                         <div className="flex items-center gap-4 mb-4">
                             <Button
-                                className={`px-4 py-2 rounded ${viewMode === 'table' ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-700'}`}
+                                className={`px-4 py-2 rounded ${viewMode === 'table' ? 'bg-fuchsia-700 text-white cursor-pointer' : 'bg-gray-400 text-gray-700 cursor-pointer'}`}
                                 onClick={() => setViewMode('table')}
                             >
                                 Tabela
                             </Button>
                             <Button
-                                className={`px-4 py-2 rounded ${viewMode === 'cards' ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-800'}`}
+                                className={`px-4 py-2 rounded ${viewMode === 'cards' ? 'bg-fuchsia-700 text-white cursor-pointer' : 'bg-gray-400 text-gray-800 cursor-pointer'}`}
                                 onClick={() => setViewMode('cards')}
                             >
                                 Cards
@@ -1336,8 +1336,8 @@ export default function Painel() {
 
                     {/* POPUP PRINCIPAL - Detalhes do Colaborador */}
                     {modalAberto && colaboradorSelecionado && (
-                        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 px-4 py-[25px]">
-                            <div className="bg-zinc-700 text-black rounded-lg w-full max-w-2xl p-6 relative">
+                        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 px-4 py-[25px]">
+                            <div className="bg-white text-black rounded-lg w-full max-w-2xl p-6 relative">
                                 {/* HEADER COM ESPAÇAMENTO MELHORADO */}
                                 <div className="flex justify-between items-center mb-4">
                                     <h2 className="text-xl font-bold">Credenciamento</h2>
