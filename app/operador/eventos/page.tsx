@@ -136,7 +136,7 @@ const OperadorEventosPage = () => {
                         Logado como: {operadorInfo.nome} | CPF: {operadorInfo.cpf}
                     </div>
                 ) : (
-                    <div className="text-sm text-red-700 bg-red-500 rounded px-4 py-2 font-semibold">
+                    <div className="text-sm text-white bg-red-500 rounded px-4 py-2 font-semibold">
                         Você precisa estar logado como operador para acessar os eventos.
                     </div>
                 )}

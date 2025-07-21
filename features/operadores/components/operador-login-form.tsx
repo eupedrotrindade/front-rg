@@ -7,7 +7,7 @@ import { operatorLoginSchema, OperatorLoginSchema } from "@/features/operadores/
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Lock, AlertCircle } from "lucide-react"
+import { Lock, AlertCircle, Eye, EyeOff } from "lucide-react"
 import { useOperatorLogin } from "@/features/operadores/api/query/use-operador-login"
 import { Operator } from "@/features/operadores/types"
 
@@ -25,6 +25,7 @@ const onlyNumbers = (value: string): string => value.replace(/\D/g, "")
 const OperadorLoginForm = ({ onSuccess }: { onSuccess: (operator: Operator) => void }) => {
     const [error, setError] = useState("")
     const [enabled, setEnabled] = useState(false)
+    const [showPassword, setShowPassword] = useState(false)
     const {
         register,
         handleSubmit,
@@ -83,7 +84,7 @@ const OperadorLoginForm = ({ onSuccess }: { onSuccess: (operator: Operator) => v
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-w-sm mx-auto">
             <div>
-                <label htmlFor="cpf" className="block text-sm font-medium text-gray-700">CPF</label>
+                <label htmlFor="cpf" className="block text-sm font-medium text-black">CPF</label>
                 <Input
                     id="cpf"
                     {...register("cpf")}
@@ -92,21 +93,33 @@ const OperadorLoginForm = ({ onSuccess }: { onSuccess: (operator: Operator) => v
                     maxLength={14}
                     value={cpfFormatado}
                     onChange={handleCpfChange}
+                    className="text-zinc-800"
                 />
                 {errors.cpf && <span className="text-xs text-red-600">{errors.cpf.message}</span>}
             </div>
             <div>
-                <label htmlFor="senha" className="block text-sm font-medium text-gray-700">Senha</label>
-                <Input id="senha" type="password" {...register("senha")} placeholder="Digite sua senha" autoComplete="current-password" />
+                <label htmlFor="senha" className="block text-sm font-medium text-zinc-800">Senha</label>
+                <div className="relative">
+                    <Input className="text-zinc-800" id="senha" type={showPassword ? "text" : "password"} {...register("senha")} placeholder="Digite sua senha" autoComplete="current-password" />
+                    <button
+                        type="button"
+                        tabIndex={-1}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-black "
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    >
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                </div>
                 {errors.senha && <span className="text-xs text-red-600">{errors.senha.message}</span>}
             </div>
             {error && (
                 <Alert className="border-red-200 bg-red-500">
-                    <AlertCircle className="h-4 w-4 text-red-600" />
-                    <AlertDescription className="text-red-800">{error}</AlertDescription>
+                    <AlertCircle className="h-4 w-4 text-white" />
+                    <AlertDescription className="">{error}</AlertDescription>
                 </Alert>
             )}
-            <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700" disabled={isLoading}>
+            <Button type="submit" className="w-full bg-pink-600 hover:bg-pink-700" disabled={isLoading}>
                 {isLoading ? "Verificando..." : <><Lock className="h-4 w-4 mr-2" />Entrar</>}
             </Button>
         </form>

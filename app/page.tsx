@@ -35,7 +35,7 @@ export default function Home() {
       <main className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-2xl">
           {/* Administrativo */}
-          <Card className="hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+          <Card className="hover:shadow-xl bg-white transition-all duration-300 transform hover:-translate-y-1">
             <CardHeader className="flex flex-col items-center">
               <UserCog className="h-12 w-12 text-purple-700 mb-2" />
               <CardTitle className="text-2xl font-bold text-gray-900 mb-1">
@@ -57,7 +57,7 @@ export default function Home() {
           </Card>
 
           {/* Operador */}
-          <Card className="hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+          <Card className="hover:shadow-xl bg-white transition-all duration-300 transform hover:-translate-y-1">
             <CardHeader className="flex flex-col items-center">
               <User className="h-12 w-12 text-pink-600 mb-2" />
               <CardTitle className="text-2xl font-bold text-gray-900 mb-1">
@@ -90,7 +90,7 @@ export default function Home() {
               alt="Se tem RG, é sucesso!"
               className="mx-auto h-12 w-auto opacity-80"
             />
-            <p className="text-sm text-gray-500 mt-4">
+            <p className="text-sm text-white mt-4">
               © 2024 RG Produções e Eventos. Todos os direitos reservados.
             </p>
           </div>

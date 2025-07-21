@@ -31,10 +31,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import * as XLSX from "xlsx"
 
 const actionTypes = [
-    { value: "checkin", label: "Check-in", icon: UserCheck, color: "bg-green-500 text-green-800" },
-    { value: "checkout", label: "Check-out", icon: UserX, color: "bg-red-500 text-red-800" },
-    { value: "troca_pulseira", label: "Troca de Pulseira", icon: RefreshCw, color: "bg-blue-500 text-blue-800" },
-    { value: "criar_staff", label: "Criação de Staff", icon: UserPlus, color: "bg-purple-500 text-purple-800" },
+    { value: "checkin", label: "Check-in", icon: UserCheck, color: "bg-green-500 text-white" },
+    { value: "checkout", label: "Check-out", icon: UserX, color: "bg-red-500 text-white" },
+    { value: "troca_pulseira", label: "Troca de Pulseira", icon: RefreshCw, color: "bg-blue-500 text-white" },
+    { value: "criar_staff", label: "Criação de Staff", icon: UserPlus, color: "bg-purple-500 text-white" },
 ]
 
 type SortField = "timestamp" | "operadorNome" | "type" | "staffName"

@@ -28,7 +28,7 @@ const OperadorLoginPage = () => {
 
     return (
         <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br bg-purple-400">
-            <div className="w-full max-w-md bg-zinc-700 rounded-lg shadow-lg p-8">
+            <div className="w-full max-w-md bg-white rounded-lg shadow-lg p-8">
                 <h1 className="text-2xl font-bold text-center mb-6 text-gray-900">Login do Operador</h1>
                 <OperadorLoginForm onSuccess={handleSuccess} />
             </div>
