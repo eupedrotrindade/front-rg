@@ -263,13 +263,13 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                         />
                     </div>
                     <div>
-                        <span className="font-semibold">Preparação</span>
+                        <span className="font-semibold">Evento</span>
                         <FormField
                             control={form.control}
                             name="preparationStartDate"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Início da Preparação</FormLabel>
+                                    <FormLabel>Início da Evento</FormLabel>
                                     <FormControl>
                                         <Input type="date" {...field} disabled={loading} />
                                     </FormControl>
@@ -282,7 +282,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                             name="preparationEndDate"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Fim da Preparação</FormLabel>
+                                    <FormLabel>Fim da Evento</FormLabel>
                                     <FormControl>
                                         <Input type="date" {...field} disabled={loading} />
                                     </FormControl>
@@ -292,13 +292,13 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                         />
                     </div>
                     <div>
-                        <span className="font-semibold">Finalização</span>
+                        <span className="font-semibold">Desmontagem</span>
                         <FormField
                             control={form.control}
                             name="finalizationStartDate"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Início da Finalização</FormLabel>
+                                    <FormLabel>Início da Desmontagem</FormLabel>
                                     <FormControl>
                                         <Input type="date" {...field} disabled={loading} />
                                     </FormControl>
@@ -311,7 +311,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                             name="finalizationEndDate"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Fim da Finalização</FormLabel>
+                                    <FormLabel>Fim da Desmontagem</FormLabel>
                                     <FormControl>
                                         <Input type="date" {...field} disabled={loading} />
                                     </FormControl>

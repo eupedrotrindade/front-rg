@@ -1,8 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 import Header from "@/components/operador/header"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
+
 import Retirada from "@/components/operador/retirada"
 import ModalRetirada from "@/components/operador/modalRetirada"
 import { Retirada as RetiradaType } from "./types"
@@ -11,71 +10,149 @@ import Image from "next/image"
 import ModalDevTotal from "@/components/operador/modalDevTotal"
 import ModalDevParcial from "@/components/operador/modalDevParcial"
 import ModalTroca from "@/components/operador/modalTroca"
+import apiClient from "@/lib/api-client";
+import { toast } from "sonner";
+import { useRadios, useCreateRadio, useUpdateRadio } from "@/features/radio/api";
+import React from "react";
 
 export default function Radios() {
     const [isOpen, setIsOpen] = useState(false)
-    const [dados, setDados] = useState<RetiradaType[]>([
-        {
-          nome: 'PRODUÇÃO- PABLO',
-          retirada: '14/06/2025, 17:06:20',
-          devolucao: '15/06/2025, 07:21:31',
-          contato: '1234567890',
-          radios: ['04', '11', '46', '47'],
-          status: true,
-        },
-        {
-          nome: 'PRODUÇÃO- CARLOS ( CARLITO )',
-          retirada: '14/06/2025, 17:07:02',
-          devolucao: '15/06/2025, 02:42:11',
-          contato: '',
-          radios: ['05'],
-          status: true,
-        },
-        {
-          nome: 'SAMPAIO- SEGURANÇA',
-          retirada: '14/06/2025, 17:08:01',
-          devolucao: '15/06/2025, 07:25:45',
-          contato: 'email@email.com',
-          radios: ['08', '17', '23', '37', '38', '53', '54', '61'],
-          status: false,
-        },
-      ])
+    const { data: radiosData, isLoading, error: radiosError } = useRadios();
+    const createRadioMutation = useCreateRadio();
+    const updateRadioMutation = useUpdateRadio();
+    const [dados, setDados] = useState<RetiradaType[]>([]);
+    const [allDados, setAllDados] = useState<RetiradaType[]>([]); // backup do original
     const [isModalDevTotalOpen, setIsModalDevTotalOpen] = useState(false)
     const [isModalDevParcialOpen, setIsModalDevParcialOpen] = useState(false)
     const [retiradaSelecionada, setRetiradaSelecionada] = useState<RetiradaType | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [search, setSearch] = useState("")
     const [showOnlyPendentes, setShowOnlyPendentes] = useState(false)
-    const [allDados, setAllDados] = useState<RetiradaType[]>([...dados]) // backup do original
     const [isModalTrocaOpen, setIsModalTrocaOpen] = useState(false);
     const [errorTroca, setErrorTroca] = useState<string | null>(null);
 
-    // Atualize allDados ao adicionar nova retirada
-    const handleAddRetirada = (novaRetirada: RetiradaType) => {
-        setDados(prev => [...prev, novaRetirada])
-        setAllDados(prev => [...prev, novaRetirada])
+    // Carregar dados do backend ao montar
+    React.useEffect(() => {
+        if (radiosData) {
+            // Adaptar Radio para RetiradaType se necessário
+            const adaptados = radiosData.map(r => ({
+                nome: r.codes ? r.codes.join(', ') : '',
+                retirada: r.created_at || '',
+                devolucao: r.updated_at || '',
+                contato: '',
+                radios: r.codes || [],
+                status: r.status === 'retirado' ? false : true,
+                id: r.id,
+            }));
+            setDados(adaptados);
+            setAllDados(adaptados);
+        }
+    }, [radiosData]);
+
+    // Função para registrar ação do operador
+    async function registerOperatorAction(acao: Record<string, unknown>) {
+        const operadorRaw = localStorage.getItem("operador");
+        if (!operadorRaw) return;
+        let operador;
+        try {
+            operador = JSON.parse(operadorRaw);
+        } catch {
+            return;
+        }
+        const id = operador.id;
+        const acoesAntigas = Array.isArray(operador.acoes) ? operador.acoes : [];
+        const novaAcao = { ...acao, timestamp: new Date().toISOString() };
+        const novasAcoes = [...acoesAntigas, novaAcao];
+        try {
+            const response = await apiClient.put(`/operadores/${id}`, { acoes: novasAcoes });
+            if (response && response.data) {
+                localStorage.setItem("operador", JSON.stringify(response.data));
+            } else {
+                localStorage.setItem("operador", JSON.stringify({ ...operador, acoes: novasAcoes }));
+            }
+        } catch (error) {
+            toast.error("Erro ao registrar ação do operador.");
+        }
     }
 
-    // Função para devolução total
-    const handleDevTotal = (retirada: RetiradaType) => {
-        setDados(prev => prev.map(item =>
-            item.nome === retirada.nome && item.retirada === retirada.retirada
-                ? { ...item, status: true, devolucao: new Date().toLocaleString('pt-BR') }
-                : item
-        ))
-    }
+    // Adicionar nova retirada (criar vários rádios com campos extras)
+    const handleAddRetirada = async ({ codes, status, event_id, last_retirada_id, nome }: {
+        codes: string[];
+        status: string;
+        event_id: string;
+        last_retirada_id: string | null;
+        nome: string;
+        contato: string;
+    }) => {
+        try {
+            await createRadioMutation.mutateAsync({
+                codes,
+                status: status as "disponivel" | "retirado" | "manutencao",
+                event_id,
+                last_retirada_id,
+            });
+            toast.success("Nova retirada registrada!");
+            registerOperatorAction({
+                type: "nova_retirada_radio",
+                nome,
+                radios: codes,
+                status,
+                event_id,
+                last_retirada_id,
+                timestamp: new Date().toISOString(),
+            });
+        } catch (err) {
+            toast.error("Erro ao registrar retirada.");
+        }
+    };
 
-    // Função para devolução parcial
-    const handleDevParcial = (retirada: RetiradaType, radiosDevolvidos: string[]) => {
-        setDados(prev => prev.map(item =>
-            item.nome === retirada.nome && item.retirada === retirada.retirada
-                ? {
-                    ...item,
-                    devolvidos: [...(item.devolvidos || []), ...radiosDevolvidos.filter(r => !(item.devolvidos || []).includes(r))]
+    // Devolução total (atualizar status do rádio)
+    const handleDevTotal = async (retirada: RetiradaType) => {
+        try {
+            const radioId = radiosData?.find(r => Array.isArray(r.codes) && r.codes.includes(retirada.radios[0]))?.id;
+            if (!radioId) throw new Error("Rádio não encontrado");
+            await updateRadioMutation.mutateAsync({
+                id: radioId,
+                radio: { status: "disponivel", updated_at: new Date().toISOString() },
+            });
+            toast.success("Devolução total registrada!");
+            registerOperatorAction({
+                type: "devolucao_total_radio",
+                nome: retirada.nome,
+                contato: retirada.contato,
+                radios: retirada.radios,
+                timestamp: new Date().toISOString(),
+            });
+        } catch (err) {
+            toast.error("Erro ao registrar devolução.");
+        }
+    };
+
+    // Devolução parcial (atualizar status do rádio para cada rádio devolvido)
+    const handleDevParcial = async (retirada: RetiradaType, radiosDevolvidos: string[]) => {
+        try {
+            for (const code of radiosDevolvidos) {
+                const radioId = radiosData?.find(r => Array.isArray(r.codes) && r.codes.includes(code))?.id;
+                if (radioId) {
+                    await updateRadioMutation.mutateAsync({
+                        id: radioId,
+                        radio: { status: "disponivel", updated_at: new Date().toISOString() },
+                    });
                 }
-                : item
-        ))
-    }
+            }
+            toast.success("Devolução parcial registrada!");
+            registerOperatorAction({
+                type: "devolucao_parcial_radio",
+                nome: retirada.nome,
+                contato: retirada.contato,
+                radiosDevolvidos,
+                radiosOriginais: retirada.radios,
+                timestamp: new Date().toISOString(),
+            });
+        } catch (err) {
+            toast.error("Erro ao registrar devolução parcial.");
+        }
+    };
 
     const openDevTotal = (retirada: RetiradaType) => {
         setRetiradaSelecionada(retirada)
@@ -99,28 +176,38 @@ export default function Radios() {
         setIsModalDevParcialOpen(false)
     }
 
+    // Troca de rádio (abrir modal)
     const openTroca = (retirada: RetiradaType) => {
         setRetiradaSelecionada(retirada);
         setIsModalTrocaOpen(true);
         setErrorTroca(null);
     };
 
-    const onConfirmTroca = (antigo: string, novo: string) => {
+    // Troca de rádio (atualizar código do rádio antigo para novo)
+    const onConfirmTroca = async (antigo: string, novo: string) => {
         if (!retiradaSelecionada) return;
-        if (!retiradaSelecionada.radios.includes(antigo)) {
-            setErrorTroca(`Rádio ${antigo} não registrado nesta retirada.`);
-            return;
+        try {
+            const radioId = radiosData?.find(r => Array.isArray(r.codes) && r.codes.includes(antigo))?.id;
+            if (!radioId) throw new Error("Rádio antigo não encontrado");
+            await updateRadioMutation.mutateAsync({
+                id: radioId,
+                radio: { codes: [novo], updated_at: new Date().toISOString() },
+            });
+            toast.success("Troca registrada!");
+            registerOperatorAction({
+                type: "troca_radio",
+                nome: retiradaSelecionada.nome,
+                contato: retiradaSelecionada.contato,
+                radioAntigo: antigo,
+                radioNovo: novo,
+                radiosOriginais: retiradaSelecionada.radios,
+                timestamp: new Date().toISOString(),
+            });
+            setIsModalTrocaOpen(false);
+        } catch (err) {
+            setErrorTroca("Erro ao registrar troca.");
+            toast.error("Erro ao registrar troca.");
         }
-        setErrorTroca(null);
-        setDados(prev => prev.map(item =>
-            item.nome === retiradaSelecionada.nome && item.retirada === retiradaSelecionada.retirada
-                ? {
-                    ...item,
-                    trocas: [...(item.trocas || []), { antigo, novo }]
-                }
-                : item
-        ));
-        setIsModalTrocaOpen(false);
     };
 
     // Filtro de busca
@@ -189,12 +276,12 @@ export default function Radios() {
                 <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow overflow-x-auto">
                     <table className="min-w-full text-sm text-left">
                         <thead className="bg-[#6f0a5e] text-white text-xs uppercase">
-                        <tr>
-                            <th className="px-4 py-3">Nome/Empresa</th>
-                            <th className="px-4 py-3">Contato</th>
-                            <th className="px-4 py-3">Número dos Rádios</th>
-                            <th className="px-4 py-3">Ações</th>
-                        </tr>
+                            <tr>
+                                <th className="px-4 py-3">Nome/Empresa</th>
+                                <th className="px-4 py-3">Contato</th>
+                                <th className="px-4 py-3">Número dos Rádios</th>
+                                <th className="px-4 py-3">Ações</th>
+                            </tr>
                         </thead>
                         <tbody className="bg-white text-gray-800 divide-y divide-purple-200">
                             {dados.map((item, idx) => (
@@ -217,7 +304,11 @@ export default function Radios() {
                     </table>
                 </div>
             </div>
-            <ModalRetirada isOpen={isOpen} setIsOpen={setIsOpen} onAddRetirada={handleAddRetirada}/>
+            <ModalRetirada
+                isOpen={isOpen}
+                setIsOpen={setIsOpen}
+                onAddRetirada={handleAddRetirada as any}
+            />
             <ModalDevTotal
                 isOpen={isModalDevTotalOpen}
                 setIsOpen={setIsModalDevTotalOpen}
@@ -242,6 +333,12 @@ export default function Radios() {
                 <button className="bg-[#6f0a5e] text-white px-4 py-2 rounded-md hover:bg-[#58084b] transition-all cursor-pointer">EXPORTAR RELATÓRIO PDF</button>
                 <Image src="/images/slogan-rg.png" alt="Logo rg" width={300} height={300} />
             </div>
+            {isLoading && (
+                <div className="text-center py-8">Carregando rádios...</div>
+            )}
+            {radiosError && (
+                <div className="text-center py-8 text-red-500">Erro ao carregar rádios</div>
+            )}
         </div>
     )
 }

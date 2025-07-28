@@ -229,10 +229,10 @@ const AgendaDashboard = () => {
                                             <div><span className="font-medium">Local:</span> {selectedEvent.venue}</div>
                                             <div><span className="font-medium">Início Montagem:</span> {selectedEvent.setupStartDate}</div>
                                             <div><span className="font-medium">Fim Montagem:</span> {selectedEvent.setupEndDate}</div>
-                                            <div><span className="font-medium">Início Preparação:</span> {selectedEvent.preparationStartDate}</div>
-                                            <div><span className="font-medium">Fim Preparação:</span> {selectedEvent.preparationEndDate}</div>
-                                            <div><span className="font-medium">Início Finalização:</span> {selectedEvent.finalizationStartDate}</div>
-                                            <div><span className="font-medium">Fim Finalização:</span> {selectedEvent.finalizationEndDate}</div>
+                                            <div><span className="font-medium">Início Evento:</span> {selectedEvent.preparationStartDate}</div>
+                                            <div><span className="font-medium">Fim Evento:</span> {selectedEvent.preparationEndDate}</div>
+                                            <div><span className="font-medium">Início Desmontagem:</span> {selectedEvent.finalizationStartDate}</div>
+                                            <div><span className="font-medium">Fim Desmontagem:</span> {selectedEvent.finalizationEndDate}</div>
                                         </div>
                                     </div>
                                     {/* Accordion para detalhes completos */}

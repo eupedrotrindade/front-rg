@@ -2,7 +2,7 @@ import { useState } from "react";
 
 interface ModalTrocaProps {
     isOpen: boolean;
-    setIsOpen: Function;
+    setIsOpen: (open: boolean) => void;
     onConfirm: (antigo: string, novo: string) => void;
     error?: string | null;
 }
