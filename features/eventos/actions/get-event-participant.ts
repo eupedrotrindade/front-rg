@@ -62,27 +62,42 @@ export const getEventParticipantByCpf = async (
  * Retorna um array de participantes ou lança erro se não encontrar.
  *
  * @param eventId - O ID do evento (UUID)
+ * @param search - Termo de busca opcional
+ * @param sortBy - Campo para ordenação (padrão: "name")
+ * @param sortOrder - Direção da ordenação (padrão: "asc")
  * @returns Promise<EventParticipant[]>
  * @throws {Error} Se não encontrar participantes ou erro interno
  */
 export const getEventParticipantsByEvent = async (
-  eventId: string
+  eventId: string,
+  search?: string,
+  sortBy = "name",
+  sortOrder = "asc"
 ): Promise<EventParticipant[]> => {
   try {
-    const { data } = await apiClient.get<EventParticipant[]>(
-      `/event-participants/event/${eventId}`
-    );
-    console.log(data);
-    if (!Array.isArray(data) || data.length === 0) {
-      // Simula resposta 404 do backend
-      const error = new Error(
-        "Nenhum participante encontrado para este evento"
-      );
-      (error as any).status = 404;
-      throw error;
+    const params: Record<string, any> = {};
+    if (search) params.search = search;
+    if (sortBy) params.sortBy = sortBy;
+    if (sortOrder) params.sortOrder = sortOrder;
+
+    const { data } = await apiClient.get<{
+      data: EventParticipant[];
+      total: number;
+    }>(`/event-participants/event/${eventId}`, { params });
+
+    console.log("📦 Resposta da API:", data);
+
+    // Verifica se a resposta tem a estrutura esperada
+    if (data && typeof data === "object" && "data" in data) {
+      return Array.isArray(data.data) ? data.data : [];
     }
 
-    return data;
+    // Fallback para resposta direta (compatibilidade)
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    return [];
   } catch (error: any) {
     if (error?.status === 404) {
       // Lida com "não encontrado"

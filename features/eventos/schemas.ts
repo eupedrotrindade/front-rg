@@ -104,6 +104,7 @@ export const eventParticipantSchema = z.object({
   photo: z.string().optional(),
   documentPhoto: z.string().optional(),
   validatedBy: z.string().optional(),
+  daysWork: z.array(z.string()).optional(),
 });
 
 export type EventParticipantSchema = z.infer<typeof eventParticipantSchema>;

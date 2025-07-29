@@ -86,6 +86,7 @@ export type EventParticipant = {
   photo?: string;
   documentPhoto?: string;
   validatedBy?: string;
+  daysWork?: string[];
 };
 
 export type EventHistory = {
@@ -182,6 +183,7 @@ export type CreateEventParticipantRequest = {
   photo?: string;
   documentPhoto?: string;
   validatedBy?: string;
+  daysWork?: string[];
 };
 
 // Tipos para respostas da API

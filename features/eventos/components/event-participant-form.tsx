@@ -13,6 +13,8 @@ import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-even
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event";
 import { useEventWristbandModels } from "@/features/eventos/api/query/use-event-wristband-models";
 import { formatCpf, formatPhone } from "@/lib/utils";
+import { Calendar } from "lucide-react";
+import { useCallback } from "react";
 
 interface EventParticipantFormProps {
     defaultValues?: Partial<EventParticipantSchema> & { id?: string };
@@ -33,6 +35,7 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
         defaultValues: {
             presenceConfirmed: false,
             certificateIssued: false,
+            daysWork: [],
             ...defaultValues,
         },
     });
@@ -40,6 +43,7 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
     // Observa o evento selecionado
     const selectedEventId = form.watch("eventId");
     const currentCpf = form.watch("cpf");
+    const currentDaysWork = form.watch("daysWork");
 
     // Busca credenciais e participantes do evento selecionado
     const { data: wristbands } = useEventWristbandsByEvent(selectedEventId || "");
@@ -51,6 +55,168 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
     // Função para buscar o modelo de pulseira correspondente
     const getWristbandModel = (wristbandModelId: string) =>
         wristbandModelsArray.find((model) => model.id === wristbandModelId);
+
+    // Função para categorizar dias de trabalho
+    const categorizeDaysWork = useCallback((daysWork: string[], eventId: string) => {
+        const evento = eventosArray.find(e => e.id === eventId);
+        if (!evento) return { setup: [], preparation: [], finalization: [] };
+
+        const categorized = {
+            setup: [] as string[],
+            preparation: [] as string[],
+            finalization: [] as string[]
+        };
+
+        daysWork.forEach(day => {
+            // Normalizar a data do dia para o início do dia
+            const dayDate = new Date(day.split('/').reverse().join('-'));
+            dayDate.setHours(0, 0, 0, 0);
+
+            // Verificar se o dia está no período de montagem
+            if (evento.setupStartDate && evento.setupEndDate) {
+                const startDate = new Date(evento.setupStartDate);
+                const endDate = new Date(evento.setupEndDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+
+                if (dayDate >= startDate && dayDate <= endDate) {
+                    categorized.setup.push(day);
+                    return;
+                }
+            }
+
+            // Verificar se o dia está no período de preparação/evento
+            if (evento.preparationStartDate && evento.preparationEndDate) {
+                const startDate = new Date(evento.preparationStartDate);
+                const endDate = new Date(evento.preparationEndDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+
+                if (dayDate >= startDate && dayDate <= endDate) {
+                    categorized.preparation.push(day);
+                    return;
+                }
+            }
+
+            // Verificar se o dia está no período de finalização
+            if (evento.finalizationStartDate && evento.finalizationEndDate) {
+                const startDate = new Date(evento.finalizationStartDate);
+                const endDate = new Date(evento.finalizationEndDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+
+                if (dayDate >= startDate && dayDate <= endDate) {
+                    categorized.finalization.push(day);
+                    return;
+                }
+            }
+        });
+
+        return categorized;
+    }, [eventosArray]);
+
+    // Função para gerar lista de datas disponíveis a partir dos períodos do evento
+    const getAvailableDates = useCallback((phase?: string): string[] => {
+        if (!selectedEventId) return [];
+
+        const evento = eventosArray.find(e => e.id === selectedEventId);
+        if (!evento) return [];
+
+        const availableDates: string[] = [];
+
+        // Se uma fase específica foi solicitada, retornar apenas as datas dessa fase
+        if (phase) {
+            let startDate: string | undefined;
+            let endDate: string | undefined;
+
+            switch (phase) {
+                case "preparacao":
+                    startDate = evento.preparationStartDate;
+                    endDate = evento.preparationEndDate;
+                    break;
+                case "montagem":
+                    startDate = evento.setupStartDate;
+                    endDate = evento.setupEndDate;
+                    break;
+                case "finalizacao":
+                    startDate = evento.finalizationStartDate;
+                    endDate = evento.finalizationEndDate;
+                    break;
+                default:
+                    return [];
+            }
+
+            if (startDate && endDate) {
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                // Normalizar as datas para o início do dia
+                start.setHours(0, 0, 0, 0);
+                end.setHours(0, 0, 0, 0);
+                const currentDate = new Date(start);
+
+                while (currentDate <= end) {
+                    const formattedDate = currentDate.toLocaleDateString('pt-BR');
+                    availableDates.push(formattedDate);
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+            }
+
+            return availableDates.sort();
+        }
+
+        // Se nenhuma fase foi especificada, retornar todas as datas
+        const periods = [];
+
+        if (evento.setupStartDate && evento.setupEndDate) {
+            periods.push({ start: evento.setupStartDate, end: evento.setupEndDate });
+        }
+        if (evento.preparationStartDate && evento.preparationEndDate) {
+            periods.push({ start: evento.preparationStartDate, end: evento.preparationEndDate });
+        }
+        if (evento.finalizationStartDate && evento.finalizationEndDate) {
+            periods.push({ start: evento.finalizationStartDate, end: evento.finalizationEndDate });
+        }
+
+        periods.forEach(period => {
+            const startDate = new Date(period.start);
+            const endDate = new Date(period.end);
+            // Normalizar as datas para o início do dia
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(0, 0, 0, 0);
+            const currentDate = new Date(startDate);
+
+            while (currentDate <= endDate) {
+                const formattedDate = currentDate.toLocaleDateString('pt-BR');
+                availableDates.push(formattedDate);
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+        });
+
+        return availableDates.sort();
+    }, [selectedEventId, eventosArray]);
+
+    // Função para verificar se há períodos definidos
+    const hasDefinedPeriods = useCallback((): boolean => {
+        if (!selectedEventId) return false;
+        const evento = eventosArray.find(e => e.id === selectedEventId);
+        if (!evento) return false;
+
+        return !!(evento.setupStartDate && evento.setupEndDate) ||
+            !!(evento.preparationStartDate && evento.preparationEndDate) ||
+            !!(evento.finalizationStartDate && evento.finalizationEndDate);
+    }, [selectedEventId, eventosArray]);
+
+    // Função para alternar seleção de data
+    const toggleDateSelection = useCallback((date: string) => {
+        const currentDates = [...(currentDaysWork || [])];
+        const dateIndex = currentDates.indexOf(date);
+        if (dateIndex > -1) {
+            currentDates.splice(dateIndex, 1);
+        } else {
+            currentDates.push(date);
+        }
+        form.setValue("daysWork", currentDates.sort());
+    }, [currentDaysWork, form]);
 
     // Validação de CPF duplicado
     const isCpfDuplicate = () => {
@@ -311,6 +477,128 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                                     <SelectItem value="EXG">EXG</SelectItem>
                                 </SelectContent>
                             </Select>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                {/* Dias de Trabalho */}
+                <FormField
+                    control={form.control}
+                    name="daysWork"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4" />
+                                Dias de Trabalho
+                            </FormLabel>
+                            <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
+
+                                {selectedEventId && hasDefinedPeriods() ? (
+                                    <div className="space-y-4">
+                                        <p className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-gray-200">
+                                            <strong>Selecione as datas dos períodos do evento:</strong>
+                                        </p>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-h-48 overflow-y-auto border rounded-lg p-4 bg-white">
+                                            {/* Preparação */}
+                                            <div>
+                                                <p className="text-xs font-semibold text-blue-700 mb-2">Preparação</p>
+                                                <div className="flex flex-col gap-2">
+
+                                                    {getAvailableDates("preparacao").map((date) => (
+                                                        <Button
+                                                            key={date}
+                                                            type="button"
+                                                            variant={field.value?.includes(date) ? "default" : "outline"}
+                                                            size="sm"
+                                                            onClick={() => toggleDateSelection(date)}
+                                                            disabled={loading}
+                                                            className={`text-xs transition-all duration-200 ${field.value?.includes(date)
+                                                                ? "bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md"
+                                                                : "bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm"
+                                                                }`}
+                                                        >
+                                                            {date}
+                                                        </Button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            {/* Montagem */}
+                                            <div>
+                                                <p className="text-xs font-semibold text-green-700 mb-2">Montagem</p>
+                                                <div className="flex flex-col gap-2">
+                                                    {getAvailableDates("montagem").map((date) => (
+                                                        <Button
+                                                            key={date}
+                                                            type="button"
+                                                            variant={field.value?.includes(date) ? "default" : "outline"}
+                                                            size="sm"
+                                                            onClick={() => toggleDateSelection(date)}
+                                                            disabled={loading}
+                                                            className={`text-xs transition-all duration-200 ${field.value?.includes(date)
+                                                                ? "bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md"
+                                                                : "bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm"
+                                                                }`}
+                                                        >
+                                                            {date}
+                                                        </Button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            {/* Finalização */}
+                                            <div>
+                                                <p className="text-xs font-semibold text-purple-700 mb-2">Finalização</p>
+                                                <div className="flex flex-col gap-2">
+                                                    {getAvailableDates("finalizacao").map((date) => (
+                                                        <Button
+                                                            key={date}
+                                                            type="button"
+                                                            variant={field.value?.includes(date) ? "default" : "outline"}
+                                                            size="sm"
+                                                            onClick={() => toggleDateSelection(date)}
+                                                            disabled={loading}
+                                                            className={`text-xs transition-all duration-200 ${field.value?.includes(date)
+                                                                ? "bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md"
+                                                                : "bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm"
+                                                                }`}
+                                                        >
+                                                            {date}
+                                                        </Button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {field.value && field.value.length > 0 && (
+                                            <div className="bg-gradient-to-r from-purple-100 to-purple-200 border border-purple-300 rounded-lg p-4">
+                                                <p className="text-sm text-purple-800 font-medium">
+                                                    <strong>Datas selecionadas:</strong> {field.value.join(', ')}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : selectedEventId ? (
+                                    <div className="space-y-3">
+                                        <Input
+                                            type="text"
+                                            value={field.value?.join(', ') || ''}
+                                            onChange={(e) => {
+                                                const dates = e.target.value.split(',').map(d => d.trim()).filter(d => d);
+                                                field.onChange(dates);
+                                            }}
+                                            placeholder="Datas de trabalho (formato: DD/MM/AAAA, separadas por vírgula)"
+                                            disabled={loading}
+                                            className="bg-white border-blue-300 focus:border-purple-500 focus:ring-purple-500"
+                                        />
+                                        <p className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-gray-200">
+                                            <strong>Períodos permitidos:</strong> Selecione um evento primeiro para ver os períodos disponíveis
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-gray-200">
+                                        Selecione um evento primeiro para configurar os dias de trabalho
+                                    </div>
+                                )}
+                            </div>
                             <FormMessage />
                         </FormItem>
                     )}

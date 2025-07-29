@@ -27,9 +27,70 @@ interface DetailsDialogProps {
     onClose: () => void;
     data: EventManager | EventStaff | EventWristband | EventParticipant | Event | null;
     type: "manager" | "staff" | "wristband" | "participant" | "event";
+    eventData?: Event | null;
 }
 
-const DetailsDialog = ({ isOpen, onClose, data, type }: DetailsDialogProps) => {
+const DetailsDialog = ({ isOpen, onClose, data, type, eventData }: DetailsDialogProps) => {
+    // Função para categorizar dias de trabalho por fase do evento
+    const categorizeDaysWork = (participant: EventParticipant, event: Event | null) => {
+        if (!participant.daysWork || participant.daysWork.length === 0 || !event) {
+            return { setup: [], preparation: [], finalization: [] };
+        }
+
+        const categorized = {
+            setup: [] as string[],
+            preparation: [] as string[],
+            finalization: [] as string[]
+        };
+
+        participant.daysWork.forEach(day => {
+            // Normalizar a data do dia para o início do dia
+            const dayDate = new Date(day.split('/').reverse().join('-'));
+            dayDate.setHours(0, 0, 0, 0);
+
+            // Verificar se o dia está no período de montagem
+            if (event.setupStartDate && event.setupEndDate) {
+                const startDate = new Date(event.setupStartDate);
+                const endDate = new Date(event.setupEndDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+
+                if (dayDate >= startDate && dayDate <= endDate) {
+                    categorized.setup.push(day);
+                    return;
+                }
+            }
+
+            // Verificar se o dia está no período de preparação/evento
+            if (event.preparationStartDate && event.preparationEndDate) {
+                const startDate = new Date(event.preparationStartDate);
+                const endDate = new Date(event.preparationEndDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+
+                if (dayDate >= startDate && dayDate <= endDate) {
+                    categorized.preparation.push(day);
+                    return;
+                }
+            }
+
+            // Verificar se o dia está no período de finalização
+            if (event.finalizationStartDate && event.finalizationEndDate) {
+                const startDate = new Date(event.finalizationStartDate);
+                const endDate = new Date(event.finalizationEndDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+
+                if (dayDate >= startDate && dayDate <= endDate) {
+                    categorized.finalization.push(day);
+                    return;
+                }
+            }
+        });
+
+        return categorized;
+    };
+
     const renderManagerDetails = () => {
         if (!data || type !== "manager") return null;
         const manager = data as EventManager;
@@ -316,6 +377,41 @@ const DetailsDialog = ({ isOpen, onClose, data, type }: DetailsDialogProps) => {
                             <div className="flex items-center justify-between">
                                 <span className="font-medium">Tamanho da Camiseta:</span>
                                 <span>{participant.shirtSize}</span>
+                            </div>
+                        )}
+                        {participant.daysWork && participant.daysWork.length > 0 && (
+                            <div className="flex items-start justify-between">
+                                <span className="font-medium">Dias de Trabalho:</span>
+                                <div className="text-right space-y-1">
+                                    {(() => {
+                                        const categorized = categorizeDaysWork(participant, eventData || null);
+                                        return (
+                                            <>
+                                                {categorized.setup.length > 0 && (
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                                        <span className="text-sm font-medium text-gray-700">Montagem:</span>
+                                                        <span className="text-sm text-gray-600">{categorized.setup.join(', ')}</span>
+                                                    </div>
+                                                )}
+                                                {categorized.preparation.length > 0 && (
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                        <span className="text-sm font-medium text-gray-700">Preparo:</span>
+                                                        <span className="text-sm text-gray-600">{categorized.preparation.join(', ')}</span>
+                                                    </div>
+                                                )}
+                                                {categorized.finalization.length > 0 && (
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                                        <span className="text-sm font-medium text-gray-700">Finalização:</span>
+                                                        <span className="text-sm text-gray-600">{categorized.finalization.join(', ')}</span>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
                             </div>
                         )}
                     </CardContent>

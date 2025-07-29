@@ -606,6 +606,7 @@ const EventParticipantsDashboard = () => {
                 }}
                 data={selectedParticipant}
                 type="participant"
+                eventData={eventosArray.find(e => e.id === selectedParticipant?.eventId) || null}
             />
         </div>
     );

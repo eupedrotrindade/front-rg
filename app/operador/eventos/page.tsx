@@ -1,10 +1,13 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import axios from "axios";
 import { Operator } from "@/features/operadores/types";
 import Image from "next/image";
+import { Event } from "@/features/eventos/types";
+
+import Link from "next/link";
+import { useEventos } from "@/features/eventos/api/query/use-eventos";
 
 const getOperatorFromStorage = () => {
     if (typeof window === "undefined") return null;
@@ -38,29 +41,16 @@ const formatDate = (date: string) => {
     return d.toLocaleDateString("pt-BR");
 };
 
-type EventApi = {
-    Id: number;
-    CreatedAt: string;
-    UpdatedAt: string;
-    id_evento: string;
-    nome_evento: string;
-    senha_acesso: string;
-    status: string;
-    id_tabela: string;
-    capa: string;
-    data: string;
-    id_tabela_radio: string;
-};
-
 const OperadorEventosPage = () => {
-    const router = useRouter();
+
     const [showModal, setShowModal] = useState(false);
-    const [eventoSelecionado, setEventoSelecionado] = useState<EventApi | null>(null);
-    const [eventos, setEventos] = useState<EventApi[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [eventoSelecionado, setEventoSelecionado] = useState<Event | null>(null);
+
     const [error, setError] = useState("");
     const [operadorInfo, setOperadorInfo] = useState<{ nome: string; cpf: string } | null>(null);
-
+    const { data: eventos, isLoading: eventosLoading } = useEventos();
+    // Garantir que todos os dados são arrays
+    const eventosArray = Array.isArray(eventos) ? eventos : [];
     const operator = typeof window !== "undefined" ? getOperatorFromStorage() : null;
     const eventIdsRaw = getEventIds(operator);
     const eventIds = Array.isArray(eventIdsRaw)
@@ -73,8 +63,12 @@ const OperadorEventosPage = () => {
                 : [id]
         )
         : [];
+    // Filtrar eventos do operador
+    const eventosOperador = eventosArray.filter(
+        (evento) => eventIds.includes(String(evento.id))
+    );
     useEffect(() => {
-        carregarEventos();
+        // carregarEventos();
         if (operator) {
             setOperadorInfo({ nome: operator.nome, cpf: operator.cpf });
         } else {
@@ -83,51 +77,31 @@ const OperadorEventosPage = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const carregarEventos = async () => {
-        setLoading(true);
-        setError("");
-        try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-            const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
-            if (!apiUrl || !apiToken) {
-                throw new Error("Configuração da API não encontrada");
-            }
-            const response = await axios.get(apiUrl, {
-                headers: { "xc-token": apiToken },
-            });
 
-            const allEventos: EventApi[] = response.data.list || [];
-            console.log(allEventos)
-            setEventos(allEventos.filter((evento) => eventIds.includes(evento.id_evento)));
-        } catch (err) {
-            console.error("Erro ao buscar eventos:", err);
-            setError("Erro ao carregar eventos. Verifique sua conexão e tente novamente.");
-        } finally {
-            setLoading(false);
-        }
-    };
+    // const carregarEventos = async () => {
+    //     setLoading(true);
+    //     setError("");
+    //     try {
 
-    const acessarEvento = (evento: EventApi) => {
-        if (operadorInfo) {
-            localStorage.setItem("id_tabela", evento.id_tabela);
-            localStorage.setItem("nome_evento", evento.nome_evento);
-            router.push("/operador/painel");
-        } else {
-            setEventoSelecionado(evento);
-            setShowModal(true);
-        }
-    };
+    //          console.log("TODOS OS EVENTOSSS AQUII", eventos);
+    //         setEventos(eventos ?? []);
+    //     } catch (err) {
+    //         console.error("Erro ao buscar eventos do backend:", err);
+    //         setError("Erro ao carregar eventos. Verifique sua conexão e tente novamente.");
+    //     } finally {
+    //         setLoading(false);
+    //     }
+    // };
 
-    const fecharModal = () => {
-        setShowModal(false);
-        setEventoSelecionado(null);
-    };
+
+
+
 
     const sair = () => {
         localStorage.removeItem("operador");
         window.location.reload();
     };
-
+    console.log("EVENTO TOTAIS" + eventos);
     return (
         <div className="min-h-screen bg-[#ffe7fe] text-[#fff] font-fira p-4 text-center flex flex-col justify-between">
             <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-2">
@@ -153,18 +127,18 @@ const OperadorEventosPage = () => {
                 </div>
                 {operadorInfo && (
                     <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        {loading ? (
+                        {eventosLoading ? (
                             <div className="col-span-full text-center">Carregando eventos...</div>
                         ) : error ? (
                             <div className="col-span-full text-center text-red-600">{error}</div>
-                        ) : eventos.length === 0 ? (
+                        ) : eventosOperador.length === 0 ? (
                             <div className="col-span-full text-center">Nenhum evento encontrado para este operador.</div>
                         ) : (
-                            eventos.map((evento) => (
-                                <div key={evento.Id} className="bg-purple-300 text-black shadow-md p-4 rounded-lg">
-                                    <Image src={evento.capa || "/images/logo-rg-fone.png"} alt={evento.nome_evento} className="w-full rounded-md mb-3" width={160} height={160} />
-                                    <h2 className="text-xl font-bold mb-2">{evento.nome_evento}</h2>
-                                    {evento.data && (
+                            eventosOperador.map((evento) => (
+                                <div key={evento.id} className="bg-purple-300 text-black shadow-md p-4 rounded-lg">
+                                    <Image src={evento.bannerUrl || "/images/logo-rg-fone.png"} alt={evento.name} className="w-full rounded-md mb-3" width={160} height={160} />
+                                    <h2 className="text-xl font-bold mb-2">{evento.name}</h2>
+                                    {evento.id && (
                                         <div className="flex items-center justify-center gap-2 mb-3 text-gray-600">
                                             <svg
                                                 className="w-4 h-4"
@@ -178,15 +152,15 @@ const OperadorEventosPage = () => {
                                                     clipRule="evenodd"
                                                 />
                                             </svg>
-                                            <span className="text-sm">{formatDate(evento.data)}</span>
+                                            <span className="text-sm">{formatDate(evento.startDate)}</span>
                                         </div>
                                     )}
-                                    <button
-                                        onClick={() => acessarEvento(evento)}
-                                        className="mt-3 bg-[#610e5c] text-white px-6 py-3 text-lg rounded-lg"
-                                    >
-                                        Acessar
-                                    </button>
+                                    <Link href={`/painel/${evento.id}`}>
+                                        <button
+                                            className="mt-3 bg-[#610e5c] text-white px-6 py-3 text-lg rounded-lg"
+                                        >
+                                            Acessar
+                                        </button></Link>
                                 </div>
                             ))
                         )}
@@ -197,36 +171,7 @@ const OperadorEventosPage = () => {
             {/* Modal só aparece se não estiver logado */}
             {!operadorInfo && showModal && eventoSelecionado && (
                 <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-                    <div className="bg-zinc-950 p-6 rounded-lg w-full max-w-sm text-left text-black">
-                        <h2 className="text-xl font-semibold mb-4">Digite a senha para acessar o evento</h2>
-                        {/* Campo de senha oculto, preenchido automaticamente */}
-                        <input
-                            type="password"
-                            value={eventoSelecionado.senha_acesso}
-                            readOnly
-                            className="w-full border border-gray-300 rounded px-4 py-2 mb-4 opacity-50 cursor-not-allowed"
-                            style={{ pointerEvents: 'none' }}
-                        />
-                        <div className="flex justify-end gap-2">
-                            <button
-                                onClick={fecharModal}
-                                className="bg-gray-600 px-4 py-2 rounded text-black"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={() => {
-                                    // Preenche automaticamente a senha e acessa direto
-                                    localStorage.setItem("id_tabela", eventoSelecionado.id_tabela);
-                                    localStorage.setItem("nome_evento", eventoSelecionado.nome_evento);
-                                    router.push("/operador/painel");
-                                }}
-                                className="bg-[#610e5c] text-white px-4 py-2 rounded"
-                            >
-                                Entrar
-                            </button>
-                        </div>
-                    </div>
+
                 </div>
             )}
 

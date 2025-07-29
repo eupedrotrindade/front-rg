@@ -89,6 +89,7 @@ export interface EventParticipant {
   validatedBy?: string;
   responsibleStaff: EventStaff;
   history?: ActionHistory[];
+  daysWork?: string[];
 }
 
 export interface EventWristband {
