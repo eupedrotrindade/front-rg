@@ -110,9 +110,9 @@ export default function ModalRetirada({
     return (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex justify-center items-center z-50">
             <div className={cn(
-                "bg-white dark:bg-zinc-900 p-6 rounded-lg flex flex-col gap-4 w-[95vw] max-w-[600px] shadow-xl"
+                "bg-white p-6 rounded-lg flex flex-col gap-4 w-[95vw] max-w-[600px] shadow-xl"
             )}>
-                <h2 className="text-2xl font-bold text-[#6f0a5e] dark:text-[#e0aaff]">
+                <h2 className="text-2xl font-bold text-[#6f0a5e]">
                     Nova Retirada de Rádio
                 </h2>
                 <form
@@ -122,7 +122,7 @@ export default function ModalRetirada({
                 >
                     <div>
                         <label
-                            className="text-[#6f0a5e] dark:text-[#e0aaff] font-medium"
+                            className="text-[#6f0a5e] font-medium"
                             htmlFor="nome_radio"
                         >
                             Nome/Empresa *
@@ -130,7 +130,7 @@ export default function ModalRetirada({
                         <input
                             {...register("nome_radio")}
                             className={cn(
-                                "border border-[#6f0a5e] dark:border-[#e0aaff] bg-white dark:bg-zinc-800 rounded-md p-3 text-[#22223b] dark:text-white w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] dark:focus:ring-[#e0aaff] placeholder:text-gray-400 dark:placeholder:text-zinc-400",
+                                "border border-[#6f0a5e] bg-white rounded-md p-3 text-[#22223b] w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] placeholder:text-gray-400",
                                 errors.nome_radio && "border-red-500"
                             )}
                             type="text"
@@ -144,14 +144,14 @@ export default function ModalRetirada({
                     </div>
                     <div>
                         <label
-                            className="text-[#6f0a5e] dark:text-[#e0aaff] font-medium"
+                            className="text-[#6f0a5e] font-medium"
                             htmlFor="contato"
                         >
                             Contato (Opcional)
                         </label>
                         <input
                             {...register("contato")}
-                            className="border border-[#6f0a5e] dark:border-[#e0aaff] bg-white dark:bg-zinc-800 rounded-md p-3 text-[#22223b] dark:text-white w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] dark:focus:ring-[#e0aaff] placeholder:text-gray-400 dark:placeholder:text-zinc-400"
+                            className="border border-[#6f0a5e] bg-white rounded-md p-3 text-[#22223b] w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] placeholder:text-gray-400"
                             type="text"
                             id="contato"
                             placeholder="Telefone, email, etc"
@@ -159,7 +159,7 @@ export default function ModalRetirada({
                     </div>
                     <div>
                         <label
-                            className="text-[#6f0a5e] dark:text-[#e0aaff] font-medium"
+                            className="text-[#6f0a5e] font-medium"
                             htmlFor="codes"
                         >
                             Número dos Rádios *
@@ -168,7 +168,7 @@ export default function ModalRetirada({
                             <div className="flex gap-2">
                                 <input
                                     className={cn(
-                                        "border border-[#6f0a5e] dark:border-[#e0aaff] bg-white dark:bg-zinc-800 rounded-md p-3 text-[#22223b] dark:text-white w-full focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] dark:focus:ring-[#e0aaff] placeholder:text-gray-400 dark:placeholder:text-zinc-400",
+                                        "border border-[#6f0a5e] bg-white rounded-md p-3 text-[#22223b] w-full focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] placeholder:text-gray-400",
                                         errors.codes && "border-red-500"
                                     )}
                                     type="text"
@@ -182,7 +182,7 @@ export default function ModalRetirada({
                                 />
                                 <button
                                     type="button"
-                                    className="bg-[#6f0a5e] dark:bg-[#e0aaff] text-white dark:text-[#6f0a5e] px-4 py-2 rounded-md hover:bg-[#58084b] dark:hover:bg-[#b983ff] transition-all shadow-sm border border-[#6f0a5e] dark:border-[#e0aaff]"
+                                    className="bg-[#6f0a5e] text-white px-4 py-2 rounded-md hover:bg-[#58084b] transition-all shadow-sm border border-[#6f0a5e]"
                                     onClick={addCode}
                                     tabIndex={-1}
                                 >
@@ -197,12 +197,12 @@ export default function ModalRetirada({
                                         {field.value.map((code: string) => (
                                             <span
                                                 key={code}
-                                                className="bg-white dark:bg-zinc-800 text-[#6f0a5e] dark:text-[#e0aaff] px-3 py-1 rounded-full flex items-center gap-1 text-sm border border-[#6f0a5e] dark:border-[#e0aaff] shadow-sm"
+                                                className="bg-white text-[#6f0a5e] px-3 py-1 rounded-full flex items-center gap-1 text-sm border border-[#6f0a5e] shadow-sm"
                                             >
                                                 {code}
                                                 <button
                                                     type="button"
-                                                    className="ml-1 text-[#6f0a5e] dark:text-[#e0aaff] hover:text-red-500 font-bold"
+                                                    className="ml-1 text-[#6f0a5e] hover:text-red-500 font-bold"
                                                     onClick={() => removeCode(code)}
                                                     aria-label={`Remover ${code}`}
                                                 >
@@ -214,7 +214,7 @@ export default function ModalRetirada({
                                 )}
                             />
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">
+                        <p className="text-xs text-gray-500 mt-1">
                             Digite o número e pressione Enter, Espaço, vírgula ou clique em Adicionar. Clique no &quot;×&quot; para remover.
                         </p>
                         {errors.codes && (
@@ -223,7 +223,7 @@ export default function ModalRetirada({
                     </div>
                     <div>
                         <label
-                            className="text-[#6f0a5e] dark:text-[#e0aaff] font-medium"
+                            className="text-[#6f0a5e] font-medium"
                             htmlFor="status"
                         >
                             Status *
@@ -231,7 +231,7 @@ export default function ModalRetirada({
                         <select
                             {...register("status")}
                             className={cn(
-                                "border border-[#6f0a5e] dark:border-[#e0aaff] bg-white dark:bg-zinc-800 rounded-md p-3 text-[#22223b] dark:text-white w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] dark:focus:ring-[#e0aaff]",
+                                "border border-[#6f0a5e] bg-white rounded-md p-3 text-[#22223b] w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e]",
                                 errors.status && "border-red-500"
                             )}
                             id="status"
@@ -247,7 +247,7 @@ export default function ModalRetirada({
                     </div>
                     <div>
                         <label
-                            className="text-[#6f0a5e] dark:text-[#e0aaff] font-medium"
+                            className="text-[#6f0a5e] font-medium"
                             htmlFor="event_id"
                         >
                             Evento *
@@ -255,7 +255,7 @@ export default function ModalRetirada({
                         <input
                             {...register("event_id")}
                             className={cn(
-                                "border border-[#6f0a5e] dark:border-[#e0aaff] bg-white dark:bg-zinc-800 rounded-md p-3 text-[#22223b] dark:text-white w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] dark:focus:ring-[#e0aaff] placeholder:text-gray-400 dark:placeholder:text-zinc-400",
+                                "border border-[#6f0a5e] bg-white rounded-md p-3 text-[#22223b] w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] placeholder:text-gray-400",
                                 errors.event_id && "border-red-500"
                             )}
                             type="text"
@@ -268,7 +268,7 @@ export default function ModalRetirada({
                     </div>
                     <div>
                         <label
-                            className="text-[#6f0a5e] dark:text-[#e0aaff] font-medium"
+                            className="text-[#6f0a5e] font-medium"
                             htmlFor="last_retirada_id"
                         >
                             Última Retirada (opcional)
@@ -276,7 +276,7 @@ export default function ModalRetirada({
                         <input
                             {...register("last_retirada_id")}
                             className={cn(
-                                "border border-[#6f0a5e] dark:border-[#e0aaff] bg-white dark:bg-zinc-800 rounded-md p-3 text-[#22223b] dark:text-white w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] dark:focus:ring-[#e0aaff] placeholder:text-gray-400 dark:placeholder:text-zinc-400",
+                                "border border-[#6f0a5e] bg-white rounded-md p-3 text-[#22223b] w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] placeholder:text-gray-400",
                                 errors.last_retirada_id && "border-red-500"
                             )}
                             type="text"
@@ -290,13 +290,13 @@ export default function ModalRetirada({
                     <div className="flex gap-4 mt-4">
                         <button
                             onClick={handleCancel}
-                            className="cursor-pointer bg-[#6f0a5e] dark:bg-[#e0aaff] text-white dark:text-[#6f0a5e] px-4 py-3 rounded-md w-[50%] hover:bg-[#58084b] dark:hover:bg-[#b983ff] transition-all border border-[#6f0a5e] dark:border-[#e0aaff]"
+                            className="cursor-pointer bg-[#6f0a5e] text-white px-4 py-3 rounded-md w-[50%] hover:bg-[#58084b] transition-all border border-[#6f0a5e]"
                             type="button"
                         >
                             Cancelar
                         </button>
                         <button
-                            className="cursor-pointer bg-[#6f0a5e] dark:bg-[#e0aaff] text-white dark:text-[#6f0a5e] px-4 py-3 rounded-md w-[50%] hover:bg-[#58084b] dark:hover:bg-[#b983ff] transition-all border border-[#6f0a5e] dark:border-[#e0aaff]"
+                            className="cursor-pointer bg-[#6f0a5e] text-white px-4 py-3 rounded-md w-[50%] hover:bg-[#58084b] transition-all border border-[#6f0a5e]"
                             type="submit"
                         >
                             Salvar

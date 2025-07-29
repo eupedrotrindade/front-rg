@@ -1,4 +1,5 @@
 "use client";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import EventoForm from "./evento-form";
@@ -11,11 +12,13 @@ import { Edit } from "lucide-react";
 
 interface EventoEditDialogProps {
     evento: Event;
+    children?: React.ReactNode;
+    onClose?: () => void;
 }
 
-const EventoEditDialog = ({ evento }: EventoEditDialogProps) => {
-    const [open, setOpen] = useState(false);
-
+const EventoEditDialog = ({ evento, children, onClose }: EventoEditDialogProps) => {
+    console.log(evento)
+    const [open, setOpen] = useState(true);
     const { mutate: updateEvento, isPending } = useUpdateEvento();
 
     const handleSubmit = (data: EventoSchema) => {
@@ -23,6 +26,7 @@ const EventoEditDialog = ({ evento }: EventoEditDialogProps) => {
             onSuccess: () => {
                 toast.success("Evento atualizado com sucesso!");
                 setOpen(false);
+                onClose?.();
             },
             onError: (error) => {
                 console.error("Erro ao atualizar evento:", error);
@@ -31,16 +35,29 @@ const EventoEditDialog = ({ evento }: EventoEditDialogProps) => {
         });
     };
 
+    const handleOpenChange = (newOpen: boolean) => {
+        setOpen(newOpen);
+        if (!newOpen) {
+            onClose?.();
+        }
+    };
+
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                    <Edit className="h-4 w-4" />
-                </Button>
+                {children || (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 bg-white text-black border-0"
+                    >
+                        <Edit className="h-4 w-4" />
+                    </Button>
+                )}
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white text-black">
                 <DialogHeader>
-                    <DialogTitle>Editar Evento</DialogTitle>
+                    <DialogTitle>Editar Evento: {evento.name}</DialogTitle>
                 </DialogHeader>
                 <EventoForm
                     onSubmit={handleSubmit}

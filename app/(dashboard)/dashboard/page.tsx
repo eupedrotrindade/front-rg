@@ -7,38 +7,15 @@ import { useEventManagers } from '@/features/eventos/api/query/use-event-manager
 import { useEventStaff } from '@/features/eventos/api/query/use-event-staff';
 import { useEventWristbands } from '@/features/eventos/api/query/use-event-wristbands';
 import { useEventParticipants } from '@/features/eventos/api/query/use-event-participants';
-import { Button } from '@/components/ui/button';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Event } from '@/features/eventos/types';
-import EventoCreateDialog from '@/features/eventos/components/evento-create-dialog';
+
+
 import {
-    Users,
-    UserCheck,
-    Calendar,
-    Activity,
-    Ticket,
-    TrendingUp,
-    TrendingDown,
-    CheckCircle,
-    XCircle,
-    BarChart3,
-    Target,
-    Clock,
-    MapPin,
-
-    Star,
-
-    PieChart,
     Users2,
-    Crown
+
 } from 'lucide-react';
-import { YearCalendar } from '@/features/calendar/components/year-calendar';
-import { CalendarLegend } from '@/features/calendar/components/calendar-legend';
-import { getYear } from 'date-fns';
+
 import OperatorForm from '@/features/operadores/components/operator-form';
 import OperatorList from '@/features/operadores/components/operator-list';
 import Link from "next/link";

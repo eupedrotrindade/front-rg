@@ -54,102 +54,6 @@
 }
 
 /* Tema escuro */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-
-    /* Cards e popovers */
-    --card: #1a1a1a;
-    --card-foreground: #ededed;
-    --popover: #1a1a1a;
-    --popover-foreground: #ededed;
-
-    /* Cores primárias */
-    --primary: #8b5cf6;
-    --primary-foreground: #ffffff;
-
-    /* Cores secundárias */
-    --secondary: #262626;
-    --secondary-foreground: #ededed;
-
-    /* Cores neutras */
-    --muted: #262626;
-    --muted-foreground: #a3a3a3;
-    --accent: #262626;
-    --accent-foreground: #ededed;
-
-    /* Cores de estado */
-    --destructive: #f87171;
-    --destructive-foreground: #ffffff;
-
-    /* Bordas e inputs */
-    --border: #262626;
-    --input: #1a1a1a;
-    --ring: #8b5cf6;
-
-    /* Cores dos gráficos */
-    --chart-1: #8b5cf6;
-    --chart-2: #34d399;
-    --chart-3: #fbbf24;
-    --chart-4: #f87171;
-    --chart-5: #a78bfa;
-
-    /* Sidebar */
-    --sidebar: #1a1a1a;
-    --sidebar-foreground: #ededed;
-    --sidebar-primary: #8b5cf6;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #262626;
-    --sidebar-accent-foreground: #ededed;
-    --sidebar-border: #262626;
-    --sidebar-ring: #8b5cf6;
-  }
-}
-
-/* Classe dark manual */
-.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-
-  --card: #1a1a1a;
-  --card-foreground: #ededed;
-  --popover: #1a1a1a;
-  --popover-foreground: #ededed;
-
-  --primary: #8b5cf6;
-  --primary-foreground: #ffffff;
-
-  --secondary: #262626;
-  --secondary-foreground: #ededed;
-
-  --muted: #262626;
-  --muted-foreground: #a3a3a3;
-  --accent: #262626;
-  --accent-foreground: #ededed;
-
-  --destructive: #f87171;
-  --destructive-foreground: #ffffff;
-
-  --border: #262626;
-  --input: #1a1a1a;
-  --ring: #8b5cf6;
-
-  --chart-1: #8b5cf6;
-  --chart-2: #34d399;
-  --chart-3: #fbbf24;
-  --chart-4: #f87171;
-  --chart-5: #a78bfa;
-
-  --sidebar: #1a1a1a;
-  --sidebar-foreground: #ededed;
-  --sidebar-primary: #8b5cf6;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #262626;
-  --sidebar-accent-foreground: #ededed;
-  --sidebar-border: #262626;
-  --sidebar-ring: #8b5cf6;
-}
 
 @layer base {
   * {
@@ -164,7 +68,7 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-family: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -245,11 +149,6 @@
 td,
 tbody {
   color: #610e5c;
-}
-
-.dark td,
-.dark tbody {
-  color: #ededed;
 }
 
 /* Tabela de histórico */
@@ -345,18 +244,6 @@ tbody {
   border-color: #610e5c;
 }
 
-.dark .text-brand-primary {
-  color: #8b5cf6;
-}
-
-.dark .bg-brand-primary {
-  background-color: #8b5cf6;
-}
-
-.dark .border-brand-primary {
-  border-color: #8b5cf6;
-}
-
 /* Estados de loading */
 .loading {
   opacity: 0.6;
@@ -389,10 +276,6 @@ tbody {
 .hover-lift:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.dark .hover-lift:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* Gradientes da marca */
