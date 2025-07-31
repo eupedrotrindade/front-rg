@@ -254,7 +254,6 @@ export default function ImportExportSystem({ eventId, isOpen, onClose }: ImportE
                 Função: p.role,
                 Email: p.email || '',
                 Telefone: p.phone || '',
-                Tamanho_Camiseta: p.shirtSize || '',
                 Observações: p.notes || '',
                 Dias_Trabalho: p.daysWork?.join(', ') || '',
                 Check_in: p.checkIn || '',

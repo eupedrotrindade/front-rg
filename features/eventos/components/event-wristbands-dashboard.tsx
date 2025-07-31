@@ -225,7 +225,7 @@ const EventWristbandsDashboard = () => {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todos os Eventos</SelectItem>
-                            {eventosArray.map((evento) => (
+                            {Array.isArray(eventosArray) && eventosArray.map((evento) => (
                                 <SelectItem key={evento.id} value={evento.id}>
                                     {evento.name} ({evento.status})
                                 </SelectItem>

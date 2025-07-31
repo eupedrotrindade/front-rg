@@ -133,7 +133,7 @@ const EventWristbandModelsDashboard = () => {
         return filtered
     }, [models, filters, sortBy, sortOrder])
 
-    const getEventName = (eventId: string) => eventos.find(ev => ev.id === eventId)?.name || eventId;
+    const getEventName = (eventId: string) => Array.isArray(eventos) ? eventos.find(ev => ev.id === eventId)?.name || eventId : eventId;
 
     const handleCreate = async () => {
         if (!form.credentialType || !form.color || !form.eventId) {
@@ -333,7 +333,7 @@ const EventWristbandModelsDashboard = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">Todos os eventos</SelectItem>
-                                        {eventos.map((evento) => (
+                                        {Array.isArray(eventos) && eventos.map((evento) => (
                                             <SelectItem key={evento.id} value={evento.id}>
                                                 {evento.name}
                                             </SelectItem>
@@ -580,7 +580,7 @@ const EventWristbandModelsDashboard = () => {
                                 <SelectContent>
                                     <SelectGroup>
                                         <SelectLabel>Eventos Disponíveis</SelectLabel>
-                                        {eventos.map((evento) => (
+                                        {Array.isArray(eventos) && eventos.map((evento) => (
                                             <SelectItem key={evento.id} value={evento.id}>
                                                 {evento.name}
                                             </SelectItem>

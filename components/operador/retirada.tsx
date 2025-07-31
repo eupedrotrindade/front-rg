@@ -1,6 +1,5 @@
 import type { Retirada as RetiradaType } from "@/app/(workspaces)/eventos/[id]/radios/types"
 import { useState } from "react"
-import HistoricoPopup from "./HistoricoPopup"
 
 interface RetiradaProps extends RetiradaType {
     onOpenDevTotal: () => void;
@@ -132,7 +131,7 @@ export default function Retirada({ nome, retirada, devolucao, contato, radios, s
                         </div>
                 }
                 <button className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition-all cursor-pointer w-full md:w-auto mt-2 md:mt-0" onClick={() => setShowHistorico(true)}>Histórico</button>
-                <HistoricoPopup isOpen={showHistorico} setIsOpen={setShowHistorico} retirada={{ nome, retirada, devolucao, contato, radios, status, historico, codes_devolvidos, codes_trocados }} />
+
             </td>
         </tr>
     )

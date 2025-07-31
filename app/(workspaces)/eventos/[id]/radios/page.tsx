@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
-import Header from "@/components/operador/header"
+
 
 import Retirada from "@/components/operador/retirada"
 import ModalRetirada from "@/components/operador/modalRetirada"
@@ -44,11 +44,11 @@ export default function Radios() {
     React.useEffect(() => {
         console.log('radiosData completo:', radiosData);
 
-        // Extrair o array de dados diretamente
-        const radiosArray = radiosData?.data || [];
+        // radiosData já é um array de rádios, não possui a propriedade 'data'
+        const radiosArray = Array.isArray(radiosData) ? radiosData : [];
         console.log('Array de rádios:', radiosArray);
 
-        if (radiosArray && Array.isArray(radiosArray)) {
+        if (radiosArray.length > 0) {
             // Cada rádio é uma linha individual
             const retiradas = radiosArray.map((radio: any) => {
                 // Converter histórico para array se vier como string
@@ -323,7 +323,7 @@ export default function Radios() {
     }
 
     return (
-        <EventLayout eventId={String(params.id)} eventName={evento.name}>
+        <EventLayout eventId={String(params.id)} eventName={evento?.name || ""}>
 
 
             <div className="w-full bg-transparent py-2 px-2 mt-4">

@@ -8,6 +8,8 @@ interface CreateCoordenadorData {
   lastName: string;
   password: string;
   role: "coordenador" | "coordenador_geral";
+  eventId: string;
+  nome_evento: string;
 }
 
 export const useCreateCoordenador = () => {
@@ -28,4 +30,4 @@ export const useCreateCoordenador = () => {
       toast.error(error.response?.data?.error || "Erro ao criar coordenador");
     },
   });
-}; 
+};

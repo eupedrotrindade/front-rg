@@ -6,11 +6,14 @@ export type RadioStatus = "disponivel" | "retirado" | "manutencao";
 export interface Radio {
   id: string;
   codes: string[];
+  codes_trocados: string[];
+  codes_devolvidos: string[];
   status: RadioStatus;
   last_retirada_id?: string | null;
   event_id?: string | null;
   created_at?: string;
   updated_at?: string;
+  historico?: any[];
 }
 
 // Listar todos os rádios

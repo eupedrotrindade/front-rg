@@ -266,7 +266,7 @@ export const useExportPDF = () => {
             doc.setFont("helvetica", "normal");
             doc.setTextColor(100, 100, 100);
             doc.text(
-              `Página ${data.pageNumber}`,
+              `Página ${pageData.pageNumber}`,
               doc.internal.pageSize.width - 25,
               doc.internal.pageSize.height - 25,
               { align: "right" }

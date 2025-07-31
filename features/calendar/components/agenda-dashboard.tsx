@@ -92,7 +92,7 @@ const AgendaDashboard = () => {
     const [selectedEvent, setSelectedEvent] = useState<(EventType & { etapa?: string }) | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
 
-    const events = eventos?.flatMap(getEtapaEvents) || [];
+    const events = Array.isArray(eventos) ? eventos.flatMap(getEtapaEvents) : [];
 
     const hasEventOnDate = (date: Date) => {
         return events.some(event => {

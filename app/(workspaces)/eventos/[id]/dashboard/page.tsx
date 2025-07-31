@@ -150,8 +150,8 @@ export default function Dashboard() {
     const vagasInativas = vagasArray.filter((v) => !v.status).length
 
     // Estatísticas de participantes
-    const participantesConfirmados = participantes.filter((p) => p.presenceConfirmed).length
-    const participantesNaoConfirmados = participantes.filter((p) => !p.presenceConfirmed).length
+    const participantesConfirmados = participantes.filter((p) => !!p.checkIn).length
+    const participantesNaoConfirmados = participantes.filter((p) => !p.checkIn).length
     const participantesComCheckIn = participantes.filter((p) => p.checkIn).length
     const participantesComCheckOut = participantes.filter((p) => p.checkOut).length
 
@@ -611,7 +611,7 @@ export default function Dashboard() {
                                             <th className="text-left py-3 px-4 font-medium text-slate-600">Nome</th>
                                             <th className="text-left py-3 px-4 font-medium text-slate-600">CPF</th>
                                             <th className="text-left py-3 px-4 font-medium text-slate-600">Empresa</th>
-                                            <th className="text-center py-3 px-4 font-medium text-slate-600">Status</th>
+
                                             <th className="text-center py-3 px-4 font-medium text-slate-600">Check-in</th>
                                             <th className="text-center py-3 px-4 font-medium text-slate-600">Check-out</th>
                                         </tr>
@@ -622,11 +622,7 @@ export default function Dashboard() {
                                                 <td className="py-3 px-4 font-medium text-slate-900">{participante.name}</td>
                                                 <td className="py-3 px-4 text-slate-600">{participante.cpf}</td>
                                                 <td className="py-3 px-4 text-slate-600">{participante.company}</td>
-                                                <td className="text-center py-3 px-4">
-                                                    <Badge variant={participante.presenceConfirmed ? "default" : "secondary"}>
-                                                        {participante.presenceConfirmed ? "Confirmado" : "Pendente"}
-                                                    </Badge>
-                                                </td>
+
                                                 <td className="text-center py-3 px-4 text-slate-600">
                                                     {participante.checkIn ? formatarHorario(participante.checkIn) : "-"}
                                                 </td>

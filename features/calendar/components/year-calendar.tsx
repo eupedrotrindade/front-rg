@@ -18,7 +18,7 @@ export const YearCalendar = ({ year, eventos }: YearCalendarProps) => {
     const [selectedEvents, setSelectedEvents] = useState<EventInterval[]>([])
 
     const { allIntervals, months, today } = useMemo(() => {
-        const intervals = (eventos || []).flatMap(getEventIntervals)
+        const intervals = Array.isArray(eventos) ? eventos.flatMap(getEventIntervals) : []
         const yearMonths = eachMonthOfInterval({
             start: startOfYear(new Date(year, 0, 1)),
             end: endOfYear(new Date(year, 11, 31)),

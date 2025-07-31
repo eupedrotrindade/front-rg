@@ -16,6 +16,8 @@ const eslintConfig = [
       // Desativar warnings de variáveis não utilizadas
       "@typescript-eslint/no-unused-vars": "off",
       "no-unused-vars": "off",
+      "unused-imports/no-unused-imports": "off",
+
       
       // Desativar warnings de hooks
       "react-hooks/exhaustive-deps": "off",

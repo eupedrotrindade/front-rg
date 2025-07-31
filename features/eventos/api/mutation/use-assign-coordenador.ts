@@ -5,7 +5,12 @@ import { toast } from "sonner";
 
 interface AssignCoordenadorData {
   coordenadorId: string;
+  email: string;
   role: "coordenador" | "coordenador_geral";
+  eventId: string;
+  firstName: string;
+  lastName: string;
+  nome_evento: string;
 }
 
 export const useAssignCoordenador = () => {

@@ -47,7 +47,7 @@ const CalendarDashboard = () => {
                     </div>
                 </div>
             ) : (
-                <YearCalendar year={currentYear} eventos={eventos || []} />
+                <YearCalendar year={currentYear} eventos={Array.isArray(eventos) ? eventos : []} />
             )}
         </div>
     )

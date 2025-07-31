@@ -351,16 +351,11 @@ const DetailsDialog = ({ isOpen, onClose, data, type, eventData }: DetailsDialog
                     <CardContent className="space-y-3">
                         <div className="flex items-center justify-between">
                             <span className="font-medium">Presença Confirmada:</span>
-                            <Badge variant={participant.presenceConfirmed ? "default" : "outline"}>
-                                {participant.presenceConfirmed ? "Sim" : "Não"}
+                            <Badge variant={participant.checkIn ? "default" : "outline"}>
+                                {participant.checkIn ? "Sim" : "Não"}
                             </Badge>
                         </div>
-                        <div className="flex items-center justify-between">
-                            <span className="font-medium">Certificado Emitido:</span>
-                            <Badge variant={participant.certificateIssued ? "default" : "outline"}>
-                                {participant.certificateIssued ? "Sim" : "Não"}
-                            </Badge>
-                        </div>
+
                         {participant.checkIn && (
                             <div className="flex items-center justify-between">
                                 <span className="font-medium">Check-in:</span>
@@ -371,12 +366,6 @@ const DetailsDialog = ({ isOpen, onClose, data, type, eventData }: DetailsDialog
                             <div className="flex items-center justify-between">
                                 <span className="font-medium">Check-out:</span>
                                 <span>{new Date(participant.checkOut).toLocaleString('pt-BR')}</span>
-                            </div>
-                        )}
-                        {participant.shirtSize && (
-                            <div className="flex items-center justify-between">
-                                <span className="font-medium">Tamanho da Camiseta:</span>
-                                <span>{participant.shirtSize}</span>
                             </div>
                         )}
                         {participant.daysWork && participant.daysWork.length > 0 && (

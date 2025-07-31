@@ -16,6 +16,8 @@ export const radioCreateSchema = z.object({
     status: z.enum(radioStatusEnum),
     nome_radio: z.string().min(1, "Informe o nome/empresa"), // substitui "nome"
     contato: z.string().optional(), // mantém contato opcional
+    event_id: z.string().optional(),
+    last_retirada_id: z.string().optional().or(z.null()),
 });
 
 type RadioCreateForm = z.infer<typeof radioCreateSchema>;
@@ -84,8 +86,8 @@ export default function ModalRetirada({
     const onSubmit = (data: RadioCreateForm) => {
         onAddRetirada({
             ...data,
-            event_id: "", // Será preenchido automaticamente no backend
-            last_retirada_id: null, // Sempre null para novas retiradas
+            event_id: "",
+            last_retirada_id: null,
         });
         reset();
         setCodeInput("");

@@ -74,8 +74,8 @@ const EventParticipantsDashboard = () => {
 
     // Calcular KPIs
     const totalParticipants = filteredParticipants.length;
-    const confirmedParticipants = filteredParticipants.filter(p => p.presenceConfirmed).length;
-    const certificateIssued = filteredParticipants.filter(p => p.certificateIssued).length;
+    const confirmedParticipants = filteredParticipants.filter(p => !!p.checkIn).length;
+
     const participantsWithEmail = filteredParticipants.filter(p => p.email).length;
     const participantsWithPhone = filteredParticipants.filter(p => p.phone).length;
     const participantsWithCheckIn = filteredParticipants.filter(p => p.checkIn).length;
@@ -83,7 +83,7 @@ const EventParticipantsDashboard = () => {
 
     // Calcular percentuais
     const confirmationRate = totalParticipants > 0 ? (confirmedParticipants / totalParticipants) * 100 : 0;
-    const certificateRate = totalParticipants > 0 ? (certificateIssued / totalParticipants) * 100 : 0;
+
     const emailCompletionRate = totalParticipants > 0 ? (participantsWithEmail / totalParticipants) * 100 : 0;
     const phoneCompletionRate = totalParticipants > 0 ? (participantsWithPhone / totalParticipants) * 100 : 0;
     const checkInRate = totalParticipants > 0 ? (participantsWithCheckIn / totalParticipants) * 100 : 0;
@@ -117,9 +117,6 @@ const EventParticipantsDashboard = () => {
             'Staff Responsável': staffMember?.name || '',
             'Check-in': participant.checkIn ? new Date(participant.checkIn).toLocaleString('pt-BR') : '',
             'Check-out': participant.checkOut ? new Date(participant.checkOut).toLocaleString('pt-BR') : '',
-            'Presença Confirmada': participant.presenceConfirmed ? 'Sim' : 'Não',
-            'Certificado Emitido': participant.certificateIssued ? 'Sim' : 'Não',
-            'Tamanho da Camiseta': participant.shirtSize || '',
             'Observações': participant.notes || '',
             'Evento': event?.name || '',
             'Status do Evento': event?.status === 'active' ? 'Ativo' :
@@ -166,9 +163,7 @@ const EventParticipantsDashboard = () => {
                     company: String(row['Empresa'] || ''),
                     checkIn: row['Check-in'] ? new Date(String(row['Check-in'])).toISOString() : undefined,
                     checkOut: row['Check-out'] ? new Date(String(row['Check-out'])).toISOString() : undefined,
-                    presenceConfirmed: row['Presença Confirmada'] === 'Sim',
-                    certificateIssued: row['Certificado Emitido'] === 'Sim',
-                    shirtSize: String(row['Tamanho da Camiseta'] || '') as "PP" | "P" | "M" | "G" | "GG" | "XG" | "XXG" | "EXG" | undefined,
+
                     notes: String(row['Observações'] || ''),
                 };
 
@@ -294,18 +289,6 @@ const EventParticipantsDashboard = () => {
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Certificados Emitidos</CardTitle>
-                        <Award className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{certificateIssued}</div>
-                        <p className="text-xs text-muted-foreground">
-                            {certificateRate.toFixed(1)}% do total
-                        </p>
-                    </CardContent>
-                </Card>
 
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -344,13 +327,8 @@ const EventParticipantsDashboard = () => {
                             </div>
                             <Progress value={confirmationRate} className="w-full" />
 
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">Certificados Emitidos</span>
-                                <span className="text-sm text-muted-foreground">
-                                    {certificateIssued} / {totalParticipants}
-                                </span>
-                            </div>
-                            <Progress value={certificateRate} className="w-full" />
+
+
 
                             <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">Check-ins</span>
@@ -506,36 +484,7 @@ const EventParticipantsDashboard = () => {
                                                 {participant.company}
                                             </div>
                                         </TableCell>
-                                        <TableCell>
-                                            <Badge variant={participant.presenceConfirmed ? 'default' : 'outline'}>
-                                                {participant.presenceConfirmed ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <UserCheck className="h-3 w-3" />
-                                                        Confirmada
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center gap-1">
-                                                        <Calendar className="h-3 w-3" />
-                                                        Pendente
-                                                    </div>
-                                                )}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant={participant.certificateIssued ? 'default' : 'outline'}>
-                                                {participant.certificateIssued ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <Award className="h-3 w-3" />
-                                                        Emitido
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center gap-1">
-                                                        <Award className="h-3 w-3" />
-                                                        Pendente
-                                                    </div>
-                                                )}
-                                            </Badge>
-                                        </TableCell>
+
                                         <TableCell>
                                             {participant.checkIn ? (
                                                 <div className="flex items-center gap-2">

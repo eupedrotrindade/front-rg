@@ -18,21 +18,22 @@ export const useOperatorsByEvent = ({
   const { data: allOperators = [], isLoading, error } = useOperators();
 
   // Filtrar operadores por evento
-  const filteredOperators = allOperators.filter(operator => {
+  const filteredOperators = allOperators.filter((operator) => {
     // Verificar se o operador está associado ao evento
-    const eventIds = operator.id_events?.split(',').map(id => id.trim()) || [];
+    const eventIds =
+      operator.id_events?.split(",").map((id: string) => id.trim()) || [];
     const isAssociatedWithEvent = eventIds.includes(eventId);
-    
+
     // Aplicar filtro de busca se fornecido
     if (search) {
       const searchLower = search.toLowerCase();
-      const matchesSearch = 
+      const matchesSearch =
         operator.nome?.toLowerCase().includes(searchLower) ||
         operator.cpf?.includes(search);
-      
+
       return isAssociatedWithEvent && matchesSearch;
     }
-    
+
     return isAssociatedWithEvent;
   });
 
@@ -41,9 +42,9 @@ export const useOperatorsByEvent = ({
     const aValue = a[sortBy as keyof Operator];
     const bValue = b[sortBy as keyof Operator];
 
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
+    if (typeof aValue === "string" && typeof bValue === "string") {
       const comparison = aValue.localeCompare(bValue);
-      return sortOrder === 'asc' ? comparison : -comparison;
+      return sortOrder === "asc" ? comparison : -comparison;
     }
 
     return 0;

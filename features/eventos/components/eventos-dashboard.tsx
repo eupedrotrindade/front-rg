@@ -571,9 +571,9 @@ const EventosDashboard = () => {
                                         <TableCell>
                                             <div className="flex items-center gap-2">
                                                 <span>{eventParticipants.length}</span>
-                                                {eventParticipants.filter(p => p.presenceConfirmed).length > 0 && (
+                                                {eventParticipants.filter(p => !!p.checkIn).length > 0 && (
                                                     <Badge variant="outline" className="text-xs">
-                                                        {eventParticipants.filter(p => p.presenceConfirmed).length} confirmados
+                                                        {eventParticipants.filter(p => !!p.checkIn).length} confirmados
                                                     </Badge>
                                                 )}
                                             </div>
