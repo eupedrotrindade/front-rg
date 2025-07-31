@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@clerk/localizations": "^3.17.1",
-    "@clerk/nextjs": "^6.22.0",
+    "@clerk/nextjs": "^6.28.1",
     "@clerk/themes": "^2.2.52",
     "@fullcalendar/daygrid": "^6.1.18",
     "@fullcalendar/interaction": "^6.1.18",
@@ -88,8 +88,5 @@
     "eslint-config-next": "15.4.1",
     "tailwindcss": "^4",
     "typescript": "^5"
-  },
-  "overrides": {
-    "snakecase-keys": "3.2.1"
   }
 }
