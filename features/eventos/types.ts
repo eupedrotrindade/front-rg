@@ -99,6 +99,22 @@ export type EventHistory = {
   description?: string;
 };
 
+export type Coordenador = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  imageUrl: string;
+  createdAt: string;
+  metadata: {
+    eventos?: Array<{
+      role: string;
+      id: string;
+      nome_evento: string;
+    }>;
+  };
+};
+
 // Tipos para requisições
 export type CreateEventRequest = {
   slug?: string;
@@ -205,4 +221,51 @@ export type PaginationParams = {
   search?: string;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
+};
+
+export type Empresa = {
+  id: string;
+  nome: string;
+  cnpj?: string;
+  email?: string;
+  telefone?: string;
+  endereco?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  responsavel?: string;
+  observacoes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateEmpresaRequest = {
+  nome: string;
+  cnpj?: string;
+  email?: string;
+  telefone?: string;
+  endereco?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  responsavel?: string;
+  observacoes?: string;
+};
+
+export type UpdateEmpresaRequest = Partial<CreateEmpresaRequest>;
+
+export type EmpresaEvento = {
+  id: string;
+  empresaId: string;
+  eventoId: string;
+  empresa: Empresa;
+  evento: Event;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateEmpresaEventoRequest = {
+  empresaId: string;
+  eventoId: string;
 };

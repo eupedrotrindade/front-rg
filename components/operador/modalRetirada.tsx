@@ -14,8 +14,6 @@ export const radioStatusEnum = [
 export const radioCreateSchema = z.object({
     codes: z.array(z.string()).min(1, "Informe pelo menos um código de rádio"),
     status: z.enum(radioStatusEnum),
-    last_retirada_id: z.string().uuid().nullable().optional(),
-    event_id: z.string().uuid().nullable().optional(),
     nome_radio: z.string().min(1, "Informe o nome/empresa"), // substitui "nome"
     contato: z.string().optional(), // mantém contato opcional
 });
@@ -45,8 +43,6 @@ export default function ModalRetirada({
         resolver: zodResolver(radioCreateSchema),
         defaultValues: {
             status: "retirado",
-            event_id: "",
-            last_retirada_id: "",
             codes: [],
             nome_radio: "",
             contato: "",
@@ -88,10 +84,8 @@ export default function ModalRetirada({
     const onSubmit = (data: RadioCreateForm) => {
         onAddRetirada({
             ...data,
-            last_retirada_id:
-                typeof data.last_retirada_id === "string" && data.last_retirada_id.trim().length > 0
-                    ? data.last_retirada_id.trim()
-                    : undefined,
+            event_id: "", // Será preenchido automaticamente no backend
+            last_retirada_id: null, // Sempre null para novas retiradas
         });
         reset();
         setCodeInput("");
@@ -245,48 +239,8 @@ export default function ModalRetirada({
                             <span className="text-red-500 text-xs">{errors.status.message}</span>
                         )}
                     </div>
-                    <div>
-                        <label
-                            className="text-[#6f0a5e] font-medium"
-                            htmlFor="event_id"
-                        >
-                            Evento *
-                        </label>
-                        <input
-                            {...register("event_id")}
-                            className={cn(
-                                "border border-[#6f0a5e] bg-white rounded-md p-3 text-[#22223b] w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] placeholder:text-gray-400",
-                                errors.event_id && "border-red-500"
-                            )}
-                            type="text"
-                            id="event_id"
-                            placeholder="ID do evento"
-                        />
-                        {errors.event_id && (
-                            <span className="text-red-500 text-xs">{errors.event_id.message}</span>
-                        )}
-                    </div>
-                    <div>
-                        <label
-                            className="text-[#6f0a5e] font-medium"
-                            htmlFor="last_retirada_id"
-                        >
-                            Última Retirada (opcional)
-                        </label>
-                        <input
-                            {...register("last_retirada_id")}
-                            className={cn(
-                                "border border-[#6f0a5e] bg-white rounded-md p-3 text-[#22223b] w-full mt-1 focus:outline-none focus:ring-2 focus:ring-[#6f0a5e] placeholder:text-gray-400",
-                                errors.last_retirada_id && "border-red-500"
-                            )}
-                            type="text"
-                            id="last_retirada_id"
-                            placeholder="UUID da última retirada"
-                        />
-                        {errors.last_retirada_id && (
-                            <span className="text-red-500 text-xs">{errors.last_retirada_id.message as string}</span>
-                        )}
-                    </div>
+
+
                     <div className="flex gap-4 mt-4">
                         <button
                             onClick={handleCancel}

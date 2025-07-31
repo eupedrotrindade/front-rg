@@ -6,6 +6,9 @@ import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-ev
 import { useDeleteEventParticipant } from '@/features/eventos/api/mutation/use-delete-event-participant'
 import { useEventWristbandsByEvent } from '@/features/eventos/api/query/use-event-wristbands'
 import { useEventWristbandModels } from '@/features/eventos/api/query/use-event-wristband-models'
+import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coordenadores-by-event'
+import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
+import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -20,6 +23,7 @@ import { toast } from 'sonner'
 import { EventParticipant } from '@/features/eventos/types'
 import EventParticipantCreateDialog from '@/features/eventos/components/event-participant-create-dialog'
 import EventParticipantEditDialog from '@/features/eventos/components/event-participant-edit-dialog'
+import ImportExportSystem from '@/features/eventos/components/import-export-system'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 
 export default function EventoDetalhesPage() {
@@ -34,9 +38,19 @@ export default function EventoDetalhesPage() {
     const { data: wristbandModels, isLoading: wristbandModelsLoading } = useEventWristbandModels()
     const { mutate: deleteParticipant, isPending: isDeleting } = useDeleteEventParticipant()
 
+    // Hooks para coordenadores, vagas e empresas
+    const { data: coordenadores = [], isLoading: coordenadoresLoading } = useCoordenadoresByEvent({
+        eventId: String(params.id)
+    })
+    const { data: vagas = [], isLoading: vagasLoading } = useEventVehiclesByEvent({
+        eventId: String(params.id)
+    })
+    const { data: empresas = [], isLoading: empresasLoading } = useEmpresasByEvent(String(params.id))
+
     const [deletingParticipant, setDeletingParticipant] = useState<EventParticipant | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedDay, setSelectedDay] = useState<string>('all')
+    const [importExportOpen, setImportExportOpen] = useState(false)
     const tabsContainerRef = useRef<HTMLDivElement>(null)
 
     const evento = Array.isArray(eventos)
@@ -250,18 +264,18 @@ export default function EventoDetalhesPage() {
         return "none"
     }
 
-    const isLoading = participantsLoading || wristbandsLoading || wristbandModelsLoading
+    const isLoading = participantsLoading || wristbandsLoading || wristbandModelsLoading || coordenadoresLoading || vagasLoading || empresasLoading
 
     return (
         <EventLayout eventId={String(params.id)} eventName={evento.name}>
             <div className="p-8">
                 {/* KPIs */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
                     <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Total de Participantes</p>
+                                    <p className="text-sm opacity-90">Participantes</p>
                                     <p className="text-3xl font-bold">{totalParticipants}</p>
                                 </div>
                                 <Users className="h-8 w-8 opacity-80" />
@@ -285,7 +299,7 @@ export default function EventoDetalhesPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Check-in Realizado</p>
+                                    <p className="text-sm opacity-90">Check-in</p>
                                     <p className="text-3xl font-bold">{checkedInParticipants}</p>
                                 </div>
                                 <Check className="h-8 w-8 opacity-80" />
@@ -297,10 +311,46 @@ export default function EventoDetalhesPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Ativos no Evento</p>
+                                    <p className="text-sm opacity-90">Ativos</p>
                                     <p className="text-3xl font-bold">{activeParticipants}</p>
                                 </div>
                                 <User className="h-8 w-8 opacity-80" />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm opacity-90">Coordenadores</p>
+                                    <p className="text-3xl font-bold">{coordenadores.length}</p>
+                                </div>
+                                <UserCog className="h-8 w-8 opacity-80" />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-r from-teal-500 to-teal-600 text-white">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm opacity-90">Vagas</p>
+                                    <p className="text-3xl font-bold">{vagas.length}</p>
+                                </div>
+                                <Building className="h-8 w-8 opacity-80" />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm opacity-90">Empresas</p>
+                                    <p className="text-3xl font-bold">{empresas?.length || 0}</p>
+                                </div>
+                                <Building className="h-8 w-8 opacity-80" />
                             </div>
                         </CardContent>
                     </Card>
@@ -315,20 +365,12 @@ export default function EventoDetalhesPage() {
                                 size="sm"
                                 className="btn-brand-green"
                                 disabled={isLoading}
+                                onClick={() => router.push(`/eventos/${params.id}/import-export`)}
                             >
                                 <Download className="w-4 h-4 mr-2" />
-                                Exportar Excel
+                                Importar/Exportar
                             </Button>
 
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300 bg-white shadow-sm transition-all duration-200"
-                                disabled={isLoading}
-                            >
-                                <Upload className="w-4 h-4 mr-2" />
-                                Importar Excel
-                            </Button>
 
                             <Button
                                 variant="outline"
@@ -343,6 +385,95 @@ export default function EventoDetalhesPage() {
 
                         <EventParticipantCreateDialog />
                     </div>
+                </div>
+
+                {/* Estatísticas Detalhadas */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    {/* Estatísticas de Coordenadores */}
+                    <Card className="bg-white shadow-lg border border-gray-200">
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center">
+                                <UserCog className="h-5 w-5 mr-2 text-indigo-600" />
+                                Coordenadores
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Total</span>
+                                    <span className="font-semibold text-indigo-600">{coordenadores.length}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Coordenadores Gerais</span>
+                                    <span className="font-semibold text-indigo-600">
+                                        {coordenadores.filter(c => c.metadata?.eventos?.[0]?.role === 'coordenador_geral').length}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Coordenadores</span>
+                                    <span className="font-semibold text-indigo-600">
+                                        {coordenadores.filter(c => c.metadata?.eventos?.[0]?.role === 'coordenador').length}
+                                    </span>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Estatísticas de Vagas */}
+                    <Card className="bg-white shadow-lg border border-gray-200">
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center">
+                                <Building className="h-5 w-5 mr-2 text-teal-600" />
+                                Vagas
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Total</span>
+                                    <span className="font-semibold text-teal-600">{vagas.length}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Retiradas</span>
+                                    <span className="font-semibold text-teal-600">
+                                        {vagas.filter(v => v.status).length}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Pendentes</span>
+                                    <span className="font-semibold text-teal-600">
+                                        {vagas.filter(v => !v.status).length}
+                                    </span>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Estatísticas de Participantes */}
+                    <Card className="bg-white shadow-lg border border-gray-200">
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center">
+                                <Users className="h-5 w-5 mr-2 text-blue-600" />
+                                Participantes
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Total</span>
+                                    <span className="font-semibold text-blue-600">{totalParticipants}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Com Pulseira</span>
+                                    <span className="font-semibold text-blue-600">{participantsWithWristbands}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Ativos</span>
+                                    <span className="font-semibold text-blue-600">{activeParticipants}</span>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* Search Bar */}
@@ -584,6 +715,13 @@ export default function EventoDetalhesPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+
+            {/* DIALOG DUPLICADOS */}
+            {/* This section is no longer needed as the import/export system handles duplicates */}
+
+            {/* DIALOG RESUMO IMPORTAÇÃO */}
+            {/* This section is no longer needed as the import/export system handles resumo */}
         </EventLayout>
     )
 }

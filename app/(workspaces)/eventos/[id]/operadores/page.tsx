@@ -5,49 +5,39 @@
 
 import type React from "react"
 
-import { useEffect, useState, useRef, useCallback, useMemo } from "react"
-import axios from "axios"
+import { useEffect, useState, useRef } from "react"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import * as XLSX from "xlsx"
-import { saveAs } from "file-saver"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import apiClient from "@/lib/api-client"
 import { formatCpf, isValidCpf } from "@/lib/utils"
 import { toast } from "sonner"
-import Image from "next/image"
-import { Loader2, Filter, Download, Upload, Plus, Search, Check, Clock, User, Calendar, X, Edit, Trash2 } from "lucide-react"
-import { useParams, useRouter } from "next/navigation"
-import { useOperators } from "@/features/operadores/api/query/use-operators"
+import { Loader2, Download, Upload, Plus, Edit, Trash2 } from "lucide-react"
+import { useParams } from "next/navigation"
+import { useOperatorsByEvent } from "@/features/operadores/api/query/use-operators-by-event"
 import type { Operator } from "@/features/operadores/types"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 
 export default function OperadoresPage() {
     const params = useParams()
-    const router = useRouter()
     const eventId = params.id as string
 
-    const [filtro, setFiltro] = useState({ nome: "", cpf: "" })
+    const [filtro, setFiltro] = useState({ busca: "" })
     const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null)
     const [modalAberto, setModalAberto] = useState(false)
     const [nomeEvento, setNomeEvento] = useState<string>("")
     const [loading, setLoading] = useState(false)
 
     // Estados para filtros
-    const [filteredOperators, setFilteredOperators] = useState<Operator[]>([])
     const [ordenacao, setOrdenacao] = useState<{ campo: string; direcao: 'asc' | 'desc' }>({ campo: 'nome', direcao: 'asc' })
-    const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
 
     // Estados para importação
-    const [importDialogOpen, setImportDialogOpen] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     // Estados para importação e duplicados
-    const [duplicadosDialogOpen, setDuplicadosDialogOpen] = useState(false)
-    const [duplicadosEncontrados, setDuplicadosEncontrados] = useState<Operator[]>([])
     const [registrosUnicos, setRegistrosUnicos] = useState<Operator[]>([])
     const [importDialogLoading, setImportDialogLoading] = useState(false)
     const [resumoDialogOpen, setResumoDialogOpen] = useState(false)
@@ -74,7 +64,12 @@ export default function OperadoresPage() {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [operatorToDelete, setOperatorToDelete] = useState<Operator | null>(null)
 
-    const { data: operadores = [], isLoading: loadingOperadores, refetch: refetchOperadores } = useOperators()
+    const { data: operadores = [], isLoading: loadingOperadores } = useOperatorsByEvent({
+        eventId,
+        search: filtro.busca,
+        sortBy: ordenacao.campo,
+        sortOrder: ordenacao.direcao
+    })
     const { data: eventos = [] } = useEventos()
 
     useEffect(() => {
@@ -86,47 +81,9 @@ export default function OperadoresPage() {
         }
     }, [eventos, eventId])
 
-    useEffect(() => {
-        if (operadores.length > 0) {
-            filtrarOperadores()
-        }
-    }, [operadores, filtro, ordenacao])
-
-    const filtrarOperadores = useCallback(() => {
-        const filtrados = operadores.filter(operador => {
-            const matchNome = !filtro.nome || operador.nome.toLowerCase().includes(filtro.nome.toLowerCase())
-            const matchCpf = !filtro.cpf || operador.cpf.includes(filtro.cpf)
-            return matchNome && matchCpf
-        })
-
-        // Ordenação
-        const sorted = [...filtrados].sort((a, b) => {
-            const aValue = a[ordenacao.campo as keyof Operator]
-            const bValue = b[ordenacao.campo as keyof Operator]
-
-            if (typeof aValue === 'string' && typeof bValue === 'string') {
-                const comparison = aValue.localeCompare(bValue)
-                return ordenacao.direcao === 'asc' ? comparison : -comparison
-            }
-
-            return 0
-        })
-
-        setFilteredOperators(sorted)
-    }, [operadores, filtro, ordenacao])
-
-    const handleBusca = (valor: string) => {
-        setFiltro(prev => ({ ...prev, nome: valor }))
-    }
-
     const abrirPopup = (operador: Operator) => {
         setSelectedOperator(operador)
         setModalAberto(true)
-    }
-
-    const fecharPopup = () => {
-        setSelectedOperator(null)
-        setModalAberto(false)
     }
 
     const getBotaoAcao = (operador: Operator) => {
@@ -168,6 +125,16 @@ export default function OperadoresPage() {
     const salvarEdicao = async () => {
         if (!operatorToEdit) return
 
+        if (!editForm.nome || !editForm.cpf || !editForm.senha) {
+            toast.error("Todos os campos são obrigatórios")
+            return
+        }
+
+        if (!isValidCpf(editForm.cpf)) {
+            toast.error("CPF inválido")
+            return
+        }
+
         setLoading(true)
         try {
             await apiClient.put(`/operadores/${operatorToEdit.id}`, {
@@ -179,7 +146,7 @@ export default function OperadoresPage() {
 
             toast.success("Operador atualizado com sucesso!")
             setEditDialogOpen(false)
-            refetchOperadores()
+            setEditForm({ nome: "", cpf: "", senha: "" })
         } catch (error) {
             toast.error("Erro ao atualizar operador")
         } finally {
@@ -196,7 +163,6 @@ export default function OperadoresPage() {
 
             toast.success("Operador excluído com sucesso!")
             setDeleteDialogOpen(false)
-            refetchOperadores()
         } catch (error) {
             toast.error("Erro ao excluir operador")
         } finally {
@@ -205,6 +171,16 @@ export default function OperadoresPage() {
     }
 
     const salvarNovo = async () => {
+        if (!createForm.nome || !createForm.cpf || !createForm.senha) {
+            toast.error("Todos os campos são obrigatórios")
+            return
+        }
+
+        if (!isValidCpf(createForm.cpf)) {
+            toast.error("CPF inválido")
+            return
+        }
+
         setLoading(true)
         try {
             await apiClient.post("/operadores", {
@@ -217,7 +193,6 @@ export default function OperadoresPage() {
             toast.success("Operador criado com sucesso!")
             setCreateDialogOpen(false)
             setCreateForm({ nome: "", cpf: "", senha: "" })
-            refetchOperadores()
         } catch (error) {
             toast.error("Erro ao criar operador")
         } finally {
@@ -233,7 +208,7 @@ export default function OperadoresPage() {
         str.replace(/(\b\w)/g, (char) => char.toUpperCase())
 
     const exportarParaExcel = () => {
-        const dadosParaExportar = filteredOperators.map(operador => ({
+        const dadosParaExportar = operadores.map(operador => ({
             Nome: operador.nome,
             CPF: formatCPF(operador.cpf),
             "Data de Criação": new Date().toLocaleDateString('pt-BR')
@@ -302,6 +277,10 @@ export default function OperadoresPage() {
             toast.error("Erro ao processar arquivo")
         } finally {
             setImportDialogLoading(false)
+            // Limpar o input de arquivo
+            if (fileInputRef.current) {
+                fileInputRef.current.value = ""
+            }
         }
     }
 
@@ -319,7 +298,6 @@ export default function OperadoresPage() {
 
             toast.success(`${registrosUnicos.length} operadores importados com sucesso!`)
             setResumoDialogOpen(false)
-            refetchOperadores()
         } catch (error) {
             toast.error("Erro ao importar operadores")
         } finally {
@@ -359,22 +337,12 @@ export default function OperadoresPage() {
                     <div className="flex flex-wrap gap-4">
                         <div className="flex-1 min-w-[200px]">
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Buscar por nome
+                                Buscar por nome ou CPF
                             </label>
                             <Input
-                                placeholder="Digite o nome..."
-                                value={filtro.nome}
-                                onChange={(e) => setFiltro(prev => ({ ...prev, nome: e.target.value }))}
-                            />
-                        </div>
-                        <div className="flex-1 min-w-[200px]">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Buscar por CPF
-                            </label>
-                            <Input
-                                placeholder="Digite o CPF..."
-                                value={filtro.cpf}
-                                onChange={(e) => setFiltro(prev => ({ ...prev, cpf: e.target.value }))}
+                                placeholder="Digite o nome ou CPF..."
+                                value={filtro.busca}
+                                onChange={(e) => setFiltro(prev => ({ ...prev, busca: e.target.value }))}
                             />
                         </div>
                         <div className="flex items-end">
@@ -418,29 +386,37 @@ export default function OperadoresPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredOperators.map((operador) => (
-                                    <TableRow key={operador.id} className="hover:bg-gray-50 transition-colors">
-                                        <TableCell className="font-medium">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                                    <span className="text-sm font-medium text-blue-600">
-                                                        {getInitials(operador.nome)}
-                                                    </span>
+                                {operadores.length > 0 ? (
+                                    operadores.map((operador) => (
+                                        <TableRow key={operador.id} className="hover:bg-gray-50 transition-colors">
+                                            <TableCell className="font-medium">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                        <span className="text-sm font-medium text-blue-600">
+                                                            {getInitials(operador.nome)}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-gray-900">{capitalizeWords(operador.nome)}</span>
                                                 </div>
-                                                <span className="text-gray-900">{capitalizeWords(operador.nome)}</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-gray-700">{formatCPF(operador.cpf)}</TableCell>
-                                        <TableCell>
-                                            <div className="text-sm text-gray-500">
-                                                {operador.acoes?.length || 0} ações
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            {getBotaoAcao(operador)}
+                                            </TableCell>
+                                            <TableCell className="text-gray-700">{formatCPF(operador.cpf)}</TableCell>
+                                            <TableCell>
+                                                <div className="text-sm text-gray-500">
+                                                    {operador.acoes?.length || 0} ações
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                {getBotaoAcao(operador)}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                                            Nenhum operador encontrado
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                )}
                             </TableBody>
                         </Table>
                     </div>
@@ -523,7 +499,10 @@ export default function OperadoresPage() {
                                 />
                             </div>
                             <div className="flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                                <Button variant="outline" onClick={() => {
+                                    setEditDialogOpen(false)
+                                    setEditForm({ nome: "", cpf: "", senha: "" })
+                                }}>
                                     Cancelar
                                 </Button>
                                 <Button onClick={salvarEdicao} disabled={loading}>
@@ -564,7 +543,10 @@ export default function OperadoresPage() {
                                 />
                             </div>
                             <div className="flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                                <Button variant="outline" onClick={() => {
+                                    setCreateDialogOpen(false)
+                                    setCreateForm({ nome: "", cpf: "", senha: "" })
+                                }}>
                                     Cancelar
                                 </Button>
                                 <Button onClick={salvarNovo} disabled={loading}>

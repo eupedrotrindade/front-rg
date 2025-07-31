@@ -1,10 +1,12 @@
 export type Retirada = {
+    id: string;
     nome: string;
     retirada: string;
     devolucao: string;
     contato: string;
     radios: string[];
     status: boolean;
-    devolvidos?: string[];
-    trocas?: { antigo: string; novo: string }[];
+    historico?: string[];
+    codes_devolvidos?: string[];
+    codes_trocados?: string[];
 } 

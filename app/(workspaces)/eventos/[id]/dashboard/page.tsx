@@ -1,0 +1,709 @@
+"use client"
+
+import { useState } from "react"
+import { useParams } from "next/navigation"
+import { Users, CreditCard, UserCheck, Headphones, Car, Activity, Clock, CheckCircle, XCircle } from "lucide-react"
+
+// Hooks existentes
+import { useEventos } from "@/features/eventos/api/query/use-eventos"
+import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands"
+import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
+import { useOperatorsByEvent } from "@/features/operadores/api/query/use-operators-by-event"
+import { useRadios } from "@/features/radio/api/query/use-radios"
+import type { Event } from "@/features/eventos/types"
+import EventLayout from "@/components/dashboard/dashboard-layout"
+import { useCoordenadoresByEvent } from "@/features/eventos/api/query/use-coordenadores-by-event"
+import { useEventVehiclesByEvent } from "@/features/eventos/api/query/use-event-vehicles-by-event"
+
+// shadcn/ui components
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+
+// Recharts components
+import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell } from "recharts"
+
+// Tipos para os dados
+interface Coordenador {
+    id: string
+    email: string
+    firstName: string
+    lastName: string
+    imageUrl?: string
+    createdAt: string
+    metadata?: {
+        eventos?: Array<{
+            role: string
+            id: string
+            nome_evento: string
+        }>
+    }
+}
+
+interface Credencial {
+    id: string
+    eventId: string
+    code: string
+    label: string
+    credentialType: string
+    color: string
+    isActive: boolean
+    assignedTo?: string
+    createdAt: string
+}
+
+interface Operador {
+    id: string
+    nome: string
+    cpf: string
+    id_events: string
+    acoes: Array<{
+        credencial: string
+        evento: string
+        pulseira: string
+        staffId: number
+        staffName: string
+        tabela: string
+        timestamp: string
+        type: string
+    }>
+    createdAt: string
+}
+
+interface Radio {
+    id: string
+    codes: string[]
+    status: "disponivel" | "retirado" | "manutencao"
+    last_retirada_id?: string
+    event_id?: string
+    created_at?: string
+    updated_at?: string
+}
+
+interface Vaga {
+    id: string
+    empresa: string
+    placa: string
+    modelo: string
+    status: boolean
+    credencial: string
+}
+
+interface Evento {
+    id: string
+    nome_evento: string
+    senha_acesso: string
+    id_tabela: string
+}
+
+// Cores modernas para os gráficos
+const COLORS = {
+    primary: "hsl(221, 83%, 53%)",
+    secondary: "hsl(142, 76%, 36%)",
+    accent: "hsl(262, 83%, 58%)",
+    warning: "hsl(38, 92%, 50%)",
+    danger: "hsl(0, 84%, 60%)",
+    info: "hsl(199, 89%, 48%)",
+    muted: "hsl(210, 40%, 98%)",
+    border: "hsl(214, 32%, 91%)",
+}
+
+export default function Dashboard() {
+    const params = useParams()
+    const eventId = String(params.id)
+    const [searchTerm, setSearchTerm] = useState("")
+
+    // Buscar evento específico pelo ID
+    const { data: eventoData, isLoading: eventoLoading } = useEventos({ id: eventId })
+    const evento = Array.isArray(eventoData) ? eventoData[0] : eventoData
+
+    // Hooks para buscar dados usando React Query
+    const { data: coordenadores = [], isLoading: coordenadoresLoading } = useCoordenadoresByEvent({ eventId })
+    const { data: credenciais = [], isLoading: credenciaisLoading } = useEventWristbandsByEvent(eventId)
+    const { data: participantes = [], isLoading: participantesLoading } = useEventParticipantsByEvent({
+        eventId: String(params.id),
+    })
+    const { data: operadores = [], isLoading: operadoresLoading } = useOperatorsByEvent({ eventId })
+    const { data: radios = [], isLoading: radiosLoading } = useRadios({ eventId: eventId })
+    const { data: vagas = [], isLoading: vagasLoading } = useEventVehiclesByEvent({ eventId, search: searchTerm })
+
+    // Garantir que coordenadores é sempre um array
+    const coordenadoresArray = Array.isArray(coordenadores) ? coordenadores : []
+    const radiosArray = Array.isArray(radios) ? radios : []
+    const vagasArray = Array.isArray(vagas) ? vagas : []
+
+    // Cálculos das estatísticas
+    const totalCoordenadores = coordenadoresArray.length
+    const totalCredenciais = credenciais.length
+    const totalParticipantes = participantes.length
+    const totalOperadores = operadores.length
+    const totalRadios = radiosArray.length
+    const totalVagas = vagasArray.length
+
+    // Estatísticas de rádios por status
+    const radiosDisponiveis = radiosArray.filter((r) => r.status === "disponivel").length
+    const radiosRetirados = radiosArray.filter((r) => r.status === "retirado").length
+    const radiosManutencao = radiosArray.filter((r) => r.status === "manutencao").length
+
+    // Estatísticas de vagas por status
+    const vagasAtivas = vagasArray.filter((v) => v.status).length
+    const vagasInativas = vagasArray.filter((v) => !v.status).length
+
+    // Estatísticas de participantes
+    const participantesConfirmados = participantes.filter((p) => p.presenceConfirmed).length
+    const participantesNaoConfirmados = participantes.filter((p) => !p.presenceConfirmed).length
+    const participantesComCheckIn = participantes.filter((p) => p.checkIn).length
+    const participantesComCheckOut = participantes.filter((p) => p.checkOut).length
+
+    // Estatísticas de credenciais por tipo
+    const credenciaisPorTipo = credenciais.reduce(
+        (acc, cred) => {
+            const tipo = (cred as unknown as Credencial).credentialType || "Sem tipo"
+            acc[tipo] = (acc[tipo] || 0) + 1
+            return acc
+        },
+        {} as Record<string, number>,
+    )
+
+    // Dados para gráficos
+    const radiosChartData = [
+        { name: "Disponíveis", value: radiosDisponiveis, color: COLORS.secondary },
+        { name: "Retirados", value: radiosRetirados, color: COLORS.primary },
+        { name: "Manutenção", value: radiosManutencao, color: COLORS.warning },
+    ]
+
+    const participantesChartData = [
+        { name: "Confirmados", value: participantesConfirmados, color: COLORS.secondary },
+        { name: "Não Confirmados", value: participantesNaoConfirmados, color: COLORS.warning },
+        { name: "Check-in", value: participantesComCheckIn, color: COLORS.primary },
+        { name: "Check-out", value: participantesComCheckOut, color: COLORS.accent },
+    ]
+
+    const credenciaisChartData = Object.entries(credenciaisPorTipo).map(([tipo, quantidade], index) => ({
+        name: tipo,
+        value: quantidade,
+        color: [COLORS.primary, COLORS.secondary, COLORS.accent, COLORS.warning, COLORS.info][index % 5],
+    }))
+
+    const overviewData = [
+        { name: "Coordenadores", value: totalCoordenadores },
+        { name: "Credenciais", value: totalCredenciais },
+        { name: "Participantes", value: totalParticipantes },
+        { name: "Operadores", value: totalOperadores },
+        { name: "Rádios", value: totalRadios },
+        { name: "Vagas", value: totalVagas },
+    ]
+
+    // Loading geral
+    const isLoading =
+        eventoLoading ||
+        coordenadoresLoading ||
+        credenciaisLoading ||
+        participantesLoading ||
+        operadoresLoading ||
+        radiosLoading ||
+        vagasLoading
+
+    // Função para formatar horário
+    const formatarHorario = (timestamp: string) => {
+        if (!timestamp) return "-"
+        return new Date(timestamp).toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        })
+    }
+
+    // Se não há evento ou está carregando, mostrar loading
+    if (eventoLoading || !evento) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-lg text-slate-600">Carregando dados do evento...</p>
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <EventLayout eventId={String(params.id)} eventName="Relatório">
+            <div className="min-h-screen bg-slate-50 p-6">
+                {/* Header */}
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Dashboard do Evento</h1>
+                    <p className="text-slate-600">{(evento as Event)?.name}</p>
+                </div>
+
+                {/* Cards de estatísticas principais */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Coordenadores</p>
+                                    <p className="text-2xl font-bold text-slate-900">{totalCoordenadores}</p>
+                                </div>
+                                <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                                    <Users className="h-6 w-6 text-blue-600" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Credenciais</p>
+                                    <p className="text-2xl font-bold text-slate-900">{totalCredenciais}</p>
+                                </div>
+                                <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                    <CreditCard className="h-6 w-6 text-green-600" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Participantes</p>
+                                    <p className="text-2xl font-bold text-slate-900">{totalParticipantes}</p>
+                                </div>
+                                <div className="h-12 w-12 bg-teal-100 rounded-lg flex items-center justify-center">
+                                    <UserCheck className="h-6 w-6 text-teal-600" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Operadores</p>
+                                    <p className="text-2xl font-bold text-slate-900">{totalOperadores}</p>
+                                </div>
+                                <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                                    <Activity className="h-6 w-6 text-yellow-600" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Rádios</p>
+                                    <p className="text-2xl font-bold text-slate-900">{totalRadios}</p>
+                                </div>
+                                <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                                    <Headphones className="h-6 w-6 text-purple-600" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Vagas</p>
+                                    <p className="text-2xl font-bold text-slate-900">{totalVagas}</p>
+                                </div>
+                                <div className="h-12 w-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                                    <Car className="h-6 w-6 text-orange-600" />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Gráficos principais */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    {/* Gráfico de barras - Visão geral */}
+                    <Card className="border-0 shadow-sm">
+                        <CardHeader>
+                            <CardTitle className="text-lg font-semibold text-slate-900">Visão Geral</CardTitle>
+                            <CardDescription>Distribuição de recursos do evento</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ChartContainer
+                                config={{
+                                    value: {
+                                        label: "Quantidade",
+                                        color: COLORS.primary,
+                                    },
+                                }}
+                                className="h-[300px]"
+                            >
+                                <BarChart data={overviewData}>
+                                    <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <Bar dataKey="value" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ChartContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* Gráfico de pizza - Status dos Rádios */}
+                    <Card className="border-0 shadow-sm">
+                        <CardHeader>
+                            <CardTitle className="text-lg font-semibold text-slate-900">Status dos Rádios</CardTitle>
+                            <CardDescription>Distribuição por status atual</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ChartContainer
+                                config={{
+                                    disponivel: {
+                                        label: "Disponíveis",
+                                        color: COLORS.secondary,
+                                    },
+                                    retirado: {
+                                        label: "Retirados",
+                                        color: COLORS.primary,
+                                    },
+                                    manutencao: {
+                                        label: "Manutenção",
+                                        color: COLORS.warning,
+                                    },
+                                }}
+                                className="h-[300px]"
+                            >
+                                <PieChart>
+                                    <Pie
+                                        data={radiosChartData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={100}
+                                        paddingAngle={2}
+                                        dataKey="value"
+                                    >
+                                        {radiosChartData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                </PieChart>
+                            </ChartContainer>
+                            <div className="flex justify-center gap-4 mt-4">
+                                {radiosChartData.map((item, index) => (
+                                    <div key={index} className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                                        <span className="text-sm text-slate-600">
+                                            {item.name}: {item.value}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Gráficos secundários */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    {/* Status dos Participantes */}
+                    <Card className="border-0 shadow-sm">
+                        <CardHeader>
+                            <CardTitle className="text-lg font-semibold text-slate-900">Status dos Participantes</CardTitle>
+                            <CardDescription>Confirmações e check-ins</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ChartContainer
+                                config={{
+                                    value: {
+                                        label: "Quantidade",
+                                        color: COLORS.primary,
+                                    },
+                                }}
+                                className="h-[250px]"
+                            >
+                                <BarChart data={participantesChartData} layout="horizontal">
+                                    <XAxis type="number" axisLine={false} tickLine={false} />
+                                    <YAxis
+                                        type="category"
+                                        dataKey="name"
+                                        tick={{ fontSize: 12 }}
+                                        axisLine={false}
+                                        tickLine={false}
+                                        width={100}
+                                    />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <Bar dataKey="value" fill={COLORS.primary} radius={[0, 4, 4, 0]} />
+                                </BarChart>
+                            </ChartContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* Credenciais por Tipo */}
+                    <Card className="border-0 shadow-sm">
+                        <CardHeader>
+                            <CardTitle className="text-lg font-semibold text-slate-900">Credenciais por Tipo</CardTitle>
+                            <CardDescription>Distribuição por categoria</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {credenciaisChartData.length > 0 ? (
+                                <>
+                                    <ChartContainer
+                                        config={{
+                                            value: {
+                                                label: "Quantidade",
+                                                color: COLORS.primary,
+                                            },
+                                        }}
+                                        className="h-[200px]"
+                                    >
+                                        <PieChart>
+                                            <Pie
+                                                data={credenciaisChartData}
+                                                cx="50%"
+                                                cy="50%"
+                                                outerRadius={80}
+                                                paddingAngle={2}
+                                                dataKey="value"
+                                            >
+                                                {credenciaisChartData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                ))}
+                                            </Pie>
+                                            <ChartTooltip content={<ChartTooltipContent />} />
+                                        </PieChart>
+                                    </ChartContainer>
+                                    <div className="space-y-2 mt-4">
+                                        {credenciaisChartData.map((item, index) => (
+                                            <div key={index} className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                                                    <span className="text-sm text-slate-600">{item.name}</span>
+                                                </div>
+                                                <Badge variant="secondary">{item.value}</Badge>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex items-center justify-center h-[200px] text-slate-500">
+                                    Nenhuma credencial encontrada
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Status Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                    <CheckCircle className="h-6 w-6 text-green-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Confirmados</p>
+                                    <p className="text-xl font-bold text-slate-900">{participantesConfirmados}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                                    <Clock className="h-6 w-6 text-yellow-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Pendentes</p>
+                                    <p className="text-xl font-bold text-slate-900">{participantesNaoConfirmados}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                    <CheckCircle className="h-6 w-6 text-green-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Vagas Ativas</p>
+                                    <p className="text-xl font-bold text-slate-900">{vagasAtivas}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                    <XCircle className="h-6 w-6 text-red-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-slate-600">Vagas Inativas</p>
+                                    <p className="text-xl font-bold text-slate-900">{vagasInativas}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Tabelas de dados */}
+                <div className="space-y-6">
+                    {/* Coordenadores */}
+                    <Card className="border-0 shadow-sm">
+                        <CardHeader>
+                            <CardTitle className="text-lg font-semibold text-slate-900">
+                                Coordenadores ({coordenadoresArray.length})
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-slate-200">
+                                            <th className="text-left py-3 px-4 font-medium text-slate-600">Nome</th>
+                                            <th className="text-left py-3 px-4 font-medium text-slate-600">Email</th>
+                                            <th className="text-center py-3 px-4 font-medium text-slate-600">Função</th>
+                                            <th className="text-center py-3 px-4 font-medium text-slate-600">Data Criação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {coordenadoresArray.map((coordenador) => (
+                                            <tr key={coordenador.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                                <td className="py-3 px-4 font-medium text-slate-900">
+                                                    {coordenador.firstName} {coordenador.lastName}
+                                                </td>
+                                                <td className="py-3 px-4 text-slate-600">{coordenador.email}</td>
+                                                <td className="text-center py-3 px-4">
+                                                    <Badge variant="outline">{coordenador.metadata?.eventos?.[0]?.role || "Coordenador"}</Badge>
+                                                </td>
+                                                <td className="text-center py-3 px-4 text-slate-600">
+                                                    {formatarHorario(coordenador.createdAt)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Participantes */}
+                    <Card className="border-0 shadow-sm">
+                        <CardHeader>
+                            <CardTitle className="text-lg font-semibold text-slate-900">
+                                Participantes ({participantes.length})
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-slate-200">
+                                            <th className="text-left py-3 px-4 font-medium text-slate-600">Nome</th>
+                                            <th className="text-left py-3 px-4 font-medium text-slate-600">CPF</th>
+                                            <th className="text-left py-3 px-4 font-medium text-slate-600">Empresa</th>
+                                            <th className="text-center py-3 px-4 font-medium text-slate-600">Status</th>
+                                            <th className="text-center py-3 px-4 font-medium text-slate-600">Check-in</th>
+                                            <th className="text-center py-3 px-4 font-medium text-slate-600">Check-out</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {participantes.slice(0, 10).map((participante) => (
+                                            <tr key={participante.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                                <td className="py-3 px-4 font-medium text-slate-900">{participante.name}</td>
+                                                <td className="py-3 px-4 text-slate-600">{participante.cpf}</td>
+                                                <td className="py-3 px-4 text-slate-600">{participante.company}</td>
+                                                <td className="text-center py-3 px-4">
+                                                    <Badge variant={participante.presenceConfirmed ? "default" : "secondary"}>
+                                                        {participante.presenceConfirmed ? "Confirmado" : "Pendente"}
+                                                    </Badge>
+                                                </td>
+                                                <td className="text-center py-3 px-4 text-slate-600">
+                                                    {participante.checkIn ? formatarHorario(participante.checkIn) : "-"}
+                                                </td>
+                                                <td className="text-center py-3 px-4 text-slate-600">
+                                                    {participante.checkOut ? formatarHorario(participante.checkOut) : "-"}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {participantes.length > 10 && (
+                                    <div className="text-center py-4">
+                                        <Badge variant="outline">Mostrando 10 de {participantes.length} participantes</Badge>
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Informações do sistema */}
+                <Card className="border-0 shadow-sm mt-8">
+                    <CardHeader>
+                        <CardTitle className="text-lg font-semibold text-slate-900">Informações do Sistema</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Evento:</span>
+                                    <span className="font-medium text-slate-900">{(evento as Event)?.name}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Última Atualização:</span>
+                                    <span className="font-medium text-slate-900">{new Date().toLocaleString("pt-BR")}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Status:</span>
+                                    <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Ativo (React Query)</Badge>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Total de Recursos:</span>
+                                    <span className="font-medium text-slate-900">
+                                        {totalCoordenadores +
+                                            totalCredenciais +
+                                            totalParticipantes +
+                                            totalOperadores +
+                                            totalRadios +
+                                            totalVagas}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Taxa de Confirmação:</span>
+                                    <span className="font-medium text-slate-900">
+                                        {totalParticipantes > 0
+                                            ? `${((participantesConfirmados / totalParticipantes) * 100).toFixed(1)}%`
+                                            : "0%"}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Rádios Disponíveis:</span>
+                                    <span className="font-medium text-slate-900">
+                                        {totalRadios > 0 ? `${((radiosDisponiveis / totalRadios) * 100).toFixed(1)}%` : "0%"}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Footer */}
+                <div className="text-center pt-8 pb-8">
+                    <img src="/images/slogan-rg.png" alt="Se tem RG, é sucesso!" className="mx-auto max-w-xs opacity-60" />
+                </div>
+            </div>
+        </EventLayout>
+    )
+}

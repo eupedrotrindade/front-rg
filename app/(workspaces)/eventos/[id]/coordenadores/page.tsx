@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
@@ -14,7 +14,9 @@ import { toast } from "sonner"
 import { Loader2, Plus, Search, Edit, Trash2, User, Mail, Calendar, Users } from "lucide-react"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
-import apiClient from "@/lib/api-client"
+import { useCoordenadoresByEvent } from "@/features/eventos/api/query/use-coordenadores-by-event"
+import { useAllCoordenadores } from "@/features/eventos/api/query/use-coordenadores"
+import { useCreateCoordenador, useAssignCoordenador, useUpdateCoordenador, useDeleteCoordenador } from "@/features/eventos/api/mutation"
 
 interface Coordenador {
     id: string
@@ -43,16 +45,15 @@ export default function CoordenadoresPage() {
     const eventId = params.id as string
     const { user } = useUser()
     const { data: eventos = [] } = useEventos()
+    const { data: coordenadores = [], isLoading } = useCoordenadoresByEvent({ eventId })
 
-    const [coordenadores, setCoordenadores] = useState<Coordenador[]>([])
-    const [filteredCoordenadores, setFilteredCoordenadores] = useState<Coordenador[]>([])
-    const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState("")
     const [selectedEvento, setSelectedEvento] = useState<Evento | null>(null)
     const [nomeEvento, setNomeEvento] = useState("")
 
     // Estados para modais
     const [createDialogOpen, setCreateDialogOpen] = useState(false)
+    const [assignDialogOpen, setAssignDialogOpen] = useState(false)
     const [editDialogOpen, setEditDialogOpen] = useState(false)
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [selectedCoordenador, setSelectedCoordenador] = useState<Coordenador | null>(null)
@@ -62,8 +63,22 @@ export default function CoordenadoresPage() {
         email: "",
         firstName: "",
         lastName: "",
+        password: "",
         role: "coordenador"
     })
+
+    const [assignForm, setAssignForm] = useState({
+        coordenadorId: "",
+        role: "coordenador"
+    })
+
+    const { data: allCoordenadores = [], isLoading: loadingAllCoordenadores } = useAllCoordenadores()
+
+    // Hooks de mutation
+    const createCoordenadorMutation = useCreateCoordenador()
+    const assignCoordenadorMutation = useAssignCoordenador()
+    const updateCoordenadorMutation = useUpdateCoordenador()
+    const deleteCoordenadorMutation = useDeleteCoordenador()
 
     const [editForm, setEditForm] = useState({
         firstName: "",
@@ -82,126 +97,108 @@ export default function CoordenadoresPage() {
         }
     }, [eventos, eventId])
 
-    // Buscar coordenadores
-    const fetchCoordenadores = useCallback(async () => {
-        try {
-            setLoading(true)
-            const response = await apiClient.get("/coordenadores", {
-                params: { eventId }
-            })
-
-            // A API retorna { data: [...], pagination: {...} }
-            setCoordenadores(response.data.data || [])
-            setFilteredCoordenadores(response.data.data || [])
-        } catch (error: unknown) {
-            console.error("Erro ao buscar coordenadores:", error)
-            const errorMessage = error instanceof Error ? error.message : "Erro ao carregar coordenadores"
-            toast.error(errorMessage)
-        } finally {
-            setLoading(false)
-        }
-    }, [eventId])
-
-    useEffect(() => {
-        fetchCoordenadores()
-    }, [fetchCoordenadores])
-
     // Filtrar coordenadores
-    useEffect(() => {
-        const filtered = coordenadores.filter(coordenador => {
-            const fullName = `${coordenador.firstName} ${coordenador.lastName}`.toLowerCase()
-            const email = coordenador.email.toLowerCase()
-            const searchLower = searchTerm.toLowerCase()
+    const filteredCoordenadores = (coordenadores || []).filter((coordenador: Coordenador) => {
+        const fullName = `${coordenador.firstName} ${coordenador.lastName}`.toLowerCase()
+        const email = coordenador.email.toLowerCase()
+        const searchLower = searchTerm.toLowerCase()
 
-            return fullName.includes(searchLower) || email.includes(searchLower)
-        })
-        setFilteredCoordenadores(filtered)
-    }, [coordenadores, searchTerm])
+        return fullName.includes(searchLower) || email.includes(searchLower)
+    })
 
     // Criar coordenador
     const handleCreateCoordenador = async () => {
-        if (!createForm.email || !createForm.firstName || !createForm.lastName) {
+        if (!createForm.email || !createForm.firstName || !createForm.lastName || !createForm.password) {
             toast.error("Preencha todos os campos obrigatórios")
             return
         }
 
-        try {
-            setLoading(true)
+        createCoordenadorMutation.mutate({
+            email: createForm.email,
+            firstName: createForm.firstName,
+            lastName: createForm.lastName,
+            password: createForm.password,
+            role: createForm.role as "coordenador" | "coordenador_geral",
+            eventId: String(eventId),
+            nome_evento: nomeEvento
+        }, {
+            onSuccess: () => {
+                setCreateDialogOpen(false)
+                setCreateForm({ email: "", firstName: "", lastName: "", password: "", role: "coordenador" })
+            }
+        })
+    }
 
-            // Criar coordenador via API
-            await apiClient.post("/coordenadores", {
-                email: createForm.email,
-                firstName: createForm.firstName,
-                lastName: createForm.lastName,
-                role: createForm.role,
-                eventId: eventId,
-                nome_evento: nomeEvento
-            })
+    // Abrir modal de atribuição
+    const openAssignDialog = () => {
+        setAssignDialogOpen(true)
+    }
 
-            toast.success("Coordenador criado com sucesso!")
-            setCreateDialogOpen(false)
-            setCreateForm({ email: "", firstName: "", lastName: "", role: "coordenador" })
-            fetchCoordenadores()
-        } catch (error: unknown) {
-            console.error("Erro ao criar coordenador:", error)
-            const errorMessage = error instanceof Error ? error.message : "Erro ao criar coordenador"
-            toast.error(errorMessage)
-        } finally {
-            setLoading(false)
+    // Atribuir coordenador existente
+    const handleAssignCoordenador = async () => {
+        if (!assignForm.coordenadorId) {
+            toast.error("Selecione um coordenador")
+            return
         }
+
+        const selectedCoordenador = (allCoordenadores || []).find(c => c.id === assignForm.coordenadorId)
+        if (!selectedCoordenador) {
+            toast.error("Coordenador não encontrado")
+            return
+        }
+
+        console.log("Payload assign:", {
+            coordenadorId: assignForm.coordenadorId,
+            email: selectedCoordenador.email,
+            firstName: selectedCoordenador.firstName,
+            lastName: selectedCoordenador.lastName,
+            role: assignForm.role as "coordenador" | "coordenador_geral",
+            eventId: String(eventId),
+            nome_evento: nomeEvento
+        });
+        assignCoordenadorMutation.mutate({
+            coordenadorId: assignForm.coordenadorId,
+            email: selectedCoordenador.email,
+            firstName: selectedCoordenador.firstName,
+            lastName: selectedCoordenador.lastName,
+            role: assignForm.role as "coordenador" | "coordenador_geral",
+            eventId: String(eventId),
+            nome_evento: nomeEvento
+        }, {
+            onSuccess: () => {
+                setAssignDialogOpen(false)
+                setAssignForm({ coordenadorId: "", role: "coordenador" })
+            }
+        })
     }
 
     // Editar coordenador
     const handleEditCoordenador = async () => {
         if (!selectedCoordenador) return
 
-        try {
-            setLoading(true)
-
-            // Atualizar coordenador via API
-            await apiClient.put(`/coordenadores/${selectedCoordenador.id}`, {
-                firstName: editForm.firstName,
-                lastName: editForm.lastName,
-                role: editForm.role,
-                eventId: eventId
-            })
-
-            toast.success("Coordenador atualizado com sucesso!")
-            setEditDialogOpen(false)
-            setSelectedCoordenador(null)
-            fetchCoordenadores()
-        } catch (error: unknown) {
-            console.error("Erro ao atualizar coordenador:", error)
-            const errorMessage = error instanceof Error ? error.message : "Erro ao atualizar coordenador"
-            toast.error(errorMessage)
-        } finally {
-            setLoading(false)
-        }
+        updateCoordenadorMutation.mutate({
+            id: selectedCoordenador.id,
+            firstName: editForm.firstName,
+            lastName: editForm.lastName,
+            role: editForm.role as "coordenador" | "coordenador_geral"
+        }, {
+            onSuccess: () => {
+                setEditDialogOpen(false)
+                setSelectedCoordenador(null)
+            }
+        })
     }
 
     // Excluir coordenador
     const handleDeleteCoordenador = async () => {
         if (!selectedCoordenador) return
 
-        try {
-            setLoading(true)
-
-            // Remover coordenador do evento via API
-            await apiClient.delete(`/coordenadores/${selectedCoordenador.id}`, {
-                data: { eventId }
-            })
-
-            toast.success("Coordenador removido do evento com sucesso!")
-            setDeleteDialogOpen(false)
-            setSelectedCoordenador(null)
-            fetchCoordenadores()
-        } catch (error: unknown) {
-            console.error("Erro ao remover coordenador:", error)
-            const errorMessage = error instanceof Error ? error.message : "Erro ao remover coordenador"
-            toast.error(errorMessage)
-        } finally {
-            setLoading(false)
-        }
+        deleteCoordenadorMutation.mutate(selectedCoordenador.id, {
+            onSuccess: () => {
+                setDeleteDialogOpen(false)
+                setSelectedCoordenador(null)
+            }
+        })
     }
 
     // Abrir modal de edição
@@ -237,7 +234,7 @@ export default function CoordenadoresPage() {
         return `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase()
     }
 
-    if (loading && coordenadores.length === 0) {
+    if (isLoading && (coordenadores || []).length === 0) {
         return (
             <EventLayout eventId={String(params.id)} eventName={nomeEvento}>
                 <div className="flex items-center justify-center h-64">
@@ -259,7 +256,11 @@ export default function CoordenadoresPage() {
                     <div className="flex gap-2">
                         <Button onClick={() => setCreateDialogOpen(true)}>
                             <Plus className="h-4 w-4 mr-2" />
-                            Novo Coordenador
+                            Criar Coordenador
+                        </Button>
+                        <Button variant="outline" onClick={openAssignDialog}>
+                            <User className="h-4 w-4 mr-2" />
+                            Atribuir Coordenador
                         </Button>
                     </div>
                 </div>
@@ -312,11 +313,19 @@ export default function CoordenadoresPage() {
                                     <TableRow key={coordenador.id}>
                                         <TableCell>
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                                    <span className="text-sm font-medium text-blue-600">
-                                                        {getInitials(coordenador.firstName, coordenador.lastName)}
-                                                    </span>
-                                                </div>
+                                                {coordenador.imageUrl ? (
+                                                    <img
+                                                        src={coordenador.imageUrl}
+                                                        alt={`${coordenador.firstName} ${coordenador.lastName}`}
+                                                        className="w-8 h-8 rounded-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                        <span className="text-sm font-medium text-blue-600">
+                                                            {getInitials(coordenador.firstName, coordenador.lastName)}
+                                                        </span>
+                                                    </div>
+                                                )}
                                                 <div>
                                                     <div className="font-medium">
                                                         {coordenador.firstName} {coordenador.lastName}
@@ -366,11 +375,11 @@ export default function CoordenadoresPage() {
 
                 {/* Modal de Criação */}
                 <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                    <DialogContent>
+                    <DialogContent className="max-w-md bg-white text-gray-900">
                         <DialogHeader>
-                            <DialogTitle>Novo Coordenador</DialogTitle>
+                            <DialogTitle>Criar Novo Coordenador</DialogTitle>
                             <DialogDescription>
-                                Adicione um novo coordenador ao evento. O usuário será criado no Clerk.
+                                Crie um novo coordenador do zero. Uma nova conta será criada no Clerk.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4">
@@ -402,6 +411,18 @@ export default function CoordenadoresPage() {
                                 </div>
                             </div>
                             <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
+                                <Input
+                                    type="password"
+                                    placeholder="Senha temporária"
+                                    value={createForm.password}
+                                    onChange={(e) => setCreateForm(prev => ({ ...prev, password: e.target.value }))}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Senha temporária que será alterada no primeiro login
+                                </p>
+                            </div>
+                            <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Função</label>
                                 <Select
                                     value={createForm.role}
@@ -420,8 +441,100 @@ export default function CoordenadoresPage() {
                                 <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
                                     Cancelar
                                 </Button>
-                                <Button onClick={handleCreateCoordenador} disabled={loading}>
-                                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar"}
+                                <Button onClick={handleCreateCoordenador} disabled={createCoordenadorMutation.isPending}>
+                                    {createCoordenadorMutation.isPending ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    ) : (
+                                        <Plus className="h-4 w-4 mr-2" />
+                                    )}
+                                    {createCoordenadorMutation.isPending ? "Criando..." : "Criar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Modal de Atribuição */}
+                <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+                    <DialogContent className="max-w-md bg-white text-gray-900">
+                        <DialogHeader>
+                            <DialogTitle>Atribuir Coordenador Existente</DialogTitle>
+                            <DialogDescription>
+                                Selecione um coordenador já existente no Clerk para atribuir a este evento.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Coordenador *</label>
+                                {loadingAllCoordenadores ? (
+                                    <div className="flex items-center justify-center p-4">
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        <span>Carregando coordenadores...</span>
+                                    </div>
+                                ) : (
+                                    <Select
+                                        value={assignForm.coordenadorId}
+                                        onValueChange={(value) => setAssignForm(prev => ({ ...prev, coordenadorId: value }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione um coordenador" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {(allCoordenadores || []).map((coordenador) => (
+                                                <SelectItem key={coordenador.id} value={coordenador.id}>
+                                                    <div className="flex items-center gap-2">
+                                                        {coordenador.imageUrl ? (
+                                                            <img
+                                                                src={coordenador.imageUrl}
+                                                                alt={`${coordenador.firstName} ${coordenador.lastName}`}
+                                                                className="w-6 h-6 rounded-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                                                                <span className="text-xs font-medium text-blue-600">
+                                                                    {getInitials(coordenador.firstName, coordenador.lastName)}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <div className="font-medium">
+                                                                {coordenador.firstName} {coordenador.lastName}
+                                                            </div>
+                                                            <div className="text-sm text-gray-500">
+                                                                {coordenador.email}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Função</label>
+                                <Select
+                                    value={assignForm.role}
+                                    onValueChange={(value) => setAssignForm(prev => ({ ...prev, role: value }))}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="coordenador">Coordenador</SelectItem>
+                                        <SelectItem value="coordenador_geral">Coordenador Geral</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+                                    Cancelar
+                                </Button>
+                                <Button onClick={handleAssignCoordenador} disabled={assignCoordenadorMutation.isPending || loadingAllCoordenadores}>
+                                    {assignCoordenadorMutation.isPending ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    ) : null}
+                                    {assignCoordenadorMutation.isPending ? "Atribuindo..." : "Atribuir"}
                                 </Button>
                             </div>
                         </div>
@@ -475,8 +588,11 @@ export default function CoordenadoresPage() {
                                 <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
                                     Cancelar
                                 </Button>
-                                <Button onClick={handleEditCoordenador} disabled={loading}>
-                                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+                                <Button onClick={handleEditCoordenador} disabled={updateCoordenadorMutation.isPending}>
+                                    {updateCoordenadorMutation.isPending ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    ) : null}
+                                    {updateCoordenadorMutation.isPending ? "Salvando..." : "Salvar"}
                                 </Button>
                             </div>
                         </div>
@@ -497,8 +613,11 @@ export default function CoordenadoresPage() {
                             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button variant="destructive" onClick={handleDeleteCoordenador} disabled={loading}>
-                                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remover"}
+                            <Button variant="destructive" onClick={handleDeleteCoordenador} disabled={deleteCoordenadorMutation.isPending}>
+                                {deleteCoordenadorMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                ) : null}
+                                {deleteCoordenadorMutation.isPending ? "Removendo..." : "Remover"}
                             </Button>
                         </div>
                     </DialogContent>

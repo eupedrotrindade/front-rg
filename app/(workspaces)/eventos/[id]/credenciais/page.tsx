@@ -9,14 +9,21 @@ import { Ticket, Palette, Hash, Activity } from "lucide-react"
 import EventWristbandModelsDashboard from "@/features/eventos/components/event-wristband-models-dashboard"
 import EventWristbandsDashboard from "@/features/eventos/components/event-wristbands-dashboard"
 import EventLayout from "@/components/dashboard/dashboard-layout"
+import { useEventos } from "@/features/eventos/api/query"
 
 export default function CredenciaisPage() {
     const params = useParams()
     const eventId = params.id as string
     const [activeTab, setActiveTab] = useState("modelos")
+    const { data: eventos = [] } = useEventos()
+    const evento = Array.isArray(eventos) ? eventos.find(e => e.id === eventId) : null
+
+    if (!evento) {
+        return <div>Evento não encontrado</div>
+    }
 
     return (
-        <EventLayout eventId={String(params.id)} eventName="Credenciais">
+        <EventLayout eventId={String(params.id)} eventName={evento.name}>
             <div className="container mx-auto p-6">
                 <div className="mb-6">
                     <h1 className="text-3xl font-bold text-gray-900">Credenciais</h1>
@@ -27,11 +34,11 @@ export default function CredenciaisPage() {
                     <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="modelos" className="flex items-center gap-2">
                             <Palette className="h-4 w-4" />
-                            Modelos de Credenciais
+                            Modelos de Credenciais Gerais
                         </TabsTrigger>
                         <TabsTrigger value="credenciais" className="flex items-center gap-2">
                             <Ticket className="h-4 w-4" />
-                            Credenciais Físicas
+                            Credenciais de Participantes
                         </TabsTrigger>
                     </TabsList>
 

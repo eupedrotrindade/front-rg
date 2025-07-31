@@ -14,8 +14,18 @@ export interface Radio {
 }
 
 // Listar todos os rádios
-export const getRadios = async (): Promise<Radio[]> => {
-  const { data } = await apiClient.get<Radio[]>("/radios");
+export const getRadios = async (params?: {
+  eventId?: string;
+}): Promise<Radio[]> => {
+  const queryParams = new URLSearchParams();
+  if (params?.eventId) {
+    queryParams.append("eventId", params.eventId);
+  }
+
+  const url = `/radios${
+    queryParams.toString() ? `?${queryParams.toString()}` : ""
+  }`;
+  const { data } = await apiClient.get<Radio[]>(url);
   return data;
 };
 
@@ -51,10 +61,10 @@ export const deleteRadio = async (id: string): Promise<void> => {
 };
 
 // Hook para buscar todos os rádios
-export const useRadios = () => {
+export const useRadios = (params?: { eventId?: string }) => {
   return useQuery<Radio[]>({
-    queryKey: ["radios"],
-    queryFn: getRadios,
+    queryKey: ["radios", params],
+    queryFn: () => getRadios(params),
   });
 };
 
