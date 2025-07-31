@@ -48,10 +48,10 @@ ENV NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 ENV NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/eventos
 ENV NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/eventos
 
-RUN yarn build
+# RUN yarn build
 
 # If using npm comment out above and use below instead
-# RUN npm run build
+RUN npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
