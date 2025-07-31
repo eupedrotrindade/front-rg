@@ -10,7 +10,6 @@ import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coorde
 import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,7 +22,6 @@ import { toast } from 'sonner'
 import { EventParticipant } from '@/features/eventos/types'
 import EventParticipantCreateDialog from '@/features/eventos/components/event-participant-create-dialog'
 import EventParticipantEditDialog from '@/features/eventos/components/event-participant-edit-dialog'
-import ImportExportSystem from '@/features/eventos/components/import-export-system'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 
 export default function EventoDetalhesPage() {
@@ -50,7 +48,6 @@ export default function EventoDetalhesPage() {
     const [deletingParticipant, setDeletingParticipant] = useState<EventParticipant | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedDay, setSelectedDay] = useState<string>('all')
-    const [importExportOpen, setImportExportOpen] = useState(false)
     const tabsContainerRef = useRef<HTMLDivElement>(null)
 
     const evento = Array.isArray(eventos)
@@ -222,14 +219,7 @@ export default function EventoDetalhesPage() {
         )
     }
 
-    const formatDate = (date: Date) => {
-        return date.toLocaleDateString('pt-BR', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        })
-    }
+
 
     const handleDeleteParticipant = (participant: EventParticipant) => {
         setDeletingParticipant(participant)

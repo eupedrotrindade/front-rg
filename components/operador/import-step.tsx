@@ -92,7 +92,7 @@ export default function ImportStep({ onDataImported }: ImportStepProps) {
         // Converter para objetos com as colunas específicas
         const formattedData = rows
           .filter((row) => row && (row as any[]).some((cell) => cell !== null && cell !== undefined && cell !== ""))
-          .map((row, index) => {
+          .map((row) => {
             const obj: any = {}
             headers.forEach((header, colIndex) => {
               if (header) {

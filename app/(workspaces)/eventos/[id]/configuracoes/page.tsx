@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
+
 import {
     Settings,
     Calendar,
@@ -17,17 +17,10 @@ import {
     Building,
     Shield,
     Bell,
-    Database,
+
     FileText,
     Save,
     AlertTriangle,
-    CheckCircle,
-    Clock,
-    MapPin,
-    Mail,
-    Phone,
-    Globe,
-    Key,
     Eye,
     EyeOff
 } from "lucide-react"
@@ -113,7 +106,9 @@ export default function EventoConfiguracoesPage() {
             await new Promise((resolve) => setTimeout(resolve, 1000))
             toast.success("Configurações salvas com sucesso!")
         } catch (error) {
-            toast.error("Erro ao salvar configurações")
+            toast.error("Erro ao salvar configurações", {
+                description: error instanceof Error ? error.message : "Erro desconhecido"
+            })
         } finally {
             setIsLoading(false)
         }

@@ -43,7 +43,7 @@ import type { EventParticipant } from "@/features/eventos/types"
 import type { EventParticipantSchema } from "@/features/eventos/schemas"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
-import router from "next/router"
+
 
 interface ImportProgress {
     total: number
@@ -178,11 +178,6 @@ export default function ImportExportPage() {
 
         setIsAssigningCredentials(true)
         try {
-            // Atualizar os participantes selecionados com a credencial
-            const updatedParticipants = selectedParticipants.map(p => ({
-                ...p,
-                wristbandId: selectedWristbandId
-            }))
 
             // Atualizar os dados processados
             setProcessedData(prev => {
@@ -221,7 +216,7 @@ export default function ImportExportPage() {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
     }
 
-    const validateParticipant = (data: any, rowIndex: number): { isValid: boolean; errors: string[] } => {
+    const validateParticipant = (data: any): { isValid: boolean; errors: string[] } => {
         const errors: string[] = []
 
         if (!data.name || data.name.toString().trim().length < 2) {
@@ -273,7 +268,7 @@ export default function ImportExportPage() {
 
                     jsonData.forEach((row, index) => {
                         const rowNumber = index + 2 // Excel row number (header is row 1)
-                        const validation = validateParticipant(row, rowNumber)
+                        const validation = validateParticipant(row)
 
                         if (!validation.isValid) {
                             result.errors.push({

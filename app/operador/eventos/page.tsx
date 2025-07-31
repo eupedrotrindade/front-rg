@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
 import { useState, useEffect } from "react"
@@ -189,6 +190,7 @@ const OperadorEventosPage = () => {
                                         <p className="text-gray-600">Carregando eventos...</p>
                                     </div>
                                 </div>
+
                             ) : error ? (
                                 <div className="col-span-full text-center py-12">
                                     <div className="bg-red-100 text-red-800 rounded-lg p-6 max-w-md mx-auto">

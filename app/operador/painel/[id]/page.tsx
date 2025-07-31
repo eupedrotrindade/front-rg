@@ -1,5 +1,7 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
+
 "use client"
 
 import type React from "react"
@@ -32,7 +34,6 @@ import { useEventWristbandModels } from "@/features/eventos/api/query/use-event-
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 
 export default function Painel() {
-    const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
     // TODOS OS useState PRIMEIRO
     const [filtro, setFiltro] = useState({ nome: "", cpf: "", pulseira: "", empresa: "", funcao: "" });
@@ -1367,7 +1368,7 @@ export default function Painel() {
                                         onClick={() => setFiltroAvancadoOpen(true)}
                                         variant="outline"
                                         size="sm"
-                                        className="text-gray-600 border-gray-200 hover:bg-gray-50 text-gray-600 hover:border-gray-300 bg-white shadow-sm transition-all duration-200"
+                                        className="text-gray-600 border-gray-200 hover:bg-gray-50  hover:border-gray-300 bg-white shadow-sm transition-all duration-200"
                                         disabled={loading}
                                     >
                                         <Filter className="w-4 h-4 mr-2" />

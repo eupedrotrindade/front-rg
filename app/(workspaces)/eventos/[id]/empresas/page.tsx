@@ -15,7 +15,7 @@ import { useEmpresasByEvent, useAllEmpresas } from "@/features/eventos/api/query
 import { useVincularEmpresaEvento, useCreateEmpresa } from "@/features/eventos/api/mutation"
 import { desvincularEmpresaEvento } from "@/features/eventos/actions/create-empresa"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
-import type { Empresa, CreateEmpresaRequest } from "@/features/eventos/types"
+import type { CreateEmpresaRequest } from "@/features/eventos/types"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 
 export default function EventoEmpresasPage() {
@@ -41,7 +41,7 @@ export default function EventoEmpresasPage() {
 
     // Hooks
     const { data: empresasVinculadas = [], isLoading: isLoadingVinculadas } = useEmpresasByEvent(eventId)
-    const { data: todasEmpresas = [], isLoading: isLoadingTodas } = useAllEmpresas()
+    const { data: todasEmpresas = [] } = useAllEmpresas()
     const { data: eventos } = useEventos()
     const vincularMutation = useVincularEmpresaEvento()
     const createEmpresaMutation = useCreateEmpresa()

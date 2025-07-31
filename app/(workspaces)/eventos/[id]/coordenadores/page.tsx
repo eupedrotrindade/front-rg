@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
-import { useUser } from "@clerk/nextjs"
+
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import { useCoordenadoresByEvent } from "@/features/eventos/api/query/use-coordenadores-by-event"
 import { useAllCoordenadores } from "@/features/eventos/api/query/use-coordenadores"
 import { useCreateCoordenador, useAssignCoordenador, useUpdateCoordenador, useDeleteCoordenador } from "@/features/eventos/api/mutation"
+import Image from "next/image"
 
 interface Coordenador {
     id: string
@@ -43,12 +44,10 @@ interface Evento {
 export default function CoordenadoresPage() {
     const params = useParams()
     const eventId = params.id as string
-    const { user } = useUser()
     const { data: eventos = [] } = useEventos()
     const { data: coordenadores = [], isLoading } = useCoordenadoresByEvent({ eventId })
 
     const [searchTerm, setSearchTerm] = useState("")
-    const [selectedEvento, setSelectedEvento] = useState<Evento | null>(null)
     const [nomeEvento, setNomeEvento] = useState("")
 
     // Estados para modais
@@ -91,7 +90,6 @@ export default function CoordenadoresPage() {
         if (eventos && Array.isArray(eventos)) {
             const evento = eventos.find((e: Evento) => e.id === eventId)
             if (evento) {
-                setSelectedEvento(evento)
                 setNomeEvento(evento.name || "Evento")
             }
         }
@@ -314,7 +312,9 @@ export default function CoordenadoresPage() {
                                         <TableCell>
                                             <div className="flex items-center gap-3">
                                                 {coordenador.imageUrl ? (
-                                                    <img
+                                                    <Image
+                                                        width={32}
+                                                        height={32}
                                                         src={coordenador.imageUrl}
                                                         alt={`${coordenador.firstName} ${coordenador.lastName}`}
                                                         className="w-8 h-8 rounded-full object-cover"
@@ -484,7 +484,9 @@ export default function CoordenadoresPage() {
                                                 <SelectItem key={coordenador.id} value={coordenador.id}>
                                                     <div className="flex items-center gap-2">
                                                         {coordenador.imageUrl ? (
-                                                            <img
+                                                            <Image
+                                                                width={24}
+                                                                height={24}
                                                                 src={coordenador.imageUrl}
                                                                 alt={`${coordenador.firstName} ${coordenador.lastName}`}
                                                                 className="w-6 h-6 rounded-full object-cover"

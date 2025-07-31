@@ -7,20 +7,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { EventVehicle } from "@/features/eventos/actions/create-event-vehicle"
-import { toast } from "sonner"
+
 
 interface ModalNovoVeiculoProps {
   isOpen: boolean
-  onClose: () => void
-  onSave: (veiculo: EventVehicle) => void
+
   veiculo?: EventVehicle | null
   isEditing?: boolean
 }
 
 export default function ModalNovoVeiculo({
   isOpen,
-  onClose,
-  onSave,
+
   veiculo,
   isEditing = false
 }: ModalNovoVeiculoProps) {
@@ -66,20 +64,8 @@ export default function ModalNovoVeiculo({
     setIsLoading(true)
 
     try {
-      const veiculoToSave: EventVehicle = {
-        id: isEditing && veiculo ? veiculo.id : crypto.randomUUID(),
-        event_id: isEditing && veiculo ? veiculo.event_id : "",
-        empresa: formData.empresa,
-        placa: formData.placa,
-        modelo: formData.modelo,
-        status: formData.status,
-        credencial: formData.credencial,
-        created_at: isEditing && veiculo ? veiculo.created_at : new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-
-      await onSave(veiculoToSave)
-      onClose()
+      // await onSave(veiculoToSave)
+      // onClose()
     } catch (error) {
       console.error("Erro ao salvar veículo:", error)
     } finally {
@@ -89,7 +75,7 @@ export default function ModalNovoVeiculo({
 
   const handleClose = () => {
     if (!isLoading) {
-      onClose()
+      // onClose()
     }
   }
 

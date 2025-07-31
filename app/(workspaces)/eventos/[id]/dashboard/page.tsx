@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
-import { useState } from "react"
 import { useParams } from "next/navigation"
 import { Users, CreditCard, UserCheck, Headphones, Car, Activity, Clock, CheckCircle, XCircle } from "lucide-react"
+import Image from "next/image"
 
 // Hooks existentes
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
@@ -24,22 +25,6 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell } from "recharts"
 
 // Tipos para os dados
-interface Coordenador {
-    id: string
-    email: string
-    firstName: string
-    lastName: string
-    imageUrl?: string
-    createdAt: string
-    metadata?: {
-        eventos?: Array<{
-            role: string
-            id: string
-            nome_evento: string
-        }>
-    }
-}
-
 interface Credencial {
     id: string
     eventId: string
@@ -50,50 +35,6 @@ interface Credencial {
     isActive: boolean
     assignedTo?: string
     createdAt: string
-}
-
-interface Operador {
-    id: string
-    nome: string
-    cpf: string
-    id_events: string
-    acoes: Array<{
-        credencial: string
-        evento: string
-        pulseira: string
-        staffId: number
-        staffName: string
-        tabela: string
-        timestamp: string
-        type: string
-    }>
-    createdAt: string
-}
-
-interface Radio {
-    id: string
-    codes: string[]
-    status: "disponivel" | "retirado" | "manutencao"
-    last_retirada_id?: string
-    event_id?: string
-    created_at?: string
-    updated_at?: string
-}
-
-interface Vaga {
-    id: string
-    empresa: string
-    placa: string
-    modelo: string
-    status: boolean
-    credencial: string
-}
-
-interface Evento {
-    id: string
-    nome_evento: string
-    senha_acesso: string
-    id_tabela: string
 }
 
 // Cores modernas para os gráficos
@@ -111,7 +52,7 @@ const COLORS = {
 export default function Dashboard() {
     const params = useParams()
     const eventId = String(params.id)
-    const [searchTerm, setSearchTerm] = useState("")
+
 
     // Buscar evento específico pelo ID
     const { data: eventoData, isLoading: eventoLoading } = useEventos({ id: eventId })
@@ -125,7 +66,7 @@ export default function Dashboard() {
     })
     const { data: operadores = [], isLoading: operadoresLoading } = useOperatorsByEvent({ eventId })
     const { data: radios = [], isLoading: radiosLoading } = useRadios({ eventId: eventId })
-    const { data: vagas = [], isLoading: vagasLoading } = useEventVehiclesByEvent({ eventId, search: searchTerm })
+    const { data: vagas = [], isLoading: vagasLoading } = useEventVehiclesByEvent({ eventId })
 
     // Garantir que coordenadores é sempre um array
     const coordenadoresArray = Array.isArray(coordenadores) ? coordenadores : []
@@ -194,15 +135,7 @@ export default function Dashboard() {
         { name: "Vagas", value: totalVagas },
     ]
 
-    // Loading geral
-    const isLoading =
-        eventoLoading ||
-        coordenadoresLoading ||
-        credenciaisLoading ||
-        participantesLoading ||
-        operadoresLoading ||
-        radiosLoading ||
-        vagasLoading
+
 
     // Função para formatar horário
     const formatarHorario = (timestamp: string) => {
@@ -697,7 +630,7 @@ export default function Dashboard() {
 
                 {/* Footer */}
                 <div className="text-center pt-8 pb-8">
-                    <img src="/images/slogan-rg.png" alt="Se tem RG, é sucesso!" className="mx-auto max-w-xs opacity-60" />
+                    <Image src="/images/slogan-rg.png" alt="Se tem RG, é sucesso!" className="mx-auto max-w-xs opacity-60" />
                 </div>
             </div>
         </EventLayout>

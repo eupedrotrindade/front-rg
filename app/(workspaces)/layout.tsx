@@ -1,4 +1,3 @@
-import HeaderWorkspace from "@/components/layout/header-work";
 
 
 const WorkspaceLayout = ({ children }: { children: React.ReactNode }) => {

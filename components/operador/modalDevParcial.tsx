@@ -2,7 +2,7 @@ import { useState } from "react";
 
 interface ModalDevParcialProps {
     isOpen: boolean;
-    setIsOpen: Function;
+    setIsOpen: (open: boolean) => void;
     onConfirm: (radios: string) => void;
     error?: string | null;
 }

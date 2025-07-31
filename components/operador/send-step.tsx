@@ -6,10 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Send, ArrowLeft, CheckCircle, XCircle, Clock, Database } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 interface SendStepProps {
   data: any[]
-  onBack: () => void
   sendInBatches?: (data: any[], batchSize?: number) => Promise<{ success: any[]; failed: any[] }>
   sendResult?: { success: any[]; failed: any[] } | null
   setSendResult?: (result: { success: any[]; failed: any[] } | null) => void
@@ -23,7 +23,8 @@ interface SendStats {
   progress: number
 }
 
-export default function SendStep({ data, onBack, sendInBatches, sendResult, setSendResult }: SendStepProps) {
+export default function SendStep({ data, sendInBatches, setSendResult }: SendStepProps) {
+  const router = useRouter()
   const [isSending, setIsSending] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [stats, setStats] = useState<SendStats>({
@@ -221,7 +222,7 @@ export default function SendStep({ data, onBack, sendInBatches, sendResult, setS
 
         {/* Ações */}
         <div className="flex justify-between">
-          <Button variant="outline" onClick={onBack} disabled={isSending}>
+          <Button variant="outline" onClick={() => router.back()} disabled={isSending}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Voltar
           </Button>

@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 interface ModalDevTotalProps {
     isOpen: boolean;
-    setIsOpen: Function;
+    setIsOpen: (open: boolean) => void;
     handleDevTotal: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
-export default function ModalDevTotal({ isOpen, setIsOpen, handleDevTotal }: ModalDevTotalProps) {
+const ModalDevTotal = ({ isOpen, setIsOpen, handleDevTotal }: ModalDevTotalProps) => {
     if (!isOpen) return null;
 
     return (

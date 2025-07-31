@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, Clock, Users, UserCog, Building, Download, FileText, Filter, Search } from "lucide-react"
+import { Clock, Users, UserCog, Building, Download, FileText, Filter } from "lucide-react"
 import { toast } from "sonner"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import type { EventParticipant } from "@/features/eventos/types"
@@ -35,11 +35,9 @@ export default function RelatoriosPage() {
 
 
     // Hooks para buscar dados
-    const { data: eventoData, isLoading: eventoLoading } = useEventos({ id: eventId })
     const { data: participantes = [], isLoading: participantesLoading } = useEventParticipantsByEvent({ eventId })
     const { data: coordenadores = [], isLoading: coordenadoresLoading } = useCoordenadoresByEvent({ eventId })
     const { data: vagas = [], isLoading: vagasLoading } = useEventVehiclesByEvent({ eventId })
-    const { data: wristbands = [], isLoading: wristbandsLoading } = useEventWristbandsByEvent(eventId)
 
     // Hook para exportação
     const exportPDFMutation = useExportPDF()
@@ -54,7 +52,6 @@ export default function RelatoriosPage() {
         filtroStatus: ""
     })
 
-    const [searchTerm, setSearchTerm] = useState("")
     const [selectedDay, setSelectedDay] = useState<string>("all")
 
 
@@ -333,7 +330,7 @@ export default function RelatoriosPage() {
         })
     }, [configRelatorio, gerarDadosRelatorio, exportPDFMutation])
 
-    const isLoading = eventoLoading || participantesLoading || coordenadoresLoading || vagasLoading || wristbandsLoading
+    const isLoading = participantesLoading || coordenadoresLoading || vagasLoading
 
 
     if (!evento) {

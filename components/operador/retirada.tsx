@@ -9,7 +9,6 @@ interface RetiradaProps extends RetiradaType {
 
 export default function Retirada({ nome, retirada, devolucao, contato, radios, status, historico = [], codes_devolvidos = [], codes_trocados = [], onOpenDevTotal, onOpenDevParcial, onOpenTroca }: RetiradaProps) {
     const [showRadiosPopup, setShowRadiosPopup] = useState(false);
-    const [showHistorico, setShowHistorico] = useState(false);
 
     return (
         <tr className="hover:bg-purple-50 transition">
@@ -130,7 +129,6 @@ export default function Retirada({ nome, retirada, devolucao, contato, radios, s
                             </button>
                         </div>
                 }
-                <button className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition-all cursor-pointer w-full md:w-auto mt-2 md:mt-0" onClick={() => setShowHistorico(true)}>Histórico</button>
 
             </td>
         </tr>

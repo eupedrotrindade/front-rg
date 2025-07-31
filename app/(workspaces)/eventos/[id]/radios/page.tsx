@@ -7,13 +7,11 @@ import ModalRetirada from "@/components/operador/modalRetirada"
 import { Retirada as RetiradaType } from "./types"
 import { useState } from "react"
 import Image from "next/image"
-import ModalDevTotal from "@/components/operador/modalDevTotal"
 import ModalDevParcial from "@/components/operador/modalDevParcial"
 import ModalTroca from "@/components/operador/modalTroca"
 import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
-import { useRadios, useCreateRadio, useUpdateRadio, Radio } from "@/features/radio/api";
-import { RadioFilters } from "@/features/radio/types";
+import { useRadios, useCreateRadio, useUpdateRadio } from "@/features/radio/api";
 import React from "react";
 import { useParams } from "next/navigation";
 import EventLayout from "@/components/dashboard/dashboard-layout"
@@ -110,10 +108,9 @@ export default function Radios() {
     }
 
     // Adicionar nova retirada
-    const handleAddRetirada = async ({ codes, status, event_id, last_retirada_id, nome_radio, contato }: {
+    const handleAddRetirada = async ({ codes, status, last_retirada_id, nome_radio, contato }: {
         codes: string[];
         status: string;
-        event_id: string;
         last_retirada_id: string | null;
         nome_radio: string;
         contato: string;
@@ -204,6 +201,8 @@ export default function Radios() {
             toast.error("Erro ao registrar devolução parcial.");
         }
     };
+
+
 
     const openDevTotal = (retirada: RetiradaType) => {
         setRetiradaSelecionada(retirada)
@@ -389,6 +388,7 @@ export default function Radios() {
                                         historico={item.historico || []}
                                         codes_devolvidos={item.codes_devolvidos || []}
                                         codes_trocados={item.codes_trocados || []}
+
                                         onOpenDevTotal={() => openDevTotal(item)}
                                         onOpenDevParcial={() => openDevParcial(item)}
                                         onOpenTroca={() => openTroca(item)}
@@ -404,14 +404,7 @@ export default function Radios() {
                 setIsOpen={setIsOpen}
                 onAddRetirada={handleAddRetirada as any}
             />
-            <ModalDevTotal
-                isOpen={isModalDevTotalOpen}
-                setIsOpen={setIsModalDevTotalOpen}
-                handleDevTotal={() => {
-                    if (retiradaSelecionada) handleDevTotal(retiradaSelecionada)
-                    setIsModalDevTotalOpen(false)
-                }}
-            />
+
             <ModalDevParcial
                 isOpen={isModalDevParcialOpen}
                 setIsOpen={setIsModalDevParcialOpen}

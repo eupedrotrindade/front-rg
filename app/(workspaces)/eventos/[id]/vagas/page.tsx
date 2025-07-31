@@ -1,14 +1,14 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 
-import { Plus, Search, Filter, Download, Upload } from "lucide-react"
-import { Veiculo } from "./types"
+import { Plus, Search, Download, Upload } from "lucide-react"
+
 import VeiculoItem from "@/components/operador/veiculoItem"
 import ModalNovoVeiculo from "@/components/operador/modalNovoVeiculo"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 
 import { toast } from "sonner"
 import EventLayout from "@/components/dashboard/dashboard-layout"
@@ -61,42 +61,6 @@ export default function Estacionamento() {
         setIsModalOpen(true)
     }
 
-    const handleCloseModal = () => {
-        setIsModalOpen(false)
-        setEditingVeiculo(null)
-        setIsEditing(false)
-    }
-
-    const handleSaveVeiculo = async (veiculo: EventVehicle) => {
-        try {
-            if (isEditing && editingVeiculo) {
-                // Atualizar veículo existente
-                await updateVehicleMutation.mutateAsync({
-                    id: editingVeiculo.id,
-                    data: {
-                        empresa: veiculo.empresa,
-                        placa: veiculo.placa,
-                        modelo: veiculo.modelo,
-                        status: veiculo.status,
-                        credencial: veiculo.credencial
-                    }
-                })
-            } else {
-                // Adicionar novo veículo
-                await createVehicleMutation.mutateAsync({
-                    eventId,
-                    empresa: veiculo.empresa,
-                    placa: veiculo.placa,
-                    modelo: veiculo.modelo,
-                    status: veiculo.status,
-                    credencial: veiculo.credencial
-                })
-            }
-        } catch (error) {
-            // Erro já tratado pelos hooks
-            throw error
-        }
-    }
 
     const handleDeleteVeiculo = async (id: string) => {
         if (confirm("Tem certeza que deseja excluir este veículo?")) {
@@ -272,8 +236,7 @@ export default function Estacionamento() {
                 {/* Modal */}
                 <ModalNovoVeiculo
                     isOpen={isModalOpen}
-                    onClose={handleCloseModal}
-                    onSave={handleSaveVeiculo}
+
                     veiculo={editingVeiculo}
                     isEditing={isEditing}
                 />
