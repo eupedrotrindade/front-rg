@@ -38,6 +38,7 @@ import * as XLSX from "xlsx"
 import { toast } from "sonner"
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
 import { useCreateEventParticipant } from "@/features/eventos/api/mutation/use-create-event-participant"
+import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands"
 import type { EventParticipant } from "@/features/eventos/types"
 import type { EventParticipantSchema } from "@/features/eventos/schemas"
 import EventLayout from "@/components/dashboard/dashboard-layout"
@@ -105,6 +106,12 @@ export default function ImportExportPage() {
     const [dragActive, setDragActive] = useState(false)
     const [isExporting, setIsExporting] = useState(false)
 
+    // Estados para atribuição de credenciais em massa
+    const [showCredentialAssignment, setShowCredentialAssignment] = useState(false)
+    const [selectedParticipants, setSelectedParticipants] = useState<EventParticipantSchema[]>([])
+    const [selectedWristbandId, setSelectedWristbandId] = useState<string>("")
+    const [isAssigningCredentials, setIsAssigningCredentials] = useState(false)
+
     // Filtros e busca
     const [searchTerm, setSearchTerm] = useState("")
     const [sortBy, setSortBy] = useState<"name" | "company" | "role">("name")
@@ -141,6 +148,66 @@ export default function ImportExportPage() {
 
     const { data: participants = [] } = useEventParticipantsByEvent({ eventId })
     const { mutate: createParticipant } = useCreateEventParticipant()
+    const { data: wristbands = [] } = useEventWristbandsByEvent(eventId)
+
+    // Funções para atribuição de credenciais em massa
+    const handleSelectParticipant = (participant: EventParticipantSchema) => {
+        setSelectedParticipants(prev => {
+            const isSelected = prev.some(p => p.cpf === participant.cpf)
+            if (isSelected) {
+                return prev.filter(p => p.cpf !== participant.cpf)
+            } else {
+                return [...prev, participant]
+            }
+        })
+    }
+
+    const handleSelectAllParticipants = () => {
+        if (processedData) {
+            const participantsWithoutCredentials = processedData.data.filter(p => !p.wristbandId)
+            setSelectedParticipants(participantsWithoutCredentials)
+        }
+    }
+
+    const handleClearSelection = () => {
+        setSelectedParticipants([])
+    }
+
+    const handleAssignCredentials = async () => {
+        if (!selectedWristbandId || selectedParticipants.length === 0) return
+
+        setIsAssigningCredentials(true)
+        try {
+            // Atualizar os participantes selecionados com a credencial
+            const updatedParticipants = selectedParticipants.map(p => ({
+                ...p,
+                wristbandId: selectedWristbandId
+            }))
+
+            // Atualizar os dados processados
+            setProcessedData(prev => {
+                if (!prev) return prev
+                return {
+                    ...prev,
+                    data: prev.data.map(p => {
+                        const isSelected = selectedParticipants.some(sp => sp.cpf === p.cpf)
+                        if (isSelected) {
+                            return { ...p, wristbandId: selectedWristbandId }
+                        }
+                        return p
+                    })
+                }
+            })
+
+            setSelectedParticipants([])
+            setSelectedWristbandId("")
+            toast.success(`${selectedParticipants.length} credenciais atribuídas com sucesso!`)
+        } catch (error) {
+            toast.error("Erro ao atribuir credenciais")
+        } finally {
+            setIsAssigningCredentials(false)
+        }
+    }
 
     // Validation functions
     const isValidCPF = (cpf: string): boolean => {
@@ -249,7 +316,7 @@ export default function ImportExportPage() {
 
                         const participantData: EventParticipantSchema = {
                             eventId: eventId,
-                            wristbandId: row.wristbandId || `wb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            wristbandId: row.wristbandId || undefined,
                             staffId: row.staffId || undefined,
                             name: row.name.toString().trim(),
                             cpf: row.cpf.toString(),
@@ -261,7 +328,6 @@ export default function ImportExportPage() {
                             checkOut: row.checkOut || undefined,
                             presenceConfirmed: row.presenceConfirmed || undefined,
                             certificateIssued: row.certificateIssued || undefined,
-                            shirtSize: row.shirtSize || undefined,
                             notes: row.notes?.toString().trim() || undefined,
                             photo: row.photo || undefined,
                             documentPhoto: row.documentPhoto || undefined,
@@ -492,7 +558,7 @@ export default function ImportExportPage() {
                 Função: p.role,
                 Email: p.email || "",
                 Telefone: p.phone || "",
-                Tamanho_Camiseta: p.shirtSize || "",
+                Tamanho_Camiseta: "",
                 Observações: p.notes || "",
                 Dias_Trabalho: p.daysWork?.join(", ") || "",
                 Check_in: p.checkIn || "",
@@ -523,7 +589,7 @@ export default function ImportExportPage() {
                 role: "Segurança",
                 email: "joao@email.com",
                 phone: "(11) 99999-9999",
-                shirtSize: "M",
+                // shirtSize removido
                 notes: "Observações aqui",
                 daysWork: "15/12/2024, 16/12/2024",
                 wristbandId: "wristband-001",
@@ -549,7 +615,7 @@ export default function ImportExportPage() {
             role: `Função ${(i % 10) + 1}`,
             email: `participante${i + 1}@teste.com`,
             phone: `1199${String(i).padStart(6, "0")}`,
-            shirtSize: ["P", "M", "G", "GG"][i % 4],
+            // shirtSize removido
             notes: `Observação ${i + 1}`,
             daysWork: "28/07/2025, 01/08/2025",
             wristbandId,
@@ -779,7 +845,7 @@ export default function ImportExportPage() {
                                                 <strong>Colunas obrigatórias:</strong> name, cpf, company, role
                                             </p>
                                             <p>
-                                                <strong>Colunas opcionais:</strong> email, phone, shirtSize, notes, daysWork, wristbandId
+                                                <strong>Colunas opcionais:</strong> email, phone, notes, daysWork, wristbandId
                                             </p>
                                             <p>
                                                 <strong>Formato CPF:</strong> 123.456.789-00 ou 12345678900
@@ -897,19 +963,109 @@ export default function ImportExportPage() {
 
                                         {processedData.data.length > 0 && (
                                             <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+                                                {/* Controles de Atribuição de Credenciais */}
+                                                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-4">
+                                                            <h3 className="text-lg font-semibold text-blue-900">Atribuição de Credenciais</h3>
+                                                            <Badge variant="outline" className="text-blue-700">
+                                                                {selectedParticipants.length} selecionados
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={handleSelectAllParticipants}
+                                                                className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                                                            >
+                                                                Selecionar Todos sem Credencial
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={handleClearSelection}
+                                                                className="text-gray-600 border-gray-300 hover:bg-gray-50"
+                                                            >
+                                                                Limpar Seleção
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                    {selectedParticipants.length > 0 && (
+                                                        <div className="mt-3 flex items-center gap-3">
+                                                            <Select value={selectedWristbandId} onValueChange={setSelectedWristbandId}>
+                                                                <SelectTrigger className="w-64">
+                                                                    <SelectValue placeholder="Selecione uma credencial" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {wristbands.map((wristband) => (
+                                                                        <SelectItem key={wristband.id} value={wristband.id}>
+                                                                            {wristband.code} - {wristband.wristbandModelId || 'Modelo não definido'}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <Button
+                                                                onClick={handleAssignCredentials}
+                                                                disabled={!selectedWristbandId || isAssigningCredentials}
+                                                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                                                            >
+                                                                {isAssigningCredentials ? (
+                                                                    <>
+                                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                                        Atribuindo...
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <Check className="w-4 h-4 mr-2" />
+                                                                        Atribuir Credencial
+                                                                    </>
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </div>
+
                                                 <Table>
                                                     <TableHeader>
                                                         <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100">
+                                                            <TableHead className="px-6 py-4 w-12">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) {
+                                                                            handleSelectAllParticipants()
+                                                                        } else {
+                                                                            handleClearSelection()
+                                                                        }
+                                                                    }}
+                                                                    checked={selectedParticipants.length === processedData.data.filter(p => !p.wristbandId).length && processedData.data.filter(p => !p.wristbandId).length > 0}
+                                                                />
+                                                            </TableHead>
                                                             <TableHead className="px-6 py-4">Participante</TableHead>
                                                             <TableHead className="px-6 py-4 hidden md:table-cell">Empresa</TableHead>
                                                             <TableHead className="px-6 py-4 hidden md:table-cell">Função</TableHead>
                                                             <TableHead className="px-6 py-4">CPF</TableHead>
                                                             <TableHead className="px-6 py-4">Email</TableHead>
+                                                            <TableHead className="px-6 py-4">Credencial</TableHead>
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
                                                         {getFilteredAndSortedData().slice(0, 50).map((participant, index) => (
-                                                            <TableRow key={index} className="hover:bg-purple-50">
+                                                            <TableRow
+                                                                key={index}
+                                                                className={`hover:bg-purple-50 ${selectedParticipants.some(p => p.cpf === participant.cpf) ? 'bg-blue-50 border-blue-200' : ''}`}
+                                                            >
+                                                                <TableCell className="px-6 py-4">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                                        checked={selectedParticipants.some(p => p.cpf === participant.cpf)}
+                                                                        onChange={() => handleSelectParticipant(participant)}
+                                                                        disabled={!!participant.wristbandId}
+                                                                    />
+                                                                </TableCell>
                                                                 <TableCell className="px-6 py-4">
                                                                     <div className="flex items-center">
                                                                         <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
@@ -928,6 +1084,17 @@ export default function ImportExportPage() {
                                                                 <TableCell className="px-6 py-4 hidden md:table-cell">{participant.role}</TableCell>
                                                                 <TableCell className="px-6 py-4 font-mono">{participant.cpf}</TableCell>
                                                                 <TableCell className="px-6 py-4">{participant.email || "-"}</TableCell>
+                                                                <TableCell className="px-6 py-4">
+                                                                    {participant.wristbandId ? (
+                                                                        <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50">
+                                                                            {participant.wristbandId}
+                                                                        </Badge>
+                                                                    ) : (
+                                                                        <Badge variant="outline" className="text-orange-700 border-orange-300 bg-orange-50">
+                                                                            Sem credencial
+                                                                        </Badge>
+                                                                    )}
+                                                                </TableCell>
                                                             </TableRow>
                                                         ))}
                                                     </TableBody>

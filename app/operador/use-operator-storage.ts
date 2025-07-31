@@ -44,8 +44,62 @@ const useOperatorStorage = (
         if (onChange) onChange(parsed);
       }
     };
+
+    // Verificar mudanças a cada 2 segundos
     const interval = setInterval(checkOperator, 2000);
-    return () => clearInterval(interval);
+
+    // Listeners para eventos customizados de tempo real
+    const handleEventosUpdated = () => {
+      console.log("🔄 Eventos atualizados via tempo real");
+      // Forçar revalidação dos dados de eventos
+      window.location.reload();
+    };
+
+    const handleParticipantesUpdated = () => {
+      console.log("🔄 Participantes atualizados via tempo real");
+      // Forçar revalidação dos dados de participantes
+      window.location.reload();
+    };
+
+    const handlePulseirasUpdated = () => {
+      console.log("🔄 Pulseiras atualizadas via tempo real");
+      // Forçar revalidação dos dados de pulseiras
+      window.location.reload();
+    };
+
+    const handleStaffUpdated = () => {
+      console.log("🔄 Staff atualizado via tempo real");
+      // Forçar revalidação dos dados de staff
+      window.location.reload();
+    };
+
+    const handleVeiculosUpdated = () => {
+      console.log("🔄 Veículos atualizados via tempo real");
+      // Forçar revalidação dos dados de veículos
+      window.location.reload();
+    };
+
+    // Adicionar listeners
+    window.addEventListener("eventos-updated", handleEventosUpdated);
+    window.addEventListener(
+      "participantes-updated",
+      handleParticipantesUpdated
+    );
+    window.addEventListener("pulseiras-updated", handlePulseirasUpdated);
+    window.addEventListener("staff-updated", handleStaffUpdated);
+    window.addEventListener("veiculos-updated", handleVeiculosUpdated);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("eventos-updated", handleEventosUpdated);
+      window.removeEventListener(
+        "participantes-updated",
+        handleParticipantesUpdated
+      );
+      window.removeEventListener("pulseiras-updated", handlePulseirasUpdated);
+      window.removeEventListener("staff-updated", handleStaffUpdated);
+      window.removeEventListener("veiculos-updated", handleVeiculosUpdated);
+    };
   }, [onChange]);
 
   return operator;

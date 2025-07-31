@@ -69,9 +69,9 @@ export default function Dashboard() {
     const totalManagers = filteredManagers.length;
     const totalStaff = filteredStaff.length;
     const totalWristbands = filteredWristbands.length;
-    const distributedWristbands = filteredWristbands.filter(w => (w as any).isDistributed).length;
+    const distributedWristbands = filteredWristbands.filter(w => (w as any).isDistributed === true).length;
     const totalParticipants = filteredParticipants.length;
-    const confirmedParticipants = filteredParticipants.filter(p => p.presenceConfirmed).length;
+    const confirmedParticipants = filteredParticipants.filter(p => (p as any).presenceConfirmed === true).length;
 
     // Calcular percentuais
     const wristbandDistributionRate = totalWristbands > 0 ? (distributedWristbands / totalWristbands) * 100 : 0;
@@ -102,9 +102,9 @@ export default function Dashboard() {
             return {
                 ...evento,
                 participantCount: eventParticipants.length,
-                confirmedCount: eventParticipants.filter(p => p.presenceConfirmed).length,
+                confirmedCount: eventParticipants.filter(p => (p as any).presenceConfirmed === true).length,
                 wristbandCount: wristbandsForEvent.length,
-                distributedCount: wristbandsForEvent.filter(w => (w as any).isDistributed).length,
+                distributedCount: wristbandsForEvent.filter(w => (w as any).isDistributed === true).length,
             };
         })
         .sort((a, b) => b.participantCount - a.participantCount)
@@ -201,7 +201,7 @@ export default function Dashboard() {
                         <Calendar className="h-5 w-5" />
                         Calendário Anual de Etapas
                     </CardTitle>
-                    <CardDescription>Visualize rapidamente os períodos de montagem, preparação e finalização de todos os eventos do ano.</CardDescription>
+                    <CardDescription>Visualize rapidamente os períodos de montagem, Evento e finalização de todos os eventos do ano.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <CalendarLegend />

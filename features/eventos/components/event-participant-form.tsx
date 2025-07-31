@@ -85,7 +85,7 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                 }
             }
 
-            // Verificar se o dia está no período de preparação/evento
+            // Verificar se o dia está no período de Evento/evento
             if (evento.preparationStartDate && evento.preparationEndDate) {
                 const startDate = new Date(evento.preparationStartDate);
                 const endDate = new Date(evento.preparationEndDate);
@@ -500,9 +500,9 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                                             <strong>Selecione as datas dos períodos do evento:</strong>
                                         </p>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-h-48 overflow-y-auto border rounded-lg p-4 bg-white">
-                                            {/* Preparação */}
+                                            {/* Evento */}
                                             <div>
-                                                <p className="text-xs font-semibold text-blue-700 mb-2">Preparação</p>
+                                                <p className="text-xs font-semibold text-blue-700 mb-2">Evento</p>
                                                 <div className="flex flex-col gap-2">
 
                                                     {getAvailableDates("preparacao").map((date) => (

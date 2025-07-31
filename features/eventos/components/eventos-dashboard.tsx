@@ -149,8 +149,8 @@ const EventosDashboard = () => {
         'Data de Fim': evento.endDate ? new Date(evento.endDate).toLocaleDateString('pt-BR') : '',
         'Início Montagem': evento.setupStartDate ? new Date(evento.setupStartDate).toLocaleDateString('pt-BR') : '',
         'Fim Montagem': evento.setupEndDate ? new Date(evento.setupEndDate).toLocaleDateString('pt-BR') : '',
-        'Início Preparação': evento.preparationStartDate ? new Date(evento.preparationStartDate).toLocaleDateString('pt-BR') : '',
-        'Fim Preparação': evento.preparationEndDate ? new Date(evento.preparationEndDate).toLocaleDateString('pt-BR') : '',
+        'Início Evento': evento.preparationStartDate ? new Date(evento.preparationStartDate).toLocaleDateString('pt-BR') : '',
+        'Fim Evento': evento.preparationEndDate ? new Date(evento.preparationEndDate).toLocaleDateString('pt-BR') : '',
         'Início Finalização': evento.finalizationStartDate ? new Date(evento.finalizationStartDate).toLocaleDateString('pt-BR') : '',
         'Fim Finalização': evento.finalizationEndDate ? new Date(evento.finalizationEndDate).toLocaleDateString('pt-BR') : '',
         'Local': evento.venue || '',
@@ -505,7 +505,7 @@ const EventosDashboard = () => {
                                 <TableHead>Início</TableHead>
                                 <TableHead>Fim</TableHead>
                                 <TableHead>Montagem</TableHead>
-                                <TableHead>Preparação</TableHead>
+                                <TableHead>Evento</TableHead>
                                 <TableHead>Finalização</TableHead>
                                 <TableHead>Participantes</TableHead>
                                 <TableHead>Credencial</TableHead>

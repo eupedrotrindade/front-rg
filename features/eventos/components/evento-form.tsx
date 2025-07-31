@@ -45,22 +45,59 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
 
     const handleSubmit = (data: FieldValues) => {
         console.log(data)
+
+        // Validar se pelo menos o período de Evento está preenchido
+        if (!data.preparationStartDate || !data.preparationEndDate) {
+            console.error('Período de Evento é obrigatório')
+            return
+        }
+
+        // Garantir que startDate e endDate estão preenchidos
+        if (!data.startDate || !data.endDate) {
+            console.error('startDate e endDate devem ser preenchidos automaticamente')
+            return
+        }
+
         onSubmit(data as EventoSchema)
     }
 
     useEffect(() => {
         const setupStart = form.watch('setupStartDate');
+        const setupEnd = form.watch('setupEndDate');
+        const preparationStart = form.watch('preparationStartDate');
+        const preparationEnd = form.watch('preparationEndDate');
+        const finalizationStart = form.watch('finalizationStartDate');
         const finalizationEnd = form.watch('finalizationEndDate');
 
-        console.log(setupStart, finalizationEnd)
-        if (setupStart && finalizationEnd) {
-            const start = new Date(setupStart);
-            const end = new Date(finalizationEnd);
+        // Determinar startDate e endDate baseado nos períodos disponíveis
+        let startDate = '';
+        let endDate = '';
 
-            // Definir startDate como início da montagem
-            form.setValue('startDate', setupStart);
-            // Definir endDate como fim da desmontagem
-            form.setValue('endDate', finalizationEnd);
+        if (setupStart && finalizationEnd) {
+            // Se tem montagem e desmontagem, usar o período completo
+            startDate = setupStart;
+            endDate = finalizationEnd;
+        } else if (setupStart && preparationEnd) {
+            // Se tem montagem mas não desmontagem, usar montagem até Evento
+            startDate = setupStart;
+            endDate = preparationEnd;
+        } else if (preparationStart && finalizationEnd) {
+            // Se tem Evento e desmontagem, usar Evento até desmontagem
+            startDate = preparationStart;
+            endDate = finalizationEnd;
+        } else if (preparationStart && preparationEnd) {
+            // Se tem apenas Evento, usar apenas o período de Evento
+            startDate = preparationStart;
+            endDate = preparationEnd;
+        }
+
+        // Definir startDate e endDate
+        if (startDate && endDate) {
+            form.setValue('startDate', startDate);
+            form.setValue('endDate', endDate);
+
+            const start = new Date(startDate);
+            const end = new Date(endDate);
 
             if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end >= start) {
                 const diff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
@@ -71,9 +108,49 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
         } else {
             form.setValue('totalDays', undefined);
         }
+    }, [
+        form.watch('setupStartDate'),
+        form.watch('setupEndDate'),
+        form.watch('preparationStartDate'),
+        form.watch('preparationEndDate'),
+        form.watch('finalizationStartDate'),
+        form.watch('finalizationEndDate')
+    ]);
 
-        // Atualizar startDate e endDate automaticamente
-    }, [form.watch('setupStartDate'), form.watch('finalizationEndDate')]);
+    // Inicializar startDate e endDate quando o formulário é carregado com valores padrão
+    useEffect(() => {
+        if (defaultValues) {
+            const setupStart = defaultValues.setupStartDate;
+            const setupEnd = defaultValues.setupEndDate;
+            const preparationStart = defaultValues.preparationStartDate;
+            const preparationEnd = defaultValues.preparationEndDate;
+            const finalizationStart = defaultValues.finalizationStartDate;
+            const finalizationEnd = defaultValues.finalizationEndDate;
+
+            // Determinar startDate e endDate baseado nos períodos disponíveis
+            let startDate = '';
+            let endDate = '';
+
+            if (setupStart && finalizationEnd) {
+                startDate = setupStart;
+                endDate = finalizationEnd;
+            } else if (setupStart && preparationEnd) {
+                startDate = setupStart;
+                endDate = preparationEnd;
+            } else if (preparationStart && finalizationEnd) {
+                startDate = preparationStart;
+                endDate = finalizationEnd;
+            } else if (preparationStart && preparationEnd) {
+                startDate = preparationStart;
+                endDate = preparationEnd;
+            }
+
+            if (startDate && endDate) {
+                form.setValue('startDate', startDate);
+                form.setValue('endDate', endDate);
+            }
+        }
+    }, [defaultValues, form]);
 
     return (
         <div className="space-y-6">
@@ -281,7 +358,6 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                                         type="date"
                                                         {...field}
                                                         disabled
-                                                        value={form.watch('preparationStartDate') || ''}
                                                         className="border-gray-300 focus:border-purple-500 focus:ring-purple-500"
                                                     />
                                                 </FormControl>
@@ -300,7 +376,6 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                                         type="date"
                                                         {...field}
                                                         disabled
-                                                        value={form.watch('preparationEndDate') || ''}
                                                         className="border-gray-300 focus:border-purple-500 focus:ring-purple-500"
                                                     />
                                                 </FormControl>
@@ -359,7 +434,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                     />
                                 </div>
 
-                                {/* Preparação */}
+                                {/* Evento */}
                                 <div className="space-y-3">
                                     <h4 className="font-semibold text-gray-800 flex items-center gap-2">
                                         <Calendar className="h-4 w-4 text-blue-600" />
@@ -679,7 +754,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                         </Button>
                         <Button
                             type="submit"
-                            onClick={() => { console.log(form.getValues()) }}
+                            onClick={() => { console.log(form.getValues()); handleSubmit(form.getValues()) }}
                             disabled={loading}
                             className="bg-purple-600 hover:bg-purple-700 text-white px-8"
                         >

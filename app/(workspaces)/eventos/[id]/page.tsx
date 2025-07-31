@@ -94,7 +94,7 @@ export default function EventoDetalhesPage() {
             }
         }
 
-        // Adicionar dias de preparação/evento
+        // Adicionar dias de Evento/evento
         if (evento.preparationStartDate && evento.preparationEndDate) {
             const startDate = new Date(evento.preparationStartDate);
             const endDate = new Date(evento.preparationEndDate);

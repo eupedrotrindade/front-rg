@@ -24,7 +24,7 @@ export const EVENT_TYPES = {
     borderColor: "border-yellow-200",
   },
   preparacao: {
-    label: "Preparação",
+    label: "Evento",
     color: "bg-blue-500",
     textColor: "text-blue-700",
     bgColor: "bg-blue-500",

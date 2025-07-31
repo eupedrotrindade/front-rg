@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
@@ -18,7 +17,7 @@ import apiClient from "@/lib/api-client"
 import { formatCpf, isValidCpf } from "@/lib/utils"
 import { toast } from "sonner"
 import Image from "next/image"
-import { Loader2, Filter, Download, Upload, Plus, Search, Check, Clock, User, Calendar, X } from "lucide-react"
+import { Loader2, Filter, Download, Upload, Plus, Search, Check, Clock, User, Calendar, X, RefreshCw } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
 import type { EventParticipant } from "@/features/eventos/types"
@@ -34,12 +33,15 @@ import { useEventos } from "@/features/eventos/api/query/use-eventos"
 
 export default function Painel() {
     const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    // TODOS OS useState PRIMEIRO
     const [filtro, setFiltro] = useState({ nome: "", cpf: "", pulseira: "", empresa: "", funcao: "" });
     const [colunasExtras, setColunasExtras] = useState<string[]>([]);
     const [selectedParticipant, setSelectedParticipant] = useState<EventParticipant | null>(null);
     const [modalAberto, setModalAberto] = useState(false);
     const [nomeEvento, setNomeEvento] = useState<string>("");
     const [loading, setLoading] = useState(false);
+    const [isRealtimeSyncing, setIsRealtimeSyncing] = useState(false);
 
     // Estados para popups de check-in/check-out
     const [popupCheckin, setPopupCheckin] = useState(false);
@@ -64,7 +66,7 @@ export default function Painel() {
     const [authChecked, setAuthChecked] = useState(false);
     const [operadorInfo, setOperadorInfo] = useState<{ nome: string; cpf: string } | null>(null);
 
-    // Adicione os estados para os filtros pesquisáveis
+    // Estados para os filtros pesquisáveis
     const [filteredEmpresas, setFilteredEmpresas] = useState<string[]>([]);
     const [filteredFuncoes, setFilteredFuncoes] = useState<string[]>([]);
     const [empresaSelectOpen, setEmpresaSelectOpen] = useState(false);
@@ -73,7 +75,6 @@ export default function Painel() {
     const [funcaoSearch, setFuncaoSearch] = useState("");
 
     const [importDialogOpen, setImportDialogOpen] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Estados para importação e duplicados
     const [duplicadosDialogOpen, setDuplicadosDialogOpen] = useState(false);
@@ -97,13 +98,27 @@ export default function Painel() {
     const [scrollPosition, setScrollPosition] = useState(0);
     const [showLeftArrow, setShowLeftArrow] = useState(true);
     const [showRightArrow, setShowRightArrow] = useState(true);
+
+    // Estados para paginação e otimização
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(50);
+    const [totalItems, setTotalItems] = useState(0);
+    const [isLoadingPage, setIsLoadingPage] = useState(false);
+    const [virtualizedData, setVirtualizedData] = useState<EventParticipant[]>([]);
+    const [searchDebounce, setSearchDebounce] = useState<NodeJS.Timeout | null>(null);
+
+    // Estados para cache e otimização
+    const [filteredDataCache, setFilteredDataCache] = useState<Map<string, EventParticipant[]>>(new Map());
+    const [lastFilterHash, setLastFilterHash] = useState<string>('');
+    const [isDataStale, setIsDataStale] = useState(false);
+
+    // TODOS OS useRef DEPOIS DOS useState
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const tabsContainerRef = useRef<HTMLDivElement>(null);
 
-    // Hooks de navegação e parâmetros
+    // TODOS OS HOOKS DE NAVEGAÇÃO E DADOS
     const params = useParams();
     const router = useRouter();
-
-    // Hooks de dados - TODOS DEVEM SER CHAMADOS ANTES DE QUALQUER LÓGICA CONDICIONAL
     const eventId = params?.id as string;
     const { data: evento, isLoading: eventosLoading } = useEventos({ id: eventId });
     const {
@@ -115,7 +130,7 @@ export default function Painel() {
     const { data: wristbands = [] } = useEventWristbandsByEvent(params?.id as string);
     const { data: wristbandModels = [] } = useEventWristbandModels();
 
-    // Memoized values
+    // TODOS OS useMemo DEPOIS DOS HOOKS DE DADOS
     const wristbandMap = useMemo(() => {
         const map: Record<string, string> = {};
         wristbands.forEach(w => {
@@ -132,65 +147,60 @@ export default function Painel() {
         return map;
     }, [wristbandModels]);
 
-    useEffect(() => {
-        const operadorRaw = localStorage.getItem("operador");
-        setOperadorLogado(!!operadorRaw);
-        if (operadorRaw) {
-            try {
-                const operador = JSON.parse(operadorRaw);
-                setOperadorInfo({ nome: operador.nome, cpf: operador.cpf });
-            } catch {
-                setOperadorInfo(null);
-            }
-        } else {
-            setOperadorInfo(null);
-        }
-        setAuthChecked(true);
+    // TODOS OS useCallback DEPOIS DOS useMemo
+    const generateFilterHash = useCallback((filtro: any, selectedDay: string, filtroAvancado: any) => {
+        return JSON.stringify({ filtro, selectedDay, filtroAvancado });
     }, []);
 
-    // Configurar colunas extras quando os dados mudarem
-    useEffect(() => {
-        if (!eventId) {
-            router.push("/");
-            return;
-        }
-        if (participantsError) {
-            console.error("❌ Erro ao carregar colaboradores:", participantsErrorObj);
-            setColunasExtras([]);
-            return;
-        }
-        if (!participantsData || participantsData.length === 0) {
-            setColunasExtras([]);
-            return;
+    const debouncedSearch = useCallback((searchTerm: string) => {
+        if (searchDebounce) {
+            clearTimeout(searchDebounce);
         }
 
-        // Configurar colunas extras (mantém a lógica original)
-        if (participantsData.length > 0) {
-            const chaves = Object.keys(participantsData[0]);
-            const indexEmpresa = chaves.indexOf("empresa");
-            const indexPulseira = chaves.indexOf("pulseira_codigo");
-            if (indexEmpresa !== -1 && indexPulseira !== -1) {
-                const extras = chaves.slice(indexEmpresa + 1, indexPulseira);
-                setColunasExtras(extras);
-            }
-        }
-    }, [eventId]);
+        const timeout = setTimeout(() => {
+            setFiltro(prev => ({ ...prev, nome: searchTerm }));
+            setCurrentPage(1);
+        }, 300);
 
-    // Função para atualizar cadastrado_por quando o popup abrir
-    const atualizarCadastradoPor = useCallback(() => {
-        if (operadorInfo) {
-            const operadorRaw = localStorage.getItem("operador");
-            if (operadorRaw) {
-                try {
-                    const operador = JSON.parse(operadorRaw);
-                    const cadastradoPor = `${operador.nome}-${operador.cpf}-${operador.id}`;
-                    setNovoStaff((prev) => ({ ...prev, cadastrado_por: cadastradoPor }));
-                } catch { }
-            }
-        }
-    }, [operadorInfo]);
+        setSearchDebounce(timeout);
+    }, [searchDebounce]);
 
-    // Função para validar se uma data está dentro dos períodos permitidos do evento
+    const getPaginatedData = useCallback((data: EventParticipant[], page: number, perPage: number) => {
+        const startIndex = (page - 1) * perPage;
+        const endIndex = startIndex + perPage;
+        return data.slice(startIndex, endIndex);
+    }, []);
+
+    const calculateTotalPages = useCallback((total: number, perPage: number) => {
+        return Math.ceil(total / perPage);
+    }, []);
+
+    const getVisiblePages = useCallback((currentPage: number, totalPages: number) => {
+        const delta = 2;
+        const range = [];
+        const rangeWithDots = [];
+
+        for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+            range.push(i);
+        }
+
+        if (currentPage - delta > 2) {
+            rangeWithDots.push(1, '...');
+        } else {
+            rangeWithDots.push(1);
+        }
+
+        rangeWithDots.push(...range);
+
+        if (currentPage + delta < totalPages - 1) {
+            rangeWithDots.push('...', totalPages);
+        } else if (totalPages > 1) {
+            rangeWithDots.push(totalPages);
+        }
+
+        return rangeWithDots;
+    }, []);
+
     const isDateWithinEventPeriods = useCallback((dateStr: string): boolean => {
         if (!evento || Array.isArray(evento)) return false;
 
@@ -205,10 +215,9 @@ export default function Painel() {
         if (isNaN(inputDate.getTime())) return false;
 
         const eventPeriods = [
-            { start: evento.setupStartDate, end: evento.setupEndDate },
-            { start: evento.preparationStartDate, end: evento.preparationEndDate },
-            { start: evento.finalizationStartDate, end: evento.finalizationEndDate },
-            { start: evento.finalizationStartDate, end: evento.finalizationEndDate }
+            { start: evento.setupStartDate, end: evento.setupEndDate, type: 'setup' },
+            { start: evento.preparationStartDate, end: evento.preparationEndDate, type: 'preparation' },
+            { start: evento.finalizationStartDate, end: evento.finalizationEndDate, type: 'finalization' }
         ];
 
         return eventPeriods.some(period => {
@@ -219,7 +228,6 @@ export default function Painel() {
         });
     }, [evento]);
 
-    // Função para validar e processar os dias de trabalho
     const validateAndProcessDaysWork = useCallback((inputValue: string): string[] => {
         const days = inputValue.split(',').map(day => day.trim()).filter(day => day);
         const validDays: string[] = [];
@@ -245,41 +253,53 @@ export default function Painel() {
         });
 
         if (invalidDays.length > 0) {
-            toast.error(`Datas inválidas removidas: ${invalidDays.join(', ')}. Apenas datas dentro dos períodos do evento são permitidas.`);
+            const permittedInfo = getPermittedDatesInfo();
+            toast.error(`Datas inválidas removidas: ${invalidDays.join(', ')}. Períodos disponíveis: ${permittedInfo}`);
         }
 
         return validDays;
     }, [isDateWithinEventPeriods]);
 
-    // Função para obter as datas permitidas para exibição
     const getPermittedDatesInfo = useCallback((): string => {
         if (!evento || Array.isArray(evento)) return "Carregando...";
 
         const periods = [];
-        if (evento.setupStartDate && evento.setupEndDate) {
+        const hasSetup = evento.setupStartDate && evento.setupEndDate;
+        const hasPreparation = evento.preparationStartDate && evento.preparationEndDate;
+        const hasFinalization = evento.finalizationStartDate && evento.finalizationEndDate;
+
+        if (hasSetup && evento.setupStartDate && evento.setupEndDate) {
             periods.push(`Montagem: ${new Date(evento.setupStartDate).toLocaleDateString('pt-BR')} - ${new Date(evento.setupEndDate).toLocaleDateString('pt-BR')}`);
         }
-        if (evento.preparationStartDate && evento.preparationEndDate) {
-            periods.push(`Preparação: ${new Date(evento.preparationStartDate).toLocaleDateString('pt-BR')} - ${new Date(evento.preparationEndDate).toLocaleDateString('pt-BR')}`);
+        if (hasPreparation && evento.preparationStartDate && evento.preparationEndDate) {
+            periods.push(`Evento: ${new Date(evento.preparationStartDate).toLocaleDateString('pt-BR')} - ${new Date(evento.preparationEndDate).toLocaleDateString('pt-BR')}`);
         }
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
-            periods.push(`Finalização: ${new Date(evento.finalizationStartDate).toLocaleDateString('pt-BR')} - ${new Date(evento.finalizationEndDate).toLocaleDateString('pt-BR')}`);
+        if (hasFinalization && evento.finalizationStartDate && evento.finalizationEndDate) {
+            periods.push(`Desmontagem: ${new Date(evento.finalizationStartDate).toLocaleDateString('pt-BR')} - ${new Date(evento.finalizationEndDate).toLocaleDateString('pt-BR')}`);
         }
 
-        return periods.length > 0 ? periods.join(' | ') : "Nenhum período definido";
+        if (periods.length === 0) {
+            return "Nenhum período definido";
+        }
+
+        if (periods.length === 1 && hasPreparation) {
+            return `${periods[0]} (apenas dia do evento)`;
+        }
+
+        return periods.join(' | ');
     }, [evento]);
 
-    // Função para gerar tabs dos dias do evento
     const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string }> => {
         if (!evento || Array.isArray(evento)) return [];
 
         const days: Array<{ id: string; label: string; date: string; type: string }> = [];
+        const hasSetup = evento.setupStartDate && evento.setupEndDate;
+        const hasPreparation = evento.preparationStartDate && evento.preparationEndDate;
+        const hasFinalization = evento.finalizationStartDate && evento.finalizationEndDate;
 
-        // Adicionar dia "Todos"
         days.push({ id: 'all', label: 'TODOS', date: '', type: 'all' });
 
-        // Adicionar dias de montagem
-        if (evento.setupStartDate && evento.setupEndDate) {
+        if (hasSetup && evento.setupStartDate && evento.setupEndDate) {
             const startDate = new Date(evento.setupStartDate);
             const endDate = new Date(evento.setupEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
@@ -293,23 +313,22 @@ export default function Painel() {
             }
         }
 
-        // Adicionar dias de preparação/evento
-        if (evento.preparationStartDate && evento.preparationEndDate) {
+        if (hasPreparation && evento.preparationStartDate && evento.preparationEndDate) {
             const startDate = new Date(evento.preparationStartDate);
             const endDate = new Date(evento.preparationEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
                 const dateStr = date.toLocaleDateString('pt-BR');
+                const isOnlyEventDay = !hasSetup && !hasFinalization;
                 days.push({
                     id: dateStr,
-                    label: `${dateStr} (EVENTO)`,
+                    label: isOnlyEventDay ? `${dateStr} (DIA DO EVENTO)` : `${dateStr} (EVENTO)`,
                     date: dateStr,
                     type: 'preparation'
                 });
             }
         }
 
-        // Adicionar dias de finalização
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
+        if (hasFinalization && evento.finalizationStartDate && evento.finalizationEndDate) {
             const startDate = new Date(evento.finalizationStartDate);
             const endDate = new Date(evento.finalizationEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
@@ -326,7 +345,6 @@ export default function Painel() {
         return days;
     }, [evento]);
 
-    // Função para filtrar colaboradores por dia selecionado
     const getColaboradoresPorDia = useCallback((dia: string): EventParticipant[] => {
         if (dia === 'all') {
             return participantsData;
@@ -334,13 +352,12 @@ export default function Painel() {
 
         return participantsData.filter((colab: EventParticipant) => {
             if (!colab.daysWork || colab.daysWork.length === 0) {
-                return false; // Se não tem dias de trabalho definidos, não aparece em nenhum dia específico
+                return false;
             }
             return colab.daysWork.includes(dia);
         });
     }, [participantsData]);
 
-    // Funções para controlar o carrossel dos dias
     const scrollToLeft = useCallback(() => {
         if (tabsContainerRef.current) {
             const container = tabsContainerRef.current;
@@ -357,9 +374,6 @@ export default function Painel() {
         }
     }, []);
 
-
-
-    // Função para obter a cor da tab baseada no tipo de dia
     const getTabColor = useCallback((type: string, isActive: boolean) => {
         if (isActive) {
             switch (type) {
@@ -386,7 +400,6 @@ export default function Painel() {
         }
     }, []);
 
-    // Função para categorizar dias de trabalho por fase do evento
     const categorizeDaysWork = useCallback((participant: EventParticipant) => {
         if (!participant.daysWork || participant.daysWork.length === 0 || !evento || Array.isArray(evento)) {
             return { setup: [], preparation: [], finalization: [] };
@@ -398,13 +411,15 @@ export default function Painel() {
             finalization: [] as string[]
         };
 
+        const hasSetup = evento.setupStartDate && evento.setupEndDate;
+        const hasPreparation = evento.preparationStartDate && evento.preparationEndDate;
+        const hasFinalization = evento.finalizationStartDate && evento.finalizationEndDate;
+
         participant.daysWork.forEach(day => {
-            // Normalizar a data do dia para o início do dia
             const dayDate = new Date(day.split('/').reverse().join('-'));
             dayDate.setHours(0, 0, 0, 0);
 
-            // Verificar se o dia está no período de montagem
-            if (evento.setupStartDate && evento.setupEndDate) {
+            if (hasSetup && evento.setupStartDate && evento.setupEndDate) {
                 const startDate = new Date(evento.setupStartDate);
                 const endDate = new Date(evento.setupEndDate);
                 startDate.setHours(0, 0, 0, 0);
@@ -416,8 +431,7 @@ export default function Painel() {
                 }
             }
 
-            // Verificar se o dia está no período de preparação/evento
-            if (evento.preparationStartDate && evento.preparationEndDate) {
+            if (hasPreparation && evento.preparationStartDate && evento.preparationEndDate) {
                 const startDate = new Date(evento.preparationStartDate);
                 const endDate = new Date(evento.preparationEndDate);
                 startDate.setHours(0, 0, 0, 0);
@@ -429,8 +443,7 @@ export default function Painel() {
                 }
             }
 
-            // Verificar se o dia está no período de finalização
-            if (evento.finalizationStartDate && evento.finalizationEndDate) {
+            if (hasFinalization && evento.finalizationStartDate && evento.finalizationEndDate) {
                 const startDate = new Date(evento.finalizationStartDate);
                 const endDate = new Date(evento.finalizationEndDate);
                 startDate.setHours(0, 0, 0, 0);
@@ -446,13 +459,11 @@ export default function Painel() {
         return categorized;
     }, [evento]);
 
-    // Função para gerar lista de datas disponíveis a partir dos períodos do evento
     const getAvailableDates = useCallback((phase?: string): string[] => {
         if (!evento || Array.isArray(evento)) return [];
 
         const availableDates: string[] = [];
 
-        // Se uma fase específica foi solicitada, retornar apenas as datas dessa fase
         if (phase) {
             let startDate: string | undefined;
             let endDate: string | undefined;
@@ -477,7 +488,6 @@ export default function Painel() {
             if (startDate && endDate) {
                 const start = new Date(startDate);
                 const end = new Date(endDate);
-                // Normalizar as datas para o início do dia
                 start.setHours(0, 0, 0, 0);
                 end.setHours(0, 0, 0, 0);
                 const currentDate = new Date(start);
@@ -492,7 +502,6 @@ export default function Painel() {
             return availableDates.sort();
         }
 
-        // Se nenhuma fase foi especificada, retornar todas as datas
         const periods = [];
 
         if (evento.setupStartDate && evento.setupEndDate) {
@@ -508,7 +517,6 @@ export default function Painel() {
         periods.forEach(period => {
             const startDate = new Date(period.start);
             const endDate = new Date(period.end);
-            // Normalizar as datas para o início do dia
             startDate.setHours(0, 0, 0, 0);
             endDate.setHours(0, 0, 0, 0);
             const currentDate = new Date(startDate);
@@ -523,7 +531,6 @@ export default function Painel() {
         return availableDates.sort();
     }, [evento]);
 
-    // Função para verificar se há períodos definidos
     const hasDefinedPeriods = useCallback((): boolean => {
         if (!evento || Array.isArray(evento)) return false;
         return !!(evento.setupStartDate && evento.setupEndDate) ||
@@ -531,7 +538,6 @@ export default function Painel() {
             !!(evento.finalizationStartDate && evento.finalizationEndDate);
     }, [evento]);
 
-    // Função para alternar seleção de data
     const toggleDateSelection = useCallback((date: string) => {
         setNovoStaff(prev => {
             const currentDates = [...prev.daysWork];
@@ -544,6 +550,193 @@ export default function Painel() {
             return { ...prev, daysWork: currentDates.sort() };
         });
     }, []);
+
+    const atualizarCadastradoPor = useCallback(() => {
+        if (operadorInfo) {
+            const operadorRaw = localStorage.getItem("operador");
+            if (operadorRaw) {
+                try {
+                    const operador = JSON.parse(operadorRaw);
+                    const cadastradoPor = `${operador.nome}-${operador.cpf}-${operador.id}`;
+                    setNovoStaff((prev) => ({ ...prev, cadastrado_por: cadastradoPor }));
+                } catch { }
+            }
+        }
+    }, [operadorInfo]);
+
+    const clearCache = useCallback(() => {
+        setFilteredDataCache(new Map());
+        setIsDataStale(false);
+    }, []);
+
+    // TODOS OS useMemo DEPOIS DOS useCallback
+    const filtrarColaboradores = useMemo(() => {
+        const filterHash = generateFilterHash(filtro, selectedDay, filtroAvancado);
+
+        if (filteredDataCache.has(filterHash) && !isDataStale) {
+            const cachedData = filteredDataCache.get(filterHash)!;
+            return { data: cachedData, total: cachedData.length };
+        }
+
+        let filtrados: EventParticipant[] = getColaboradoresPorDia(selectedDay);
+
+        filtrados = filtrados.filter((colab: EventParticipant) => {
+            const nomeMatch = colab.name?.toLowerCase().includes(filtro.nome.toLowerCase());
+            const cpfSemPontuacao = colab.cpf?.replace(/\D/g, "");
+            const buscaSemPontuacao = filtro.nome.replace(/\D/g, "");
+            const cpfMatch = (
+                colab.cpf === filtro.nome ||
+                (cpfSemPontuacao && buscaSemPontuacao && cpfSemPontuacao === buscaSemPontuacao) ||
+                (buscaSemPontuacao.length >= 3 && cpfSemPontuacao?.includes(buscaSemPontuacao))
+            );
+            const pulseiraMatch = colab.wristbandId?.toLowerCase() === filtro.nome.toLowerCase();
+            const empresaMatch = filtro.empresa ? colab.company === filtro.empresa : true;
+            const funcaoMatch = filtro.funcao ? colab.role === filtro.funcao : true;
+
+            let match = (nomeMatch || cpfMatch || pulseiraMatch) && empresaMatch && funcaoMatch;
+
+            Object.entries(filtroAvancado).forEach(([campo, valor]) => {
+                const colabValue = (colab as any)[campo];
+                if (valor && String(valor).trim() !== "") {
+                    if (colabValue === undefined || String(colabValue).toLowerCase() !== String(valor).toLowerCase()) {
+                        match = false;
+                    }
+                }
+            });
+
+            return match;
+        });
+
+        if (ordenacao.campo) {
+            type EventParticipantKey = keyof EventParticipant;
+            const campoOrdenacao = ordenacao.campo as EventParticipantKey;
+            filtrados = filtrados.sort((a: EventParticipant, b: EventParticipant) => {
+                let aVal = a[campoOrdenacao] ?? '';
+                let bVal = b[campoOrdenacao] ?? '';
+
+                if (ordenacao.campo === 'empresa') {
+                    aVal = typeof aVal === 'string' ? aVal.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim() : '';
+                    bVal = typeof bVal === 'string' ? bVal.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim() : '';
+                }
+
+                if (typeof aVal === 'string' && typeof bVal === 'string') {
+                    if (ordenacao.direcao === 'asc') return aVal.localeCompare(bVal);
+                    else return bVal.localeCompare(aVal);
+                }
+                return 0;
+            });
+        }
+
+        return { data: filtrados, total: filtrados.length };
+    }, [filtro, selectedDay, filtroAvancado, ordenacao, getColaboradoresPorDia, generateFilterHash, isDataStale, filteredDataCache]);
+
+    const paginatedData = useMemo(() => {
+        const { data: allData, total } = filtrarColaboradores;
+        const paginated = getPaginatedData(allData, currentPage, itemsPerPage);
+        return { data: paginated, total };
+    }, [filtrarColaboradores, currentPage, itemsPerPage, getPaginatedData]);
+
+    const isHighVolume = paginatedData.total > 1000;
+    const showPerformanceIndicator = isHighVolume && !participantsLoading;
+
+    // TODOS OS useEffect POR ÚLTIMO
+    useEffect(() => {
+        const operadorRaw = localStorage.getItem("operador");
+        setOperadorLogado(!!operadorRaw);
+        if (operadorRaw) {
+            try {
+                const operador = JSON.parse(operadorRaw);
+                setOperadorInfo({ nome: operador.nome, cpf: operador.cpf });
+            } catch {
+                setOperadorInfo(null);
+            }
+        } else {
+            setOperadorInfo(null);
+        }
+        setAuthChecked(true);
+    }, []);
+
+    useEffect(() => {
+        if (participantsData.length > 0) {
+            setIsDataStale(true);
+            setFilteredDataCache(new Map());
+            setCurrentPage(1);
+        }
+    }, [participantsData]);
+
+    useEffect(() => {
+        if (currentPage !== 1) {
+            setCurrentPage(1);
+        }
+    }, [filtro, selectedDay, filtroAvancado, ordenacao, currentPage]);
+
+    useEffect(() => {
+        return () => {
+            if (searchDebounce) {
+                clearTimeout(searchDebounce);
+            }
+        };
+    }, [searchDebounce]);
+
+    useEffect(() => {
+        if (!eventId) {
+            router.push("/");
+            return;
+        }
+        if (participantsError) {
+            console.error("❌ Erro ao carregar colaboradores:", participantsErrorObj);
+            setColunasExtras([]);
+            return;
+        }
+        if (!participantsData || participantsData.length === 0) {
+            setColunasExtras([]);
+            return;
+        }
+
+        if (participantsData.length > 0) {
+            const chaves = Object.keys(participantsData[0]);
+            const indexEmpresa = chaves.indexOf("empresa");
+            const indexPulseira = chaves.indexOf("pulseira_codigo");
+            if (indexEmpresa !== -1 && indexPulseira !== -1) {
+                const extras = chaves.slice(indexEmpresa + 1, indexPulseira);
+                setColunasExtras(extras);
+            }
+        }
+    }, [eventId, participantsError, participantsErrorObj, participantsData, router]);
+
+    // useEffect para gerenciar cache
+    useEffect(() => {
+        const filterHash = generateFilterHash(filtro, selectedDay, filtroAvancado);
+        const { data: filtrados } = filtrarColaboradores;
+
+        if (!filteredDataCache.has(filterHash) || isDataStale) {
+            const newCache = new Map(filteredDataCache);
+            newCache.set(filterHash, filtrados);
+            setFilteredDataCache(newCache);
+            setLastFilterHash(filterHash);
+            setIsDataStale(false);
+        }
+    }, [filtrarColaboradores, isDataStale, filtro, selectedDay, filtroAvancado, filteredDataCache, generateFilterHash]);
+
+    // useEffect para atualizar totalItems
+    useEffect(() => {
+        setTotalItems(paginatedData.total);
+    }, [paginatedData.total]);
+
+    // Variáveis computadas
+    const empresasUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.company))];
+    const funcoesUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.role))];
+    const tiposCredencialUnicos = [...new Set(participantsData.map((c: EventParticipant) => c.wristbandId).filter(Boolean))];
+
+    const empresasUnicasFiltradas = Array.from(new Set(empresasUnicas)).filter(
+        (e): e is string => typeof e === "string" && !!e && e.trim() !== ""
+    );
+    const funcoesUnicasFiltradas = Array.from(new Set(funcoesUnicas)).filter(
+        (f): f is string => typeof f === "string" && !!f && f.trim() !== ""
+    );
+    const tiposCredencialUnicosFiltrados = Array.from(new Set(tiposCredencialUnicos)).filter(
+        (tipo): tipo is string => typeof tipo === "string" && !!tipo && tipo.trim() !== ""
+    );
 
     // Early returns APÓS todos os hooks serem chamados
     if (eventosLoading) {
@@ -573,78 +766,93 @@ export default function Painel() {
         setFiltro({ ...filtro, nome: valor });
     };
 
-    // Atualizar função de filtragem para considerar filtro avançado, ordenação e dia selecionado
-    const filtrarColaboradores = (): EventParticipant[] => {
-        // Primeiro filtrar por dia selecionado
-        let filtrados: EventParticipant[] = getColaboradoresPorDia(selectedDay);
-
-        // Depois aplicar filtros de busca
-        filtrados = filtrados.filter((colab: EventParticipant) => {
-            // Filtro rápido (nome/cpf/pulseira)
-            const nomeMatch = colab.name?.toLowerCase().includes(filtro.nome.toLowerCase());
-            const cpfSemPontuacao = colab.cpf?.replace(/\D/g, "");
-            const buscaSemPontuacao = filtro.nome.replace(/\D/g, "");
-            const cpfMatch = (
-                colab.cpf === filtro.nome ||
-                (cpfSemPontuacao && buscaSemPontuacao && cpfSemPontuacao === buscaSemPontuacao) ||
-                (buscaSemPontuacao.length >= 3 && cpfSemPontuacao?.includes(buscaSemPontuacao))
-            );
-            const pulseiraMatch = colab.wristbandId?.toLowerCase() === filtro.nome.toLowerCase();
-            const empresaMatch = filtro.empresa ? colab.company === filtro.empresa : true;
-            const funcaoMatch = filtro.funcao ? colab.role === filtro.funcao : true;
-
-            let match = (nomeMatch || cpfMatch || pulseiraMatch) && empresaMatch && funcaoMatch;
-
-            // Filtro avançado
-            Object.entries(filtroAvancado).forEach(([campo, valor]) => {
-                const colabValue = (colab as any)[campo];
-                if (valor && String(valor).trim() !== "") {
-                    if (colabValue === undefined || String(colabValue).toLowerCase() !== String(valor).toLowerCase()) {
-                        match = false;
-                    }
-                }
-            });
-
-            return match;
-        });
-
-        // Ordenação
-        if (ordenacao.campo) {
-            type EventParticipantKey = keyof EventParticipant;
-            const campoOrdenacao = ordenacao.campo as EventParticipantKey;
-            filtrados = filtrados.sort((a: EventParticipant, b: EventParticipant) => {
-                let aVal = a[campoOrdenacao] ?? '';
-                let bVal = b[campoOrdenacao] ?? '';
-
-                if (ordenacao.campo === 'empresa') {
-                    aVal = typeof aVal === 'string' ? aVal.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim() : '';
-                    bVal = typeof bVal === 'string' ? bVal.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim() : '';
-                }
-
-                if (typeof aVal === 'string' && typeof bVal === 'string') {
-                    if (ordenacao.direcao === 'asc') return aVal.localeCompare(bVal);
-                    else return bVal.localeCompare(aVal);
-                }
-                return 0;
-            });
-        }
-
-        return filtrados;
+    // Função otimizada de busca com debounce
+    const handleBuscaOtimizada = (valor: string) => {
+        debouncedSearch(valor);
     };
 
-    const empresasUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.company))];
-    const funcoesUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.role))];
-    const tiposCredencialUnicos = [...new Set(participantsData.map((c: EventParticipant) => c.wristbandId).filter(Boolean))];
+    // Função para mudar página
+    const handlePageChange = (page: number) => {
+        setCurrentPage(page);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
-    const empresasUnicasFiltradas = Array.from(new Set(empresasUnicas)).filter(
-        (e): e is string => typeof e === "string" && !!e && e.trim() !== ""
-    );
-    const funcoesUnicasFiltradas = Array.from(new Set(funcoesUnicas)).filter(
-        (f): f is string => typeof f === "string" && !!f && f.trim() !== ""
-    );
-    const tiposCredencialUnicosFiltrados = Array.from(new Set(tiposCredencialUnicos)).filter(
-        (tipo): tipo is string => typeof tipo === "string" && !!tipo && tipo.trim() !== ""
-    );
+    // Função para mudar itens por página
+    const handleItemsPerPageChange = (newItemsPerPage: number) => {
+        setItemsPerPage(newItemsPerPage);
+        setCurrentPage(1);
+    };
+
+    // Componente de paginação
+    const PaginationComponent = () => {
+        const totalPages = calculateTotalPages(paginatedData.total, itemsPerPage);
+        const visiblePages = getVisiblePages(currentPage, totalPages);
+
+        if (totalPages <= 1) return null;
+
+        return (
+            <div className="flex items-center justify-between bg-white px-6 py-4 border-t border-gray-200">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-700">Itens por página:</span>
+                        <Select value={itemsPerPage.toString()} onValueChange={(value) => handleItemsPerPageChange(Number(value))}>
+                            <SelectTrigger className="w-20 h-8">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="25">25</SelectItem>
+                                <SelectItem value="50">50</SelectItem>
+                                <SelectItem value="100">100</SelectItem>
+                                <SelectItem value="200">200</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <span className="text-sm text-gray-600">
+                        Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, paginatedData.total)} de {paginatedData.total} resultados
+                    </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1"
+                    >
+                        Anterior
+                    </Button>
+
+                    {visiblePages.map((page, index) => (
+                        <div key={index}>
+                            {page === '...' ? (
+                                <span className="px-3 py-1 text-gray-500">...</span>
+                            ) : (
+                                <Button
+                                    variant={currentPage === page ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => handlePageChange(page as number)}
+                                    className="px-3 py-1"
+                                >
+                                    {page}
+                                </Button>
+                            )}
+                        </div>
+                    ))}
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1"
+                    >
+                        Próxima
+                    </Button>
+                </div>
+            </div>
+        );
+    };
 
     const abrirPopup = (colaborador: EventParticipant) => {
         setSelectedParticipant(colaborador);
@@ -785,7 +993,8 @@ export default function Painel() {
 
     // Função para exportar para Excel
     const exportarParaExcel = () => {
-        const ws = XLSX.utils.json_to_sheet(filtrarColaboradores());
+        const { data } = filtrarColaboradores;
+        const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Colaboradores");
         const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
@@ -1009,6 +1218,7 @@ export default function Painel() {
         Object.values(filtroAvancado).forEach(val => {
             if (val && String(val).trim() !== "") count++;
         });
+        if (ordenacao.campo && ordenacao.campo !== '') count++;
         return count;
     };
 
@@ -1050,8 +1260,6 @@ export default function Painel() {
         }
         setLoading(false);
     };
-
-
 
     // Função para gerar iniciais do nome
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -1103,25 +1311,47 @@ export default function Painel() {
                                     )}
                                     <div className="text-sm text-gray-600">
                                         <span className="font-medium">
-                                            {selectedDay === 'all'
-                                                ? participantsData.length
-                                                : getColaboradoresPorDia(selectedDay).length
-                                            }
+                                            {paginatedData.total}
                                         </span> colaboradores
                                         {selectedDay !== 'all' && (
                                             <span className="text-xs text-gray-500 ml-1">
                                                 (dia {selectedDay})
                                             </span>
                                         )}
+                                        {paginatedData.total > 1000 && (
+                                            <span className="text-xs text-green-600 ml-2">
+                                                ⚡ Otimizado
+                                            </span>
+                                        )}
                                     </div>
-                                    <Button
-                                        onClick={sair}
-                                        variant="outline"
-                                        size="sm"
-                                        className="text-gray-600 hover:text-gray-900 bg-transparent"
-                                    >
-                                        Trocar evento
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        {isRealtimeSyncing && (
+                                            <div className="flex items-center gap-2 text-green-600 text-sm">
+                                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                                <span>Sincronizando...</span>
+                                            </div>
+                                        )}
+                                        {showPerformanceIndicator && (
+                                            <Button
+                                                onClick={clearCache}
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 border-green-200"
+                                                title="Limpar cache para melhorar performance"
+                                            >
+                                                <RefreshCw className="w-4 h-4 mr-1" />
+                                                Otimizar
+                                            </Button>
+                                        )}
+                                        <Button
+                                            onClick={sair}
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-gray-600 hover:text-gray-900 bg-transparent"
+                                        >
+                                            Trocar evento
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1133,39 +1363,6 @@ export default function Painel() {
                         <div className="mb-8">
                             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                                 <div className="flex flex-wrap gap-3">
-                                    <Button
-                                        onClick={exportarParaExcel}
-                                        variant="outline"
-                                        size="sm"
-                                        className="btn-brand-green"
-                                        disabled={loading}
-                                    >
-                                        <Download className="w-4 h-4 mr-2" />
-                                        Exportar Excel
-                                    </Button>
-
-                                    <Button
-                                        onClick={handleOpenImportDialog}
-                                        variant="outline"
-                                        size="sm"
-                                        className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300 bg-white shadow-sm transition-all duration-200"
-                                        disabled={loading || !operadorLogado}
-                                    >
-                                        <Upload className="w-4 h-4 mr-2" />
-                                        Importar Excel
-                                    </Button>
-
-                                    <Button
-                                        onClick={baixarModeloExcel}
-                                        variant="outline"
-                                        size="sm"
-                                        className="text-violet-600 border-violet-200 hover:bg-violet-50 hover:border-violet-300 bg-white shadow-sm transition-all duration-200"
-                                        disabled={loading}
-                                    >
-                                        <Download className="w-4 h-4 mr-2" />
-                                        Modelo Excel
-                                    </Button>
-
                                     <Button
                                         onClick={() => setFiltroAvancadoOpen(true)}
                                         variant="outline"
@@ -1181,6 +1378,39 @@ export default function Painel() {
                                             </span>
                                         )}
                                     </Button>
+
+                                    {countFiltrosAtivos() > 0 && (
+                                        <Button
+                                            onClick={() => {
+                                                setFiltroAvancado({});
+                                                setOrdenacao({ campo: '', direcao: 'asc' });
+                                            }}
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 bg-white shadow-sm transition-all duration-200"
+                                            disabled={loading}
+                                        >
+                                            <X className="w-4 h-4 mr-2" />
+                                            Limpar Filtros
+                                            <span className="ml-2 bg-red-100 text-red-800 text-xs rounded-full px-2 py-0.5 font-medium">
+                                                {countFiltrosAtivos()}
+                                            </span>
+                                        </Button>
+                                    )}
+
+                                    <Button
+                                        onClick={exportarParaExcel}
+                                        variant="outline"
+                                        size="sm"
+                                        className="btn-brand-green"
+                                        disabled={loading}
+                                    >
+                                        <Download className="w-4 h-4 mr-2" />
+                                        Exportar Excel
+                                    </Button>
+
+
+
                                 </div>
 
                                 <Button
@@ -1205,9 +1435,9 @@ export default function Painel() {
                                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                                 <Input
                                     type="text"
-                                    placeholder="Procure pelo colaborador, pessoa gestora ou matrícula"
+                                    placeholder="Procure pelo colaborador, pessoa gestora ou cpf"
                                     value={filtro.nome}
-                                    onChange={(e) => handleBusca(e.target.value)}
+                                    onChange={(e) => handleBuscaOtimizada(e.target.value)}
                                     className="pl-10 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
                                 />
                             </div>
@@ -1264,6 +1494,14 @@ export default function Painel() {
 
                         {/* Table */}
                         <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+                            {participantsLoading && (
+                                <div className="flex items-center justify-center py-8">
+                                    <div className="flex items-center gap-3">
+                                        <Loader2 className="animate-spin w-6 h-6 text-purple-600" />
+                                        <span className="text-gray-600">Carregando colaboradores...</span>
+                                    </div>
+                                </div>
+                            )}
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
@@ -1285,7 +1523,7 @@ export default function Painel() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody className="bg-white divide-y divide-gray-100 text-gray-600">
-                                    {filtrarColaboradores().length === 0 ? (
+                                    {paginatedData.total === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={5} className="px-6 py-16 text-center text-gray-500">
                                                 <div className="flex flex-col items-center">
@@ -1308,7 +1546,7 @@ export default function Painel() {
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        filtrarColaboradores().map((colab: EventParticipant, index: number) => {
+                                        paginatedData.data.map((colab: EventParticipant, index: number) => {
                                             const botaoTipo = getBotaoAcao(colab);
                                             const wristband = wristbands.find(w => w.id === colab.wristbandId);
                                             const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
@@ -1400,6 +1638,9 @@ export default function Painel() {
                                     )}
                                 </TableBody>
                             </Table>
+
+                            {/* Paginação */}
+                            <PaginationComponent />
                         </div>
                     </div>
 
@@ -1808,12 +2049,12 @@ export default function Painel() {
                                     {hasDefinedPeriods() ? (
                                         <div className="space-y-4">
                                             <p className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-gray-200">
-                                                <strong>Selecione as datas dos períodos do evento:</strong>
+                                                <strong>Selecione as datas disponíveis para o evento:</strong>
                                             </p>
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                                {/* Preparação */}
+                                                {/* Evento */}
                                                 <div>
-                                                    <p className="text-xs font-semibold text-blue-700 mb-2">Preparação</p>
+                                                    <p className="text-xs font-semibold text-blue-700 mb-2">Evento</p>
                                                     <div className="flex flex-col gap-2">
                                                         {getAvailableDates("preparacao").map((date) => (
                                                             <Button
@@ -2288,43 +2529,66 @@ export default function Painel() {
 
                                 {/* Ordenação */}
                                 <div className="bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-6">
-                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Ordenação</h3>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Campo</label>
-                                            <Select
-                                                value={ordenacao.campo}
-                                                onValueChange={campo => setOrdenacao({ ...ordenacao, campo })}
-                                            >
-                                                <SelectTrigger className="bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500">
-                                                    <SelectValue placeholder="Campo" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="name">Nome</SelectItem>
-                                                    <SelectItem value="cpf">CPF</SelectItem>
-                                                    <SelectItem value="role">Função</SelectItem>
-                                                    <SelectItem value="company">Empresa</SelectItem>
-                                                    <SelectItem value="wristbandId">Credencial</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Direção</label>
-                                            <Select
-                                                value={ordenacao.direcao}
-                                                onValueChange={direcao => setOrdenacao({ ...ordenacao, direcao: direcao as 'asc' | 'desc' })}
-                                            >
-                                                <SelectTrigger className="bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500">
-                                                    <SelectValue placeholder="Direção" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="asc">A-Z</SelectItem>
-                                                    <SelectItem value="desc">Z-A</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-semibold text-gray-900">Ordenação</h3>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                id="ordenacao-ativa"
+                                                checked={ordenacao.campo !== ''}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setOrdenacao({ campo: 'name', direcao: 'asc' });
+                                                    } else {
+                                                        setOrdenacao({ campo: '', direcao: 'asc' });
+                                                    }
+                                                }}
+                                                className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                                            />
+                                            <label htmlFor="ordenacao-ativa" className="text-sm font-medium text-gray-700">
+                                                Ativar ordenação
+                                            </label>
                                         </div>
                                     </div>
+
+                                    {ordenacao.campo !== '' && (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Campo</label>
+                                                <Select
+                                                    value={ordenacao.campo}
+                                                    onValueChange={campo => setOrdenacao({ ...ordenacao, campo })}
+                                                >
+                                                    <SelectTrigger className="bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500">
+                                                        <SelectValue placeholder="Campo" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="name">Nome</SelectItem>
+                                                        <SelectItem value="cpf">CPF</SelectItem>
+                                                        <SelectItem value="role">Função</SelectItem>
+                                                        <SelectItem value="company">Empresa</SelectItem>
+                                                        <SelectItem value="wristbandId">Credencial</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Direção</label>
+                                                <Select
+                                                    value={ordenacao.direcao}
+                                                    onValueChange={direcao => setOrdenacao({ ...ordenacao, direcao: direcao as 'asc' | 'desc' })}
+                                                >
+                                                    <SelectTrigger className="bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500">
+                                                        <SelectValue placeholder="Direção" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="asc">A-Z</SelectItem>
+                                                        <SelectItem value="desc">Z-A</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="flex gap-4 pt-6">
@@ -2332,11 +2596,16 @@ export default function Painel() {
                                         variant="outline"
                                         onClick={() => {
                                             setFiltroAvancado({});
-                                            setOrdenacao({ campo: 'name', direcao: 'asc' });
+                                            setOrdenacao({ campo: '', direcao: 'asc' });
                                         }}
                                         className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
                                     >
                                         Limpar Filtros
+                                        {countFiltrosAtivos() > 0 && (
+                                            <span className="ml-2 bg-red-100 text-red-800 text-xs rounded-full px-2 py-0.5 font-medium">
+                                                {countFiltrosAtivos()}
+                                            </span>
+                                        )}
                                     </Button>
                                     <Button
                                         onClick={() => setFiltroAvancadoOpen(false)}

@@ -1,3 +1,4 @@
+/* eslint-disable */
 /* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -5,25 +6,31 @@
 
 import type React from "react"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo } from "react"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import * as XLSX from "xlsx"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import apiClient from "@/lib/api-client"
 import { formatCpf, isValidCpf } from "@/lib/utils"
 import { toast } from "sonner"
-import { Loader2, Download, Upload, Plus, Edit, Trash2 } from "lucide-react"
+import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw } from "lucide-react"
 import { useParams } from "next/navigation"
 import { useOperatorsByEvent } from "@/features/operadores/api/query/use-operators-by-event"
+import { useOperators } from "@/features/operadores/api/query/use-operators"
 import type { Operator } from "@/features/operadores/types"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import EventLayout from "@/components/dashboard/dashboard-layout"
+import { useQueryClient } from "@tanstack/react-query"
 
 export default function OperadoresPage() {
     const params = useParams()
     const eventId = params.id as string
+    const queryClient = useQueryClient()
 
     const [filtro, setFiltro] = useState({ busca: "" })
     const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null)
@@ -64,13 +71,38 @@ export default function OperadoresPage() {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [operatorToDelete, setOperatorToDelete] = useState<Operator | null>(null)
 
+    // Estados para atribuição de operadores
+    const [assignDialogOpen, setAssignDialogOpen] = useState(false)
+    const [selectedOperators, setSelectedOperators] = useState<string[]>([])
+    const [assignLoading, setAssignLoading] = useState(false)
+    const [assignSearch, setAssignSearch] = useState("")
+
     const { data: operadores = [], isLoading: loadingOperadores } = useOperatorsByEvent({
         eventId,
         search: filtro.busca,
         sortBy: ordenacao.campo,
         sortOrder: ordenacao.direcao
     })
+    const { data: allOperators = [], isLoading: loadingAllOperators, refetch: refetchAllOperators } = useOperators()
     const { data: eventos = [] } = useEventos()
+
+    // Forçar refetch dos dados toda vez que a página é carregada
+    useEffect(() => {
+        const refreshData = async () => {
+            console.log("🔄 Atualizando dados de operadores...")
+
+            // Invalidar cache e forçar refetch
+            await queryClient.invalidateQueries({ queryKey: ["operators"] })
+            await queryClient.invalidateQueries({ queryKey: ["operators-by-event"] })
+
+            // Refetch dos dados
+            await refetchAllOperators()
+
+            console.log("✅ Dados de operadores atualizados")
+        }
+
+        refreshData()
+    }, [eventId, queryClient, refetchAllOperators])
 
     useEffect(() => {
         if (eventos && Array.isArray(eventos)) {
@@ -80,6 +112,46 @@ export default function OperadoresPage() {
             }
         }
     }, [eventos, eventId])
+
+    // Filtrar operadores disponíveis (não atribuídos ao evento)
+    const availableOperators = useMemo(() => {
+        if (allOperators && operadores && !loadingAllOperators && !loadingOperadores) {
+            const assignedOperatorIds = operadores.map(op => op.id)
+            return allOperators.filter(op => !assignedOperatorIds.includes(op.id))
+        }
+        return []
+    }, [allOperators, operadores, loadingAllOperators, loadingOperadores])
+
+    // Filtrar operadores disponíveis baseado na busca
+    const filteredAvailableOperators = useMemo(() => {
+        return availableOperators.filter(op =>
+            op.nome.toLowerCase().includes(assignSearch.toLowerCase()) ||
+            op.cpf.includes(assignSearch)
+        )
+    }, [availableOperators, assignSearch])
+
+    // Função para forçar atualização dos dados
+    const forceRefreshData = async () => {
+        console.log("🔄 Forçando atualização dos dados...")
+        setLoading(true)
+
+        try {
+            // Invalidar cache e forçar refetch
+            await queryClient.invalidateQueries({ queryKey: ["operators"] })
+            await queryClient.invalidateQueries({ queryKey: ["operators-by-event"] })
+
+            // Refetch dos dados
+            await refetchAllOperators()
+
+            toast.success("Dados atualizados com sucesso!")
+            console.log("✅ Dados atualizados manualmente")
+        } catch (error) {
+            toast.error("Erro ao atualizar dados")
+            console.error("❌ Erro ao atualizar dados:", error)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const abrirPopup = (operador: Operator) => {
         setSelectedOperator(operador)
@@ -147,6 +219,9 @@ export default function OperadoresPage() {
             toast.success("Operador atualizado com sucesso!")
             setEditDialogOpen(false)
             setEditForm({ nome: "", cpf: "", senha: "" })
+
+            // Forçar atualização dos dados após edição
+            await forceRefreshData()
         } catch (error) {
             toast.error("Erro ao atualizar operador")
         } finally {
@@ -163,6 +238,9 @@ export default function OperadoresPage() {
 
             toast.success("Operador excluído com sucesso!")
             setDeleteDialogOpen(false)
+
+            // Forçar atualização dos dados após exclusão
+            await forceRefreshData()
         } catch (error) {
             toast.error("Erro ao excluir operador")
         } finally {
@@ -193,10 +271,72 @@ export default function OperadoresPage() {
             toast.success("Operador criado com sucesso!")
             setCreateDialogOpen(false)
             setCreateForm({ nome: "", cpf: "", senha: "" })
+
+            // Forçar atualização dos dados após criação
+            await forceRefreshData()
         } catch (error) {
             toast.error("Erro ao criar operador")
         } finally {
             setLoading(false)
+        }
+    }
+
+    // Funções para atribuição de operadores
+    const abrirAtribuirOperadores = () => {
+        setSelectedOperators([])
+        setAssignSearch("")
+        setAssignDialogOpen(true)
+    }
+
+    const handleSelectOperator = (operatorId: string) => {
+        setSelectedOperators(prev =>
+            prev.includes(operatorId)
+                ? prev.filter(id => id !== operatorId)
+                : [...prev, operatorId]
+        )
+    }
+
+    const handleSelectAllOperators = () => {
+        if (selectedOperators.length === filteredAvailableOperators.length) {
+            setSelectedOperators([])
+        } else {
+            setSelectedOperators(filteredAvailableOperators.map(op => op.id))
+        }
+    }
+
+    const handleAssignOperators = async () => {
+        if (selectedOperators.length === 0) {
+            toast.error("Selecione pelo menos um operador")
+            return
+        }
+
+        setAssignLoading(true)
+        try {
+            for (const operatorId of selectedOperators) {
+                const operator = availableOperators.find(op => op.id === operatorId)
+                if (operator) {
+                    const currentEvents = operator.id_events ? operator.id_events.split(',').filter(Boolean) : []
+                    const newEvents = [...currentEvents, eventId]
+
+                    await apiClient.put(`/operadores/${operatorId}`, {
+                        nome: operator.nome,
+                        cpf: operator.cpf,
+                        senha: operator.senha,
+                        id_events: newEvents.join(',')
+                    })
+                }
+            }
+
+            toast.success(`${selectedOperators.length} operador(es) atribuído(s) com sucesso!`)
+            setAssignDialogOpen(false)
+            setSelectedOperators([])
+
+            // Forçar atualização dos dados após atribuição
+            await forceRefreshData()
+        } catch (error) {
+            toast.error("Erro ao atribuir operadores")
+        } finally {
+            setAssignLoading(false)
         }
     }
 
@@ -298,6 +438,9 @@ export default function OperadoresPage() {
 
             toast.success(`${registrosUnicos.length} operadores importados com sucesso!`)
             setResumoDialogOpen(false)
+
+            // Forçar atualização dos dados após importação
+            await forceRefreshData()
         } catch (error) {
             toast.error("Erro ao importar operadores")
         } finally {
@@ -307,7 +450,7 @@ export default function OperadoresPage() {
 
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 
-    if (loadingOperadores) {
+    if (loadingOperadores || loadingAllOperators) {
         return (
             <div className="flex items-center justify-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin" />
@@ -325,9 +468,17 @@ export default function OperadoresPage() {
                         <p className="text-gray-600 mt-1">Evento: {nomeEvento}</p>
                     </div>
                     <div className="flex gap-2">
+                        <Button onClick={abrirAtribuirOperadores} variant="outline">
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            Atribuir Operadores
+                        </Button>
                         <Button onClick={() => setCreateDialogOpen(true)}>
                             <Plus className="h-4 w-4 mr-2" />
                             Novo Operador
+                        </Button>
+                        <Button onClick={forceRefreshData} disabled={loading}>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Refresh
                         </Button>
                     </div>
                 </div>
@@ -573,6 +724,111 @@ export default function OperadoresPage() {
                             <Button variant="destructive" onClick={confirmarExclusao} disabled={loading}>
                                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Excluir"}
                             </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Modal de Atribuição de Operadores */}
+                <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+                    <DialogContent className="max-w-4xl max-h-[80vh]">
+                        <DialogHeader>
+                            <DialogTitle>Atribuir Operadores ao Evento</DialogTitle>
+                            <DialogDescription>
+                                Selecione os operadores que deseja atribuir ao evento &quot;{nomeEvento}&quot;
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                    <Input
+                                        placeholder="Buscar operadores..."
+                                        value={assignSearch}
+                                        onChange={(e) => setAssignSearch(e.target.value)}
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 ml-4">
+                                    <Checkbox
+                                        checked={filteredAvailableOperators.length > 0 && selectedOperators.length === filteredAvailableOperators.length}
+                                        onCheckedChange={handleSelectAllOperators}
+                                    />
+                                    <span className="text-sm text-gray-600">Selecionar todos</span>
+                                </div>
+                            </div>
+
+                            <div className="border rounded-lg max-h-96 overflow-y-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-12"></TableHead>
+                                            <TableHead>Nome</TableHead>
+                                            <TableHead>CPF</TableHead>
+                                            <TableHead>Status</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredAvailableOperators.length > 0 ? (
+                                            filteredAvailableOperators.map((operator) => (
+                                                <TableRow
+                                                    key={operator.id}
+                                                    className={`hover:bg-gray-50 transition-colors ${selectedOperators.includes(operator.id) ? 'bg-blue-50' : ''
+                                                        }`}
+                                                >
+                                                    <TableCell>
+                                                        <Checkbox
+                                                            checked={selectedOperators.includes(operator.id)}
+                                                            onCheckedChange={() => handleSelectOperator(operator.id)}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                                <span className="text-sm font-medium text-blue-600">
+                                                                    {getInitials(operator.nome)}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-gray-900">{capitalizeWords(operator.nome)}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-gray-700">{formatCPF(operator.cpf)}</TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="text-green-600 border-green-200">
+                                                            Disponível
+                                                        </Badge>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                                                    {assignSearch ? 'Nenhum operador encontrado' : 'Nenhum operador disponível para atribuição'}
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            <div className="flex justify-between items-center">
+                                <div className="text-sm text-gray-600">
+                                    {selectedOperators.length} operador(es) selecionado(s)
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+                                        Cancelar
+                                    </Button>
+                                    <Button
+                                        onClick={handleAssignOperators}
+                                        disabled={assignLoading || selectedOperators.length === 0}
+                                    >
+                                        {assignLoading ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <UserPlus className="h-4 w-4 mr-2" />
+                                        )}
+                                        Atribuir {selectedOperators.length > 0 && `(${selectedOperators.length})`}
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </DialogContent>
                 </Dialog>

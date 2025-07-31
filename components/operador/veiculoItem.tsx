@@ -2,7 +2,7 @@
 
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+
 import { Edit, Trash2 } from "lucide-react"
 import { EventVehicle } from "@/features/eventos/actions/create-event-vehicle"
 

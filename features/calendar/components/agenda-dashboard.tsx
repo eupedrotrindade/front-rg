@@ -43,13 +43,13 @@ const getEtapaEvents = (evento: EventType) => {
         end.setDate(end.getDate() + 1);
         etapas.push({
             id: `${evento.id}-preparacao`,
-            title: `${evento.name} (Preparação)`,
+            title: `${evento.name} (Evento)`,
             start,
             end: end.toISOString().slice(0, 10),
             backgroundColor: '#3b82f6', // azul
             borderColor: '#2563eb',
             textColor: '#fff',
-            extendedProps: { ...evento, etapa: 'Preparação' },
+            extendedProps: { ...evento, etapa: 'Evento' },
         });
     }
     if (evento.finalizationStartDate && evento.finalizationEndDate) {
@@ -78,7 +78,7 @@ const Legend = () => (
         </span>
         <span className="flex items-center gap-1">
             <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
-            <span className="text-xs">Preparação</span>
+            <span className="text-xs">Evento</span>
         </span>
         <span className="flex items-center gap-1">
             <span className="w-3 h-3 rounded-full bg-purple-500 inline-block" />
@@ -212,8 +212,8 @@ const AgendaDashboard = () => {
                                             {selectedEvent.etapa === 'Montagem' && (
                                                 <span className="inline-block w-3 h-3 rounded-full bg-yellow-500" title="Montagem" />
                                             )}
-                                            {selectedEvent.etapa === 'Preparação' && (
-                                                <span className="inline-block w-3 h-3 rounded-full bg-blue-500" title="Preparação" />
+                                            {selectedEvent.etapa === 'Evento' && (
+                                                <span className="inline-block w-3 h-3 rounded-full bg-blue-500" title="Evento" />
                                             )}
                                             {selectedEvent.etapa === 'Finalização' && (
                                                 <span className="inline-block w-3 h-3 rounded-full bg-purple-500" title="Finalização" />

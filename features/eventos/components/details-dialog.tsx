@@ -61,7 +61,7 @@ const DetailsDialog = ({ isOpen, onClose, data, type, eventData }: DetailsDialog
                 }
             }
 
-            // Verificar se o dia está no período de preparação/evento
+            // Verificar se o dia está no período de Evento/evento
             if (event.preparationStartDate && event.preparationEndDate) {
                 const startDate = new Date(event.preparationStartDate);
                 const endDate = new Date(event.preparationEndDate);
