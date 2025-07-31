@@ -10,14 +10,12 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...compat.extends("next/core-web-vitals"),
   {
     rules: {
       // Desativar warnings de variáveis não utilizadas
       "@typescript-eslint/no-unused-vars": "off",
       "no-unused-vars": "off",
-      "unused-imports/no-unused-imports": "off",
-
       
       // Desativar warnings de hooks
       "react-hooks/exhaustive-deps": "off",
@@ -28,15 +26,6 @@ const eslintConfig = [
       
       // Desativar warnings de elementos img
       "@next/next/no-img-element": "off",
-      
-      // Desativar warnings de tipos de função
-      "@typescript-eslint/no-unsafe-function-type": "off",
-      
-      // Desativar warnings de imports não utilizados
-      "@typescript-eslint/no-unused-vars": "off",
-      
-      // Desativar warnings de variáveis não utilizadas em destructuring
-      "@typescript-eslint/no-unused-vars": ["off", { "argsIgnorePattern": "^_" }],
     },
   },
 ];
