@@ -88,5 +88,8 @@
     "eslint-config-next": "15.4.1",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "snakecase-keys": "3.2.1"
   }
 }
