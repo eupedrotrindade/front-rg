@@ -28,6 +28,14 @@ import {
     updateEventParticipant,
     checkInEventParticipant,
     checkOutEventParticipant,
+    checkInEventParticipantByDate,
+    checkOutEventParticipantByDate,
+    getEventParticipantAttendanceByDate,
+    getEventOperatorPermissions,
+    getOperatorEventPermissions,
+    setOperatorEventPermissions,
+    removeOperatorEventPermissions,
+    checkOperatorDatePermission,
 } from "@/features/eventos/actions/update-event-participant"
 import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands"
 import { useEventWristbandModels } from "@/features/eventos/api/query/use-event-wristband-models"
@@ -65,7 +73,7 @@ export default function Painel() {
 
     const [operadorLogado, setOperadorLogado] = useState(false);
     const [authChecked, setAuthChecked] = useState(false);
-    const [operadorInfo, setOperadorInfo] = useState<{ nome: string; cpf: string } | null>(null);
+    const [operadorInfo, setOperadorInfo] = useState<{ nome: string; cpf: string; id?: string; acoes?: any[] } | null>(null);
 
     // Estados para os filtros pesquisáveis
     const [filteredEmpresas, setFilteredEmpresas] = useState<string[]>([]);
@@ -112,6 +120,31 @@ export default function Painel() {
     const [filteredDataCache, setFilteredDataCache] = useState<Map<string, EventParticipant[]>>(new Map());
     const [lastFilterHash, setLastFilterHash] = useState<string>('');
     const [isDataStale, setIsDataStale] = useState(false);
+
+    // Estados para check-in/check-out por data
+    const [selectedDateForAction, setSelectedDateForAction] = useState<string>("");
+    const [attendanceStatus, setAttendanceStatus] = useState<{
+        participantId: string;
+        date: string;
+        checkIn: string | null;
+        checkOut: string | null;
+        status: string;
+    } | null>(null);
+
+    // Estados para permissões de operadores
+    const [operatorPermissions, setOperatorPermissions] = useState<{
+        operatorId: string;
+        eventId: string;
+        allowedDates: string[];
+        createdBy?: string;
+        createdAt: string;
+    } | null>(null);
+    const [availableDatesForOperator, setAvailableDatesForOperator] = useState<string[]>([]);
+    const [showPermissionModal, setShowPermissionModal] = useState(false);
+    const [selectedOperatorForPermissions, setSelectedOperatorForPermissions] = useState<{
+        id: string;
+        nome: string;
+    } | null>(null);
 
     // TODOS OS useRef DEPOIS DOS useState
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -273,7 +306,14 @@ export default function Painel() {
             periods.push(`Montagem: ${new Date(evento.setupStartDate).toLocaleDateString('pt-BR')} - ${new Date(evento.setupEndDate).toLocaleDateString('pt-BR')}`);
         }
         if (hasPreparation && evento.preparationStartDate && evento.preparationEndDate) {
-            periods.push(`Evento: ${new Date(evento.preparationStartDate).toLocaleDateString('pt-BR')} - ${new Date(evento.preparationEndDate).toLocaleDateString('pt-BR')}`);
+            const startDate = new Date(evento.preparationStartDate);
+            const endDate = new Date(evento.preparationEndDate);
+
+            // Remover horário para evitar problemas de timezone
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(0, 0, 0, 0);
+
+            periods.push(`Evento: ${new Date(startDate).toLocaleDateString('pt-BR')} - ${new Date(endDate).toLocaleDateString('pt-BR')}`);
         }
         if (hasFinalization && evento.finalizationStartDate && evento.finalizationEndDate) {
             periods.push(`Desmontagem: ${new Date(evento.finalizationStartDate).toLocaleDateString('pt-BR')} - ${new Date(evento.finalizationEndDate).toLocaleDateString('pt-BR')}`);
@@ -298,13 +338,29 @@ export default function Painel() {
         const hasPreparation = evento.preparationStartDate && evento.preparationEndDate;
         const hasFinalization = evento.finalizationStartDate && evento.finalizationEndDate;
 
+        console.log("🔍 Debug getEventDays:");
+        console.log("🔍 preparationStartDate:", evento.preparationStartDate);
+        console.log("🔍 preparationEndDate:", evento.preparationEndDate);
+
         days.push({ id: 'all', label: 'TODOS', date: '', type: 'all' });
 
         if (hasSetup && evento.setupStartDate && evento.setupEndDate) {
-            const startDate = new Date(evento.setupStartDate);
-            const endDate = new Date(evento.setupEndDate);
+            // Corrigir problema de timezone - tratar como data local
+            const startDateStr = evento.setupStartDate;
+            const endDateStr = evento.setupEndDate;
+
+            // Criar datas no timezone local
+            const startDate = new Date(startDateStr + 'T00:00:00');
+            const endDate = new Date(endDateStr + 'T00:00:00');
+
+            console.log("🔍 Montagem - startDate original:", startDateStr);
+            console.log("🔍 Montagem - endDate original:", endDateStr);
+            console.log("🔍 Montagem - startDate local:", startDate);
+            console.log("🔍 Montagem - endDate local:", endDate);
+
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
                 const dateStr = date.toLocaleDateString('pt-BR');
+                console.log("🔍 Adicionando dia de montagem:", dateStr);
                 days.push({
                     id: dateStr,
                     label: `${dateStr} (MONTAGEM)`,
@@ -315,11 +371,23 @@ export default function Painel() {
         }
 
         if (hasPreparation && evento.preparationStartDate && evento.preparationEndDate) {
-            const startDate = new Date(evento.preparationStartDate);
-            const endDate = new Date(evento.preparationEndDate);
+            // Corrigir problema de timezone - tratar como data local
+            const startDateStr = evento.preparationStartDate;
+            const endDateStr = evento.preparationEndDate;
+
+            // Criar datas no timezone local
+            const startDate = new Date(startDateStr + 'T00:00:00');
+            const endDate = new Date(endDateStr + 'T00:00:00');
+
+            console.log("🔍 Preparação/Evento - startDate original:", startDateStr);
+            console.log("🔍 Preparação/Evento - endDate original:", endDateStr);
+            console.log("🔍 Preparação/Evento - startDate local:", startDate);
+            console.log("🔍 Preparação/Evento - endDate local:", endDate);
+
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
                 const dateStr = date.toLocaleDateString('pt-BR');
                 const isOnlyEventDay = !hasSetup && !hasFinalization;
+                console.log("🔍 Adicionando dia de preparação/evento:", dateStr);
                 days.push({
                     id: dateStr,
                     label: isOnlyEventDay ? `${dateStr} (DIA DO EVENTO)` : `${dateStr} (EVENTO)`,
@@ -330,10 +398,22 @@ export default function Painel() {
         }
 
         if (hasFinalization && evento.finalizationStartDate && evento.finalizationEndDate) {
-            const startDate = new Date(evento.finalizationStartDate);
-            const endDate = new Date(evento.finalizationEndDate);
+            // Corrigir problema de timezone - tratar como data local
+            const startDateStr = evento.finalizationStartDate;
+            const endDateStr = evento.finalizationEndDate;
+
+            // Criar datas no timezone local
+            const startDate = new Date(startDateStr + 'T00:00:00');
+            const endDate = new Date(endDateStr + 'T00:00:00');
+
+            console.log("🔍 Finalização - startDate original:", startDateStr);
+            console.log("🔍 Finalização - endDate original:", endDateStr);
+            console.log("🔍 Finalização - startDate local:", startDate);
+            console.log("🔍 Finalização - endDate local:", endDate);
+
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
                 const dateStr = date.toLocaleDateString('pt-BR');
+                console.log("🔍 Adicionando dia de finalização:", dateStr);
                 days.push({
                     id: dateStr,
                     label: `${dateStr} (DESMONTAGEM)`,
@@ -343,6 +423,7 @@ export default function Painel() {
             }
         }
 
+        console.log("🔍 Dias finais gerados:", days);
         return days;
     }, [evento]);
 
@@ -570,6 +651,38 @@ export default function Painel() {
         setIsDataStale(false);
     }, []);
 
+    const getDiasDisponiveisParaOperador = useCallback(() => {
+        if (!operadorInfo?.id) {
+            return getEventDays();
+        }
+
+        if (availableDatesForOperator.length === 0) {
+            return getEventDays();
+        }
+
+        return getEventDays().filter(day =>
+            day.id === 'all' || availableDatesForOperator.includes(day.id)
+        );
+    }, [operadorInfo?.id, availableDatesForOperator, getEventDays]);
+
+    // Adicione após os outros useCallback, antes dos useEffect:
+
+    const carregarPermissoesOperador = useCallback(async () => {
+        if (!operadorInfo?.id) return;
+        try {
+            const permissions = await getOperatorEventPermissions(eventId, operadorInfo.id);
+            setOperatorPermissions(permissions);
+            if (permissions) {
+                setAvailableDatesForOperator(permissions.allowedDates);
+            } else {
+                setAvailableDatesForOperator(getEventDays().map(day => day.id).filter(id => id !== 'all'));
+            }
+        } catch (error) {
+            console.error("Erro ao carregar permissões:", error);
+            setAvailableDatesForOperator(getEventDays().map(day => day.id).filter(id => id !== 'all'));
+        }
+    }, [operadorInfo?.id, eventId, getOperatorEventPermissions, getEventDays]);
+
     // TODOS OS useMemo DEPOIS DOS useCallback
     const filtrarColaboradores = useMemo(() => {
         const filterHash = generateFilterHash(filtro, selectedDay, filtroAvancado);
@@ -583,10 +696,11 @@ export default function Painel() {
 
         filtrados = filtrados.filter((colab: EventParticipant) => {
             const nomeMatch = colab.name?.toLowerCase().includes(filtro.nome.toLowerCase());
-            const cpfSemPontuacao = colab.cpf?.replace(/\D/g, "");
+            const cpfTrimmed = colab.cpf?.trim() || "";
+            const cpfSemPontuacao = cpfTrimmed.replace(/\D/g, "");
             const buscaSemPontuacao = filtro.nome.replace(/\D/g, "");
             const cpfMatch = (
-                colab.cpf === filtro.nome ||
+                cpfTrimmed === filtro.nome ||
                 (cpfSemPontuacao && buscaSemPontuacao && cpfSemPontuacao === buscaSemPontuacao) ||
                 (buscaSemPontuacao.length >= 3 && cpfSemPontuacao?.includes(buscaSemPontuacao))
             );
@@ -642,19 +756,58 @@ export default function Painel() {
 
     // TODOS OS useEffect POR ÚLTIMO
     useEffect(() => {
-        const operadorRaw = localStorage.getItem("operador");
-        setOperadorLogado(!!operadorRaw);
-        if (operadorRaw) {
-            try {
-                const operador = JSON.parse(operadorRaw);
-                setOperadorInfo({ nome: operador.nome, cpf: operador.cpf });
-            } catch {
+        const carregarOperador = async () => {
+            const operadorRaw = localStorage.getItem("operador");
+            setOperadorLogado(!!operadorRaw);
+            if (operadorRaw) {
+                try {
+                    const operador = JSON.parse(operadorRaw);
+                    console.log("🔍 Operador do localStorage:", operador);
+                    console.log("🔍 Operador ID:", operador.id);
+                    console.log("🔍 Operador acao:", operador.acao);
+                    console.log("🔍 Tipo do ID:", typeof operador.id);
+
+                    // Se não tem ID, buscar pelo CPF
+                    if (!operador.id && operador.cpf) {
+                        console.log("🔍 Buscando operador pelo CPF:", operador.cpf);
+                        try {
+                            const response = await apiClient.get(`/operadores?cpf=eq.${operador.cpf}`);
+                            console.log("🔍 Resposta da busca:", response);
+                            if (response.data && response.data.length > 0) {
+                                const operadorCompleto = response.data[0];
+                                console.log("🔍 Operador completo encontrado:", operadorCompleto);
+                                setOperadorInfo({
+                                    nome: operador.nome,
+                                    cpf: operador.cpf,
+                                    id: operadorCompleto.id,
+                                    acoes: operadorCompleto.acoes
+                                });
+                                return;
+                            } else {
+                                console.log("❌ Operador não encontrado na base de dados");
+                            }
+                        } catch (error) {
+                            console.error("❌ Erro ao buscar operador:", error);
+                        }
+                    }
+
+                    setOperadorInfo({
+                        nome: operador.nome,
+                        cpf: operador.cpf,
+                        id: operador.id,
+                        acoes: operador.acoes
+                    });
+                } catch (error) {
+                    console.error("❌ Erro ao parsear operador do localStorage:", error);
+                    setOperadorInfo(null);
+                }
+            } else {
                 setOperadorInfo(null);
             }
-        } else {
-            setOperadorInfo(null);
-        }
-        setAuthChecked(true);
+            setAuthChecked(true);
+        };
+
+        carregarOperador();
     }, []);
 
     useEffect(() => {
@@ -723,6 +876,13 @@ export default function Painel() {
     useEffect(() => {
         setTotalItems(paginatedData.total);
     }, [paginatedData.total]);
+
+    // useEffect para carregar permissões do operador
+    useEffect(() => {
+        if (operadorInfo?.id && eventId) {
+            carregarPermissoesOperador();
+        }
+    }, [operadorInfo?.id, eventId]);
 
     // Variáveis computadas
     const empresasUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.company))];
@@ -867,6 +1027,18 @@ export default function Painel() {
 
     // Função para determinar qual botão mostrar
     const getBotaoAcao = (colaborador: EventParticipant) => {
+        // Se uma data específica está selecionada, usar sistema por data
+        if (selectedDay !== 'all') {
+            // Verificar se o colaborador trabalha nesta data
+            if (!colaborador.daysWork || !colaborador.daysWork.includes(selectedDay)) {
+                return null; // Não trabalha nesta data
+            }
+
+            // Retornar status baseado na presença (será atualizado dinamicamente)
+            return "checkin"; // Placeholder - será atualizado dinamicamente
+        }
+
+        // Sistema antigo para quando "TODOS" está selecionado
         if (!colaborador.checkIn) {
             return "checkin";
         } else if (colaborador.checkIn && !colaborador.checkOut) {
@@ -879,13 +1051,27 @@ export default function Painel() {
     const abrirCheckin = (colaborador: EventParticipant) => {
         setParticipantAction(colaborador);
         setCodigoPulseira("");
+        setSelectedDateForAction(selectedDay === 'all' ? new Date().toLocaleDateString('pt-BR') : selectedDay);
         setPopupCheckin(true);
     };
 
     // Função para abrir popup de check-out
     const abrirCheckout = (colaborador: EventParticipant) => {
         setParticipantAction(colaborador);
+        setSelectedDateForAction(selectedDay === 'all' ? new Date().toLocaleDateString('pt-BR') : selectedDay);
         setPopupCheckout(true);
+    };
+
+    // Função para verificar status de presença por data
+    const verificarPresencaPorData = async (participantId: string, date: string) => {
+        try {
+            const status = await getEventParticipantAttendanceByDate(participantId, date);
+            setAttendanceStatus(status);
+            return status;
+        } catch (error) {
+            console.error("Erro ao verificar presença:", error);
+            return null;
+        }
     };
 
     // Função para registrar ações do operador
@@ -894,6 +1080,8 @@ export default function Painel() {
         try {
             await apiClient.post("/event-histories", {
                 eventId: params?.id as string,
+                entityType: "participant",
+                entityId: acao.entityId as string,
                 action: acao.action,
                 performedBy: operadorInfo.nome,
                 performedByCpf: operadorInfo.cpf,
@@ -902,6 +1090,101 @@ export default function Painel() {
             });
         } catch (error) {
             console.error("Erro ao registrar ação:", error);
+        }
+    };
+
+    // Função para registrar ações na coluna acao do operador
+    const registerOperatorActionInColumn = async (actionData: {
+        type: string;
+        staffId?: string;
+        staffName?: string;
+        pulseira?: string;
+        credencial?: string;
+    }) => {
+        console.log("🔍 registerOperatorActionInColumn chamado com:", actionData);
+        console.log("🔍 operadorInfo:", operadorInfo);
+
+        if (!operadorInfo?.id) {
+            console.log("❌ operadorInfo.id não existe, saindo...");
+            console.log("🔍 Tentando buscar operador pelo CPF...");
+
+            // Tentar buscar o operador pelo CPF se não temos ID
+            if (operadorInfo?.cpf) {
+                try {
+                    const response = await apiClient.get(`/operadores?cpf=eq.${operadorInfo.cpf}`);
+                    console.log("🔍 Resposta da busca por CPF:", response);
+
+                    if (response.data && response.data.length > 0) {
+                        const operadorCompleto = response.data[0];
+                        console.log("🔍 Operador encontrado:", operadorCompleto);
+
+                        // Atualizar operadorInfo com os dados completos
+                        setOperadorInfo({
+                            nome: operadorInfo.nome,
+                            cpf: operadorInfo.cpf,
+                            id: operadorCompleto.id,
+                            acoes: operadorCompleto.acoes
+                        });
+
+                        // Continuar com o registro da ação
+                        console.log("🔍 Continuando com o registro da ação...");
+                    } else {
+                        console.log("❌ Operador não encontrado na base de dados");
+                        return;
+                    }
+                } catch (error) {
+                    console.error("❌ Erro ao buscar operador por CPF:", error);
+                    return;
+                }
+            } else {
+                console.log("❌ Nem ID nem CPF disponíveis");
+                return;
+            }
+        }
+
+        // Verificar se agora temos o ID
+        if (!operadorInfo?.id) {
+            console.log("❌ Ainda não temos operadorInfo.id, saindo...");
+            return;
+        }
+
+        try {
+            const currentActions = operadorInfo.acoes ? (Array.isArray(operadorInfo.acoes) ? operadorInfo.acoes : []) : [];
+            console.log("🔍 currentActions:", currentActions);
+
+            const newAction = {
+                type: actionData.type,
+                evento: Array.isArray(evento) ? "Evento" : (evento?.name || "Evento"),
+                tabela: params?.id as string,
+                staffId: actionData.staffId ? parseInt(actionData.staffId) : 0,
+                pulseira: actionData.pulseira || "",
+                staffName: actionData.staffName || "",
+                timestamp: new Date().toISOString(),
+                credencial: actionData.credencial || ""
+            };
+            console.log("🔍 newAction:", newAction);
+
+            const updatedActions = [...currentActions, newAction];
+            console.log("🔍 updatedActions:", updatedActions);
+
+            console.log("🔍 Fazendo PUT para /operadores/${operadorInfo.id}");
+            console.log("🔍 ID do operador sendo usado:", operadorInfo.id);
+            console.log("🔍 Tipo do ID:", typeof operadorInfo.id);
+
+            const response = await apiClient.put(`/operadores/${operadorInfo.id}`, {
+                acoes: updatedActions
+            });
+            console.log("✅ PUT realizado com sucesso:", response);
+
+            // Atualizar o operadorInfo local com as novas ações
+            setOperadorInfo(prev => prev ? {
+                ...prev,
+                acoes: updatedActions
+            } : null);
+
+        } catch (error) {
+            console.error("❌ Erro ao registrar ação na coluna do operador:", error);
+            console.error("❌ Detalhes do erro:", error);
         }
     };
 
@@ -918,8 +1201,20 @@ export default function Painel() {
             setParticipantAction(null);
             setModalAberto(false);
             await registerOperatorAction({
-                action: "UPDATE_WRISTBAND",
+                action: "updated",
+                entityId: participantAction.id,
                 details: `Pulseira alterada para: ${novaPulseira.trim()}`,
+            });
+            await registerOperatorActionInColumn({
+                type: "update_wristband",
+                staffId: String(participantAction.id),
+                staffName: participantAction.name,
+                pulseira: novaPulseira.trim(),
+                credencial: (() => {
+                    const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
+                    const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
+                    return wristbandModel?.credentialType || '';
+                })()
             });
         } catch (error) {
             toast.error("Erro ao atualizar pulseira.");
@@ -930,8 +1225,10 @@ export default function Painel() {
     // Função para formatar CPF
     const formatCPF = (cpf: string): string => {
         if (!cpf) return "";
-        const digits = cpf.replace(/\D/g, "");
-        if (digits.length !== 11) return cpf;
+        const trimmedCpf = cpf.trim();
+        if (!trimmedCpf) return "";
+        const digits = trimmedCpf.replace(/\D/g, "");
+        if (digits.length !== 11) return trimmedCpf;
         return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
     };
 
@@ -947,8 +1244,8 @@ export default function Painel() {
             return;
         }
 
-        const cpfNovo = novoStaff.cpf.replace(/\D/g, "");
-        const cpfExistente = participantsData.some(c => c.cpf && c.cpf.replace(/\D/g, "") === cpfNovo);
+        const cpfNovo = novoStaff.cpf.trim().replace(/\D/g, "");
+        const cpfExistente = participantsData.some(c => c.cpf && c.cpf.trim().replace(/\D/g, "") === cpfNovo);
         if (cpfExistente) {
             toast.error("Já existe um staff cadastrado com este CPF.");
             return;
@@ -965,6 +1262,19 @@ export default function Painel() {
                 company: novoStaff.empresa,
                 validatedBy: operadorInfo?.nome || undefined,
                 daysWork: novoStaff.daysWork,
+            });
+            await registerOperatorAction({
+                action: "created",
+                entityId: "new",
+                details: `Novo staff adicionado: ${novoStaff.name} (${formatCPF(novoStaff.cpf?.trim() || '')}) - Função: ${novoStaff.funcao} - Empresa: ${novoStaff.empresa}`,
+            });
+            await registerOperatorActionInColumn({
+                type: "add_staff",
+                staffName: novoStaff.name,
+                credencial: (() => {
+                    const wristbandModel = wristbandModelMap[novoStaff.tipo_credencial];
+                    return wristbandModel?.credentialType || '';
+                })()
             });
             toast.success("Novo staff adicionado com sucesso!");
             setNovoStaff({
@@ -1228,15 +1538,43 @@ export default function Painel() {
         if (!participantAction || !codigoPulseira.trim()) return;
         setLoading(true);
         try {
-            await checkInEventParticipant(participantAction.id, {
-                validatedBy: operadorInfo?.nome || "",
-                performedBy: operadorInfo?.nome || "",
-                notes: undefined,
+            if (selectedDateForAction && selectedDateForAction !== 'all') {
+                // Usar sistema por data
+                await checkInEventParticipantByDate(participantAction.id, selectedDateForAction, {
+                    validatedBy: operadorInfo?.nome || "",
+                    performedBy: operadorInfo?.nome || "",
+                    notes: undefined,
+                });
+            } else {
+                // Usar sistema antigo (fallback)
+                await checkInEventParticipant(participantAction.id, {
+                    validatedBy: operadorInfo?.nome || "",
+                    performedBy: operadorInfo?.nome || "",
+                    notes: undefined,
+                });
+            }
+
+            await registerOperatorAction({
+                action: "updated",
+                entityId: participantAction.id,
+                details: `Check-in realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')}) - Pulseira: ${codigoPulseira.trim()}${selectedDateForAction && selectedDateForAction !== 'all' ? ` - Data: ${selectedDateForAction}` : ''}`,
+            });
+            await registerOperatorActionInColumn({
+                type: "checkin",
+                staffId: String(participantAction.id),
+                staffName: participantAction.name,
+                pulseira: codigoPulseira.trim(),
+                credencial: (() => {
+                    const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
+                    const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
+                    return wristbandModel?.credentialType || '';
+                })()
             });
             toast.success("Check-in realizado com sucesso!");
             setPopupCheckin(false);
             setParticipantAction(null);
             setCodigoPulseira("");
+            setSelectedDateForAction("");
         } catch (error) {
             toast.error("Erro ao realizar check-in.");
         }
@@ -1248,14 +1586,41 @@ export default function Painel() {
         if (!participantAction) return;
         setLoading(true);
         try {
-            await checkOutEventParticipant(participantAction.id, {
-                validatedBy: operadorInfo?.nome || "",
-                performedBy: operadorInfo?.nome || "",
-                notes: undefined,
+            if (selectedDateForAction && selectedDateForAction !== 'all') {
+                // Usar sistema por data
+                await checkOutEventParticipantByDate(participantAction.id, selectedDateForAction, {
+                    validatedBy: operadorInfo?.nome || "",
+                    performedBy: operadorInfo?.nome || "",
+                    notes: undefined,
+                });
+            } else {
+                // Usar sistema antigo (fallback)
+                await checkOutEventParticipant(participantAction.id, {
+                    validatedBy: operadorInfo?.nome || "",
+                    performedBy: operadorInfo?.nome || "",
+                    notes: undefined,
+                });
+            }
+
+            await registerOperatorAction({
+                action: "updated",
+                entityId: participantAction.id,
+                details: `Check-out realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')})${selectedDateForAction && selectedDateForAction !== 'all' ? ` - Data: ${selectedDateForAction}` : ''}`,
+            });
+            await registerOperatorActionInColumn({
+                type: "checkout",
+                staffId: String(participantAction.id),
+                staffName: participantAction.name,
+                credencial: (() => {
+                    const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
+                    const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
+                    return wristbandModel?.credentialType || '';
+                })()
             });
             toast.success("Check-out realizado com sucesso!");
             setPopupCheckout(false);
             setParticipantAction(null);
+            setSelectedDateForAction("");
         } catch (error) {
             toast.error("Erro ao realizar check-out.");
         }
@@ -1425,7 +1790,7 @@ export default function Painel() {
                                     disabled={loading || !operadorLogado}
                                 >
                                     <Plus className="w-4 h-4 mr-2" />
-                                    Adicionar Colaborador
+                                    Adicionar Staff
                                 </Button>
                             </div>
                         </div>
@@ -1439,7 +1804,7 @@ export default function Painel() {
                                     placeholder="Procure pelo colaborador, pessoa gestora ou cpf"
                                     value={filtro.nome}
                                     onChange={(e) => handleBuscaOtimizada(e.target.value)}
-                                    className="pl-10 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
+                                    className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
                                 />
                             </div>
                         </div>
@@ -1462,7 +1827,7 @@ export default function Painel() {
                                     ref={tabsContainerRef}
                                     className="-mb-px flex space-x-2 px-6 overflow-x-auto scrollbar-hide"
                                 >
-                                    {getEventDays().map((day) => {
+                                    {getDiasDisponiveisParaOperador().map((day) => {
                                         const colaboradoresNoDia = getColaboradoresPorDia(day.id).length;
                                         const isActive = selectedDay === day.id;
 
@@ -1581,7 +1946,7 @@ export default function Painel() {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                                                        <p className="text-gray-600">{colab.cpf}</p>
+                                                        <p className="text-gray-600">{formatCPF(colab.cpf?.trim() || '')}</p>
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                         <p className="text-gray-600">{colab.role}</p>
@@ -1652,14 +2017,14 @@ export default function Painel() {
                                     <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
                                         <User className="w-5 h-5 text-white" />
                                     </div>
-                                    Detalhes do Colaborador
+                                    Detalhes do Staff
                                 </DialogTitle>
                             </DialogHeader>
 
                             {selectedParticipant && (
                                 <div className="space-y-8">
                                     {/* Informações principais */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-gray-600">
                                         <div className="space-y-4">
                                             <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                                                 <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Nome</label>
@@ -1667,7 +2032,7 @@ export default function Painel() {
                                             </div>
                                             <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                                                 <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">CPF</label>
-                                                <p className="text-lg font-mono text-gray-900 mt-1">{selectedParticipant.cpf}</p>
+                                                <p className="text-lg font-mono text-gray-900 mt-1">{formatCPF(selectedParticipant.cpf?.trim() || '')}</p>
                                             </div>
                                             <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                                                 <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Função</label>
@@ -1729,7 +2094,7 @@ export default function Painel() {
                                     </div>
 
                                     {/* Campo para nova pulseira */}
-                                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
+                                    <div className="bg-gradient-to-r from-blue-50 text-gray-600 to-purple-50 border border-blue-200 rounded-lg p-6">
                                         <label className="block text-sm font-semibold text-gray-700 mb-3">
                                             Nova Pulseira (pressione Enter para salvar)
                                         </label>
@@ -1740,7 +2105,7 @@ export default function Painel() {
                                             onKeyPress={salvarNovaPulseira}
                                             placeholder="Digite o código da nova pulseira"
                                             disabled={loading}
-                                            className="max-w-md bg-white border-blue-300 focus:border-purple-500 focus:ring-purple-500 shadow-sm text-gray-600"
+                                            className="max-w-md bg-white text-gray-600 border-blue-300 focus:border-purple-500 focus:ring-purple-500 shadow-sm"
                                         />
                                     </div>
 
@@ -1812,11 +2177,25 @@ export default function Painel() {
                                 </DialogDescription>
                             </DialogHeader>
 
-                            <div className="space-y-6">
+                            <div className="space-y-6 text-gray-600">
                                 {participantAction && (
                                     <div className="text-center p-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg">
                                         <p className="font-bold text-gray-900 text-lg">{participantAction.name}</p>
+                                        <p className="text-sm text-gray-600 mt-1">{formatCPF(participantAction.cpf?.trim() || '')}</p>
                                         <p className="text-sm text-gray-600 mt-1">{participantAction.role}</p>
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            Tipo de Credencial: {(() => {
+                                                const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
+                                                const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
+                                                return wristbandModel?.credentialType || '-';
+                                            })()}
+                                        </p>
+                                        {selectedDateForAction && selectedDateForAction !== 'all' && (
+                                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                <p className="text-sm font-semibold text-blue-800">Data selecionada:</p>
+                                                <p className="text-lg font-bold text-blue-900">{selectedDateForAction}</p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -1890,7 +2269,21 @@ export default function Painel() {
                                 {participantAction && (
                                     <div className="text-center p-6 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-lg">
                                         <p className="font-bold text-gray-900 text-lg">{participantAction.name}</p>
+                                        <p className="text-sm text-gray-600 mt-1">{formatCPF(participantAction.cpf?.trim() || '')}</p>
                                         <p className="text-sm text-gray-600 mt-1">{participantAction.role}</p>
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            Tipo de Credencial: {(() => {
+                                                const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
+                                                const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
+                                                return wristbandModel?.credentialType || '-';
+                                            })()}
+                                        </p>
+                                        {selectedDateForAction && selectedDateForAction !== 'all' && (
+                                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                <p className="text-sm font-semibold text-blue-800">Data selecionada:</p>
+                                                <p className="text-lg font-bold text-blue-900">{selectedDateForAction}</p>
+                                            </div>
+                                        )}
                                         <p className="text-xs text-red-600 mt-3 font-medium">
                                             Deseja realmente fazer o check-out?
                                         </p>
@@ -1942,13 +2335,13 @@ export default function Painel() {
                                     Adicionar Novo Staff
                                 </DialogTitle>
                                 <DialogDescription className="text-gray-600">
-                                    Preencha os dados do novo colaborador
+                                    Preencha os dados do novo Staff
                                 </DialogDescription>
                             </DialogHeader>
 
                             <div className="space-y-8">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-gray-600">
+                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-gray-600">
                                         <label className="block text-sm font-semibold text-gray-700 mb-3">
                                             Nome completo *
                                         </label>
@@ -1962,7 +2355,7 @@ export default function Painel() {
                                         />
                                     </div>
 
-                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-gray-600">
                                         <label className="block text-sm font-semibold text-gray-700 mb-3">
                                             CPF *
                                         </label>
@@ -2186,7 +2579,7 @@ export default function Painel() {
                                         ) : (
                                             <>
                                                 <Plus className="w-4 h-4 mr-2" />
-                                                Adicionar Colaborador
+                                                Adicionar Staff
                                             </>
                                         )}
                                     </Button>
@@ -2291,7 +2684,7 @@ export default function Painel() {
                                                     <X className="w-3 h-3 text-red-500" />
                                                 </div>
                                                 <span className="font-medium">{d.name}</span>
-                                                <span className="text-gray-500 font-mono">- {d.cpf}</span>
+                                                <span className="text-gray-500 font-mono">- {formatCPF(d.cpf?.trim() || '')}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -2365,7 +2758,7 @@ export default function Painel() {
                                             <ul className="space-y-2">
                                                 {resumoImportacao.importados.map((item, i) => (
                                                     <li key={i} className="text-sm text-green-800 bg-white p-2 rounded border border-green-200 shadow-sm">
-                                                        {item.name} - {item.cpf}
+                                                        {item.name} - {formatCPF(item.cpf?.trim() || '')}
                                                     </li>
                                                 ))}
                                             </ul>
@@ -2605,6 +2998,104 @@ export default function Painel() {
                                     </Button>
                                 </div>
                             </div>
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* MODAL GERENCIAR PERMISSÕES DE OPERADORES */}
+                    <Dialog open={showPermissionModal} onOpenChange={setShowPermissionModal}>
+                        <DialogContent className="max-w-2xl bg-gradient-to-br from-white to-blue-50 border-0 shadow-2xl">
+                            <DialogHeader className="pb-6">
+                                <DialogTitle className="flex items-center gap-3 text-xl font-bold text-gray-900">
+                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                                        <User className="w-5 h-5 text-white" />
+                                    </div>
+                                    Gerenciar Permissões de Operador
+                                </DialogTitle>
+                                <DialogDescription className="text-gray-600">
+                                    Configure quais dias este operador pode acessar
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            {selectedOperatorForPermissions && (
+                                <div className="space-y-6">
+                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                                        <h3 className="font-semibold text-blue-900 mb-2">Operador Selecionado</h3>
+                                        <p className="text-blue-800">{selectedOperatorForPermissions.nome}</p>
+                                        <p className="text-sm text-blue-600">ID: {selectedOperatorForPermissions.id}</p>
+                                    </div>
+
+                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                                        <h4 className="font-semibold text-gray-900 mb-4">Dias Disponíveis do Evento</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            {getEventDays().filter(day => day.id !== 'all').map((day) => (
+                                                <Button
+                                                    key={day.id}
+                                                    type="button"
+                                                    variant={availableDatesForOperator.includes(day.id) ? "default" : "outline"}
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        const newDates = availableDatesForOperator.includes(day.id)
+                                                            ? availableDatesForOperator.filter(d => d !== day.id)
+                                                            : [...availableDatesForOperator, day.id];
+                                                        setAvailableDatesForOperator(newDates);
+                                                    }}
+                                                    className={`text-xs transition-all duration-200 ${availableDatesForOperator.includes(day.id)
+                                                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md"
+                                                        : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:border-blue-300 shadow-sm"
+                                                        }`}
+                                                >
+                                                    {day.label}
+                                                </Button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {availableDatesForOperator.length > 0 && (
+                                        <div className="bg-gradient-to-r from-green-100 to-emerald-100 border border-green-300 rounded-lg p-4">
+                                            <p className="text-sm text-green-800 font-medium">
+                                                <strong>Dias selecionados:</strong> {availableDatesForOperator.join(', ')}
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="flex gap-4 pt-6">
+                                        <Button
+                                            onClick={() => {
+                                                setShowPermissionModal(false);
+                                                setSelectedOperatorForPermissions(null);
+                                                setAvailableDatesForOperator([]);
+                                            }}
+                                            variant="outline"
+                                            className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
+                                        >
+                                            Cancelar
+                                        </Button>
+                                        <Button
+                                            onClick={async () => {
+                                                if (selectedOperatorForPermissions) {
+                                                    try {
+                                                        await setOperatorEventPermissions(
+                                                            eventId,
+                                                            selectedOperatorForPermissions.id,
+                                                            availableDatesForOperator,
+                                                            operadorInfo?.nome
+                                                        );
+                                                        toast.success("Permissões atualizadas com sucesso!");
+                                                        setShowPermissionModal(false);
+                                                        setSelectedOperatorForPermissions(null);
+                                                        setAvailableDatesForOperator([]);
+                                                    } catch (error) {
+                                                        toast.error("Erro ao atualizar permissões.");
+                                                    }
+                                                }
+                                            }}
+                                            className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                                        >
+                                            Salvar Permissões
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                         </DialogContent>
                     </Dialog>
                 </>

@@ -9,15 +9,16 @@ import { useEventWristbandModels } from '@/features/eventos/api/query/use-event-
 import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coordenadores-by-event'
 import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
+import { useUpdateEventParticipant } from '@/features/eventos/api/mutation/use-update-event-participant'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X } from 'lucide-react'
+import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2 } from 'lucide-react'
 import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { EventParticipant } from '@/features/eventos/types'
 import EventParticipantCreateDialog from '@/features/eventos/components/event-participant-create-dialog'
@@ -44,11 +45,31 @@ export default function EventoDetalhesPage() {
         eventId: String(params.id)
     })
     const { data: empresas = [], isLoading: empresasLoading } = useEmpresasByEvent(String(params.id))
+    const { mutate: updateParticipant, isPending: isUpdatingParticipant } = useUpdateEventParticipant()
 
     const [deletingParticipant, setDeletingParticipant] = useState<EventParticipant | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
-    const [selectedDay, setSelectedDay] = useState<string>('all')
-    const tabsContainerRef = useRef<HTMLDivElement>(null)
+    const [selectedDay, setSelectedDay] = useState<string>('')
+    const [replicatingStaff, setReplicatingStaff] = useState<string | null>(null)
+    const [showReplicateDialog, setShowReplicateDialog] = useState(false)
+    const [replicateSourceDay, setReplicateSourceDay] = useState<string>('')
+    const [replicateMode, setReplicateMode] = useState<'replace' | 'skip' | 'reset'>('skip')
+    const [showProgressDialog, setShowProgressDialog] = useState(false)
+    const [progressData, setProgressData] = useState<{
+        total: number
+        current: number
+        processed: number
+        skipped: number
+        reset: number
+        currentParticipant: string
+    }>({
+        total: 0,
+        current: 0,
+        processed: 0,
+        skipped: 0,
+        reset: 0,
+        currentParticipant: ''
+    })
 
     const evento = Array.isArray(eventos)
         ? eventos.find((e) => String(e.id) === String(params.id))
@@ -67,14 +88,37 @@ export default function EventoDetalhesPage() {
         return map
     }, [wristbandModelsArray])
 
+    // Função para normalizar formato de data
+    const normalizeDate = useCallback((dateStr: string): string => {
+        // Se já está no formato dd/mm/yyyy, retorna como está
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+            return dateStr;
+        }
+
+        // Se está no formato yyyy-mm-dd, converte para dd/mm/yyyy
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            const [year, month, day] = dateStr.split('-');
+            return `${day}/${month}/${year}`;
+        }
+
+        // Se é uma data JavaScript, converte para dd/mm/yyyy
+        try {
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+                return date.toLocaleDateString('pt-BR');
+            }
+        } catch (error) {
+            console.error('Erro ao converter data:', dateStr, error);
+        }
+
+        return dateStr;
+    }, []);
+
     // Função para gerar tabs dos dias do evento
     const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string }> => {
         if (!evento) return [];
 
         const days: Array<{ id: string; label: string; date: string; type: string }> = [];
-
-        // Adicionar dia "Todos"
-        days.push({ id: 'all', label: 'TODOS', date: '', type: 'all' });
 
         // Adicionar dias de montagem
         if (evento.setupStartDate && evento.setupEndDate) {
@@ -126,34 +170,24 @@ export default function EventoDetalhesPage() {
 
     // Função para filtrar participantes por dia selecionado
     const getParticipantesPorDia = useCallback((dia: string): EventParticipant[] => {
-        if (dia === 'all') {
-            return participantsArray;
-        }
-
         return participantsArray.filter((participant: EventParticipant) => {
             if (!participant.daysWork || participant.daysWork.length === 0) {
                 return false; // Se não tem dias de trabalho definidos, não aparece em nenhum dia específico
             }
-            return participant.daysWork.includes(dia);
+
+            // Normalizar o dia selecionado
+            const normalizedDia = normalizeDate(dia);
+
+            // Verificar se algum dos dias de trabalho do participante corresponde ao dia selecionado
+            const hasDay = participant.daysWork.some(workDay => {
+                const normalizedWorkDay = normalizeDate(workDay);
+                const matches = normalizedWorkDay === normalizedDia;
+                return matches;
+            });
+
+            return hasDay;
         });
-    }, [participantsArray]);
-
-    // Funções para controlar o carrossel dos dias
-    const scrollToLeft = useCallback(() => {
-        if (tabsContainerRef.current) {
-            const container = tabsContainerRef.current;
-            const scrollAmount = container.clientWidth * 0.8;
-            container.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
-        }
-    }, []);
-
-    const scrollToRight = useCallback(() => {
-        if (tabsContainerRef.current) {
-            const container = tabsContainerRef.current;
-            const scrollAmount = container.clientWidth * 0.8;
-            container.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-        }
-    }, []);
+    }, [participantsArray, normalizeDate]);
 
     // Função para obter a cor da tab baseada no tipo de dia
     const getTabColor = useCallback((type: string, isActive: boolean) => {
@@ -252,6 +286,150 @@ export default function EventoDetalhesPage() {
         if (!participant.checkIn) return "checkin"
         if (participant.checkIn && !participant.checkOut) return "checkout"
         return "none"
+    }
+
+    // Função para abrir popup de replicação de staff
+    const handleOpenReplicateDialog = (sourceDay: string) => {
+        setReplicateSourceDay(sourceDay)
+        setShowReplicateDialog(true)
+    }
+
+    // Função para replicar staff rapidamente
+    const handleReplicateStaff = async () => {
+        if (!replicateSourceDay) return
+
+        setReplicatingStaff(replicateSourceDay)
+        setShowReplicateDialog(false)
+
+        try {
+            console.log('Todos os participantes disponíveis:', participantsArray)
+            console.log('Dia atual selecionado:', selectedDay)
+
+            // Buscar todos os participantes que trabalham no dia de origem
+            const participantsFromSourceDay = getParticipantesPorDia(replicateSourceDay)
+
+            console.log('Dia de origem:', replicateSourceDay)
+            console.log('Participantes encontrados no dia de origem:', participantsFromSourceDay)
+
+            // Inicializar dados de progresso
+            setProgressData({
+                total: participantsFromSourceDay.length,
+                current: 0,
+                processed: 0,
+                skipped: 0,
+                reset: 0,
+                currentParticipant: ''
+            })
+            setShowProgressDialog(true)
+
+            let processedCount = 0
+            let skippedCount = 0
+            let resetCount = 0
+
+            // Para cada participante do dia de origem, adicionar ao dia atual
+            for (let i = 0; i < participantsFromSourceDay.length; i++) {
+                const participant = participantsFromSourceDay[i]
+                const currentParticipantName = participant.name || 'Participante sem nome'
+
+                // Atualizar progresso
+                setProgressData(prev => ({
+                    ...prev,
+                    current: i + 1,
+                    currentParticipant: currentParticipantName
+                }))
+
+                const currentDaysWork = participant.daysWork || []
+                const alreadyWorksToday = currentDaysWork.includes(selectedDay)
+
+                if (alreadyWorksToday) {
+                    switch (replicateMode) {
+                        case 'skip':
+                            console.log(`Pulando ${participant.name} - já trabalha no dia ${selectedDay}`)
+                            skippedCount++
+                            setProgressData(prev => ({ ...prev, skipped: skippedCount }))
+                            break
+                        case 'replace':
+                            // Manter o dia, mas resetar check-in/check-out se necessário
+                            // TODO: Implementar reset via API
+                            console.log(`Resetando check-in/check-out para ${participant.name} no dia ${selectedDay}`)
+                            resetCount++
+                            processedCount++
+                            setProgressData(prev => ({
+                                ...prev,
+                                reset: resetCount,
+                                processed: processedCount
+                            }))
+                            break
+                        case 'reset':
+                            // TODO: Implementar reset via API
+                            console.log(`Resetando check-in/check-out para ${participant.name} no dia ${selectedDay}`)
+                            resetCount++
+                            processedCount++
+                            setProgressData(prev => ({
+                                ...prev,
+                                reset: resetCount,
+                                processed: processedCount
+                            }))
+                            break
+                    }
+                } else {
+                    // Adicionar o dia atual aos dias de trabalho
+                    const updatedDaysWork = [...currentDaysWork, selectedDay]
+
+                    try {
+                        // Atualizar participante via API
+                        console.log(`Adicionando dia ${selectedDay} para ${participant.name}`)
+                        console.log(`Dias de trabalho atualizados: ${updatedDaysWork.join(', ')}`)
+
+                        // Chamar a API para atualizar o participante
+                        const updateData = {
+                            id: participant.id,
+                            eventId: participant.eventId || String(params.id),
+                            name: participant.name || '',
+                            cpf: participant.cpf || '',
+                            role: participant.role || '',
+                            company: participant.company || '',
+                            daysWork: updatedDaysWork
+                        }
+
+                        console.log('Dados para atualização:', updateData)
+
+                        updateParticipant(updateData, {
+                            onSuccess: () => {
+                                console.log(`✅ ${participant.name} atualizado com sucesso`)
+                                processedCount++
+                                setProgressData(prev => ({ ...prev, processed: processedCount }))
+                            },
+                            onError: (error) => {
+                                console.error(`❌ Erro ao atualizar ${participant.name}:`, error)
+                            }
+                        })
+
+                        // Simular delay para mostrar progresso
+                        await new Promise(resolve => setTimeout(resolve, 500))
+
+                    } catch (error) {
+                        console.error(`Erro ao atualizar ${participant.name}:`, error)
+                    }
+                }
+            }
+
+            // Fechar popup de progresso após delay
+            setTimeout(() => {
+                setShowProgressDialog(false)
+                setReplicatingStaff(null)
+
+                toast.success(
+                    `Replicação concluída! ${processedCount} processados, ${skippedCount} pulados, ${resetCount} resetados.`
+                )
+            }, 1000)
+
+        } catch (error) {
+            console.error('Erro na replicação:', error)
+            setShowProgressDialog(false)
+            setReplicatingStaff(null)
+            toast.error('Erro ao replicar participantes')
+        }
     }
 
     const isLoading = participantsLoading || wristbandsLoading || wristbandModelsLoading || coordenadoresLoading || vagasLoading || empresasLoading
@@ -483,49 +661,57 @@ export default function EventoDetalhesPage() {
                 {/* Tabs dos dias do evento com carrossel */}
                 <div className="mb-8">
                     <div className="border-b border-gray-200 bg-white rounded-t-lg relative">
-                        {/* Botão de navegação esquerda */}
-                        <button
-                            onClick={scrollToLeft}
-                            className="absolute left-0 top-0 bottom-0 z-10 flex items-center justify-center w-8 bg-white border-r border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors duration-200"
-                        >
-                            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                            </svg>
-                        </button>
-
-                        {/* Container dos tabs com scroll */}
+                        {/* Container dos tabs sem scroll horizontal */}
                         <nav
-                            ref={tabsContainerRef}
-                            className="-mb-px flex space-x-2 px-6 overflow-x-auto scrollbar-hide"
+                            className="-mb-px flex flex-wrap gap-1 px-4 py-2"
                         >
                             {getEventDays().map((day) => {
                                 const participantesNoDia = getParticipantesPorDia(day.id).length;
                                 const isActive = selectedDay === day.id;
 
                                 return (
-                                    <button
-                                        key={day.id}
-                                        onClick={() => setSelectedDay(day.id)}
-                                        className={`border-b-2 py-3 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
-                                            ? getTabColor(day.type, true)
-                                            : `border-transparent text-gray-500 ${getTabColor(day.type, false)}`
-                                            }`}
-                                    >
-                                        {day.label} ({participantesNoDia})
-                                    </button>
+                                    <div key={day.id} className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setSelectedDay(day.id)}
+                                            className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
+                                                ? getTabColor(day.type, true)
+                                                : `border-transparent text-gray-500 ${getTabColor(day.type, false)}`
+                                                }`}
+                                        >
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-xs font-medium">
+                                                    {day.label.split(' ')[0]}
+                                                </span>
+                                                <span className="text-xs opacity-75">
+                                                    ({participantesNoDia})
+                                                </span>
+                                            </div>
+                                        </button>
+                                        {isActive && (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => handleOpenReplicateDialog(day.id)}
+                                                disabled={replicatingStaff === day.id}
+                                                className="text-xs h-6 px-2 bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                                            >
+                                                {replicatingStaff === day.id ? (
+                                                    <>
+                                                        <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1"></div>
+                                                        Replicando...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Users className="w-3 h-3 mr-1" />
+                                                        Replicar Participantes
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
+                                    </div>
                                 );
                             })}
                         </nav>
-
-                        {/* Botão de navegação direita */}
-                        <button
-                            onClick={scrollToRight}
-                            className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center w-8 bg-white border-l border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors duration-200"
-                        >
-                            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                        </button>
                     </div>
                 </div>
 
@@ -572,16 +758,10 @@ export default function EventoDetalhesPage() {
                                                 <User className="w-8 h-8 text-gray-400" />
                                             </div>
                                             <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                {selectedDay === 'all'
-                                                    ? 'Nenhum participante encontrado'
-                                                    : `Nenhum participante encontrado para ${selectedDay}`
-                                                }
+                                                Nenhum participante encontrado para {selectedDay}
                                             </p>
                                             <p className="text-sm text-gray-500">
-                                                {selectedDay === 'all'
-                                                    ? 'Tente ajustar os filtros ou adicionar novos participantes'
-                                                    : 'Adicione participantes com dias de trabalho definidos ou ajuste os filtros'
-                                                }
+                                                Adicione participantes com dias de trabalho definidos ou ajuste os filtros
                                             </p>
                                         </div>
                                     </TableCell>
@@ -706,6 +886,167 @@ export default function EventoDetalhesPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
+            {/* Dialog de Replicação de Staff */}
+            <AlertDialog open={showReplicateDialog} onOpenChange={setShowReplicateDialog}>
+                <AlertDialogContent className="bg-white text-black max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <Users className="h-5 w-5 text-green-600" />
+                            Replicar Participantes
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Escolha o dia de origem e como tratar participantes que já trabalham no dia atual.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        {/* Seleção do dia de origem */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Dia de Origem
+                            </label>
+                            <select
+                                value={replicateSourceDay}
+                                onChange={(e) => setReplicateSourceDay(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            >
+                                <option value="">Selecione um dia</option>
+                                {getEventDays().map((day) => (
+                                    <option key={day.id} value={day.id}>
+                                        {day.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Opções de tratamento de dados existentes */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Se o staff já trabalha no dia atual:
+                            </label>
+                            <div className="space-y-2">
+                                <label className="flex items-center">
+                                    <input
+                                        type="radio"
+                                        name="replicateMode"
+                                        value="skip"
+                                        checked={replicateMode === 'skip'}
+                                        onChange={(e) => setReplicateMode(e.target.value as 'replace' | 'skip' | 'reset')}
+                                        className="mr-2 text-green-600 focus:ring-green-500"
+                                    />
+                                    <span className="text-sm text-gray-700">Pular (manter como está)</span>
+                                </label>
+                                <label className="flex items-center">
+                                    <input
+                                        type="radio"
+                                        name="replicateMode"
+                                        value="replace"
+                                        checked={replicateMode === 'replace'}
+                                        onChange={(e) => setReplicateMode(e.target.value as 'replace' | 'skip' | 'reset')}
+                                        className="mr-2 text-green-600 focus:ring-green-500"
+                                    />
+                                    <span className="text-sm text-gray-700">Resetar check-in/check-out</span>
+                                </label>
+                                <label className="flex items-center">
+                                    <input
+                                        type="radio"
+                                        name="replicateMode"
+                                        value="reset"
+                                        checked={replicateMode === 'reset'}
+                                        onChange={(e) => setReplicateMode(e.target.value as 'replace' | 'skip' | 'reset')}
+                                        className="mr-2 text-green-600 focus:ring-green-500"
+                                    />
+                                    <span className="text-sm text-gray-700">Resetar check-in/check-out</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Informações sobre a replicação */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Users className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">Como funciona</span>
+                            </div>
+                            <div className="text-xs text-blue-700">
+                                Serão trazidos todos os participantes (coordenadores, organizadores, etc.)
+                                que trabalham no dia selecionado para o dia atual.
+                            </div>
+                        </div>
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleReplicateStaff}
+                            disabled={!replicateSourceDay}
+                            className="bg-green-600 hover:bg-green-700"
+                        >
+                            {replicatingStaff ? "Replicando..." : "Replicar Participantes"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Popup de Progresso */}
+            <AlertDialog open={showProgressDialog} onOpenChange={setShowProgressDialog}>
+                <AlertDialogContent className="max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                            Replicando Participantes
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Atualizando dias de trabalho...
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4">
+                        {/* Barra de Progresso */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span>Progresso</span>
+                                <span>{progressData.current} / {progressData.total}</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                    style={{
+                                        width: `${progressData.total > 0 ? (progressData.current / progressData.total) * 100 : 0}%`
+                                    }}
+                                ></div>
+                            </div>
+                        </div>
+
+                        {/* Participante Atual */}
+                        {progressData.currentParticipant && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2">
+                                    <User className="h-4 w-4 text-blue-600" />
+                                    <span className="text-sm font-medium text-blue-800">
+                                        Processando: {progressData.currentParticipant}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Estatísticas */}
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                            <div className="bg-green-50 border border-green-200 rounded p-2 text-center">
+                                <div className="font-bold text-green-700">{progressData.processed}</div>
+                                <div className="text-xs text-green-600">Processados</div>
+                            </div>
+                            <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-center">
+                                <div className="font-bold text-yellow-700">{progressData.skipped}</div>
+                                <div className="text-xs text-yellow-600">Pulados</div>
+                            </div>
+                            <div className="bg-orange-50 border border-orange-200 rounded p-2 text-center">
+                                <div className="font-bold text-orange-700">{progressData.reset}</div>
+                                <div className="text-xs text-orange-600">Resetados</div>
+                            </div>
+                        </div>
+                    </div>
+                </AlertDialogContent>
+            </AlertDialog>
 
             {/* DIALOG DUPLICADOS */}
             {/* This section is no longer needed as the import/export system handles duplicates */}

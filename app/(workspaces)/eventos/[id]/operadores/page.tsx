@@ -74,6 +74,30 @@ export default function OperadoresPage() {
     const [assignLoading, setAssignLoading] = useState(false)
     const [assignSearch, setAssignSearch] = useState("")
 
+    // Estados para seleção de data do evento
+    const [showDateSelection, setShowDateSelection] = useState(false)
+    const [selectedEventDate, setSelectedEventDate] = useState<string>("")
+
+    // Estados para armazenar o arquivo selecionado para importação
+    const [fileToImport, setFileToImport] = useState<File | null>(null)
+
+    // Função para gerar datas do evento
+    const getEventDates = () => {
+        if (!evento) return []
+
+        const dates: string[] = []
+        const startDate = new Date(evento.startDate)
+        const endDate = new Date(evento.endDate)
+
+        const currentDate = new Date(startDate)
+        while (currentDate <= endDate) {
+            dates.push(currentDate.toISOString().split('T')[0])
+            currentDate.setDate(currentDate.getDate() + 1)
+        }
+
+        return dates
+    }
+
     const { data: operadores = [], isLoading: loadingOperadores } = useOperatorsByEvent({
         eventId,
         search: filtro.busca,
@@ -82,6 +106,7 @@ export default function OperadoresPage() {
     })
     const { data: allOperators = [], isLoading: loadingAllOperators, refetch: refetchAllOperators } = useOperators()
     const { data: eventos = [] } = useEventos()
+    const evento = Array.isArray(eventos) ? eventos.find(e => e.id === eventId) : null
 
     // Forçar refetch dos dados toda vez que a página é carregada
     useEffect(() => {
@@ -183,6 +208,8 @@ export default function OperadoresPage() {
             cpf: operador.cpf,
             senha: operador.senha
         })
+        // Carregar data de atribuição atual
+        setSelectedEventDate(getOperatorAssignmentDate(operador) || "")
         setEditDialogOpen(true)
     }
 
@@ -206,16 +233,20 @@ export default function OperadoresPage() {
 
         setLoading(true)
         try {
+            // Criar atribuição com data específica se disponível
+            const eventAssignment = selectedEventDate ? `${eventId}:${selectedEventDate}` : eventId
+
             await apiClient.put(`/operadores/${operatorToEdit.id}`, {
                 nome: editForm.nome,
                 cpf: editForm.cpf,
                 senha: editForm.senha,
-                id_events: eventId
+                id_events: eventAssignment
             })
 
             toast.success("Operador atualizado com sucesso!")
             setEditDialogOpen(false)
             setEditForm({ nome: "", cpf: "", senha: "" })
+            setSelectedEventDate("")
 
             // Forçar atualização dos dados após edição
             await forceRefreshData()
@@ -258,16 +289,20 @@ export default function OperadoresPage() {
 
         setLoading(true)
         try {
+            // Criar atribuição com data específica se disponível
+            const eventAssignment = selectedEventDate ? `${eventId}:${selectedEventDate}` : eventId
+
             await apiClient.post("/operadores", {
                 nome: createForm.nome,
                 cpf: createForm.cpf,
                 senha: createForm.senha,
-                id_events: eventId
+                id_events: eventAssignment
             })
 
             toast.success("Operador criado com sucesso!")
             setCreateDialogOpen(false)
             setCreateForm({ nome: "", cpf: "", senha: "" })
+            setSelectedEventDate("")
 
             // Forçar atualização dos dados após criação
             await forceRefreshData()
@@ -282,7 +317,8 @@ export default function OperadoresPage() {
     const abrirAtribuirOperadores = () => {
         setSelectedOperators([])
         setAssignSearch("")
-        setAssignDialogOpen(true)
+        setSelectedEventDate("")
+        setShowDateSelection(true)
     }
 
     const handleSelectOperator = (operatorId: string) => {
@@ -307,13 +343,23 @@ export default function OperadoresPage() {
             return
         }
 
+        if (!selectedEventDate) {
+            toast.error("Selecione uma data do evento")
+            return
+        }
+
         setAssignLoading(true)
         try {
             for (const operatorId of selectedOperators) {
                 const operator = availableOperators.find(op => op.id === operatorId)
                 if (operator) {
+                    // Criar uma estrutura que inclui a data do evento
+                    const eventAssignment = `${eventId}:${selectedEventDate}`
                     const currentEvents = operator.id_events ? operator.id_events.split(',').filter(Boolean) : []
-                    const newEvents = [...currentEvents, eventId]
+
+                    // Remover atribuições existentes para este evento (se houver)
+                    const filteredEvents = currentEvents.filter((event: string) => !event.startsWith(`${eventId}:`))
+                    const newEvents = [...filteredEvents, eventAssignment]
 
                     await apiClient.put(`/operadores/${operatorId}`, {
                         nome: operator.nome,
@@ -324,9 +370,10 @@ export default function OperadoresPage() {
                 }
             }
 
-            toast.success(`${selectedOperators.length} operador(es) atribuído(s) com sucesso!`)
+            toast.success(`${selectedOperators.length} operador(es) atribuído(s) com sucesso para a data ${new Date(selectedEventDate).toLocaleDateString('pt-BR')}!`)
             setAssignDialogOpen(false)
             setSelectedOperators([])
+            setSelectedEventDate("")
 
             // Forçar atualização dos dados após atribuição
             await forceRefreshData()
@@ -335,6 +382,16 @@ export default function OperadoresPage() {
         } finally {
             setAssignLoading(false)
         }
+    }
+
+    const handleConfirmAssignOperators = async () => {
+        if (!selectedEventDate) {
+            toast.error("Selecione uma data do evento")
+            return
+        }
+
+        setShowDateSelection(false)
+        setAssignDialogOpen(true)
     }
 
     const formatCPF = (cpf: string): string => {
@@ -348,6 +405,9 @@ export default function OperadoresPage() {
         const dadosParaExportar = operadores.map(operador => ({
             Nome: operador.nome,
             CPF: formatCPF(operador.cpf),
+            "Data de Atribuição": getOperatorAssignmentDate(operador)
+                ? new Date(getOperatorAssignmentDate(operador)!).toLocaleDateString('pt-BR')
+                : "Sem data específica",
             "Data de Criação": new Date().toLocaleDateString('pt-BR')
         }))
 
@@ -359,20 +419,29 @@ export default function OperadoresPage() {
 
     const baixarModeloExcel = () => {
         const ws = XLSX.utils.json_to_sheet([
-            { nome: "", cpf: "", senha: "" }
+            { nome: "", cpf: "", senha: "", id_events: eventId }
         ])
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, "Modelo")
-        XLSX.writeFile(wb, "modelo-operadores.xlsx")
+        XLSX.writeFile(wb, `modelo-operadores-${nomeEvento}-${new Date().toISOString().split('T')[0]}.xlsx`)
     }
 
     const importarDoExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
 
+        // Mostrar modal de seleção de data primeiro
+        setShowDateSelection(true)
+        // Armazenar o arquivo para processamento posterior
+        setFileToImport(file)
+    }
+
+    const handleConfirmImport = async () => {
+        if (!fileToImport || !selectedEventDate) return
+
         setImportDialogLoading(true)
         try {
-            const data = await file.arrayBuffer()
+            const data = await fileToImport.arrayBuffer()
             const workbook = XLSX.read(data)
             const worksheet = workbook.Sheets[workbook.SheetNames[0]]
             const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
@@ -397,12 +466,15 @@ export default function OperadoresPage() {
                     continue
                 }
 
+                // Criar atribuição com data específica
+                const eventAssignment = `${eventId}:${selectedEventDate}`
+
                 operadoresImportados.push({
                     id: "",
                     nome: row.nome,
                     cpf: row.cpf,
                     senha: row.senha,
-                    id_events: eventId,
+                    id_events: eventAssignment,
                     acoes: []
                 })
             }
@@ -410,6 +482,9 @@ export default function OperadoresPage() {
             setRegistrosUnicos(operadoresImportados)
             setResumoImportacao({ importados: operadoresImportados, falhados })
             setResumoDialogOpen(true)
+            setShowDateSelection(false)
+            setSelectedEventDate("")
+            setFileToImport(null)
         } catch (error) {
             toast.error("Erro ao processar arquivo")
         } finally {
@@ -429,7 +504,7 @@ export default function OperadoresPage() {
                     nome: operador.nome,
                     cpf: operador.cpf,
                     senha: operador.senha,
-                    id_events: eventId
+                    id_events: operador.id_events
                 })
             }
 
@@ -446,6 +521,24 @@ export default function OperadoresPage() {
     }
 
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+
+    // Função para extrair a data de atribuição do operador
+    const getOperatorAssignmentDate = (operator: Operator) => {
+        if (!operator.id_events) return null
+
+        const eventAssignments = operator.id_events.split(',').map((assignment: string) => assignment.trim())
+
+        for (const assignment of eventAssignments) {
+            if (assignment.includes(':')) {
+                const [eventIdFromAssignment, date] = assignment.split(':')
+                if (eventIdFromAssignment === eventId) {
+                    return date
+                }
+            }
+        }
+
+        return null
+    }
 
     if (loadingOperadores || loadingAllOperators) {
         return (
@@ -529,6 +622,7 @@ export default function OperadoresPage() {
                                 <TableRow>
                                     <TableHead className="text-left font-medium text-gray-900">Nome</TableHead>
                                     <TableHead className="text-left font-medium text-gray-900">CPF</TableHead>
+                                    <TableHead className="text-left font-medium text-gray-900">Data de Atribuição</TableHead>
                                     <TableHead className="text-left font-medium text-gray-900">Ações</TableHead>
                                     <TableHead className="text-left font-medium text-gray-900">Operações</TableHead>
                                 </TableRow>
@@ -548,6 +642,17 @@ export default function OperadoresPage() {
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-gray-700">{formatCPF(operador.cpf)}</TableCell>
+                                            <TableCell className="text-gray-700">
+                                                {getOperatorAssignmentDate(operador) ? (
+                                                    <Badge variant="outline" className="text-blue-600 border-blue-200">
+                                                        {new Date(getOperatorAssignmentDate(operador)!).toLocaleDateString('pt-BR')}
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge variant="outline" className="text-gray-500 border-gray-200">
+                                                        Sem data específica
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
                                             <TableCell>
                                                 <div className="text-sm text-gray-500">
                                                     {operador.acoes?.length || 0} ações
@@ -560,7 +665,7 @@ export default function OperadoresPage() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                                        <TableCell colSpan={5} className="text-center py-8 text-gray-500">
                                             Nenhum operador encontrado
                                         </TableCell>
                                     </TableRow>
@@ -587,6 +692,20 @@ export default function OperadoresPage() {
                                         <label className="block text-sm font-medium text-gray-700">CPF</label>
                                         <p className="text-gray-900">{formatCPF(selectedOperator.cpf)}</p>
                                     </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Data de Atribuição</label>
+                                    <p className="text-gray-900">
+                                        {getOperatorAssignmentDate(selectedOperator) ? (
+                                            <Badge variant="outline" className="text-blue-600 border-blue-200">
+                                                {new Date(getOperatorAssignmentDate(selectedOperator)!).toLocaleDateString('pt-BR')}
+                                            </Badge>
+                                        ) : (
+                                            <Badge variant="outline" className="text-gray-500 border-gray-200">
+                                                Sem data específica
+                                            </Badge>
+                                        )}
+                                    </p>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">Ações Realizadas</label>
@@ -646,10 +765,27 @@ export default function OperadoresPage() {
                                     onChange={(e) => setEditForm(prev => ({ ...prev, senha: e.target.value }))}
                                 />
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Data de Atribuição (Opcional)</label>
+                                <Select value={selectedEventDate} onValueChange={setSelectedEventDate}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione uma data (opcional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="">Sem data específica</SelectItem>
+                                        {getEventDates().map((date) => (
+                                            <SelectItem key={date} value={date}>
+                                                {new Date(date).toLocaleDateString('pt-BR')}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <div className="flex justify-end gap-2">
                                 <Button variant="outline" onClick={() => {
                                     setEditDialogOpen(false)
                                     setEditForm({ nome: "", cpf: "", senha: "" })
+                                    setSelectedEventDate("")
                                 }}>
                                     Cancelar
                                 </Button>
@@ -690,10 +826,27 @@ export default function OperadoresPage() {
                                     onChange={(e) => setCreateForm(prev => ({ ...prev, senha: e.target.value }))}
                                 />
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Data de Atribuição (Opcional)</label>
+                                <Select value={selectedEventDate} onValueChange={setSelectedEventDate}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione uma data (opcional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="">Sem data específica</SelectItem>
+                                        {getEventDates().map((date) => (
+                                            <SelectItem key={date} value={date}>
+                                                {new Date(date).toLocaleDateString('pt-BR')}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <div className="flex justify-end gap-2">
                                 <Button variant="outline" onClick={() => {
                                     setCreateDialogOpen(false)
                                     setCreateForm({ nome: "", cpf: "", senha: "" })
+                                    setSelectedEventDate("")
                                 }}>
                                     Cancelar
                                 </Button>
@@ -731,7 +884,7 @@ export default function OperadoresPage() {
                         <DialogHeader>
                             <DialogTitle>Atribuir Operadores ao Evento</DialogTitle>
                             <DialogDescription>
-                                Selecione os operadores que deseja atribuir ao evento &quot;{nomeEvento}&quot;
+                                Selecione os operadores que deseja atribuir ao evento &quot;{nomeEvento}&quot; para a data {selectedEventDate ? new Date(selectedEventDate).toLocaleDateString('pt-BR') : ''}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4">
@@ -810,7 +963,10 @@ export default function OperadoresPage() {
                                     {selectedOperators.length} operador(es) selecionado(s)
                                 </div>
                                 <div className="flex gap-2">
-                                    <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+                                    <Button variant="outline" onClick={() => {
+                                        setAssignDialogOpen(false)
+                                        setSelectedEventDate("")
+                                    }}>
                                         Cancelar
                                     </Button>
                                     <Button
@@ -829,6 +985,60 @@ export default function OperadoresPage() {
                         </div>
                     </DialogContent>
                 </Dialog>
+
+                {/* Modal de Seleção de Data */}
+                {showDateSelection && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+                            <h3 className="text-lg font-semibold mb-4">Selecionar Data do Evento</h3>
+                            <p className="text-gray-600 mb-4">
+                                {fileToImport
+                                    ? "Escolha a data do evento para a qual os operadores serão importados:"
+                                    : "Escolha a data do evento para a qual os operadores serão atribuídos:"
+                                }
+                            </p>
+
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Data do Evento
+                                </label>
+                                <Select value={selectedEventDate} onValueChange={setSelectedEventDate}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione uma data" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {getEventDates().map((date) => (
+                                            <SelectItem key={date} value={date}>
+                                                {new Date(date).toLocaleDateString('pt-BR')}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setShowDateSelection(false)
+                                        setSelectedEventDate("")
+                                        setFileToImport(null)
+                                    }}
+                                    className="flex-1"
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    onClick={fileToImport ? handleConfirmImport : handleConfirmAssignOperators}
+                                    disabled={!selectedEventDate}
+                                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                >
+                                    {fileToImport ? "Confirmar Importação" : "Continuar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Modal de Resumo de Importação */}
                 <Dialog open={resumoDialogOpen} onOpenChange={setResumoDialogOpen}>
@@ -850,6 +1060,15 @@ export default function OperadoresPage() {
                                 )}
                             </div>
 
+                            {resumoImportacao.importados.length > 0 && (
+                                <div className="p-4 bg-blue-50 rounded-lg">
+                                    <h3 className="font-medium text-blue-800">Data de Atribuição</h3>
+                                    <p className="text-blue-600">
+                                        {selectedEventDate ? new Date(selectedEventDate).toLocaleDateString('pt-BR') : 'Sem data específica'}
+                                    </p>
+                                </div>
+                            )}
+
                             {resumoImportacao.falhados && resumoImportacao.falhados.length > 0 && (
                                 <div>
                                     <h4 className="font-medium mb-2">Detalhes dos Erros:</h4>
@@ -865,7 +1084,10 @@ export default function OperadoresPage() {
                             )}
 
                             <div className="flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => setResumoDialogOpen(false)}>
+                                <Button variant="outline" onClick={() => {
+                                    setResumoDialogOpen(false)
+                                    setSelectedEventDate("")
+                                }}>
                                     Cancelar
                                 </Button>
                                 <Button onClick={confirmarImportacao} disabled={loading}>

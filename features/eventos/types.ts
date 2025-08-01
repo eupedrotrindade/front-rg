@@ -66,10 +66,35 @@ export type EventWristband = {
   isDistributed?: boolean;
 };
 
+// Novo tipo para credenciais independentes por dia
+export type Credential = {
+  id: string;
+  nome: string;
+  cor: string;
+  id_events: string;
+  days_works: string[];
+  isActive?: boolean;
+  isDistributed?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CreateCredentialRequest = {
+  nome: string;
+  cor: string;
+  id_events: string;
+  days_works: string[];
+  isActive?: boolean;
+  isDistributed?: boolean;
+};
+
+export type UpdateCredentialRequest = Partial<CreateCredentialRequest>;
+
 export type EventParticipant = {
   id: string;
   eventId: string;
-  wristbandId: string;
+  credentialId?: string; // Novo campo para referenciar a credencial
+  wristbandId?: string; // Mantido para compatibilidade
   staffId?: string;
   name: string;
   cpf: string;
@@ -182,7 +207,8 @@ export type CreateEventWristbandRequest = {
 
 export type CreateEventParticipantRequest = {
   eventId: string;
-  wristbandId: string;
+  credentialId?: string; // Novo campo para credenciais
+  wristbandId?: string; // Mantido para compatibilidade
   staffId?: string;
   name: string;
   cpf: string;
@@ -226,6 +252,8 @@ export type PaginationParams = {
 export type Empresa = {
   id: string;
   nome: string;
+  id_evento?: string;
+  days?: string[];
   cnpj?: string;
   email?: string;
   telefone?: string;
@@ -242,6 +270,8 @@ export type Empresa = {
 
 export type CreateEmpresaRequest = {
   nome: string;
+  id_evento?: string;
+  days?: string[];
   cnpj?: string;
   email?: string;
   telefone?: string;

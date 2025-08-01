@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Home, History, ChevronDown, ChevronRight, Trello, Users, UserCog, Calendar, ImageIcon, Ticket } from "lucide-react";
+import { Home, History, ChevronDown, ChevronRight, Trello, Users, UserCog, Calendar, ImageIcon, Ticket, Building } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "../ui/badge";
@@ -17,6 +17,7 @@ const menu: MenuItem[] = [
     { label: "Eventos", href: "/dashboard/eventos", icon: Calendar },
     { label: "Coordenadores", href: "/dashboard/event-managers", icon: UserCog },
     { label: "Operador", href: "/dashboard/event-staff", icon: Users },
+    { label: "Empresas", href: "/dashboard/empresas", icon: Building },
     {
         label: "Credenciais",
         icon: Badge,

@@ -10,10 +10,8 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
     Download,
     Upload,
@@ -33,16 +31,24 @@ import {
     Search,
     SortAsc,
     SortDesc,
+    Calendar,
+    X,
+    Plus,
 } from "lucide-react"
 import * as XLSX from "xlsx"
 import { toast } from "sonner"
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
 import { useCreateEventParticipant } from "@/features/eventos/api/mutation/use-create-event-participant"
-import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands"
-import type { EventParticipant } from "@/features/eventos/types"
+import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
+import { useCreateCredential } from "@/features/eventos/api/mutation/use-credential-mutations"
+import { useEmpresas } from "@/features/eventos/api/query/use-empresas"
+import { useCreateEmpresa } from "@/features/eventos/api/mutation"
+import type { EventParticipant, CreateCredentialRequest, Credential, CreateEmpresaRequest, Empresa } from "@/features/eventos/types"
 import type { EventParticipantSchema } from "@/features/eventos/schemas"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
+import CreateCredentialDialog from "@/features/eventos/components/create-credential-dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 
 interface ImportProgress {
@@ -71,9 +77,11 @@ interface ProcessedData {
     data: EventParticipantSchema[]
     errors: Array<{ item: any; error: string; row: number }>
     duplicates: Array<{ item: any; existing: EventParticipant; row: number }>
+    missingCredentials: Array<{ name: string; count: number }>
+    missingCompanies: Array<{ name: string; count: number }>
 }
 
-type ImportStep = "upload" | "preview" | "validation" | "import" | "complete"
+type ImportStep = "date" | "upload" | "preview" | "validation" | "import" | "complete"
 
 export default function ImportExportPage() {
     const params = useParams()
@@ -81,9 +89,10 @@ export default function ImportExportPage() {
     const [activeTab, setActiveTab] = useState<"import" | "export">("import")
 
     // Import States
-    const [currentStep, setCurrentStep] = useState<ImportStep>("upload")
+    const [currentStep, setCurrentStep] = useState<ImportStep>("date")
     const [uploadedFile, setUploadedFile] = useState<File | null>(null)
     const [processedData, setProcessedData] = useState<ProcessedData | null>(null)
+    const [excelData, setExcelData] = useState<any[]>([])
     const [isProcessing, setIsProcessing] = useState(false)
     const [isImporting, setIsImporting] = useState(false)
     const [progress, setProgress] = useState<ImportProgress>({
@@ -109,8 +118,11 @@ export default function ImportExportPage() {
     // Estados para atribuição de credenciais em massa
     const [showCredentialAssignment, setShowCredentialAssignment] = useState(false)
     const [selectedParticipants, setSelectedParticipants] = useState<EventParticipantSchema[]>([])
-    const [selectedWristbandId, setSelectedWristbandId] = useState<string>("")
+    const [selectedCredentialId, setSelectedCredentialId] = useState<string>("")
     const [isAssigningCredentials, setIsAssigningCredentials] = useState(false)
+
+    // Estado para seleção de data do evento
+    const [selectedEventDates, setSelectedEventDates] = useState<string[]>([])
 
     // Filtros e busca
     const [searchTerm, setSearchTerm] = useState("")
@@ -148,7 +160,25 @@ export default function ImportExportPage() {
 
     const { data: participants = [] } = useEventParticipantsByEvent({ eventId })
     const { mutate: createParticipant } = useCreateEventParticipant()
-    const { data: wristbands = [] } = useEventWristbandsByEvent(eventId)
+    const { data: credentials = [], refetch: refetchCredentials } = useCredentialsByEvent(eventId)
+    const { mutate: createCredential } = useCreateCredential()
+    const { data: empresas = [] } = useEmpresas()
+    const { mutate: createEmpresa } = useCreateEmpresa()
+
+    // Estado para credenciais faltantes
+    const [missingCredentials, setMissingCredentials] = useState<Array<{ name: string; count: number }>>([])
+    const [showCreateCredentials, setShowCreateCredentials] = useState(false)
+    const [isCreatingCredentials, setIsCreatingCredentials] = useState(false)
+    const [isUpdatingAfterCredentialCreation, setIsUpdatingAfterCredentialCreation] = useState(false)
+    const [missingCompanies, setMissingCompanies] = useState<Array<{ name: string; count: number }>>([])
+    const [showCreateCompanies, setShowCreateCompanies] = useState(false)
+    const [isCreatingCompanies, setIsCreatingCompanies] = useState(false)
+
+    const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false)
+
+    const [credentialColor, setCredentialColor] = useState<string>("#3B82F6")
+
+    const [isCredentialDialogOpen, setIsCredentialDialogOpen] = useState(false)
 
     // Funções para atribuição de credenciais em massa
     const handleSelectParticipant = (participant: EventParticipantSchema) => {
@@ -164,7 +194,7 @@ export default function ImportExportPage() {
 
     const handleSelectAllParticipants = () => {
         if (processedData) {
-            const participantsWithoutCredentials = processedData.data.filter(p => !p.wristbandId)
+            const participantsWithoutCredentials = processedData.data.filter(p => !p.credentialId)
             setSelectedParticipants(participantsWithoutCredentials)
         }
     }
@@ -174,7 +204,7 @@ export default function ImportExportPage() {
     }
 
     const handleAssignCredentials = async () => {
-        if (!selectedWristbandId || selectedParticipants.length === 0) return
+        if (!selectedCredentialId || selectedParticipants.length === 0) return
 
         setIsAssigningCredentials(true)
         try {
@@ -187,7 +217,7 @@ export default function ImportExportPage() {
                     data: prev.data.map(p => {
                         const isSelected = selectedParticipants.some(sp => sp.cpf === p.cpf)
                         if (isSelected) {
-                            return { ...p, wristbandId: selectedWristbandId }
+                            return { ...p, credentialId: selectedCredentialId }
                         }
                         return p
                     })
@@ -195,7 +225,7 @@ export default function ImportExportPage() {
             })
 
             setSelectedParticipants([])
-            setSelectedWristbandId("")
+            setSelectedCredentialId("")
             toast.success(`${selectedParticipants.length} credenciais atribuídas com sucesso!`)
         } catch (error) {
             toast.error("Erro ao atribuir credenciais")
@@ -206,10 +236,83 @@ export default function ImportExportPage() {
 
     // Validation functions
     const isValidCPF = (cpf: string): boolean => {
+        // Permitir CPF vazio ou apenas espaços
+        if (!cpf || cpf.trim() === "") return true
+
+        // Limpar apenas números
         const cleaned = cpf.replace(/\D/g, "")
-        if (cleaned.length !== 11) return false
-        if (/^(\d)\1+$/.test(cleaned)) return false
-        return true
+
+        // Aceitar CPF com 11 dígitos (padrão) ou 14 dígitos (com pontos e traço)
+        if (cleaned.length === 11) {
+            // Validação básica de CPF
+            if (cleaned === "00000000000" ||
+                cleaned === "11111111111" ||
+                cleaned === "22222222222" ||
+                cleaned === "33333333333" ||
+                cleaned === "44444444444" ||
+                cleaned === "55555555555" ||
+                cleaned === "66666666666" ||
+                cleaned === "77777777777" ||
+                cleaned === "88888888888" ||
+                cleaned === "99999999999") {
+                return false
+            }
+
+            // Cálculo dos dígitos verificadores
+            let sum = 0
+            for (let i = 0; i < 9; i++) {
+                sum += parseInt(cleaned.charAt(i)) * (10 - i)
+            }
+            let remainder = (sum * 10) % 11
+            if (remainder === 10 || remainder === 11) remainder = 0
+            if (remainder !== parseInt(cleaned.charAt(9))) return false
+
+            sum = 0
+            for (let i = 0; i < 10; i++) {
+                sum += parseInt(cleaned.charAt(i)) * (11 - i)
+            }
+            remainder = (sum * 10) % 11
+            if (remainder === 10 || remainder === 11) remainder = 0
+            if (remainder !== parseInt(cleaned.charAt(10))) return false
+
+            return true
+        }
+
+        // Aceitar formatos com pontos e traço (14 caracteres)
+        if (cleaned.length === 14) {
+            const cpfOnly = cleaned.replace(/[.-]/g, "")
+            return isValidCPF(cpfOnly)
+        }
+
+        // Aceitar CPF com menos de 11 dígitos (pode ser um RG ou documento alternativo)
+        if (cleaned.length >= 8 && cleaned.length <= 11) {
+            return true
+        }
+
+        return false
+    }
+
+    const isValidRG = (rg: string): boolean => {
+        // Permitir RG vazio ou apenas espaços
+        if (!rg || rg.trim() === "") return true
+
+        // Limpar apenas números
+        const cleaned = rg.replace(/\D/g, "")
+
+        // Aceitar RG com 8 a 12 dígitos (formatos variados)
+        if (cleaned.length >= 8 && cleaned.length <= 12) {
+            return true
+        }
+
+        // Aceitar formatos com pontos e traço
+        if (rg.includes(".") || rg.includes("-")) {
+            const cleanedWithFormat = rg.replace(/[.-]/g, "")
+            if (cleanedWithFormat.length >= 8 && cleanedWithFormat.length <= 12) {
+                return true
+            }
+        }
+
+        return false
     }
 
     const isValidEmail = (email: string): boolean => {
@@ -219,26 +322,301 @@ export default function ImportExportPage() {
     const validateParticipant = (data: any): { isValid: boolean; errors: string[] } => {
         const errors: string[] = []
 
-        if (!data.name || data.name.toString().trim().length < 2) {
-            errors.push("Nome deve ter pelo menos 2 caracteres")
-        }
-        if (!data.cpf || !isValidCPF(data.cpf.toString())) {
-            errors.push("CPF inválido")
-        }
-        if (!data.company || data.company.toString().trim().length < 2) {
-            errors.push("Empresa deve ter pelo menos 2 caracteres")
-        }
-        if (!data.role || data.role.toString().trim().length < 2) {
-            errors.push("Função deve ter pelo menos 2 caracteres")
-        }
-        if (data.email && !isValidEmail(data.email.toString())) {
-            errors.push("Email inválido")
-        }
-        if (data.phone && data.phone.toString().replace(/\D/g, "").length < 10) {
-            errors.push("Telefone inválido")
+        // Validar nome (obrigatório)
+        if (!data.nome || data.nome.toString().trim().length < 2) {
+            errors.push("Nome é obrigatório e deve ter pelo menos 2 caracteres")
         }
 
-        return { isValid: errors.length === 0, errors }
+        // Validar empresa (obrigatório)
+        if (!data.empresa || data.empresa.toString().trim().length < 2) {
+            errors.push("Empresa é obrigatória e deve ter pelo menos 2 caracteres")
+        }
+
+        // Validar função (obrigatório)
+        if (!data.funcao || data.funcao.toString().trim().length < 2) {
+            errors.push("Função é obrigatória e deve ter pelo menos 2 caracteres")
+        }
+
+        // Validar CPF ou RG (pelo menos um é obrigatório, mas mais flexível)
+        const hasCPF = data.cpf && data.cpf.toString().trim() !== ""
+        const hasRG = data.rg && data.rg.toString().trim() !== ""
+
+        if (!hasCPF && !hasRG) {
+            errors.push("CPF ou RG é obrigatório (pelo menos um)")
+        } else {
+            // Validar CPF se fornecido (mais flexível)
+            if (hasCPF && !isValidCPF(data.cpf.toString())) {
+                errors.push("CPF inválido ou formato incorreto")
+            }
+
+            // Validar RG se fornecido (mais flexível)
+            if (hasRG && !isValidRG(data.rg.toString())) {
+                errors.push("RG inválido ou formato incorreto")
+            }
+        }
+
+        // Validar email (opcional, mas se fornecido deve ser válido)
+        if (data.email && data.email.toString().trim() !== "" && !isValidEmail(data.email.toString())) {
+            errors.push("Email inválido")
+        }
+
+        // Validar telefone (opcional, mas se fornecido deve ter pelo menos 10 dígitos)
+        if (data.phone && data.phone.toString().trim() !== "") {
+            const phoneDigits = data.phone.toString().replace(/\D/g, "")
+            if (phoneDigits.length < 10) {
+                errors.push("Telefone deve ter pelo menos 10 dígitos")
+            }
+        }
+
+        return {
+            isValid: errors.length === 0,
+            errors
+        }
+    }
+
+    // Função para normalizar nome de credencial
+    const normalizeCredentialName = (name: string): string => {
+        return name.toString().trim().toUpperCase()
+    }
+
+    // Função para buscar credencial por nome
+    const findCredentialByName = (name: string) => {
+        const normalizedName = normalizeCredentialName(name)
+        return credentials.find(credential =>
+            normalizeCredentialName(credential.nome) === normalizedName
+        )
+    }
+
+    // Função para criar credencial
+    const createCredentialFunction = async (name: string): Promise<string | null> => {
+        return new Promise((resolve) => {
+            const normalizedName = normalizeCredentialName(name)
+
+            // Garantir que sempre tenha pelo menos uma data
+            const daysWorks = selectedEventDates.length > 0
+                ? selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR'))
+                : [new Date().toLocaleDateString('pt-BR')] // Data atual como fallback
+
+            console.log(`📝 Criando credencial: ${normalizedName}`)
+            console.log(`📅 Evento ID: ${eventId}`)
+            console.log(`📆 Dias selecionados:`, daysWorks)
+
+            const credentialData: CreateCredentialRequest = {
+                nome: normalizedName,
+                id_events: eventId, // Evento da URL
+                days_works: daysWorks, // Dias escolhidos pelo usuário
+                cor: credentialColor // Cor escolhida pelo usuário
+            }
+
+            createCredential(credentialData, {
+                onSuccess: (data) => {
+                    console.log(`✅ Credencial criada: ${normalizedName} - Evento: ${eventId} - Dias: ${daysWorks.join(', ')} - Cor: ${credentialColor}`)
+                    resolve(data.id)
+                },
+                onError: (error) => {
+                    console.error(`❌ Erro ao criar credencial ${normalizedName}:`, error)
+                    resolve(null)
+                }
+            })
+        })
+    }
+
+    // Função para criar todas as credenciais faltantes
+    const createMissingCredentials = async () => {
+        console.log("🔍 createMissingCredentials chamada")
+        console.log("📊 processedData:", processedData)
+        console.log("📋 missingCredentials:", processedData?.missingCredentials)
+        console.log("🔒 Estado atual isCredentialDialogOpen:", isCredentialDialogOpen)
+
+        if (!processedData?.missingCredentials) {
+            console.log("❌ Nenhuma credencial faltante encontrada")
+            return
+        }
+
+        console.log("✅ Abrindo modal de credenciais...")
+        setIsCreatingCredentials(true)
+        setIsCredentialDialogOpen(true)
+        console.log("🔒 Novo estado isCredentialDialogOpen:", true)
+
+        let successCount = 0
+        let errorCount = 0
+
+        console.log(`🔄 Criando ${processedData.missingCredentials.length} credenciais...`)
+        for (const credential of processedData.missingCredentials) {
+            console.log(`📝 Criando credencial: ${credential.name}`)
+            const credentialId = await createCredentialFunction(credential.name)
+            if (credentialId) {
+                successCount++
+                console.log(`✅ Credencial criada: ${credential.name}`)
+            } else {
+                errorCount++
+                console.log(`❌ Falha ao criar credencial: ${credential.name}`)
+            }
+        }
+
+        console.log("🔚 Fechando modal de credenciais...")
+        setIsCreatingCredentials(false)
+        setIsCredentialDialogOpen(false)
+        console.log("🔒 Estado final isCredentialDialogOpen:", false)
+
+        if (successCount > 0) {
+            toast.success(`${successCount} credenciais criadas com sucesso!`)
+            console.log("🔄 Reprocessando dados...")
+            // Reprocessar dados após criar credenciais
+            if (processedData && uploadedFile) {
+                try {
+                    // Aguardar um pouco para o backend processar
+                    await new Promise(resolve => setTimeout(resolve, 1000))
+
+                    // Refetch das credenciais para garantir que estão atualizadas
+                    await refetchCredentials()
+
+                    const newProcessedData = await processExcelFile(uploadedFile)
+                    console.log("📊 Novo processedData:", newProcessedData)
+                    console.log("📋 Novas missingCredentials:", newProcessedData.missingCredentials)
+                    setProcessedData(newProcessedData)
+
+                    // Verificar se o botão de importação deve ser ativado
+                    const canProceed = !newProcessedData.missingCredentials?.length && !newProcessedData.missingCompanies?.length && newProcessedData.validRows > 0
+                    console.log("✅ Botão de importação ativado:", canProceed)
+                } catch (error) {
+                    console.error("❌ Erro ao reprocessar dados:", error)
+                    toast.error("Erro ao atualizar dados após criar credenciais")
+                }
+            }
+        }
+        if (errorCount > 0) {
+            toast.error(`${errorCount} credenciais falharam ao serem criadas`)
+        }
+    }
+
+    // Função para lidar com sucesso na criação de credencial
+    const handleCredentialCreated = (credentialId: string, credentialName: string) => {
+        // Atualizar a lista de credenciais
+        refetchCredentials()
+
+        // Reprocessar os dados da planilha para atualizar as referências das credenciais
+        if (processedData && uploadedFile) {
+            setIsUpdatingAfterCredentialCreation(true)
+
+            // Reprocessar o arquivo com as novas credenciais
+            processExcelFile(uploadedFile).then((newProcessedData) => {
+                setProcessedData(newProcessedData)
+                toast.success(`Credencial "${credentialName}" criada e dados atualizados!`)
+            }).catch((error) => {
+                toast.error("Erro ao atualizar dados após criação da credencial")
+                console.error(error)
+            }).finally(() => {
+                setIsUpdatingAfterCredentialCreation(false)
+            })
+        } else {
+            toast.success(`Credencial "${credentialName}" criada com sucesso!`)
+        }
+    }
+
+    // Funções para empresas (similar às credenciais)
+    const normalizeCompanyName = (name: string): string => {
+        return name.toString().trim().toUpperCase()
+    }
+
+    const findCompanyByName = (name: string) => {
+        const normalizedName = normalizeCompanyName(name)
+        return (empresas || []).find(empresa =>
+            normalizeCompanyName(empresa.nome) === normalizedName
+        )
+    }
+
+    const createCompanyFunction = async (name: string): Promise<string | null> => {
+        return new Promise((resolve) => {
+            const normalizedName = normalizeCompanyName(name)
+
+            // Converter selectedEventDates para o formato correto (YYYY-MM-DD)
+            const days = selectedEventDates.length > 0
+                ? selectedEventDates.map(date => new Date(date).toISOString().slice(0, 10))
+                : []
+
+            console.log(`🏢 Criando empresa: ${normalizedName}`)
+            console.log(`📅 Evento ID: ${eventId}`)
+            console.log(`📆 Dias selecionados:`, days)
+
+            const companyData: CreateEmpresaRequest = {
+                nome: normalizedName,
+                id_evento: eventId, // Evento da URL
+                days: days // Dias escolhidos pelo usuário
+            }
+
+            createEmpresa(companyData, {
+                onSuccess: (data) => {
+                    console.log(`✅ Empresa criada: ${normalizedName} - Evento: ${eventId} - Dias: ${days.join(', ')}`)
+                    resolve(data.id)
+                },
+                onError: (error) => {
+                    console.error(`❌ Erro ao criar empresa ${normalizedName}:`, error)
+                    resolve(null)
+                }
+            })
+        })
+    }
+
+    const createMissingCompanies = async () => {
+        console.log("🔍 createMissingCompanies chamada")
+        console.log("📊 processedData:", processedData)
+        console.log("🏢 missingCompanies:", processedData?.missingCompanies)
+
+        if (!processedData?.missingCompanies) {
+            console.log("❌ Nenhuma empresa faltante encontrada")
+            return
+        }
+
+        console.log("✅ Abrindo modal de empresas...")
+        setIsCreatingCompanies(true)
+        setIsCompanyDialogOpen(true)
+        let successCount = 0
+        let errorCount = 0
+
+        console.log(`🔄 Criando ${processedData.missingCompanies.length} empresas...`)
+        for (const company of processedData.missingCompanies) {
+            console.log(`🏢 Criando empresa: ${company.name}`)
+            const companyId = await createCompanyFunction(company.name)
+            if (companyId) {
+                successCount++
+                console.log(`✅ Empresa criada: ${company.name}`)
+            } else {
+                errorCount++
+                console.log(`❌ Falha ao criar empresa: ${company.name}`)
+            }
+        }
+
+        console.log("🔚 Fechando modal de empresas...")
+        setIsCreatingCompanies(false)
+        setIsCompanyDialogOpen(false)
+
+        if (successCount > 0) {
+            toast.success(`${successCount} empresas criadas com sucesso!`)
+            console.log("🔄 Reprocessando dados...")
+            // Reprocessar dados após criar empresas
+            if (processedData && uploadedFile) {
+                try {
+                    // Aguardar um pouco para o backend processar
+                    await new Promise(resolve => setTimeout(resolve, 1000))
+
+                    const newProcessedData = await processExcelFile(uploadedFile)
+                    console.log("📊 Novo processedData:", newProcessedData)
+                    console.log("🏢 Novas missingCompanies:", newProcessedData.missingCompanies)
+                    setProcessedData(newProcessedData)
+
+                    // Verificar se o botão de importação deve ser ativado
+                    const canProceed = !newProcessedData.missingCredentials?.length && !newProcessedData.missingCompanies?.length && newProcessedData.validRows > 0
+                    console.log("✅ Botão de importação ativado:", canProceed)
+                } catch (error) {
+                    console.error("❌ Erro ao reprocessar dados:", error)
+                    toast.error("Erro ao atualizar dados após criar empresas")
+                }
+            }
+        }
+        if (errorCount > 0) {
+            toast.error(`${errorCount} empresas falharam ao serem criadas`)
+        }
     }
 
     // Process Excel file
@@ -261,18 +639,26 @@ export default function ImportExportPage() {
                         data: [],
                         errors: [],
                         duplicates: [],
+                        missingCredentials: [],
+                        missingCompanies: [],
                     }
 
                     const existingCPFs = new Set(participants.map((p) => p.cpf.replace(/\D/g, "")))
                     const processedCPFs = new Set<string>()
+                    const credentialCounts: { [key: string]: number } = {}
+                    const companyCounts: { [key: string]: number } = {}
 
                     jsonData.forEach((row, index) => {
                         const rowNumber = index + 2 // Excel row number (header is row 1)
-                        const validation = validateParticipant(row)
+
+                        // Usar dados corrigidos da etapa prévia se disponível
+                        const rowData = previewFixData[index] || row
+
+                        const validation = validateParticipant(rowData)
 
                         if (!validation.isValid) {
                             result.errors.push({
-                                item: row,
+                                item: rowData,
                                 error: validation.errors.join(", "),
                                 row: rowNumber,
                             })
@@ -280,14 +666,21 @@ export default function ImportExportPage() {
                             return
                         }
 
-                        const cleanedCPF = row.cpf.toString().replace(/\D/g, "")
+                        const cleanedCPF = rowData.cpf ? rowData.cpf.toString().replace(/\D/g, "") : ""
+                        const cleanedRG = rowData.rg ? rowData.rg.toString().replace(/\D/g, "") : ""
 
-                        // Check for duplicates in existing data
-                        if (existingCPFs.has(cleanedCPF)) {
-                            const existing = participants.find((p) => p.cpf.replace(/\D/g, "") === cleanedCPF)
+                        // Check for duplicates in existing data (usando CPF ou RG)
+                        const isDuplicate = existingCPFs.has(cleanedCPF) ||
+                            (cleanedRG && existingCPFs.has(cleanedRG))
+
+                        if (isDuplicate) {
+                            const existing = participants.find((p) =>
+                                p.cpf.replace(/\D/g, "") === cleanedCPF ||
+                                (cleanedRG && p.cpf.replace(/\D/g, "") === cleanedRG)
+                            )
                             if (existing) {
                                 result.duplicates.push({
-                                    item: row,
+                                    item: rowData,
                                     existing,
                                     row: rowNumber,
                                 })
@@ -297,9 +690,12 @@ export default function ImportExportPage() {
                         }
 
                         // Check for duplicates within the file
-                        if (processedCPFs.has(cleanedCPF)) {
+                        const hasDuplicateInFile = (cleanedCPF && processedCPFs.has(cleanedCPF)) ||
+                            (cleanedRG && processedCPFs.has(cleanedRG))
+
+                        if (hasDuplicateInFile) {
                             result.duplicates.push({
-                                item: row,
+                                item: rowData,
                                 existing: {} as EventParticipant, // Placeholder for file duplicate
                                 row: rowNumber,
                             })
@@ -307,39 +703,93 @@ export default function ImportExportPage() {
                             return
                         }
 
-                        processedCPFs.add(cleanedCPF)
+                        // Adicionar CPF ou RG ao conjunto de processados
+                        if (cleanedCPF) processedCPFs.add(cleanedCPF)
+                        if (cleanedRG) processedCPFs.add(cleanedRG)
+
+                        // Processar credencial se existir
+                        let credentialId: string | undefined = undefined
+                        if (rowData.credencial) {
+                            const credentialName = normalizeCredentialName(rowData.credencial)
+                            const existingCredential = findCredentialByName(credentialName)
+
+                            if (existingCredential) {
+                                credentialId = existingCredential.id
+                            } else {
+                                // Contar credenciais faltantes
+                                credentialCounts[credentialName] = (credentialCounts[credentialName] || 0) + 1
+                            }
+                        }
+
+                        // Processar empresa se existir
+                        if (rowData.empresa) {
+                            const companyName = normalizeCompanyName(rowData.empresa)
+                            const existingCompany = findCompanyByName(companyName)
+
+                            if (!existingCompany) {
+                                // Contar empresas faltantes
+                                companyCounts[companyName] = (companyCounts[companyName] || 0) + 1
+                            }
+                        }
 
                         const participantData: EventParticipantSchema = {
                             eventId: eventId,
-                            wristbandId: row.wristbandId || undefined,
-                            staffId: row.staffId || undefined,
-                            name: row.name.toString().trim(),
-                            cpf: row.cpf.toString(),
-                            email: row.email?.toString().trim() || undefined,
-                            phone: row.phone?.toString().trim() || undefined,
-                            role: row.role.toString().trim(),
-                            company: row.company.toString().trim(),
-                            checkIn: row.checkIn || undefined,
-                            checkOut: row.checkOut || undefined,
-                            presenceConfirmed: row.presenceConfirmed || undefined,
-                            certificateIssued: row.certificateIssued || undefined,
-                            notes: row.notes?.toString().trim() || undefined,
-                            photo: row.photo || undefined,
-                            documentPhoto: row.documentPhoto || undefined,
-                            validatedBy: row.validatedBy || undefined,
-                            daysWork: row.daysWork
-                                ? Array.isArray(row.daysWork)
-                                    ? row.daysWork
-                                    : row.daysWork
-                                        .toString()
-                                        .split(",")
-                                        .map((d: string) => d.trim())
-                                : undefined,
+                            credentialId: credentialId,
+                            wristbandId: undefined, // Não usar mais wristbandId
+                            staffId: rowData.staffId || undefined,
+                            name: rowData.nome.toString().trim(),
+                            cpf: (() => {
+                                // Garantir que CPF tenha pelo menos 11 caracteres para o backend
+                                if (rowData.cpf) {
+                                    const cpfStr = rowData.cpf.toString().replace(/\D/g, "")
+                                    if (cpfStr.length >= 11) {
+                                        return cpfStr
+                                    } else if (cpfStr.length > 0) {
+                                        // Preencher com zeros à esquerda até 11 dígitos
+                                        return cpfStr.padStart(11, '0')
+                                    }
+                                }
+                                if (rowData.rg) {
+                                    const rgStr = rowData.rg.toString().replace(/\D/g, "")
+                                    if (rgStr.length >= 11) {
+                                        return rgStr
+                                    } else if (rgStr.length > 0) {
+                                        // Preencher com zeros à esquerda até 11 dígitos
+                                        return rgStr.padStart(11, '0')
+                                    }
+                                }
+                                return "00000000000" // CPF padrão se nenhum documento fornecido
+                            })(),
+                            email: rowData.email?.toString().trim() || undefined,
+                            phone: rowData.phone?.toString().trim() || undefined,
+                            role: rowData.funcao.toString().trim(),
+                            company: rowData.empresa.toString().trim(),
+                            checkIn: rowData.checkIn || undefined,
+                            checkOut: rowData.checkOut || undefined,
+                            presenceConfirmed: rowData.presenceConfirmed || undefined,
+                            certificateIssued: rowData.certificateIssued || undefined,
+                            notes: rowData.notes?.toString().trim() || undefined,
+                            photo: rowData.photo || undefined,
+                            documentPhoto: rowData.documentPhoto || undefined,
+                            validatedBy: rowData.validatedBy || undefined,
+                            daysWork: selectedEventDates ? selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')) : undefined,
                         }
 
                         result.data.push(participantData)
                         result.validRows++
                     })
+
+                    // Processar credenciais faltantes
+                    result.missingCredentials = Object.entries(credentialCounts).map(([name, count]) => ({
+                        name,
+                        count
+                    }))
+
+                    // Processar empresas faltantes
+                    result.missingCompanies = Object.entries(companyCounts).map(([name, count]) => ({
+                        name,
+                        count
+                    }))
 
                     resolve(result)
                 } catch (error) {
@@ -486,21 +936,79 @@ export default function ImportExportPage() {
             setCurrentStep("upload")
             setProcessedData(null)
             setUploadedFile(null)
+        } else if (currentStep === "upload") {
+            setCurrentStep("date")
+            setSelectedEventDates([])
         }
     }
 
     const handleStartImport = async () => {
-        if (!processedData) return
+        if (!processedData || selectedEventDates.length === 0) return
 
         setIsImporting(true)
         setCurrentStep("import")
 
         try {
-            const result = await importParticipants(processedData.data)
+            // Incluir dados inválidos selecionados antes da importação
+            const dataToImport = [...processedData.data]
+
+            if (selectedInvalidData.size > 0) {
+                const selectedErrors = Array.from(selectedInvalidData).map(index => processedData.errors[index])
+
+                selectedErrors.forEach(error => {
+                    // Tentar criar um participante válido a partir do erro
+                    const participantData: EventParticipantSchema = {
+                        eventId: eventId,
+                        credentialId: undefined,
+                        wristbandId: undefined,
+                        staffId: error.item.staffId || undefined,
+                        name: error.item.nome?.toString().trim() || "Nome não informado",
+                        cpf: (() => {
+                            // Garantir que CPF tenha pelo menos 11 caracteres para o backend
+                            if (error.item.cpf) {
+                                const cpfStr = error.item.cpf.toString().replace(/\D/g, "")
+                                if (cpfStr.length >= 11) {
+                                    return cpfStr
+                                } else if (cpfStr.length > 0) {
+                                    // Preencher com zeros à esquerda até 11 dígitos
+                                    return cpfStr.padStart(11, '0')
+                                }
+                            }
+                            if (error.item.rg) {
+                                const rgStr = error.item.rg.toString().replace(/\D/g, "")
+                                if (rgStr.length >= 11) {
+                                    return rgStr
+                                } else if (rgStr.length > 0) {
+                                    // Preencher com zeros à esquerda até 11 dígitos
+                                    return rgStr.padStart(11, '0')
+                                }
+                            }
+                            return "00000000000" // CPF padrão se nenhum documento fornecido
+                        })(),
+                        email: error.item.email?.toString().trim() || undefined,
+                        phone: error.item.phone?.toString().trim() || undefined,
+                        role: error.item.funcao?.toString().trim() || "Função não informada",
+                        company: error.item.empresa?.toString().trim() || "Empresa não informada",
+                        checkIn: error.item.checkIn || undefined,
+                        checkOut: error.item.checkOut || undefined,
+                        presenceConfirmed: error.item.presenceConfirmed || undefined,
+                        certificateIssued: error.item.certificateIssued || undefined,
+                        notes: error.item.notes?.toString().trim() || undefined,
+                        photo: error.item.photo || undefined,
+                        documentPhoto: error.item.documentPhoto || undefined,
+                        validatedBy: error.item.validatedBy || undefined,
+                        daysWork: selectedEventDates ? selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')) : undefined,
+                    }
+
+                    dataToImport.push(participantData)
+                })
+            }
+
+            const result = await importParticipants(dataToImport)
 
             setImportResult({
-                success: processedData.data,
-                errors: processedData.errors,
+                success: dataToImport,
+                errors: processedData.errors.filter((_, index) => !selectedInvalidData.has(index)),
                 duplicates: processedData.duplicates,
             })
 
@@ -514,11 +1022,14 @@ export default function ImportExportPage() {
         }
     }
 
+
+
     const resetImport = () => {
-        setCurrentStep("upload")
+        setCurrentStep("date")
         setUploadedFile(null)
         setProcessedData(null)
         setImportResult(null)
+        setSelectedEventDates([])
         setProgress({ total: 0, processed: 0, success: 0, errors: 0, duplicates: 0 })
     }
 
@@ -553,7 +1064,6 @@ export default function ImportExportPage() {
                 Função: p.role,
                 Email: p.email || "",
                 Telefone: p.phone || "",
-                Tamanho_Camiseta: "",
                 Observações: p.notes || "",
                 Dias_Trabalho: p.daysWork?.join(", ") || "",
                 Check_in: p.checkIn || "",
@@ -576,50 +1086,65 @@ export default function ImportExportPage() {
 
     // Template download functions
     const downloadTemplate = () => {
-        const templateData = [
+        const ws = XLSX.utils.json_to_sheet([
             {
-                name: "João Silva",
-                cpf: "123.456.789-00",
-                company: "RG Produções",
-                role: "Segurança",
+                nome: "João Silva",
+                cpf: "12345678900",
+                rg: "12345678", // Adicionar RG como alternativa
+                empresa: "Empresa ABC",
+                funcao: "Desenvolvedor",
                 email: "joao@email.com",
                 phone: "(11) 99999-9999",
-                // shirtSize removido
                 notes: "Observações aqui",
-                daysWork: "15/12/2024, 16/12/2024",
-                wristbandId: "wristband-001",
+                credencial: "CREDENCIAL-001",
             },
-        ]
-        const ws = XLSX.utils.json_to_sheet(templateData)
+        ])
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, "Modelo")
-        XLSX.writeFile(wb, "modelo-participantes.xlsx")
+        XLSX.writeFile(wb, `modelo-participantes-${eventId}-${new Date().toISOString().split("T")[0]}.xlsx`)
     }
 
     const downloadBigTestTemplate = () => {
-        const wristbandId = "ebd215b9-498d-4af6-b557-dab178c8f9aa"
         const generateValidCPF = (index: number): string => {
-            const base = 100000000 + index
-            return String(base).padStart(11, "0")
+            // Gerar CPF válido baseado no índice
+            const base = 12345678900 + index
+            return base.toString()
         }
 
-        const templateData = Array.from({ length: 5000 }).map((_, i) => ({
-            name: `Participante ${i + 1}`,
+        const generateValidRG = (index: number): string => {
+            // Gerar RG válido baseado no índice
+            const base = 12345678 + index
+            return base.toString()
+        }
+
+        const generateValidEmail = (index: number): string => {
+            return `participante${index + 1}@teste.com`
+        }
+
+        const generateValidPhone = (index: number): string => {
+            return `1199${String(index).padStart(6, "0")}`
+        }
+
+        const generateCredentialName = (index: number): string => {
+            return `CREDENCIAL-${String(index + 1).padStart(3, "0")}`
+        }
+
+        const testData = Array.from({ length: 100 }, (_, i) => ({
+            nome: `Participante ${i + 1}`,
             cpf: generateValidCPF(i),
-            company: `Empresa ${(i % 50) + 1}`,
-            role: `Função ${(i % 10) + 1}`,
-            email: `participante${i + 1}@teste.com`,
-            phone: `1199${String(i).padStart(6, "0")}`,
-            // shirtSize removido
+            rg: generateValidRG(i), // Adicionar RG
+            empresa: `Empresa ${i + 1}`,
+            funcao: `Função ${i + 1}`,
+            email: generateValidEmail(i),
+            phone: generateValidPhone(i),
             notes: `Observação ${i + 1}`,
-            daysWork: "28/07/2025, 01/08/2025",
-            wristbandId,
+            credencial: generateCredentialName(i),
         }))
 
-        const ws = XLSX.utils.json_to_sheet(templateData)
+        const ws = XLSX.utils.json_to_sheet(testData)
         const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, "Modelo")
-        XLSX.writeFile(wb, "modelo-participantes-5000.xlsx")
+        XLSX.utils.book_append_sheet(wb, ws, "Teste Grande")
+        XLSX.writeFile(wb, `teste-grande-participantes-${eventId}-${new Date().toISOString().split("T")[0]}.xlsx`)
     }
 
     const getInitials = (name: string): string => {
@@ -667,11 +1192,86 @@ export default function ImportExportPage() {
         if (!processedData) return []
         return Array.from(new Set(processedData.data.map(p => p.company))).sort()
     }
+
+    // Função para gerar datas do evento
+    const getEventDates = () => {
+        if (!evento) return []
+
+        const dates: string[] = []
+
+        // Usar apenas os dias do evento (preparation), não montagem e desmontagem
+        if (evento.preparationStartDate && evento.preparationEndDate) {
+            const startDate = new Date(evento.preparationStartDate)
+            const endDate = new Date(evento.preparationEndDate)
+
+            const currentDate = new Date(startDate)
+            while (currentDate <= endDate) {
+                dates.push(currentDate.toISOString().split('T')[0])
+                currentDate.setDate(currentDate.getDate() + 1)
+            }
+        }
+
+        return dates
+    }
+
+    // Funções para o calendário
+    const handleDateSelect = (date: string) => {
+        setSelectedEventDates(prev => {
+            const isSelected = prev.includes(date)
+            if (isSelected) {
+                return prev.filter(d => d !== date)
+            } else {
+                return [...prev, date].sort()
+            }
+        })
+    }
+
+    const handleSelectAllDates = () => {
+        const allDates = getEventDates()
+        setSelectedEventDates(allDates)
+    }
+
+    const handleClearDates = () => {
+        setSelectedEventDates([])
+    }
+
+    const formatDate = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString('pt-BR', {
+            weekday: 'short',
+            day: '2-digit',
+            month: 'short'
+        })
+    }
+
+    const getDayOfWeek = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString('pt-BR', { weekday: 'short' })
+    }
+
+    const getDayNumber = (dateString: string) => {
+        return new Date(dateString).getDate()
+    }
+
+    const getMonthName = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString('pt-BR', { month: 'short' })
+    }
+
+    const groupDatesByMonth = (dates: string[]) => {
+        const groups: { [key: string]: string[] } = {}
+        dates.forEach(date => {
+            const monthKey = new Date(date).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+            if (!groups[monthKey]) {
+                groups[monthKey] = []
+            }
+            groups[monthKey].push(date)
+        })
+        return groups
+    }
     const { data: eventos = [] } = useEventos()
     const evento = Array.isArray(eventos) ? eventos.find(e => e.id === eventId) : null
     // Step indicator component
     const StepIndicator = () => {
         const steps = [
+            { key: "date", label: "Data", icon: Clock },
             { key: "upload", label: "Upload", icon: Upload },
             { key: "preview", label: "Prévia", icon: FileText },
             { key: "validation", label: "Validação", icon: AlertTriangle },
@@ -722,6 +1322,441 @@ export default function ImportExportPage() {
             </div>
 
         )
+    }
+
+    // Estados para dados inválidos selecionáveis
+    const [selectedInvalidData, setSelectedInvalidData] = useState<Set<number>>(new Set())
+    const [showInvalidDataDetails, setShowInvalidDataDetails] = useState(false)
+
+    // Função para selecionar/desselecionar dados inválidos
+    const handleInvalidDataSelection = (index: number) => {
+        setSelectedInvalidData(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(index)) {
+                newSet.delete(index)
+            } else {
+                newSet.add(index)
+            }
+            return newSet
+        })
+    }
+
+    // Função para selecionar todos os dados inválidos
+    const handleSelectAllInvalidData = () => {
+        if (processedData) {
+            setSelectedInvalidData(new Set(processedData.errors.map((_, index) => index)))
+        }
+    }
+
+    // Função para limpar seleção de dados inválidos
+    const handleClearInvalidDataSelection = () => {
+        setSelectedInvalidData(new Set())
+    }
+
+    // Função para incluir dados inválidos selecionados na importação
+    const handleIncludeSelectedInvalidData = () => {
+        if (!processedData) return
+
+        const selectedErrors = Array.from(selectedInvalidData).map(index => processedData.errors[index])
+
+        // Criar novos dados incluindo os selecionados
+        const updatedData = [...processedData.data]
+        let newValidCount = processedData.validRows
+        let newInvalidCount = processedData.invalidRows
+
+        selectedErrors.forEach(error => {
+            // Tentar criar um participante válido a partir do erro
+            const participantData: EventParticipantSchema = {
+                eventId: eventId,
+                credentialId: undefined,
+                wristbandId: undefined,
+                staffId: error.item.staffId || undefined,
+                name: error.item.nome?.toString().trim() || "Nome não informado",
+                cpf: error.item.cpf ? error.item.cpf.toString() : (error.item.rg ? error.item.rg.toString() : ""), // Usar CPF ou RG
+                email: error.item.email?.toString().trim() || undefined,
+                phone: error.item.phone?.toString().trim() || undefined,
+                role: error.item.funcao?.toString().trim() || "Função não informada",
+                company: error.item.empresa?.toString().trim() || "Empresa não informada",
+                checkIn: error.item.checkIn || undefined,
+                checkOut: error.item.checkOut || undefined,
+                presenceConfirmed: error.item.presenceConfirmed || undefined,
+                certificateIssued: error.item.certificateIssued || undefined,
+                notes: error.item.notes?.toString().trim() || undefined,
+                photo: error.item.photo || undefined,
+                documentPhoto: error.item.documentPhoto || undefined,
+                validatedBy: error.item.validatedBy || undefined,
+                daysWork: selectedEventDates ? selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')) : undefined,
+            }
+
+            updatedData.push(participantData)
+            newValidCount++
+            newInvalidCount--
+        })
+
+        // Atualizar dados processados
+        setProcessedData(prev => {
+            if (!prev) return prev
+            return {
+                ...prev,
+                data: updatedData,
+                validRows: newValidCount,
+                invalidRows: newInvalidCount,
+                errors: prev.errors.filter((_, index) => !selectedInvalidData.has(index))
+            }
+        })
+
+        // Limpar seleção
+        setSelectedInvalidData(new Set())
+        toast.success(`${selectedErrors.length} dados incluídos na importação`)
+    }
+
+    // Estados para correção rápida de dados inválidos
+    const [editingInvalidData, setEditingInvalidData] = useState<number | null>(null)
+    const [quickFixData, setQuickFixData] = useState<{ [key: number]: any }>({})
+
+    // Função para iniciar edição de dados inválidos
+    const handleStartEditing = (index: number, originalData: any) => {
+        setEditingInvalidData(index)
+        setQuickFixData(prev => ({
+            ...prev,
+            [index]: { ...originalData }
+        }))
+    }
+
+    // Função para salvar correção rápida
+    const handleSaveQuickFix = (index: number) => {
+        if (!processedData) return
+
+        const fixedData = quickFixData[index]
+        const validation = validateParticipant(fixedData)
+
+        if (validation.isValid) {
+            // Criar novo participante válido
+            const participantData: EventParticipantSchema = {
+                eventId: eventId,
+                credentialId: undefined,
+                wristbandId: undefined,
+                staffId: fixedData.staffId || undefined,
+                name: fixedData.nome?.toString().trim() || "Nome não informado",
+                cpf: (() => {
+                    // Garantir que CPF tenha pelo menos 11 caracteres para o backend
+                    if (fixedData.cpf) {
+                        const cpfStr = fixedData.cpf.toString().replace(/\D/g, "")
+                        if (cpfStr.length >= 11) {
+                            return cpfStr
+                        } else if (cpfStr.length > 0) {
+                            // Preencher com zeros à esquerda até 11 dígitos
+                            return cpfStr.padStart(11, '0')
+                        }
+                    }
+                    if (fixedData.rg) {
+                        const rgStr = fixedData.rg.toString().replace(/\D/g, "")
+                        if (rgStr.length >= 11) {
+                            return rgStr
+                        } else if (rgStr.length > 0) {
+                            // Preencher com zeros à esquerda até 11 dígitos
+                            return rgStr.padStart(11, '0')
+                        }
+                    }
+                    return "00000000000" // CPF padrão se nenhum documento fornecido
+                })(),
+                email: fixedData.email?.toString().trim() || undefined,
+                phone: fixedData.phone?.toString().trim() || undefined,
+                role: fixedData.funcao?.toString().trim() || "Função não informada",
+                company: fixedData.empresa?.toString().trim() || "Empresa não informada",
+                checkIn: fixedData.checkIn || undefined,
+                checkOut: fixedData.checkOut || undefined,
+                presenceConfirmed: fixedData.presenceConfirmed || undefined,
+                certificateIssued: fixedData.certificateIssued || undefined,
+                notes: fixedData.notes?.toString().trim() || undefined,
+                photo: fixedData.photo || undefined,
+                documentPhoto: fixedData.documentPhoto || undefined,
+                validatedBy: fixedData.validatedBy || undefined,
+                daysWork: selectedEventDates ? selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')) : undefined,
+            }
+
+            // Atualizar dados processados
+            setProcessedData(prev => {
+                if (!prev) return prev
+                return {
+                    ...prev,
+                    data: [...prev.data, participantData],
+                    validRows: prev.validRows + 1,
+                    invalidRows: prev.invalidRows - 1,
+                    errors: prev.errors.filter((_, i) => i !== index)
+                }
+            })
+
+            // Limpar estados
+            setEditingInvalidData(null)
+            setQuickFixData(prev => {
+                const newData = { ...prev }
+                delete newData[index]
+                return newData
+            })
+
+            toast.success("Dados corrigidos e incluídos na importação!")
+        } else {
+            toast.error(`Ainda há erros: ${validation.errors.join(", ")}`)
+        }
+    }
+
+    // Função para cancelar edição
+    const handleCancelEditing = (index: number) => {
+        setEditingInvalidData(null)
+        setQuickFixData(prev => {
+            const newData = { ...prev }
+            delete newData[index]
+            return newData
+        })
+    }
+
+    // Função para aplicar correção automática
+    const handleAutoFix = (index: number, originalData: any) => {
+        const fixedData = { ...originalData }
+
+        // Correções automáticas
+        if (!fixedData.nome || fixedData.nome.toString().trim().length < 2) {
+            fixedData.nome = "Nome não informado"
+        }
+
+        if (!fixedData.empresa || fixedData.empresa.toString().trim().length < 2) {
+            fixedData.empresa = "Empresa não informada"
+        }
+
+        if (!fixedData.funcao || fixedData.funcao.toString().trim().length < 2) {
+            fixedData.funcao = "Função não informada"
+        }
+
+        if (!fixedData.cpf && !fixedData.rg) {
+            fixedData.cpf = "00000000000" // CPF padrão
+        }
+
+        // Limpar email inválido
+        if (fixedData.email && !isValidEmail(fixedData.email.toString())) {
+            fixedData.email = ""
+        }
+
+        // Limpar telefone inválido
+        if (fixedData.phone && fixedData.phone.toString().replace(/\D/g, "").length < 10) {
+            fixedData.phone = ""
+        }
+
+        setQuickFixData(prev => ({
+            ...prev,
+            [index]: fixedData
+        }))
+
+        toast.success("Correção automática aplicada! Revise os dados.")
+    }
+
+    // Estados para correção rápida na etapa prévia
+    const [previewEditingData, setPreviewEditingData] = useState<number | null>(null)
+    const [previewFixData, setPreviewFixData] = useState<{ [key: number]: any }>({})
+    const [showPreviewDetails, setShowPreviewDetails] = useState(false)
+
+    // Função para iniciar edição na etapa prévia
+    const handleStartPreviewEditing = (index: number, originalData: any) => {
+        setPreviewEditingData(index)
+        setPreviewFixData(prev => ({
+            ...prev,
+            [index]: { ...originalData }
+        }))
+    }
+
+    // Função para salvar correção na etapa prévia
+    const handleSavePreviewFix = (index: number) => {
+        if (!excelData) return
+
+        const fixedData = previewFixData[index]
+        const validation = validateParticipant(fixedData)
+
+        if (validation.isValid) {
+            // Atualizar dados do Excel
+            setExcelData(prev => {
+                if (!prev) return prev
+                const newData = [...prev]
+                newData[index] = fixedData
+                return newData
+            })
+
+            // Limpar estados
+            setPreviewEditingData(null)
+            setPreviewFixData(prev => {
+                const newData = { ...prev }
+                delete newData[index]
+                return newData
+            })
+
+            toast.success("Dados corrigidos na prévia!")
+        } else {
+            toast.error(`Ainda há erros: ${validation.errors.join(", ")}`)
+        }
+    }
+
+    // Função para cancelar edição na etapa prévia
+    const handleCancelPreviewEditing = (index: number) => {
+        setPreviewEditingData(null)
+        setPreviewFixData(prev => {
+            const newData = { ...prev }
+            delete newData[index]
+            return newData
+        })
+    }
+
+    // Função para aplicar correção automática na etapa prévia
+    const handlePreviewAutoFix = (index: number, originalData: any) => {
+        const fixedData = { ...originalData }
+
+        // Correções automáticas
+        if (!fixedData.nome || fixedData.nome.toString().trim().length < 2) {
+            fixedData.nome = "Nome não informado"
+        }
+
+        if (!fixedData.empresa || fixedData.empresa.toString().trim().length < 2) {
+            fixedData.empresa = "Empresa não informada"
+        }
+
+        if (!fixedData.funcao || fixedData.funcao.toString().trim().length < 2) {
+            fixedData.funcao = "Função não informada"
+        }
+
+        if (!fixedData.cpf && !fixedData.rg) {
+            fixedData.cpf = "00000000000"
+        }
+
+        if (fixedData.email && !isValidEmail(fixedData.email.toString())) {
+            fixedData.email = ""
+        }
+
+        if (fixedData.phone && fixedData.phone.toString().replace(/\D/g, "").length < 10) {
+            fixedData.phone = ""
+        }
+
+        setPreviewFixData(prev => ({
+            ...prev,
+            [index]: fixedData
+        }))
+
+        toast.success("Correção automática aplicada na prévia!")
+    }
+
+    // Função para processar dados com correções da etapa prévia
+    const processExcelFileWithFixes = (data: any[]) => {
+        const processedData: EventParticipantSchema[] = []
+        const errors: { row: number; item: any; error: string }[] = []
+        const existingCPFs = new Set<string>()
+        const processedCPFs = new Set<string>()
+
+        data.forEach((row, index) => {
+            // Usar dados corrigidos se disponível
+            const rowData = previewFixData[index] || row
+
+            const cleanedCPF = rowData.cpf?.toString().replace(/\D/g, "") || ""
+            const cleanedRG = rowData.rg?.toString().replace(/\D/g, "") || ""
+
+            // Verificar duplicatas
+            if ((cleanedCPF && existingCPFs.has(cleanedCPF)) ||
+                (cleanedRG && existingCPFs.has(cleanedRG)) ||
+                (cleanedCPF && processedCPFs.has(cleanedCPF)) ||
+                (cleanedRG && processedCPFs.has(cleanedRG))) {
+                errors.push({
+                    row: index + 2,
+                    item: rowData,
+                    error: "CPF ou RG duplicado"
+                })
+                return
+            }
+
+            const validation = validateParticipant(rowData)
+
+            if (validation.isValid) {
+                const participantData: EventParticipantSchema = {
+                    eventId: eventId,
+                    credentialId: undefined,
+                    wristbandId: undefined,
+                    staffId: rowData.staffId || undefined,
+                    name: rowData.nome?.toString().trim() || "Nome não informado",
+                    cpf: (() => {
+                        // Garantir que CPF tenha pelo menos 11 caracteres para o backend
+                        if (rowData.cpf) {
+                            const cpfStr = rowData.cpf.toString().replace(/\D/g, "")
+                            if (cpfStr.length >= 11) {
+                                return cpfStr
+                            } else if (cpfStr.length > 0) {
+                                // Preencher com zeros à esquerda até 11 dígitos
+                                return cpfStr.padStart(11, '0')
+                            }
+                        }
+                        if (rowData.rg) {
+                            const rgStr = rowData.rg.toString().replace(/\D/g, "")
+                            if (rgStr.length >= 11) {
+                                return rgStr
+                            } else if (rgStr.length > 0) {
+                                // Preencher com zeros à esquerda até 11 dígitos
+                                return rgStr.padStart(11, '0')
+                            }
+                        }
+                        return "00000000000" // CPF padrão se nenhum documento fornecido
+                    })(),
+                    email: rowData.email?.toString().trim() || undefined,
+                    phone: rowData.phone?.toString().trim() || undefined,
+                    role: rowData.funcao?.toString().trim() || "Função não informada",
+                    company: rowData.empresa?.toString().trim() || "Empresa não informada",
+                    checkIn: rowData.checkIn || undefined,
+                    checkOut: rowData.checkOut || undefined,
+                    presenceConfirmed: rowData.presenceConfirmed || undefined,
+                    certificateIssued: rowData.certificateIssued || undefined,
+                    notes: rowData.notes?.toString().trim() || undefined,
+                    photo: rowData.photo || undefined,
+                    documentPhoto: rowData.documentPhoto || undefined,
+                    validatedBy: rowData.validatedBy || undefined,
+                    daysWork: selectedEventDates ? selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')) : undefined,
+                }
+
+                processedData.push(participantData)
+
+                if (cleanedCPF) processedCPFs.add(cleanedCPF)
+                if (cleanedRG) processedCPFs.add(cleanedRG)
+            } else {
+                errors.push({
+                    row: index + 2,
+                    item: rowData,
+                    error: validation.errors.join(", ")
+                })
+            }
+        })
+
+        return {
+            data: processedData,
+            errors,
+            validRows: processedData.length,
+            invalidRows: errors.length
+        }
+    }
+
+    // Função para verificar se pode prosseguir com a importação
+    const canProceedWithImport = () => {
+        console.log("🔍 canProceedWithImport chamada")
+        console.log("📊 processedData:", processedData)
+
+        if (!processedData) {
+            console.log("❌ processedData é null")
+            return false
+        }
+
+        const hasMissingCredentials = processedData.missingCredentials && processedData.missingCredentials.length > 0
+        const hasMissingCompanies = processedData.missingCompanies && processedData.missingCompanies.length > 0
+        const hasValidRows = processedData.validRows > 0
+
+        console.log("📋 hasMissingCredentials:", hasMissingCredentials, "length:", processedData.missingCredentials?.length)
+        console.log("🏢 hasMissingCompanies:", hasMissingCompanies, "length:", processedData.missingCompanies?.length)
+        console.log("✅ hasValidRows:", hasValidRows, "validRows:", processedData.validRows)
+
+        const canProceed = !hasMissingCredentials && !hasMissingCompanies && hasValidRows
+        console.log("🚀 canProceed:", canProceed)
+
+        return canProceed
     }
 
     return (
@@ -785,7 +1820,133 @@ export default function ImportExportPage() {
                     <div className="space-y-6">
                         <StepIndicator />
 
-                        {/* Step 1: Upload */}
+                        {/* Step 1: Date Selection */}
+                        {currentStep === "date" && (
+                            <div className="space-y-6">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center">
+                                            <Calendar className="w-5 h-5 mr-2" />
+                                            Selecionar Datas do Evento
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <p className="text-gray-600 mb-6">
+                                            Selecione uma ou mais datas do evento para as quais os participantes serão importados.
+                                        </p>
+
+                                        {/* Controles do calendário */}
+                                        <div className="flex items-center justify-between mb-6">
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="secondary" className="text-blue-700 bg-blue-50">
+                                                    {selectedEventDates.length} data(s) selecionada(s)
+                                                </Badge>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={handleSelectAllDates}
+                                                    className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                                                >
+                                                    Selecionar Todas
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={handleClearDates}
+                                                    className="text-gray-600 border-gray-300 hover:bg-gray-50"
+                                                >
+                                                    Limpar Seleção
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Calendário */}
+                                        <div className="space-y-6">
+                                            {Object.entries(groupDatesByMonth(getEventDates())).map(([month, dates]) => (
+                                                <div key={month} className="border border-gray-200 rounded-lg p-4">
+                                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">{month}</h3>
+                                                    <div className="grid grid-cols-7 gap-2">
+                                                        {/* Cabeçalho dos dias da semana */}
+                                                        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
+                                                            <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+                                                                {day}
+                                                            </div>
+                                                        ))}
+
+                                                        {/* Dias do mês */}
+                                                        {dates.map(date => {
+                                                            const isSelected = selectedEventDates.includes(date)
+                                                            const isToday = date === new Date().toISOString().split('T')[0]
+
+                                                            return (
+                                                                <button
+                                                                    key={date}
+                                                                    onClick={() => handleDateSelect(date)}
+                                                                    className={`
+                                                                        relative p-3 rounded-lg text-center transition-all duration-200
+                                                                        ${isSelected
+                                                                            ? 'bg-blue-600 text-white shadow-md'
+                                                                            : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                                                                        }
+                                                                        ${isToday ? 'ring-2 ring-blue-300' : ''}
+                                                                    `}
+                                                                >
+                                                                    <div className="text-sm font-medium">
+                                                                        {getDayNumber(date)}
+                                                                    </div>
+                                                                    {isSelected && (
+                                                                        <Check className="w-4 h-4 absolute top-1 right-1" />
+                                                                    )}
+                                                                </button>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Datas selecionadas */}
+                                        {selectedEventDates.length > 0 && (
+                                            <div className="mt-6">
+                                                <h4 className="text-sm font-medium text-gray-700 mb-3">Datas Selecionadas:</h4>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {selectedEventDates.map(date => (
+                                                        <Badge
+                                                            key={date}
+                                                            variant="secondary"
+                                                            className="bg-blue-100 text-blue-800 border-blue-200"
+                                                        >
+                                                            {formatDate(date)}
+                                                            <button
+                                                                onClick={() => handleDateSelect(date)}
+                                                                className="ml-2 hover:text-blue-600"
+                                                            >
+                                                                <X className="w-3 h-3" />
+                                                            </button>
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-6">
+                                            <Button
+                                                onClick={() => setCurrentStep("upload")}
+                                                disabled={selectedEventDates.length === 0}
+                                                className="bg-blue-600 hover:bg-blue-700"
+                                            >
+                                                Próximo
+                                                <ArrowRight className="w-4 h-4 ml-2" />
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
+
+                        {/* Step 2: Upload */}
                         {currentStep === "upload" && (
                             <div className="space-y-6">
                                 <div
@@ -837,22 +1998,31 @@ export default function ImportExportPage() {
                                     <CardContent>
                                         <div className="space-y-3 text-sm text-gray-600">
                                             <p>
-                                                <strong>Colunas obrigatórias:</strong> name, cpf, company, role
+                                                <strong>Colunas obrigatórias:</strong> nome, empresa, funcao
                                             </p>
                                             <p>
-                                                <strong>Colunas opcionais:</strong> email, phone, notes, daysWork, wristbandId
+                                                <strong>Identificação:</strong> cpf OU rg (pelo menos um é obrigatório)
                                             </p>
                                             <p>
-                                                <strong>Formato CPF:</strong> 123.456.789-00 ou 12345678900
+                                                <strong>Colunas opcionais:</strong> email, phone, notes, credencial
                                             </p>
                                             <p>
-                                                <strong>Dias de trabalho:</strong> separados por vírgula (ex: 15/12/2024, 16/12/2024)
+                                                <strong>Formato CPF:</strong> 123.456.789-00, 12345678900 ou formatos alternativos (mais flexível)
+                                            </p>
+                                            <p>
+                                                <strong>Formato RG:</strong> 12345678, 12.345.678-9 ou formatos alternativos (mais flexível)
+                                            </p>
+                                            <p>
+                                                <strong>Formato credencial:</strong> será convertida para maiúsculo automaticamente
+                                            </p>
+                                            <p>
+                                                <strong>Data do evento:</strong> será selecionada antes da importação
                                             </p>
                                             <p>
                                                 <strong>Limite:</strong> até 5000 participantes por importação
                                             </p>
                                             <p>
-                                                <strong>wristbandId:</strong> se não fornecido, será gerado automaticamente
+                                                <strong>credencial:</strong> se não fornecida, o participante ficará sem credencial
                                             </p>
                                         </div>
                                         <div className="mt-4 space-y-2">
@@ -870,248 +2040,258 @@ export default function ImportExportPage() {
                             </div>
                         )}
 
-                        {/* Step 2: Preview */}
+                        {/* Etapa 2: Prévia dos dados */}
                         {currentStep === "preview" && processedData && (
                             <div className="space-y-6">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Prévia dos Dados - {processedData.fileName}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="grid grid-cols-4 gap-4 mb-6">
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-blue-600">{processedData.totalRows}</div>
-                                                <div className="text-sm text-gray-600">Total de Linhas</div>
-                                            </div>
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-green-600">{processedData.validRows}</div>
-                                                <div className="text-sm text-gray-600">Válidos</div>
-                                            </div>
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-red-600">{processedData.invalidRows}</div>
-                                                <div className="text-sm text-gray-600">Inválidos</div>
-                                            </div>
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-yellow-600">{processedData.duplicateRows}</div>
-                                                <div className="text-sm text-gray-600">Duplicatas</div>
-                                            </div>
-                                        </div>
-
-                                        {/* Controles de Busca e Filtros */}
-                                        <div className="mb-6 space-y-4">
-                                            <div className="flex flex-col md:flex-row gap-4">
-                                                <div className="flex-1">
-                                                    <div className="relative">
-                                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                        <Input
-                                                            placeholder="Buscar por nome, empresa, função ou CPF..."
-                                                            value={searchTerm}
-                                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                                            className="pl-10"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <Select value={filterCompany} onValueChange={setFilterCompany}>
-                                                        <SelectTrigger className="w-48">
-                                                            <SelectValue placeholder="Filtrar por empresa" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="all">Todas as empresas</SelectItem>
-                                                            {getUniqueCompanies().map((company) => (
-                                                                <SelectItem key={company} value={company}>
-                                                                    {company}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <Select value={sortBy} onValueChange={(value) => setSortBy(value as any)}>
-                                                        <SelectTrigger className="w-32">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="name">Nome</SelectItem>
-                                                            <SelectItem value="company">Empresa</SelectItem>
-                                                            <SelectItem value="role">Função</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
-                                                    >
-                                                        {sortOrder === "asc" ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center justify-between text-sm text-gray-600">
-                                                <span>
-                                                    Mostrando {Math.min(getFilteredAndSortedData().length, 50)} de {getFilteredAndSortedData().length} resultados
-                                                </span>
-                                                <div className="flex gap-2">
-                                                    <Badge variant="secondary">{processedData.data.length} total</Badge>
-                                                    {searchTerm && <Badge variant="outline">Busca: &quot;{searchTerm}&quot;</Badge>}
-                                                    {filterCompany && filterCompany !== "all" && <Badge variant="outline">Empresa: {filterCompany}</Badge>}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {processedData.data.length > 0 && (
-                                            <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-                                                {/* Controles de Atribuição de Credenciais */}
-                                                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200">
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-4">
-                                                            <h3 className="text-lg font-semibold text-blue-900">Atribuição de Credenciais</h3>
-                                                            <Badge variant="outline" className="text-blue-700">
-                                                                {selectedParticipants.length} selecionados
-                                                            </Badge>
-                                                        </div>
-                                                        <div className="flex items-center gap-3">
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={handleSelectAllParticipants}
-                                                                className="text-blue-700 border-blue-300 hover:bg-blue-50"
-                                                            >
-                                                                Selecionar Todos sem Credencial
-                                                            </Button>
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={handleClearSelection}
-                                                                className="text-gray-600 border-gray-300 hover:bg-gray-50"
-                                                            >
-                                                                Limpar Seleção
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                    {selectedParticipants.length > 0 && (
-                                                        <div className="mt-3 flex items-center gap-3">
-                                                            <Select value={selectedWristbandId} onValueChange={setSelectedWristbandId}>
-                                                                <SelectTrigger className="w-64">
-                                                                    <SelectValue placeholder="Selecione uma credencial" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    {wristbands.map((wristband) => (
-                                                                        <SelectItem key={wristband.id} value={wristband.id}>
-                                                                            {wristband.code} - {wristband.wristbandModelId || 'Modelo não definido'}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                            <Button
-                                                                onClick={handleAssignCredentials}
-                                                                disabled={!selectedWristbandId || isAssigningCredentials}
-                                                                className="bg-blue-600 hover:bg-blue-700 text-white"
-                                                            >
-                                                                {isAssigningCredentials ? (
-                                                                    <>
-                                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                                        Atribuindo...
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <Check className="w-4 h-4 mr-2" />
-                                                                        Atribuir Credencial
-                                                                    </>
-                                                                )}
-                                                            </Button>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100">
-                                                            <TableHead className="px-6 py-4 w-12">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                                    onChange={(e) => {
-                                                                        if (e.target.checked) {
-                                                                            handleSelectAllParticipants()
-                                                                        } else {
-                                                                            handleClearSelection()
-                                                                        }
-                                                                    }}
-                                                                    checked={selectedParticipants.length === processedData.data.filter(p => !p.wristbandId).length && processedData.data.filter(p => !p.wristbandId).length > 0}
-                                                                />
-                                                            </TableHead>
-                                                            <TableHead className="px-6 py-4">Participante</TableHead>
-                                                            <TableHead className="px-6 py-4 hidden md:table-cell">Empresa</TableHead>
-                                                            <TableHead className="px-6 py-4 hidden md:table-cell">Função</TableHead>
-                                                            <TableHead className="px-6 py-4">CPF</TableHead>
-                                                            <TableHead className="px-6 py-4">Email</TableHead>
-                                                            <TableHead className="px-6 py-4">Credencial</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {getFilteredAndSortedData().slice(0, 50).map((participant, index) => (
-                                                            <TableRow
-                                                                key={index}
-                                                                className={`hover:bg-purple-50 ${selectedParticipants.some(p => p.cpf === participant.cpf) ? 'bg-blue-50 border-blue-200' : ''}`}
-                                                            >
-                                                                <TableCell className="px-6 py-4">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                                        checked={selectedParticipants.some(p => p.cpf === participant.cpf)}
-                                                                        onChange={() => handleSelectParticipant(participant)}
-                                                                        disabled={!!participant.wristbandId}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="px-6 py-4">
-                                                                    <div className="flex items-center">
-                                                                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                                                                            <span className="text-sm font-bold text-white">
-                                                                                {getInitials(participant.name)}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="ml-4">
-                                                                            <div className="text-sm font-semibold text-gray-900">{participant.name}</div>
-                                                                        </div>
-                                                                    </div>
-                                                                </TableCell>
-                                                                <TableCell className="px-6 py-4 hidden md:table-cell">
-                                                                    <Badge variant="secondary">{participant.company}</Badge>
-                                                                </TableCell>
-                                                                <TableCell className="px-6 py-4 hidden md:table-cell">{participant.role}</TableCell>
-                                                                <TableCell className="px-6 py-4 font-mono">{participant.cpf}</TableCell>
-                                                                <TableCell className="px-6 py-4">{participant.email || "-"}</TableCell>
-                                                                <TableCell className="px-6 py-4">
-                                                                    {participant.wristbandId ? (
-                                                                        <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50">
-                                                                            {participant.wristbandId}
-                                                                        </Badge>
-                                                                    ) : (
-                                                                        <Badge variant="outline" className="text-orange-700 border-orange-300 bg-orange-50">
-                                                                            Sem credencial
-                                                                        </Badge>
-                                                                    )}
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
-                                                {processedData.data.length > 10 && (
-                                                    <div className="px-6 py-4 bg-gray-50 text-center text-sm text-gray-600">
-                                                        ... e mais {processedData.data.length - 10} participantes
-                                                    </div>
-                                                )}
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-semibold">Prévia dos Dados</h3>
+                                    <div className="flex items-center gap-2">
+                                        {isUpdatingAfterCredentialCreation && (
+                                            <div className="flex items-center gap-2 text-blue-600 text-sm">
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Atualizando dados...
                                             </div>
                                         )}
-                                    </CardContent>
-                                </Card>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setShowPreviewDetails(!showPreviewDetails)}
+                                        >
+                                            {showPreviewDetails ? "Ocultar Detalhes" : "Mostrar Detalhes"}
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                processedData.errors.forEach((error, index) => {
+                                                    handlePreviewAutoFix(index, error.item)
+                                                })
+                                            }}
+                                            className="text-green-700 border-green-300 hover:bg-green-50"
+                                        >
+                                            Correção Automática para Todos
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <CheckCircle className="h-5 w-5 text-green-600" />
+                                                Dados Válidos
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-2xl font-bold text-green-600">
+                                                {processedData.validRows}
+                                            </div>
+                                            <p className="text-sm text-gray-600">
+                                                participantes prontos para importação
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <XCircle className="h-5 w-5 text-red-600" />
+                                                Dados Inválidos
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-2xl font-bold text-red-600">
+                                                {processedData.invalidRows}
+                                            </div>
+                                            <p className="text-sm text-gray-600">
+                                                participantes com problemas
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
+                                {/* Lista de dados inválidos com correção rápida */}
+                                {processedData.invalidRows > 0 && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <AlertTriangle className="h-5 w-5 text-orange-600" />
+                                                Dados que Precisam de Correção
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="max-h-60 overflow-y-auto space-y-2">
+                                                {processedData.errors.map((error, index) => (
+                                                    <div
+                                                        key={index}
+                                                        className="text-sm p-3 rounded border-l-4 border-red-400 bg-red-50 hover:bg-red-100 transition-all duration-200"
+                                                    >
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex-1">
+                                                                <div className="font-medium mb-1">
+                                                                    Linha {error.row}: {error.item.nome || "Nome não informado"}
+                                                                </div>
+
+                                                                {showPreviewDetails && (
+                                                                    <div className="ml-6 space-y-1">
+                                                                        <div className="text-red-600 font-medium">
+                                                                            Erros específicos:
+                                                                        </div>
+                                                                        <ul className="list-disc list-inside space-y-1 text-red-600">
+                                                                            {error.error.split(", ").map((err, errIndex) => (
+                                                                                <li key={errIndex} className="text-sm">
+                                                                                    {err}
+                                                                                </li>
+                                                                            ))}
+                                                                        </ul>
+
+                                                                        {/* Interface de Correção Rápida na Prévia */}
+                                                                        {previewEditingData === index ? (
+                                                                            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                                                <div className="text-sm font-medium text-blue-800 mb-2">
+                                                                                    Correção Rápida - Linha {error.row}
+                                                                                </div>
+                                                                                <div className="grid grid-cols-2 gap-2">
+                                                                                    <div>
+                                                                                        <label className="block text-xs font-medium text-gray-700 mb-1">Nome</label>
+                                                                                        <Input
+                                                                                            value={previewFixData[index]?.nome || ""}
+                                                                                            onChange={(e) => setPreviewFixData(prev => ({
+                                                                                                ...prev,
+                                                                                                [index]: { ...prev[index], nome: e.target.value }
+                                                                                            }))}
+                                                                                            className="text-xs h-8"
+                                                                                            placeholder="Nome"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="block text-xs font-medium text-gray-700 mb-1">CPF</label>
+                                                                                        <Input
+                                                                                            value={previewFixData[index]?.cpf || ""}
+                                                                                            onChange={(e) => setPreviewFixData(prev => ({
+                                                                                                ...prev,
+                                                                                                [index]: { ...prev[index], cpf: e.target.value }
+                                                                                            }))}
+                                                                                            className="text-xs h-8"
+                                                                                            placeholder="CPF"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="block text-xs font-medium text-gray-700 mb-1">RG</label>
+                                                                                        <Input
+                                                                                            value={previewFixData[index]?.rg || ""}
+                                                                                            onChange={(e) => setPreviewFixData(prev => ({
+                                                                                                ...prev,
+                                                                                                [index]: { ...prev[index], rg: e.target.value }
+                                                                                            }))}
+                                                                                            className="text-xs h-8"
+                                                                                            placeholder="RG"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="block text-xs font-medium text-gray-700 mb-1">Empresa</label>
+                                                                                        <Input
+                                                                                            value={previewFixData[index]?.empresa || ""}
+                                                                                            onChange={(e) => setPreviewFixData(prev => ({
+                                                                                                ...prev,
+                                                                                                [index]: { ...prev[index], empresa: e.target.value }
+                                                                                            }))}
+                                                                                            className="text-xs h-8"
+                                                                                            placeholder="Empresa"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="block text-xs font-medium text-gray-700 mb-1">Função</label>
+                                                                                        <Input
+                                                                                            value={previewFixData[index]?.funcao || ""}
+                                                                                            onChange={(e) => setPreviewFixData(prev => ({
+                                                                                                ...prev,
+                                                                                                [index]: { ...prev[index], funcao: e.target.value }
+                                                                                            }))}
+                                                                                            className="text-xs h-8"
+                                                                                            placeholder="Função"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                                                                                        <Input
+                                                                                            value={previewFixData[index]?.email || ""}
+                                                                                            onChange={(e) => setPreviewFixData(prev => ({
+                                                                                                ...prev,
+                                                                                                [index]: { ...prev[index], email: e.target.value }
+                                                                                            }))}
+                                                                                            className="text-xs h-8"
+                                                                                            placeholder="Email"
+                                                                                        />
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="flex gap-2 mt-3">
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        onClick={() => handleSavePreviewFix(index)}
+                                                                                        className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                                                                    >
+                                                                                        Salvar Correção
+                                                                                    </Button>
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        variant="outline"
+                                                                                        onClick={() => handleCancelPreviewEditing(index)}
+                                                                                        className="text-xs"
+                                                                                    >
+                                                                                        Cancelar
+                                                                                    </Button>
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                                                                                <div className="font-medium text-gray-700 mb-1">Dados da linha:</div>
+                                                                                <div className="grid grid-cols-2 gap-1 text-gray-600">
+                                                                                    <div><strong>Nome:</strong> {error.item.nome || "Não informado"}</div>
+                                                                                    <div><strong>CPF:</strong> {error.item.cpf || "Não informado"}</div>
+                                                                                    <div><strong>RG:</strong> {error.item.rg || "Não informado"}</div>
+                                                                                    <div><strong>Empresa:</strong> {error.item.empresa || "Não informada"}</div>
+                                                                                    <div><strong>Função:</strong> {error.item.funcao || "Não informada"}</div>
+                                                                                    <div><strong>Email:</strong> {error.item.email || "Não informado"}</div>
+                                                                                    <div><strong>Telefone:</strong> {error.item.phone || "Não informado"}</div>
+                                                                                </div>
+                                                                                <div className="flex gap-2 mt-2">
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        variant="outline"
+                                                                                        onClick={() => handleStartPreviewEditing(index, error.item)}
+                                                                                        className="text-blue-700 border-blue-300 hover:bg-blue-50 text-xs"
+                                                                                    >
+                                                                                        Editar
+                                                                                    </Button>
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        variant="outline"
+                                                                                        onClick={() => handlePreviewAutoFix(index, error.item)}
+                                                                                        className="text-green-700 border-green-300 hover:bg-green-50 text-xs"
+                                                                                    >
+                                                                                        Correção Automática
+                                                                                    </Button>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
 
                                 <div className="flex justify-between">
-                                    <Button onClick={handlePrevStep} variant="outline">
-                                        <ArrowLeft className="w-4 h-4 mr-2" />
+                                    <Button variant="outline" onClick={handlePrevStep}>
                                         Voltar
                                     </Button>
-                                    <Button onClick={handleNextStep} disabled={processedData.validRows === 0}>
-                                        Próximo
-                                        <ArrowRight className="w-4 h-4 ml-2" />
+                                    <Button onClick={handleNextStep} disabled={processedData.invalidRows > 0}>
+                                        Continuar
                                     </Button>
                                 </div>
                             </div>
@@ -1213,25 +2393,265 @@ export default function ImportExportPage() {
 
                                         {processedData.errors.length > 0 && (
                                             <div className="mb-6">
-                                                <h4 className="font-semibold text-red-600 mb-3 flex items-center">
-                                                    <XCircle className="w-4 h-4 mr-2" />
-                                                    Erros Encontrados ({processedData.errors.length})
-                                                </h4>
-                                                <div className="max-h-40 overflow-y-auto space-y-2">
-                                                    {processedData.errors.slice(0, 10).map((error, index) => (
-                                                        <div key={index} className="text-sm bg-red-50 p-3 rounded border-l-4 border-red-400">
-                                                            <div className="font-medium">
-                                                                Linha {error.row}: {error.item.name || "Nome não informado"}
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="font-semibold text-red-600 flex items-center">
+                                                        <XCircle className="w-4 h-4 mr-2" />
+                                                        Erros Encontrados ({processedData.errors.length})
+                                                    </h4>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => setShowInvalidDataDetails(!showInvalidDataDetails)}
+                                                            className="text-red-700 border-red-300 hover:bg-red-50"
+                                                        >
+                                                            {showInvalidDataDetails ? "Ocultar Detalhes" : "Mostrar Detalhes"}
+                                                        </Button>
+                                                        {selectedInvalidData.size > 0 && (
+                                                            <Button
+                                                                onClick={handleIncludeSelectedInvalidData}
+                                                                size="sm"
+                                                                className="bg-green-600 hover:bg-green-700 text-white"
+                                                            >
+                                                                Incluir {selectedInvalidData.size} Selecionado(s)
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Controles de seleção */}
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleSelectAllInvalidData}
+                                                        className="text-red-700 border-red-300 hover:bg-red-50"
+                                                    >
+                                                        Selecionar Todos
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleClearInvalidDataSelection}
+                                                        className="text-gray-600 border-gray-300 hover:bg-gray-50"
+                                                    >
+                                                        Limpar Seleção
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            processedData.errors.forEach((error, index) => {
+                                                                handleAutoFix(index, error.item)
+                                                            })
+                                                        }}
+                                                        className="text-green-700 border-green-300 hover:bg-green-50"
+                                                    >
+                                                        Correção Automática para Todos
+                                                    </Button>
+                                                    <Badge variant="outline" className="text-red-700">
+                                                        {selectedInvalidData.size} selecionado(s)
+                                                    </Badge>
+                                                </div>
+
+                                                <div className="max-h-60 overflow-y-auto space-y-2">
+                                                    {processedData.errors.map((error, index) => (
+                                                        <div
+                                                            key={index}
+                                                            className={`text-sm p-3 rounded border-l-4 transition-all duration-200 ${selectedInvalidData.has(index)
+                                                                ? 'bg-green-50 border-green-400 border-l-4'
+                                                                : 'bg-red-50 border-red-400 hover:bg-red-100'
+                                                                }`}
+                                                        >
+                                                            <div className="flex items-start justify-between">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={selectedInvalidData.has(index)}
+                                                                            onChange={() => handleInvalidDataSelection(index)}
+                                                                            className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                                                        />
+                                                                        <span className="font-medium">
+                                                                            Linha {error.row}: {error.item.nome || "Nome não informado"}
+                                                                        </span>
+                                                                        {selectedInvalidData.has(index) && (
+                                                                            <Badge variant="outline" className="text-green-700 bg-green-100">
+                                                                                Será incluído
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {showInvalidDataDetails && (
+                                                                        <div className="ml-6 space-y-1">
+                                                                            <div className="text-red-600 font-medium">
+                                                                                Erros específicos:
+                                                                            </div>
+                                                                            <ul className="list-disc list-inside space-y-1 text-red-600">
+                                                                                {error.error.split(", ").map((err, errIndex) => (
+                                                                                    <li key={errIndex} className="text-sm">
+                                                                                        {err}
+                                                                                    </li>
+                                                                                ))}
+                                                                            </ul>
+
+                                                                            {/* Interface de Correção Rápida */}
+                                                                            {editingInvalidData === index ? (
+                                                                                <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                                                    <div className="text-sm font-medium text-blue-800 mb-2">
+                                                                                        Correção Rápida - Linha {error.row}
+                                                                                    </div>
+                                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                                        <div>
+                                                                                            <label className="block text-xs font-medium text-gray-700 mb-1">Nome</label>
+                                                                                            <Input
+                                                                                                value={quickFixData[index]?.nome || ""}
+                                                                                                onChange={(e) => setQuickFixData(prev => ({
+                                                                                                    ...prev,
+                                                                                                    [index]: { ...prev[index], nome: e.target.value }
+                                                                                                }))}
+                                                                                                className="text-xs h-8"
+                                                                                                placeholder="Nome"
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="block text-xs font-medium text-gray-700 mb-1">CPF</label>
+                                                                                            <Input
+                                                                                                value={quickFixData[index]?.cpf || ""}
+                                                                                                onChange={(e) => setQuickFixData(prev => ({
+                                                                                                    ...prev,
+                                                                                                    [index]: { ...prev[index], cpf: e.target.value }
+                                                                                                }))}
+                                                                                                className="text-xs h-8"
+                                                                                                placeholder="CPF"
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="block text-xs font-medium text-gray-700 mb-1">RG</label>
+                                                                                            <Input
+                                                                                                value={quickFixData[index]?.rg || ""}
+                                                                                                onChange={(e) => setQuickFixData(prev => ({
+                                                                                                    ...prev,
+                                                                                                    [index]: { ...prev[index], rg: e.target.value }
+                                                                                                }))}
+                                                                                                className="text-xs h-8"
+                                                                                                placeholder="RG"
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="block text-xs font-medium text-gray-700 mb-1">Empresa</label>
+                                                                                            <Input
+                                                                                                value={quickFixData[index]?.empresa || ""}
+                                                                                                onChange={(e) => setQuickFixData(prev => ({
+                                                                                                    ...prev,
+                                                                                                    [index]: { ...prev[index], empresa: e.target.value }
+                                                                                                }))}
+                                                                                                className="text-xs h-8"
+                                                                                                placeholder="Empresa"
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="block text-xs font-medium text-gray-700 mb-1">Função</label>
+                                                                                            <Input
+                                                                                                value={quickFixData[index]?.funcao || ""}
+                                                                                                onChange={(e) => setQuickFixData(prev => ({
+                                                                                                    ...prev,
+                                                                                                    [index]: { ...prev[index], funcao: e.target.value }
+                                                                                                }))}
+                                                                                                className="text-xs h-8"
+                                                                                                placeholder="Função"
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                                                                                            <Input
+                                                                                                value={quickFixData[index]?.email || ""}
+                                                                                                onChange={(e) => setQuickFixData(prev => ({
+                                                                                                    ...prev,
+                                                                                                    [index]: { ...prev[index], email: e.target.value }
+                                                                                                }))}
+                                                                                                className="text-xs h-8"
+                                                                                                placeholder="Email"
+                                                                                            />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex gap-2 mt-3">
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            onClick={() => handleSaveQuickFix(index)}
+                                                                                            className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                                                                        >
+                                                                                            Salvar Correção
+                                                                                        </Button>
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            variant="outline"
+                                                                                            onClick={() => handleCancelEditing(index)}
+                                                                                            className="text-xs"
+                                                                                        >
+                                                                                            Cancelar
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                                                                                    <div className="font-medium text-gray-700 mb-1">Dados da linha:</div>
+                                                                                    <div className="grid grid-cols-2 gap-1 text-gray-600">
+                                                                                        <div><strong>Nome:</strong> {error.item.nome || "Não informado"}</div>
+                                                                                        <div><strong>CPF:</strong> {error.item.cpf || "Não informado"}</div>
+                                                                                        <div><strong>RG:</strong> {error.item.rg || "Não informado"}</div>
+                                                                                        <div><strong>Empresa:</strong> {error.item.empresa || "Não informada"}</div>
+                                                                                        <div><strong>Função:</strong> {error.item.funcao || "Não informada"}</div>
+                                                                                        <div><strong>Email:</strong> {error.item.email || "Não informado"}</div>
+                                                                                        <div><strong>Telefone:</strong> {error.item.phone || "Não informado"}</div>
+                                                                                    </div>
+                                                                                    <div className="flex gap-2 mt-2">
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            variant="outline"
+                                                                                            onClick={() => handleStartEditing(index, error.item)}
+                                                                                            className="text-blue-700 border-blue-300 hover:bg-blue-50 text-xs"
+                                                                                        >
+                                                                                            Editar
+                                                                                        </Button>
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            variant="outline"
+                                                                                            onClick={() => handleAutoFix(index, error.item)}
+                                                                                            className="text-green-700 border-green-300 hover:bg-green-50 text-xs"
+                                                                                        >
+                                                                                            Correção Automática
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                            <div className="text-red-600">{error.error}</div>
                                                         </div>
                                                     ))}
-                                                    {processedData.errors.length > 10 && (
-                                                        <p className="text-sm text-gray-500 text-center">
-                                                            ... e mais {processedData.errors.length - 10} erros
-                                                        </p>
-                                                    )}
                                                 </div>
+
+                                                {processedData.errors.length > 10 && (
+                                                    <p className="text-sm text-gray-500 text-center mt-2">
+                                                        ... e mais {processedData.errors.length - 10} erros
+                                                    </p>
+                                                )}
+
+                                                {selectedInvalidData.size > 0 && (
+                                                    <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <CheckCircle className="w-4 h-4 text-green-600" />
+                                                            <span className="font-medium text-green-800">
+                                                                {selectedInvalidData.size} item(s) selecionado(s) para inclusão
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-sm text-green-700">
+                                                            Os dados selecionados serão incluídos na importação com valores padrão para campos inválidos.
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -1258,6 +2678,94 @@ export default function ImportExportPage() {
                                                 </div>
                                             </div>
                                         )}
+                                        {processedData.missingCredentials && processedData.missingCredentials.length > 0 && (
+                                            <Card className="mb-6">
+                                                <CardHeader>
+                                                    <CardTitle className="flex items-center gap-2">
+                                                        <FileText className="h-5 w-5 text-blue-600" />
+                                                        Credenciais Faltantes
+                                                    </CardTitle>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    <div className="flex flex-wrap gap-2 mb-4">
+                                                        {processedData.missingCredentials.map((cred) => (
+                                                            <Badge key={cred.name} variant="outline" className="text-xs">
+                                                                {cred.name} <span className="ml-1 text-gray-500">({cred.count})</span>
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+                                                    <div className="flex items-center gap-4 mb-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm text-gray-600">Cor:</span>
+                                                            <input
+                                                                type="color"
+                                                                value={credentialColor}
+                                                                onChange={(e) => setCredentialColor(e.target.value)}
+                                                                className="w-8 h-8 rounded border"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <Button
+                                                        variant="outline"
+                                                        className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                                                        disabled={isCreatingCredentials}
+                                                        onClick={createMissingCredentials}
+                                                    >
+                                                        {isCreatingCredentials ? "Criando credenciais..." : `Criar todas as credenciais (${processedData.missingCredentials.length})`}
+                                                    </Button>
+
+                                                    <Dialog open={isCredentialDialogOpen}>
+                                                        <DialogContent className="max-w-md">
+                                                            <DialogHeader>
+                                                                <DialogTitle>Criando credenciais...</DialogTitle>
+                                                            </DialogHeader>
+                                                            <div className="flex flex-col items-center justify-center py-8">
+                                                                <div className="h-8 w-8 mb-4 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+                                                                <span className="text-blue-700">Aguarde, criando credenciais...</span>
+                                                            </div>
+                                                        </DialogContent>
+                                                    </Dialog>
+                                                </CardContent>
+                                            </Card>
+                                        )}
+                                        {processedData.missingCompanies && processedData.missingCompanies.length > 0 && (
+                                            <Card className="mb-6">
+                                                <CardHeader>
+                                                    <CardTitle className="flex items-center gap-2">
+                                                        <Building className="h-5 w-5 text-green-600" />
+                                                        Empresas Faltantes
+                                                    </CardTitle>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    <div className="flex flex-wrap gap-2 mb-4">
+                                                        {processedData.missingCompanies.map((company) => (
+                                                            <Badge key={company.name} variant="outline" className="text-xs">
+                                                                {company.name} <span className="ml-1 text-gray-500">({company.count})</span>
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+                                                    <Button
+                                                        variant="outline"
+                                                        className="text-green-700 border-green-300 hover:bg-green-50"
+                                                        disabled={isCreatingCompanies}
+                                                        onClick={createMissingCompanies}
+                                                    >
+                                                        {isCreatingCompanies ? "Criando empresas..." : `Criar todas as empresas (${processedData.missingCompanies.length})`}
+                                                    </Button>
+                                                    <Dialog open={isCompanyDialogOpen}>
+                                                        <DialogContent className="max-w-md">
+                                                            <DialogHeader>
+                                                                <DialogTitle>Criando empresas...</DialogTitle>
+                                                            </DialogHeader>
+                                                            <div className="flex flex-col items-center justify-center py-8">
+                                                                <div className="h-8 w-8 mb-4 animate-spin rounded-full border-4 border-green-500 border-t-transparent" />
+                                                                <span className="text-green-700">Aguarde, criando empresas...</span>
+                                                            </div>
+                                                        </DialogContent>
+                                                    </Dialog>
+                                                </CardContent>
+                                            </Card>
+                                        )}
                                     </CardContent>
                                 </Card>
 
@@ -1268,11 +2776,23 @@ export default function ImportExportPage() {
                                     </Button>
                                     <Button
                                         onClick={handleStartImport}
-                                        disabled={processedData.validRows === 0}
+                                        disabled={!canProceedWithImport()}
                                         className="bg-green-600 hover:bg-green-700"
                                     >
-                                        Iniciar Importação ({processedData.validRows} participantes)
-                                        <ArrowRight className="w-4 h-4 ml-2" />
+                                        {!canProceedWithImport() ? (
+                                            <>
+                                                {processedData?.missingCredentials?.length > 0 || processedData?.missingCompanies?.length > 0 ? (
+                                                    "Crie todas as credenciais e empresas faltantes primeiro"
+                                                ) : (
+                                                    "Nenhum participante válido para importar"
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>
+                                                Iniciar Importação ({processedData.validRows + selectedInvalidData.size} participantes)
+                                                <ArrowRight className="w-4 h-4 ml-2" />
+                                            </>
+                                        )}
                                     </Button>
                                 </div>
                             </div>
@@ -1458,13 +2978,41 @@ export default function ImportExportPage() {
                                     <p>
                                         • Nome do arquivo: participantes-evento-{eventId}-{new Date().toISOString().split("T")[0]}.xlsx
                                     </p>
-                                    <p>• Dados incluídos: nome, CPF, empresa, função, email, telefone, etc.</p>
+                                    <p>• Dados incluídos: nome, CPF, empresa, função, email, telefone, dias de trabalho, etc.</p>
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
                 )}
             </div>
+
+            {/* Modais de progresso - movidos para fora dos Cards */}
+            <Dialog open={isCredentialDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Criando credenciais...</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col items-center justify-center py-8">
+                        <div className="h-8 w-8 mb-4 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+                        <span className="text-blue-700">Aguarde, criando credenciais...</span>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isCompanyDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Criando empresas...</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col items-center justify-center py-8">
+                        <div className="h-8 w-8 mb-4 animate-spin rounded-full border-4 border-green-500 border-t-transparent" />
+                        <span className="text-green-700">Aguarde, criando empresas...</span>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
         </EventLayout>
     )
 }
+
+

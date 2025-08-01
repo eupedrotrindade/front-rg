@@ -1,7 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import React, { useState } from "react"
-import { useParams } from "next/navigation"
+import React, { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,149 +9,180 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Unlink, Building, Mail, Phone, MapPin, Users, FileText, Calendar } from "lucide-react"
+import { Plus, Search, Edit, Trash2, Building, Users, FileText, Calendar } from "lucide-react"
 import { toast } from "sonner"
-import { useEmpresasByEvent, useAllEmpresas } from "@/features/eventos/api/query"
-import { useVincularEmpresaEvento, useCreateEmpresa } from "@/features/eventos/api/mutation"
-import { desvincularEmpresaEvento } from "@/features/eventos/actions/create-empresa"
-import { useEventos } from "@/features/eventos/api/query/use-eventos"
-import type { CreateEmpresaRequest } from "@/features/eventos/types"
+import { useEmpresas } from "@/features/eventos/api/query/use-empresas"
+import { useCreateEmpresa, useDeleteEmpresa, useUpdateEmpresa } from "@/features/eventos/api/mutation"
+import { useEventos } from "@/features/eventos/api/query"
+import type { CreateEmpresaRequest, Empresa, Event } from "@/features/eventos/types"
 import EventLayout from "@/components/dashboard/dashboard-layout"
+import { useParams } from "next/navigation"
 
-export default function EventoEmpresasPage() {
-    const params = useParams()
-    const eventId = String(params.id)
-
+export default function EmpresasPage() {
     const [searchTerm, setSearchTerm] = useState("")
-    const [isVincularDialogOpen, setIsVincularDialogOpen] = useState(false)
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-    const [selectedEmpresaId, setSelectedEmpresaId] = useState("")
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+    const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null)
     const [formData, setFormData] = useState<CreateEmpresaRequest>({
         nome: "",
-        cnpj: "",
-        email: "",
-        telefone: "",
-        endereco: "",
-        cidade: "",
-        estado: "",
-        cep: "",
-        responsavel: "",
-        observacoes: ""
+        id_evento: "",
+        days: []
     })
 
     // Hooks
-    const { data: empresasVinculadas = [], isLoading: isLoadingVinculadas } = useEmpresasByEvent(eventId)
-    const { data: todasEmpresas = [] } = useAllEmpresas()
-    const { data: eventos } = useEventos()
-    const vincularMutation = useVincularEmpresaEvento()
+    const { data: empresas = [] } = useEmpresas()
+    const { data: eventos = [] } = useEventos()
     const createEmpresaMutation = useCreateEmpresa()
+    const updateEmpresaMutation = useUpdateEmpresa()
+    const deleteEmpresaMutation = useDeleteEmpresa()
 
-    // Buscar dados do evento
-    const evento = Array.isArray(eventos)
-        ? eventos.find((e) => String(e.id) === String(eventId))
-        : undefined
+    // Função para calcular os dias do evento com período
+    const getEventDays = (event: Event): { label: string; value: string; periodo: string }[] => {
+        if (!event.startDate || !event.endDate) return []
 
-    // Filtrar empresas vinculadas
-    const filteredEmpresasVinculadas = (empresasVinculadas || []).filter(empresa =>
-        empresa.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        empresa.cnpj?.includes(searchTerm) ||
-        empresa.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        empresa.responsavel?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+        // Parse datas dos períodos
+        const parse = (d?: string) => d ? new Date(d) : undefined
+        const setupStart = parse(event.setupStartDate)
+        const setupEnd = parse(event.setupEndDate)
+        const prepStart = parse(event.preparationStartDate)
+        const prepEnd = parse(event.preparationEndDate)
+        const eventStart = parse(event.startDate)
+        const eventEnd = parse(event.endDate)
+        const finalStart = parse(event.finalizationStartDate)
+        const finalEnd = parse(event.finalizationEndDate)
 
-    // Empresas disponíveis para vincular (não vinculadas ainda)
-    const empresasDisponiveis = (todasEmpresas || []).filter(empresa =>
-        !(empresasVinculadas || []).some(vinculada => vinculada.id === empresa.id)
-    )
+        const days: { label: string; value: string; periodo: string }[] = []
 
-    const handleVincular = async () => {
-        if (!selectedEmpresaId) {
-            toast.error("Selecione uma empresa")
-            return
-        }
+        for (let d = new Date(event.startDate); d <= new Date(event.endDate); d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+            const value = d.toISOString().slice(0, 10) // YYYY-MM-DD
 
-        try {
-            await vincularMutation.mutateAsync({
-                empresaId: selectedEmpresaId,
-                eventoId: eventId
-            })
-            setIsVincularDialogOpen(false)
-            setSelectedEmpresaId("")
-        } catch (error) {
-            console.error("Erro ao vincular empresa:", error)
-        }
-    }
-
-    const handleDesvincular = async (empresaId: string) => {
-        if (confirm("Tem certeza que deseja desvincular esta empresa do evento?")) {
-            try {
-                await desvincularEmpresaEvento(empresaId, eventId)
-                toast.success("Empresa desvinculada com sucesso!")
-                // Recarregar dados
-                window.location.reload()
-            } catch (error) {
-                console.error("Erro ao desvincular empresa:", error)
-                toast.error("Erro ao desvincular empresa")
+            // Descobre o período
+            let periodo = ''
+            if (setupStart && setupEnd && d >= setupStart && d <= setupEnd) {
+                periodo = 'montagem'
+            } else if (prepStart && prepEnd && d >= prepStart && d <= prepEnd) {
+                periodo = 'preparação'
+            } else if (eventStart && eventEnd && d >= eventStart && d <= eventEnd) {
+                periodo = 'evento'
+            } else if (finalStart && finalEnd && d >= finalStart && d <= finalEnd) {
+                periodo = 'desmontagem'
             }
+
+            days.push({
+                label: `${dateStr} - ${periodo}`,
+                value,
+                periodo,
+            })
         }
+
+        return days
     }
+
+    // Dias disponíveis baseado no evento selecionado
+    const availableDays = useMemo(() => {
+        if (!formData.id_evento) return []
+
+        const selectedEvent = Array.isArray(eventos)
+            ? eventos.find((e: any) => e.id === formData.id_evento)
+            : null
+
+        if (!selectedEvent) return []
+
+        return getEventDays(selectedEvent)
+    }, [formData.id_evento, eventos])
+
+    // Filtrar empresas por termo de pesquisa
+    const filteredEmpresas = (empresas || []).filter(empresa =>
+        empresa.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (empresa.id_evento && empresa.id_evento.includes(searchTerm)) ||
+        (Array.isArray(empresa.days) && empresa.days.some((day: string) => day.toLowerCase().includes(searchTerm.toLowerCase())))
+    )
 
     const handleCreateEmpresa = async (e: React.FormEvent) => {
         e.preventDefault()
-
         try {
-            const novaEmpresa = await createEmpresaMutation.mutateAsync(formData)
-            if (novaEmpresa) {
-                // Vincular automaticamente ao evento
-                await vincularMutation.mutateAsync({
-                    empresaId: novaEmpresa.id,
-                    eventoId: eventId
-                })
-                setIsCreateDialogOpen(false)
-                resetForm()
-                toast.success("Empresa criada e vinculada ao evento com sucesso!")
-            }
+            await createEmpresaMutation.mutateAsync(formData)
+            setIsCreateDialogOpen(false)
+            resetForm()
+            toast.success("Empresa criada com sucesso!")
         } catch (error) {
             console.error("Erro ao criar empresa:", error)
+            toast.error("Erro ao criar empresa")
         }
+    }
+
+    const handleUpdateEmpresa = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedEmpresa) return
+        try {
+            await updateEmpresaMutation.mutateAsync({
+                id: selectedEmpresa.id,
+                data: formData
+            })
+            setIsEditDialogOpen(false)
+            setSelectedEmpresa(null)
+            resetForm()
+            toast.success("Empresa atualizada com sucesso!")
+        } catch (error) {
+            console.error("Erro ao atualizar empresa:", error)
+            toast.error("Erro ao atualizar empresa")
+        }
+    }
+
+    const handleDeleteEmpresa = async (empresa: Empresa) => {
+        if (confirm(`Tem certeza que deseja deletar a empresa "${empresa.nome}"?`)) {
+            try {
+                await deleteEmpresaMutation.mutateAsync(empresa.id)
+                toast.success("Empresa deletada com sucesso!")
+            } catch (error) {
+                console.error("Erro ao deletar empresa:", error)
+                toast.error("Erro ao deletar empresa")
+            }
+        }
+    }
+
+    const handleEditEmpresa = (empresa: Empresa) => {
+        setSelectedEmpresa(empresa)
+        setFormData({
+            nome: empresa.nome,
+            id_evento: empresa.id_evento || "",
+            days: Array.isArray(empresa.days) ? empresa.days : []
+        })
+        setIsEditDialogOpen(true)
     }
 
     const resetForm = () => {
         setFormData({
             nome: "",
-            cnpj: "",
-            email: "",
-            telefone: "",
-            endereco: "",
-            cidade: "",
-            estado: "",
-            cep: "",
-            responsavel: "",
-            observacoes: ""
+            id_evento: "",
+            days: []
         })
     }
-
+    const eventId = useParams().id as string
+    const { data: event } = useEventos({ id: eventId })
+    const eventName =
+        Array.isArray(event)
+            ? ""
+            : event?.name || ""
     return (
-        <EventLayout
-            eventId={eventId}
-            eventName={evento?.name || "Empresas"}
-        >
+        <EventLayout eventId={eventId} eventName={eventName}>
             <div className="p-8">
                 {/* Header */}
                 <div className="mb-8">
                     <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                                Empresas do Evento
+                                Empresas
                             </h1>
                             <p className="text-gray-600">
-                                {evento ? `Gerencie as empresas vinculadas ao evento "${evento.name}"` : "Gerencie as empresas vinculadas a este evento"}
+                                Gerencie todas as empresas do sistema
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
                             <Badge variant="outline" className="text-blue-600">
-                                <Calendar className="h-3 w-3 mr-1" />
-                                {evento ? evento.name : "Evento"}
+                                <Building className="h-3 w-3 mr-1" />
+                                {(empresas || []).length} empresas
                             </Badge>
                         </div>
                     </div>
@@ -163,8 +194,8 @@ export default function EventoEmpresasPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Empresas Vinculadas</p>
-                                    <p className="text-3xl font-bold">{(empresasVinculadas || []).length}</p>
+                                    <p className="text-sm opacity-90">Total de Empresas</p>
+                                    <p className="text-3xl font-bold">{(empresas || []).length}</p>
                                 </div>
                                 <Building className="h-8 w-8 opacity-80" />
                             </div>
@@ -175,10 +206,10 @@ export default function EventoEmpresasPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Disponíveis</p>
-                                    <p className="text-3xl font-bold">{empresasDisponiveis.length}</p>
+                                    <p className="text-sm opacity-90">Com Evento</p>
+                                    <p className="text-3xl font-bold">{(empresas || []).filter(e => e.id_evento).length}</p>
                                 </div>
-                                <Plus className="h-8 w-8 opacity-80" />
+                                <Calendar className="h-8 w-8 opacity-80" />
                             </div>
                         </CardContent>
                     </Card>
@@ -187,8 +218,8 @@ export default function EventoEmpresasPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Com CNPJ</p>
-                                    <p className="text-3xl font-bold">{(empresasVinculadas || []).filter(e => e.cnpj).length}</p>
+                                    <p className="text-sm opacity-90">Com Dias</p>
+                                    <p className="text-3xl font-bold">{(empresas || []).filter(e => Array.isArray(e.days) && e.days.length > 0).length}</p>
                                 </div>
                                 <FileText className="h-8 w-8 opacity-80" />
                             </div>
@@ -199,8 +230,13 @@ export default function EventoEmpresasPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Ativas</p>
-                                    <p className="text-3xl font-bold">{(empresasVinculadas || []).filter(e => e.isActive).length}</p>
+                                    <p className="text-sm opacity-90">Média Dias</p>
+                                    <p className="text-3xl font-bold">
+                                        {(empresas || []).length > 0
+                                            ? Math.round((empresas || []).reduce((acc, e) => acc + (Array.isArray(e.days) ? e.days.length : 0), 0) / (empresas || []).length)
+                                            : 0
+                                        }
+                                    </p>
                                 </div>
                                 <Users className="h-8 w-8 opacity-80" />
                             </div>
@@ -214,7 +250,7 @@ export default function EventoEmpresasPage() {
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                         <Input
                             type="text"
-                            placeholder="Buscar empresas vinculadas..."
+                            placeholder="Buscar empresas..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="pl-10"
@@ -244,76 +280,67 @@ export default function EventoEmpresasPage() {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-2">CNPJ</label>
-                                            <Input
-                                                value={formData.cnpj}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, cnpj: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Email</label>
-                                            <Input
-                                                type="email"
-                                                value={formData.email}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Telefone</label>
-                                            <Input
-                                                value={formData.telefone}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, telefone: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Responsável</label>
-                                            <Input
-                                                value={formData.responsavel}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, responsavel: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">CEP</label>
-                                            <Input
-                                                value={formData.cep}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, cep: e.target.value }))}
-                                            />
+                                            <label className="block text-sm font-medium mb-2">ID do Evento</label>
+                                            <Select value={formData.id_evento} onValueChange={(value) => {
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    id_evento: value,
+                                                    days: [] // Limpar dias quando evento mudar
+                                                }))
+                                            }}>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Selecione um evento" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {Array.isArray(eventos) && eventos.length > 0 ? (
+                                                        eventos.map((evento: any) => (
+                                                            <SelectItem key={evento.id} value={evento.id}>
+                                                                {evento.name}
+                                                            </SelectItem>
+                                                        ))
+                                                    ) : null}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-medium mb-2">Endereço</label>
-                                        <Input
-                                            value={formData.endereco}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, endereco: e.target.value }))}
-                                        />
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Cidade</label>
-                                            <Input
-                                                value={formData.cidade}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, cidade: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Estado</label>
-                                            <Input
-                                                value={formData.estado}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, estado: e.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Observações</label>
-                                        <textarea
-                                            value={formData.observacoes}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, observacoes: e.target.value }))}
-                                            className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            rows={3}
-                                        />
+                                        <label className="block text-sm font-medium mb-2">Dias de Trabalho</label>
+                                        {formData.id_evento ? (
+                                            availableDays.length > 0 ? (
+                                                <>
+                                                    <div className="mb-2">
+                                                        <p className="text-sm text-gray-600">
+                                                            Evento selecionado tem {availableDays.length} dias disponíveis
+                                                        </p>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                        {availableDays.map((dayObj) => (
+                                                            <div key={dayObj.value} className="flex items-center space-x-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id={dayObj.value}
+                                                                    checked={Array.isArray(formData.days) && formData.days.includes(dayObj.value)}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) {
+                                                                            setFormData(prev => ({ ...prev, days: [...(prev.days || []), dayObj.value] }))
+                                                                        } else {
+                                                                            setFormData(prev => ({ ...prev, days: (prev.days || []).filter(d => d !== dayObj.value) }))
+                                                                        }
+                                                                    }}
+                                                                    className="rounded"
+                                                                />
+                                                                <label htmlFor={dayObj.value} className="text-sm">{dayObj.label}</label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <p className="text-sm text-gray-500">Selecione um evento para ver os dias disponíveis</p>
+                                            )
+                                        ) : (
+                                            <p className="text-sm text-gray-500">Selecione um evento primeiro para ver os dias disponíveis</p>
+                                        )}
                                     </div>
 
                                     <div className="flex justify-end gap-2">
@@ -344,69 +371,6 @@ export default function EventoEmpresasPage() {
                                 </form>
                             </DialogContent>
                         </Dialog>
-
-                        <Dialog open={isVincularDialogOpen} onOpenChange={setIsVincularDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button variant="outline" disabled={empresasDisponiveis.length === 0}>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Vincular Empresa
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Vincular Empresa ao Evento</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Selecionar Empresa</label>
-                                        <Select value={selectedEmpresaId} onValueChange={setSelectedEmpresaId}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Escolha uma empresa" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {empresasDisponiveis.map((empresa) => (
-                                                    <SelectItem key={empresa.id} value={empresa.id}>
-                                                        <div className="flex items-center">
-                                                            <span>{empresa.nome}</span>
-                                                            {empresa.cnpj && (
-                                                                <Badge variant="secondary" className="ml-2 text-xs">
-                                                                    {empresa.cnpj}
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="flex justify-end gap-2">
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => {
-                                                setIsVincularDialogOpen(false)
-                                                setSelectedEmpresaId("")
-                                            }}
-                                        >
-                                            Cancelar
-                                        </Button>
-                                        <Button
-                                            onClick={handleVincular}
-                                            disabled={!selectedEmpresaId || vincularMutation.isPending}
-                                        >
-                                            {vincularMutation.isPending ? (
-                                                <>
-                                                    <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                                    Vinculando...
-                                                </>
-                                            ) : (
-                                                "Vincular"
-                                            )}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
                     </div>
                 </div>
 
@@ -415,102 +379,81 @@ export default function EventoEmpresasPage() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Building className="h-5 w-5" />
-                            Empresas Vinculadas ao Evento
+                            Lista de Empresas
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {isLoadingVinculadas ? (
-                            <div className="text-center py-8">
-                                <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent mx-auto mb-4" />
-                                <p className="text-gray-600">Carregando empresas...</p>
-                            </div>
-                        ) : filteredEmpresasVinculadas.length === 0 ? (
+                        {filteredEmpresas.length === 0 ? (
                             <div className="text-center py-8">
                                 <Building className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                                 <p className="text-gray-600">
-                                    {searchTerm ? "Nenhuma empresa encontrada" : "Nenhuma empresa vinculada a este evento"}
+                                    {searchTerm ? "Nenhuma empresa encontrada" : "Nenhuma empresa cadastrada"}
                                 </p>
-                                {!searchTerm && empresasDisponiveis.length > 0 && (
-                                    <Button
-                                        onClick={() => setIsVincularDialogOpen(true)}
-                                        className="mt-4"
-                                    >
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        Vincular Primeira Empresa
-                                    </Button>
-                                )}
                             </div>
                         ) : (
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Empresa</TableHead>
-                                        <TableHead>CNPJ</TableHead>
-                                        <TableHead>Contato</TableHead>
-                                        <TableHead>Localização</TableHead>
-                                        <TableHead>Status</TableHead>
+                                        <TableHead>ID</TableHead>
+                                        <TableHead>Nome</TableHead>
+                                        <TableHead>ID Evento</TableHead>
+                                        <TableHead>Dias</TableHead>
                                         <TableHead>Ações</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {filteredEmpresasVinculadas.map((empresa) => (
+                                    {filteredEmpresas.map((empresa) => (
                                         <TableRow key={empresa.id}>
                                             <TableCell>
-                                                <div>
-                                                    <p className="font-medium">{empresa.nome}</p>
-                                                    {empresa.responsavel && (
-                                                        <p className="text-sm text-gray-600">Resp: {empresa.responsavel}</p>
-                                                    )}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                {empresa.cnpj ? (
-                                                    <Badge variant="secondary" className="font-mono text-xs">
-                                                        {empresa.cnpj}
-                                                    </Badge>
-                                                ) : (
-                                                    "-"
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="space-y-1">
-                                                    {empresa.email && (
-                                                        <div className="flex items-center text-sm">
-                                                            <Mail className="h-3 w-3 mr-1" />
-                                                            {empresa.email}
-                                                        </div>
-                                                    )}
-                                                    {empresa.telefone && (
-                                                        <div className="flex items-center text-sm">
-                                                            <Phone className="h-3 w-3 mr-1" />
-                                                            {empresa.telefone}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                {empresa.cidade && empresa.estado ? (
-                                                    <div className="flex items-center text-sm">
-                                                        <MapPin className="h-3 w-3 mr-1" />
-                                                        {empresa.cidade}, {empresa.estado}
-                                                    </div>
-                                                ) : (
-                                                    "-"
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant={empresa.isActive ? "default" : "secondary"}>
-                                                    {empresa.isActive ? "Ativa" : "Inativa"}
+                                                <Badge variant="secondary" className="font-mono text-xs">
+                                                    {empresa.id.slice(0, 8)}...
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleDesvincular(empresa.id)}
-                                                >
-                                                    <Unlink className="h-4 w-4" />
-                                                </Button>
+                                                <div>
+                                                    <p className="font-medium">{empresa.nome}</p>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="secondary" className="font-mono text-xs">
+                                                    {empresa.id_evento || "-"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {Array.isArray(empresa.days) && empresa.days.length > 0 ? (
+                                                        empresa.days.map((day, index) => {
+                                                            // Converter YYYY-MM-DD para DD/MM
+                                                            const date = new Date(day)
+                                                            const dateStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+                                                            return (
+                                                                <Badge key={index} variant="outline" className="text-xs">
+                                                                    {dateStr}
+                                                                </Badge>
+                                                            )
+                                                        })
+                                                    ) : (
+                                                        <span className="text-gray-500 text-sm">-</span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleEditEmpresa(empresa)}
+                                                    >
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleDeleteEmpresa(empresa)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -520,38 +463,116 @@ export default function EventoEmpresasPage() {
                     </CardContent>
                 </Card>
 
-                {/* Informações do Evento */}
-                {evento && (
-                    <Card className="mt-8">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Calendar className="h-5 w-5" />
-                                Informações do Evento
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
+                {/* Edit Dialog */}
+                <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Editar Empresa</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={handleUpdateEmpresa} className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <p className="text-sm font-medium text-gray-600">Nome do Evento</p>
-                                    <p className="text-lg font-semibold">{evento.name}</p>
+                                    <label className="block text-sm font-medium mb-2">Nome da Empresa *</label>
+                                    <Input
+                                        value={formData.nome}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
+                                        required
+                                    />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-gray-600">Status</p>
-                                    <Badge variant={evento.isActive ? "default" : "secondary"}>
-                                        {evento.isActive ? "Ativo" : "Inativo"}
-                                    </Badge>
+                                    <label className="block text-sm font-medium mb-2">ID do Evento</label>
+                                    <Select value={formData.id_evento} onValueChange={(value) => {
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            id_evento: value,
+                                            days: [] // Limpar dias quando evento mudar
+                                        }))
+                                    }}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione um evento" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {Array.isArray(eventos) && eventos.length > 0 ? (
+                                                eventos.map((evento: any) => (
+                                                    <SelectItem key={evento.id} value={evento.id}>
+                                                        {evento.name}
+                                                    </SelectItem>
+                                                ))
+                                            ) : null}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                                {evento.description && (
-                                    <div className="md:col-span-2">
-                                        <p className="text-sm font-medium text-gray-600">Descrição</p>
-                                        <p className="text-sm text-gray-700">{evento.description}</p>
-                                    </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Dias de Trabalho</label>
+                                {formData.id_evento ? (
+                                    availableDays.length > 0 ? (
+                                        <>
+                                            <div className="mb-2">
+                                                <p className="text-sm text-gray-600">
+                                                    Evento selecionado tem {availableDays.length} dias disponíveis
+                                                </p>
+                                            </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                {availableDays.map((dayObj) => (
+                                                    <div key={dayObj.value} className="flex items-center space-x-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id={`edit-${dayObj.value}`}
+                                                            checked={Array.isArray(formData.days) && formData.days.includes(dayObj.value)}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setFormData(prev => ({ ...prev, days: [...(prev.days || []), dayObj.value] }))
+                                                                } else {
+                                                                    setFormData(prev => ({ ...prev, days: (prev.days || []).filter(d => d !== dayObj.value) }))
+                                                                }
+                                                            }}
+                                                            className="rounded"
+                                                        />
+                                                        <label htmlFor={`edit-${dayObj.value}`} className="text-sm">{dayObj.label}</label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <p className="text-sm text-gray-500">Selecione um evento para ver os dias disponíveis</p>
+                                    )
+                                ) : (
+                                    <p className="text-sm text-gray-500">Selecione um evento primeiro para ver os dias disponíveis</p>
                                 )}
                             </div>
-                        </CardContent>
-                    </Card>
-                )}
+
+                            <div className="flex justify-end gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        setIsEditDialogOpen(false)
+                                        setSelectedEmpresa(null)
+                                        resetForm()
+                                    }}
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    disabled={updateEmpresaMutation.isPending}
+                                >
+                                    {updateEmpresaMutation.isPending ? (
+                                        <>
+                                            <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                            Atualizando...
+                                        </>
+                                    ) : (
+                                        "Atualizar Empresa"
+                                    )}
+                                </Button>
+                            </div>
+                        </form>
+                    </DialogContent>
+                </Dialog>
             </div>
         </EventLayout>
     )
-} 
+}

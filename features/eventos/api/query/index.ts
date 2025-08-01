@@ -11,6 +11,17 @@ export { useEmpresasByEvent } from "./use-empresas";
 // Eventos queries
 export { useEventos } from "./use-eventos";
 
+export * from "./use-event-managers";
+export * from "./use-event-staff";
+export * from "./use-event-participants";
+export * from "./use-event-participants-by-event";
+export * from "./use-event-wristbands";
+export * from "./use-event-wristband-models";
+export * from "./use-event-vehicles";
+export * from "./use-event-histories";
+export * from "./use-empresas";
+export * from "./use-credentials";
+
 // Event Participants queries
 export { useEventParticipants } from "./use-event-participants";
 export { useEventParticipantsByEvent } from "./use-event-participants-by-event";

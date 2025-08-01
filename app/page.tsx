@@ -48,7 +48,7 @@ export default function Home() {
               <Button
                 className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200"
                 size="lg"
-                onClick={() => router.push("/dashboard")}
+                onClick={() => router.push("/eventos")}
               >
                 Entrar como Administrativo
               </Button>

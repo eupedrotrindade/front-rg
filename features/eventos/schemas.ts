@@ -87,7 +87,8 @@ export type EventWristbandSchema = z.infer<typeof eventWristbandSchema>;
 
 export const eventParticipantSchema = z.object({
   eventId: z.string().min(1, "Evento obrigatório"),
-  wristbandId: z.string().min(1, "Tipo de credencial obrigatória"),
+  credentialId: z.string().optional(), // Novo campo para credenciais
+  wristbandId: z.string().optional(), // Mantido para compatibilidade
   staffId: z.string().optional(),
   name: z.string().min(1, "Nome obrigatório"),
   cpf: z.string().min(11, "CPF obrigatório"),
@@ -108,6 +109,28 @@ export const eventParticipantSchema = z.object({
 });
 
 export type EventParticipantSchema = z.infer<typeof eventParticipantSchema>;
+
+// Schemas para credenciais
+export const credentialSchema = z.object({
+  nome: z.string().min(1, "Nome obrigatório"),
+  cor: z.string().min(1, "Cor obrigatória"),
+  id_events: z.string().min(1, "Evento obrigatório"),
+  days_works: z.array(z.string()).min(1, "Pelo menos um dia de trabalho é obrigatório"),
+  isActive: z.boolean().optional(),
+  isDistributed: z.boolean().optional(),
+});
+
+export const credentialUpdateSchema = z.object({
+  nome: z.string().min(1, "Nome obrigatório").optional(),
+  cor: z.string().min(1, "Cor obrigatória").optional(),
+  id_events: z.string().min(1, "Evento obrigatório").optional(),
+  days_works: z.array(z.string()).min(1, "Pelo menos um dia de trabalho é obrigatório").optional(),
+  isActive: z.boolean().optional(),
+  isDistributed: z.boolean().optional(),
+});
+
+export type CredentialSchema = z.infer<typeof credentialSchema>;
+export type CredentialUpdateSchema = z.infer<typeof credentialUpdateSchema>;
 
 export const eventHistorySchema = z.object({
   entityType: z.enum(["event", "participant", "manager", "staff", "wristband"]),

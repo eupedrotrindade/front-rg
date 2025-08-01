@@ -22,7 +22,17 @@ export const useOperatorsByEvent = ({
     // Verificar se o operador está associado ao evento
     const eventIds =
       operator.id_events?.split(",").map((id: string) => id.trim()) || [];
-    const isAssociatedWithEvent = eventIds.includes(eventId);
+    
+    // Verificar se está associado ao evento (com ou sem data específica)
+    const isAssociatedWithEvent = eventIds.some((eventAssignment: string) => {
+      // Se contém ":", significa que tem data específica (formato: eventId:date)
+      if (eventAssignment.includes(":")) {
+        const [eventIdFromAssignment] = eventAssignment.split(":");
+        return eventIdFromAssignment === eventId;
+      }
+      // Se não contém ":", é o formato antigo (apenas eventId)
+      return eventAssignment === eventId;
+    });
 
     // Aplicar filtro de busca se fornecido
     if (search) {

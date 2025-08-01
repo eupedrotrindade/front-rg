@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
 import { EventParticipantSchema } from "@/features/eventos/schemas";
+import { apiClient } from "@/lib/api-client";
 
 export const useUpdateEventParticipant = () => {
   const queryClient = useQueryClient();
@@ -9,7 +9,7 @@ export const useUpdateEventParticipant = () => {
       id,
       ...dados
     }: EventParticipantSchema & { id: string }) => {
-      const { data } = await axios.put(`/api/event-participants/${id}`, dados);
+      const { data } = await apiClient.put(`/event-participants/${id}`, dados);
       return data;
     },
     onSuccess: () => {
