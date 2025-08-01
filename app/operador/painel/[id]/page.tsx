@@ -1009,7 +1009,7 @@ export default function Painel() {
         const proximoId = maxId + 1;
 
         const modelo = [
-            { id: proximoId, name: "", cpf: "", role: "", company: "", wristbandId: "" }
+            { name: "", cpf: "", role: "", company: "", wristbandId: "" }
         ];
         const ws = XLSX.utils.json_to_sheet(modelo);
         const wb = XLSX.utils.book_new();
@@ -1020,7 +1020,7 @@ export default function Painel() {
 
     // Função para exportar barrados para CSV
     const exportarBarradosCSV = () => {
-        const headers = ["Nome", "CPF", "Função", "Empresa", "Tipo Credencial"];
+        const headers = ["Nome", "CPF", "Função", "Empresa", "Tipo de Credencial"];
         const csvContent = [
             headers.join(","),
             ...resumoImportacao.barrados.map((item) =>
@@ -1506,27 +1506,30 @@ export default function Painel() {
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold  uppercase tracking-wider">
-                                            Colaborador
+                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                            Nome
                                         </TableHead>
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold  uppercase tracking-wider hidden md:table-cell">
-                                            Departamento
-                                        </TableHead>
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold  uppercase tracking-wider hidden md:table-cell">
-                                            Pessoa Gestora
-                                        </TableHead>
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold  uppercase tracking-wider">
+                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                                             CPF
                                         </TableHead>
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold  uppercase tracking-wider">
-                                            Ações
+                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                            Função
+                                        </TableHead>
+                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                            Empresa
+                                        </TableHead>
+                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                            Tipo de Credencial
+                                        </TableHead>
+                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                            Ação
                                         </TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody className="bg-white divide-y divide-gray-100 text-gray-600">
                                     {paginatedData.total === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="px-6 py-16 text-center text-gray-500">
+                                            <TableCell colSpan={6} className="px-6 py-16 text-center text-gray-500">
                                                 <div className="flex flex-col items-center">
                                                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                                                         <User className="w-8 h-8 text-gray-400" />
@@ -1574,38 +1577,24 @@ export default function Painel() {
                                                                 <div className="text-sm font-semibold text-gray-900">
                                                                     {colab.name}
                                                                 </div>
-                                                                <div className="text-sm text-gray-600">
-                                                                    {colab.role}
-                                                                </div>
                                                             </div>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 hidden md:table-cell">
-                                                        <div className="space-y-1">
-                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                                {colab.company}
-                                                            </span>
-                                                            {colab.daysWork && colab.daysWork.length > 0 && (
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {colab.daysWork.slice(0, 2).map((day, idx) => (
-                                                                        <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                                            {day}
-                                                                        </span>
-                                                                    ))}
-                                                                    {colab.daysWork.length > 2 && (
-                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                                                            +{colab.daysWork.length - 2}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 hidden md:table-cell">
-                                                        <p className="text-gray-600"> {colab.validatedBy || '-'}</p>
-                                                    </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                                                        <p className="text-gray-600"> {colab.cpf}</p>
+                                                        <p className="text-gray-600">{colab.cpf}</p>
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        <p className="text-gray-600">{colab.role}</p>
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                            {colab.company}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                                            {wristbandModel?.credentialType || '-'}
+                                                        </span>
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                         <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>

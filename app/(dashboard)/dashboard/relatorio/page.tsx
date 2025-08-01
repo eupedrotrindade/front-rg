@@ -296,7 +296,7 @@ export default function Relatorios() {
                     linhas = dadosRelatorio.map((d) => [String(d.nome ?? "-"), String(d.cpf ?? "-"), String(d.funcao ?? "-"), String(d.empresa ?? "-"), String(d.checkin ?? "-"), String(d.cadastrado_por ?? "-")]);
                     break;
                 case "checkin_pulseira":
-                    colunas = ["Nome", "CPF", "Função", "Empresa", "Check-in", "Cadastrado por", "Tipo Credencial", "Código Pulseira"];
+                    colunas = ["Nome", "CPF", "Função", "Empresa", "Check-in", "Cadastrado por", "Tipo de Credencial", "Código Pulseira"];
                     linhas = dadosRelatorio.map((d) => [String(d.nome ?? "-"), String(d.cpf ?? "-"), String(d.funcao ?? "-"), String(d.empresa ?? "-"), String(d.checkin ?? "-"), String(d.cadastrado_por ?? "-"), String(d.tipo_credencial ?? "-"), String(d.pulseira_codigo ?? "-")]);
                     break;
                 case "checkout":
@@ -308,7 +308,7 @@ export default function Relatorios() {
                     linhas = dadosRelatorio.map((d) => [String(d.nome ?? "-"), String(d.cpf ?? "-"), String(d.funcao ?? "-"), String(d.empresa ?? "-"), String(d.checkin ?? "-"), String(d.checkout ?? "-"), String(d.tempo_total ?? "-")]);
                     break;
                 case "credencial":
-                    colunas = ["Nome", "CPF", "Função", "Empresa", "Tipo Credencial"];
+                    colunas = ["Nome", "CPF", "Função", "Empresa", "Tipo de Credencial"];
                     linhas = dadosRelatorio.map((d) => [String(d.nome ?? "-"), String(d.cpf ?? "-"), String(d.funcao ?? "-"), String(d.empresa ?? "-"), String(d.tipo_credencial ?? "-")]);
                     break;
                 default:
