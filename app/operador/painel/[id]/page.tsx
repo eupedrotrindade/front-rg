@@ -1359,7 +1359,7 @@ export default function Painel() {
                     </header>
 
                     {/* Main Content */}
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                    <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
                         {/* Action Bar */}
                         <div className="mb-8">
                             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
