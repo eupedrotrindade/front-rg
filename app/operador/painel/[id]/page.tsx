@@ -1939,7 +1939,7 @@ export default function Painel() {
                                     <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
                                         <Plus className="w-5 h-5 text-white" />
                                     </div>
-                                    Adicionar Novo Colaborador
+                                    Adicionar Novo Staff
                                 </DialogTitle>
                                 <DialogDescription className="text-gray-600">
                                     Preencha os dados do novo colaborador
