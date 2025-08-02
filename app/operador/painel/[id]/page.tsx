@@ -19,27 +19,27 @@ import apiClient from "@/lib/api-client"
 import { formatCpf, isValidCpf } from "@/lib/utils"
 import { toast } from "sonner"
 import Image from "next/image"
-import { Loader2, Filter, Download, Upload, Plus, Search, Check, Clock, User, Calendar, X, RefreshCw } from "lucide-react"
+import { Loader2, Filter, Download, Upload, Plus, Search, Check, Clock, User, Calendar, X, RefreshCw, CreditCard } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
 import type { EventParticipant } from "@/features/eventos/types"
 import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
 import {
     updateEventParticipant,
-    checkInEventParticipant,
-    checkOutEventParticipant,
-    checkInEventParticipantByDate,
-    checkOutEventParticipantByDate,
-    getEventParticipantAttendanceByDate,
     getEventOperatorPermissions,
     getOperatorEventPermissions,
     setOperatorEventPermissions,
     removeOperatorEventPermissions,
     checkOperatorDatePermission,
 } from "@/features/eventos/actions/update-event-participant"
+import { getEventAttendance } from "@/features/eventos/actions/event-attendance"
+import { useCheckIn, useCheckOut, useAttendanceStatus } from "@/features/eventos/api/mutation/use-check-operations"
+import { useEventAttendanceByEventAndDate } from "@/features/eventos/api/query/use-event-attendance"
 import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands"
 import { useEventWristbandModels } from "@/features/eventos/api/query/use-event-wristband-models"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
+import ModalTrocaPulseira from "@/components/operador/modalTrocaPulseira"
+import { changeCredentialCode } from "@/features/eventos/actions/movement-credentials"
 
 export default function Painel() {
 
@@ -71,6 +71,10 @@ export default function Painel() {
         daysWork: [] as string[]
     });
 
+    // Estados para troca de pulseira
+    const [popupTrocaPulseira, setPopupTrocaPulseira] = useState(false);
+    const [selectedParticipantForPulseira, setSelectedParticipantForPulseira] = useState<EventParticipant | null>(null);
+
     const [operadorLogado, setOperadorLogado] = useState(false);
     const [authChecked, setAuthChecked] = useState(false);
     const [operadorInfo, setOperadorInfo] = useState<{ nome: string; cpf: string; id?: string; acoes?: any[] } | null>(null);
@@ -101,7 +105,7 @@ export default function Painel() {
     const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
     // Estado para tabs de dias do evento
-    const [selectedDay, setSelectedDay] = useState<string>('all');
+    const [selectedDay, setSelectedDay] = useState<string>('');
 
     // Estados para carrossel dos dias
     const [scrollPosition, setScrollPosition] = useState(0);
@@ -130,6 +134,13 @@ export default function Painel() {
         checkOut: string | null;
         status: string;
     } | null>(null);
+
+    // Estado para armazenar status de presença de todos os participantes
+    const [participantsAttendanceStatus, setParticipantsAttendanceStatus] = useState<Map<string, {
+        checkIn: string | null;
+        checkOut: string | null;
+        status: string;
+    }>>(new Map());
 
     // Estados para permissões de operadores
     const [operatorPermissions, setOperatorPermissions] = useState<{
@@ -163,6 +174,16 @@ export default function Painel() {
     } = useEventParticipantsByEvent({ eventId });
     const { data: wristbands = [] } = useEventWristbandsByEvent(params?.id as string);
     const { data: wristbandModels = [] } = useEventWristbandModels();
+
+    // Hooks para operações de check-in/check-out
+    const checkInMutation = useCheckIn();
+    const checkOutMutation = useCheckOut();
+
+    // Hook para buscar status de presença por evento e data
+    const { data: attendanceData, refetch: refetchAttendance } = useEventAttendanceByEventAndDate(
+        params?.id as string,
+        selectedDay ? (selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay).split('/').join('-') : new Date().toLocaleDateString('pt-BR').split('/').join('-')
+    );
 
     // TODOS OS useMemo DEPOIS DOS HOOKS DE DADOS
     const wristbandMap = useMemo(() => {
@@ -342,7 +363,7 @@ export default function Painel() {
         console.log("🔍 preparationStartDate:", evento.preparationStartDate);
         console.log("🔍 preparationEndDate:", evento.preparationEndDate);
 
-        days.push({ id: 'all', label: 'TODOS', date: '', type: 'all' });
+        // Removido a aba "TODOS" - não adiciona mais o 'all'
 
         if (hasSetup && evento.setupStartDate && evento.setupEndDate) {
             // Corrigir problema de timezone - tratar como data local
@@ -362,7 +383,7 @@ export default function Painel() {
                 const dateStr = date.toLocaleDateString('pt-BR');
                 console.log("🔍 Adicionando dia de montagem:", dateStr);
                 days.push({
-                    id: dateStr,
+                    id: `setup_${dateStr}`,
                     label: `${dateStr} (MONTAGEM)`,
                     date: dateStr,
                     type: 'setup'
@@ -389,7 +410,7 @@ export default function Painel() {
                 const isOnlyEventDay = !hasSetup && !hasFinalization;
                 console.log("🔍 Adicionando dia de preparação/evento:", dateStr);
                 days.push({
-                    id: dateStr,
+                    id: `preparation_${dateStr}`,
                     label: isOnlyEventDay ? `${dateStr} (DIA DO EVENTO)` : `${dateStr} (EVENTO)`,
                     date: dateStr,
                     type: 'preparation'
@@ -415,7 +436,7 @@ export default function Painel() {
                 const dateStr = date.toLocaleDateString('pt-BR');
                 console.log("🔍 Adicionando dia de finalização:", dateStr);
                 days.push({
-                    id: dateStr,
+                    id: `finalization_${dateStr}`,
                     label: `${dateStr} (DESMONTAGEM)`,
                     date: dateStr,
                     type: 'finalization'
@@ -432,11 +453,14 @@ export default function Painel() {
             return participantsData;
         }
 
+        // Extrair apenas a data do ID (remover prefixo se existir)
+        const dataDia = dia.includes('_') ? dia.split('_')[1] : dia;
+
         return participantsData.filter((colab: EventParticipant) => {
             if (!colab.daysWork || colab.daysWork.length === 0) {
                 return false;
             }
-            return colab.daysWork.includes(dia);
+            return colab.daysWork.includes(dataDia);
         });
     }, [participantsData]);
 
@@ -651,18 +675,31 @@ export default function Painel() {
         setIsDataStale(false);
     }, []);
 
+    // Função utilitária para converter dd/mm/yyyy para Date
+    const dataBRtoDate = (dataStr: string): Date => {
+        const [dia, mes, ano] = dataStr.split('/');
+        return new Date(Number(ano), Number(mes) - 1, Number(dia));
+    };
+
+    // Retorna apenas as datas autorizadas para o operador logado
     const getDiasDisponiveisParaOperador = useCallback(() => {
+        let dias = [];
         if (!operadorInfo?.id) {
-            return getEventDays();
+            dias = getEventDays();
+        } else if (availableDatesForOperator.length === 0) {
+            dias = getEventDays();
+        } else {
+            dias = getEventDays().filter(day =>
+                availableDatesForOperator.includes(day.id)
+            );
         }
-
-        if (availableDatesForOperator.length === 0) {
-            return getEventDays();
-        }
-
-        return getEventDays().filter(day =>
-            day.id === 'all' || availableDatesForOperator.includes(day.id)
-        );
+        // Ordena as datas
+        dias.sort((a, b) => {
+            const dateA = dataBRtoDate(a.date);
+            const dateB = dataBRtoDate(b.date);
+            return dateA.getTime() - dateB.getTime();
+        });
+        return dias;
     }, [operadorInfo?.id, availableDatesForOperator, getEventDays]);
 
     // Adicione após os outros useCallback, antes dos useEffect:
@@ -675,11 +712,11 @@ export default function Painel() {
             if (permissions) {
                 setAvailableDatesForOperator(permissions.allowedDates);
             } else {
-                setAvailableDatesForOperator(getEventDays().map(day => day.id).filter(id => id !== 'all'));
+                setAvailableDatesForOperator(getEventDays().map(day => day.id));
             }
         } catch (error) {
             console.error("Erro ao carregar permissões:", error);
-            setAvailableDatesForOperator(getEventDays().map(day => day.id).filter(id => id !== 'all'));
+            setAvailableDatesForOperator(getEventDays().map(day => day.id));
         }
     }, [operadorInfo?.id, eventId, getOperatorEventPermissions, getEventDays]);
 
@@ -824,6 +861,13 @@ export default function Painel() {
         }
     }, [filtro, selectedDay, filtroAvancado, ordenacao, currentPage]);
 
+    // Carregar status de presença quando o dia selecionado mudar
+    useEffect(() => {
+        if (selectedDay && paginatedData.data.length > 0) {
+            carregarStatusPresencaTodos(paginatedData.data, selectedDay);
+        }
+    }, [selectedDay, paginatedData.data]);
+
     useEffect(() => {
         return () => {
             if (searchDebounce) {
@@ -884,6 +928,14 @@ export default function Painel() {
         }
     }, [operadorInfo?.id, eventId]);
 
+    // useEffect para definir o primeiro dia disponível como selecionado
+    useEffect(() => {
+        if (!selectedDay && getDiasDisponiveisParaOperador().length > 0) {
+            const primeiroDia = getDiasDisponiveisParaOperador()[0];
+            setSelectedDay(primeiroDia.id);
+        }
+    }, [selectedDay, getDiasDisponiveisParaOperador]);
+
     // Variáveis computadas
     const empresasUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.company))];
     const funcoesUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.role))];
@@ -898,6 +950,22 @@ export default function Painel() {
     const tiposCredencialUnicosFiltrados = Array.from(new Set(tiposCredencialUnicos)).filter(
         (tipo): tipo is string => typeof tipo === "string" && !!tipo && tipo.trim() !== ""
     );
+
+    // Normalizar dias dos participantes após carregar os dados
+    useEffect(() => {
+        if (participantsData && participantsData.length > 0) {
+            participantsData.forEach(p => {
+                if (Array.isArray(p.daysWork)) {
+                    p.daysWork = p.daysWork.map(day => {
+                        if (/^\d{2}\/\d{2}\/\d{4}$/.test(day)) return day;
+                        const d = new Date(day);
+                        if (!isNaN(d.getTime())) return d.toLocaleDateString('pt-BR');
+                        return day;
+                    });
+                }
+            });
+        }
+    }, [participantsData]);
 
     // Early returns APÓS todos os hooks serem chamados
     if (eventosLoading) {
@@ -1027,50 +1095,142 @@ export default function Painel() {
 
     // Função para determinar qual botão mostrar
     const getBotaoAcao = (colaborador: EventParticipant) => {
-        // Se uma data específica está selecionada, usar sistema por data
-        if (selectedDay !== 'all') {
-            // Verificar se o colaborador trabalha nesta data
-            if (!colaborador.daysWork || !colaborador.daysWork.includes(selectedDay)) {
-                return null; // Não trabalha nesta data
-            }
+        // Extrair apenas a data do selectedDay (remover prefixo se existir)
+        const dataDia = selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay;
 
-            // Retornar status baseado na presença (será atualizado dinamicamente)
-            return "checkin"; // Placeholder - será atualizado dinamicamente
+        // Verificar se o colaborador trabalha nesta data
+        if (!colaborador.daysWork || !colaborador.daysWork.includes(dataDia)) {
+            return null; // Não trabalha nesta data
         }
 
-        // Sistema antigo para quando "TODOS" está selecionado
-        if (!colaborador.checkIn) {
+        // Verificar status de presença para esta data
+        const status = participantsAttendanceStatus.get(colaborador.id);
+
+        if (!status) {
+            // Se não tem status, permite checkin
             return "checkin";
-        } else if (colaborador.checkIn && !colaborador.checkOut) {
-            return "checkout";
         }
-        return null; // Não mostra botão se já fez checkout
+
+        if (!status.checkIn) {
+            // Se não tem checkin, permite checkin
+            return "checkin";
+        } else if (!status.checkOut) {
+            // Se tem checkin mas não tem checkout, permite checkout
+            return "checkout";
+        } else {
+            // Se já tem checkout, não mostra botão
+            return null;
+        }
     };
 
     // Função para abrir popup de check-in
     const abrirCheckin = (colaborador: EventParticipant) => {
+        console.log("🔍 abrirCheckin chamado com colaborador:", colaborador);
         setParticipantAction(colaborador);
         setCodigoPulseira("");
-        setSelectedDateForAction(selectedDay === 'all' ? new Date().toLocaleDateString('pt-BR') : selectedDay);
+        setSelectedDateForAction(selectedDay);
         setPopupCheckin(true);
     };
 
     // Função para abrir popup de check-out
     const abrirCheckout = (colaborador: EventParticipant) => {
         setParticipantAction(colaborador);
-        setSelectedDateForAction(selectedDay === 'all' ? new Date().toLocaleDateString('pt-BR') : selectedDay);
+        setSelectedDateForAction(selectedDay);
         setPopupCheckout(true);
     };
 
     // Função para verificar status de presença por data
     const verificarPresencaPorData = async (participantId: string, date: string) => {
         try {
-            const status = await getEventParticipantAttendanceByDate(participantId, date);
-            setAttendanceStatus(status);
-            return status;
+            const formattedDate = date.includes("/") ? date.split("/").join("-") : date;
+            const { data: attendanceData } = await apiClient.get(`/event-attendance?eventId=${params?.id}&participantId=${participantId}&date=${formattedDate}&limit=1`);
+
+            if (attendanceData.data && attendanceData.data.length > 0) {
+                const check = attendanceData.data[0];
+                let status = "present";
+                if (!check.checkIn) {
+                    status = "absent";
+                } else if (!check.checkOut) {
+                    status = "present";
+                } else {
+                    status = "checked_out";
+                }
+
+                const attendanceStatus = {
+                    participantId: participantId,
+                    date: date,
+                    checkIn: check.checkIn as string | null,
+                    checkOut: check.checkOut as string | null,
+                    status: status
+                };
+
+                setAttendanceStatus(attendanceStatus);
+                return attendanceStatus;
+            }
+            return null;
         } catch (error) {
             console.error("Erro ao verificar presença:", error);
             return null;
+        }
+    };
+
+    // Função para carregar status de presença de todos os participantes
+    const carregarStatusPresencaTodos = (participants: EventParticipant[], date: string) => {
+        try {
+            console.log("🔍 Carregando status de presença para", participants.length, "participantes na data", date);
+
+            if (!attendanceData || !Array.isArray(attendanceData)) {
+                console.log("🔍 Nenhum dado de presença disponível");
+                return;
+            }
+
+            console.log("🔍 Dados de presença recebidos:", attendanceData);
+
+            const statusMap = new Map<string, {
+                checkIn: string | null;
+                checkOut: string | null;
+                status: string;
+            }>();
+
+            // Criar mapa dos checks por participantId
+            const checksByParticipant = new Map();
+            attendanceData.forEach((check: any) => {
+                checksByParticipant.set(check.participantId, check);
+            });
+
+            // Para cada participante, verificar se tem check na data
+            for (const participant of participants) {
+                const check = checksByParticipant.get(participant.id);
+
+                if (check) {
+                    let status = "present";
+                    if (!check.checkIn) {
+                        status = "absent";
+                    } else if (!check.checkOut) {
+                        status = "present";
+                    } else {
+                        status = "checked_out";
+                    }
+
+                    statusMap.set(participant.id, {
+                        checkIn: check.checkIn,
+                        checkOut: check.checkOut,
+                        status: status
+                    });
+                } else {
+                    // Participante não tem check na data
+                    statusMap.set(participant.id, {
+                        checkIn: null,
+                        checkOut: null,
+                        status: "absent"
+                    });
+                }
+            }
+
+            console.log("🔍 Status map final:", statusMap);
+            setParticipantsAttendanceStatus(statusMap);
+        } catch (error) {
+            console.error("Erro ao carregar status de presença:", error);
         }
     };
 
@@ -1535,40 +1695,87 @@ export default function Painel() {
 
     // Função para confirmar check-in
     const confirmarCheckin = async () => {
-        if (!participantAction || !codigoPulseira.trim()) return;
+        console.log("🔍 confirmarCheckin chamado");
+        console.log("🔍 participantAction:", participantAction);
+        console.log("🔍 codigoPulseira:", codigoPulseira);
+        console.log("🔍 operadorInfo:", operadorInfo);
+
+        if (!participantAction || !codigoPulseira.trim()) {
+            console.log("❌ Dados insuficientes para realizar check-in");
+            toast.error("Dados insuficientes para realizar check-in");
+            return;
+        }
+        if (!operadorInfo?.nome) {
+            console.log("❌ Informações do operador não encontradas");
+            toast.error("Informações do operador não encontradas");
+            return;
+        }
         setLoading(true);
         try {
-            if (selectedDateForAction && selectedDateForAction !== 'all') {
-                // Usar sistema por data
-                await checkInEventParticipantByDate(participantAction.id, selectedDateForAction, {
-                    validatedBy: operadorInfo?.nome || "",
-                    performedBy: operadorInfo?.nome || "",
-                    notes: undefined,
-                });
-            } else {
-                // Usar sistema antigo (fallback)
-                await checkInEventParticipant(participantAction.id, {
-                    validatedBy: operadorInfo?.nome || "",
-                    performedBy: operadorInfo?.nome || "",
-                    notes: undefined,
-                });
+            const today = new Date()
+            const day = String(today.getDate()).padStart(2, '0')
+            const month = String(today.getMonth() + 1).padStart(2, '0')
+            const year = today.getFullYear()
+            const todayFormatted = `${day}-${month}-${year}`
+
+            const dateToUse = selectedDateForAction
+                ? selectedDateForAction
+                : todayFormatted;
+
+            console.log("🔍 Enviando check-in com dados:", {
+                participantId: participantAction.id,
+                date: dateToUse,
+                validatedBy: operadorInfo.nome,
+                performedBy: operadorInfo.nome,
+                notes: `Check-in realizado via painel do operador - Pulseira: ${codigoPulseira.trim()}`,
+            });
+
+            await checkInMutation.mutateAsync({
+                participantId: participantAction.id,
+                date: dateToUse,
+                validatedBy: operadorInfo.nome,
+                performedBy: operadorInfo.nome,
+                notes: `Check-in realizado via painel do operador - Pulseira: ${codigoPulseira.trim()}`,
+            });
+
+            // Salvar pulseira no sistema de movement_credentials
+            try {
+                await changeCredentialCode(
+                    eventId,
+                    participantAction.id,
+                    codigoPulseira.trim()
+                );
+                console.log("✅ Pulseira salva no sistema de movement_credentials");
+            } catch (error) {
+                console.error("⚠️ Erro ao salvar pulseira no sistema:", error);
+                // Não falha o check-in se der erro ao salvar a pulseira
             }
 
+            // Atualizar estado local imediatamente
+            const currentTime = new Date().toISOString();
+            const newStatus = {
+                checkIn: currentTime,
+                checkOut: null,
+                status: 'present'
+            };
+
+            setParticipantsAttendanceStatus(prev => {
+                const newMap = new Map(prev);
+                newMap.set(participantAction.id, newStatus);
+                return newMap;
+            });
+
             await registerOperatorAction({
-                action: "updated",
+                action: "check_in",
                 entityId: participantAction.id,
-                details: `Check-in realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')}) - Pulseira: ${codigoPulseira.trim()}${selectedDateForAction && selectedDateForAction !== 'all' ? ` - Data: ${selectedDateForAction}` : ''}`,
+                details: `Check-in realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')}) - Pulseira: ${codigoPulseira.trim()}${selectedDateForAction ? ` - Data: ${selectedDateForAction}` : ''}`,
             });
             await registerOperatorActionInColumn({
                 type: "checkin",
                 staffId: String(participantAction.id),
                 staffName: participantAction.name,
                 pulseira: codigoPulseira.trim(),
-                credencial: (() => {
-                    const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
-                    const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
-                    return wristbandModel?.credentialType || '';
-                })()
+                credencial: getCredencial(participantAction)
             });
             toast.success("Check-in realizado com sucesso!");
             setPopupCheckin(false);
@@ -1576,59 +1783,99 @@ export default function Painel() {
             setCodigoPulseira("");
             setSelectedDateForAction("");
         } catch (error) {
-            toast.error("Erro ao realizar check-in.");
+            console.error("❌ Erro ao realizar check-in:", error);
+            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+            toast.error(`Erro ao realizar check-in: ${errorMessage}`);
         }
         setLoading(false);
     };
 
     // Função para confirmar check-out
     const confirmarCheckout = async () => {
-        if (!participantAction) return;
+        if (!participantAction) {
+            toast.error("Participante não selecionado");
+            return;
+        }
+        if (!operadorInfo?.nome) {
+            toast.error("Informações do operador não encontradas");
+            return;
+        }
         setLoading(true);
         try {
-            if (selectedDateForAction && selectedDateForAction !== 'all') {
-                // Usar sistema por data
-                await checkOutEventParticipantByDate(participantAction.id, selectedDateForAction, {
-                    validatedBy: operadorInfo?.nome || "",
-                    performedBy: operadorInfo?.nome || "",
-                    notes: undefined,
-                });
-            } else {
-                // Usar sistema antigo (fallback)
-                await checkOutEventParticipant(participantAction.id, {
-                    validatedBy: operadorInfo?.nome || "",
-                    performedBy: operadorInfo?.nome || "",
-                    notes: undefined,
-                });
-            }
+            const today = new Date()
+            const day = String(today.getDate()).padStart(2, '0')
+            const month = String(today.getMonth() + 1).padStart(2, '0')
+            const year = today.getFullYear()
+            const todayFormatted = `${day}-${month}-${year}`
+
+            const dateToUse = selectedDateForAction
+                ? selectedDateForAction
+                : todayFormatted;
+
+            await checkOutMutation.mutateAsync({
+                participantId: participantAction.id,
+                date: dateToUse,
+                validatedBy: operadorInfo.nome,
+                performedBy: operadorInfo.nome,
+                notes: "Check-out realizado via painel do operador",
+            });
+
+            // Atualizar estado local imediatamente
+            const currentTime = new Date().toISOString();
+            const currentStatus = participantsAttendanceStatus.get(participantAction.id);
+            const newStatus = {
+                checkIn: currentStatus?.checkIn || currentTime, // Mantém o checkin existente ou usa o tempo atual
+                checkOut: currentTime,
+                status: 'checked_out'
+            };
+
+            setParticipantsAttendanceStatus(prev => {
+                const newMap = new Map(prev);
+                newMap.set(participantAction.id, newStatus);
+                return newMap;
+            });
 
             await registerOperatorAction({
-                action: "updated",
+                action: "check_out",
                 entityId: participantAction.id,
-                details: `Check-out realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')})${selectedDateForAction && selectedDateForAction !== 'all' ? ` - Data: ${selectedDateForAction}` : ''}`,
+                details: `Check-out realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')})${selectedDateForAction ? ` - Data: ${selectedDateForAction}` : ''}`,
             });
             await registerOperatorActionInColumn({
                 type: "checkout",
                 staffId: String(participantAction.id),
                 staffName: participantAction.name,
-                credencial: (() => {
-                    const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
-                    const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
-                    return wristbandModel?.credentialType || '';
-                })()
+                credencial: getCredencial(participantAction)
             });
             toast.success("Check-out realizado com sucesso!");
             setPopupCheckout(false);
             setParticipantAction(null);
             setSelectedDateForAction("");
         } catch (error) {
-            toast.error("Erro ao realizar check-out.");
+            console.error("❌ Erro ao realizar check-out:", error);
+            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+            toast.error(`Erro ao realizar check-out: ${errorMessage}`);
         }
         setLoading(false);
     };
 
     // Função para gerar iniciais do nome
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+    // Função utilitária para obter a credencial do participante
+    const getCredencial = (colab: EventParticipant): string => {
+        const wristband = wristbands.find(w => w.id === colab.wristbandId);
+        const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
+        if (wristband && wristbandModel) {
+            return wristbandModel.credentialType;
+        } else if ((colab as any).credentialType) {
+            return (colab as any).credentialType;
+        } else if (colab.wristbandId) {
+            return colab.wristbandId;
+        } else {
+            return 'SEM CREDENCIAL';
+        }
+    };
+
 
     return (
         <div className="min-h-screen bg-fuchsia-100">
@@ -1679,7 +1926,7 @@ export default function Painel() {
                                         <span className="font-medium">
                                             {paginatedData.total}
                                         </span> colaboradores
-                                        {selectedDay !== 'all' && (
+                                        {selectedDay && (
                                             <span className="text-xs text-gray-500 ml-1">
                                                 (dia {selectedDay})
                                             </span>
@@ -1697,6 +1944,7 @@ export default function Painel() {
                                                 <span>Sincronizando...</span>
                                             </div>
                                         )}
+
                                         {showPerformanceIndicator && (
                                             <Button
                                                 onClick={clearCache}
@@ -1792,6 +2040,19 @@ export default function Painel() {
                                     <Plus className="w-4 h-4 mr-2" />
                                     Adicionar Staff
                                 </Button>
+
+                                <Button
+                                    onClick={() => {
+                                        if (operadorLogado) {
+                                            setPopupTrocaPulseira(true);
+                                        }
+                                    }}
+                                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                                    disabled={loading || !operadorLogado}
+                                >
+                                    <CreditCard className="w-4 h-4 mr-2" />
+                                    Trocar Pulseira
+                                </Button>
                             </div>
                         </div>
 
@@ -1886,6 +2147,7 @@ export default function Painel() {
                                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                                             Tipo de Credencial
                                         </TableHead>
+
                                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                                             Ação
                                         </TableHead>
@@ -1900,15 +2162,15 @@ export default function Painel() {
                                                         <User className="w-8 h-8 text-gray-400" />
                                                     </div>
                                                     <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                        {selectedDay === 'all'
-                                                            ? 'Nenhum colaborador encontrado'
-                                                            : `Nenhum colaborador encontrado para ${selectedDay}`
+                                                        {selectedDay
+                                                            ? `Nenhum colaborador encontrado para ${selectedDay}`
+                                                            : 'Nenhum colaborador encontrado'
                                                         }
                                                     </p>
                                                     <p className="text-sm text-gray-500">
-                                                        {selectedDay === 'all'
-                                                            ? 'Tente ajustar os filtros ou adicionar novos colaboradores'
-                                                            : 'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
+                                                        {selectedDay
+                                                            ? 'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
+                                                            : 'Tente ajustar os filtros ou adicionar novos colaboradores'
                                                         }
                                                     </p>
                                                 </div>
@@ -1923,7 +2185,7 @@ export default function Painel() {
                                             return (
                                                 <TableRow
                                                     key={index}
-                                                    className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${selectedDay !== 'all' && colab.daysWork && colab.daysWork.includes(selectedDay)
+                                                    className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${selectedDay && colab.daysWork && colab.daysWork.includes(selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay)
                                                         ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
                                                         : ''
                                                         }`}
@@ -1958,9 +2220,10 @@ export default function Painel() {
                                                     </TableCell>
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                                            {wristbandModel?.credentialType || '-'}
+                                                            {getCredencial(colab)}
                                                         </span>
                                                     </TableCell>
+
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                         <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
                                                             {botaoTipo === "checkin" && (
@@ -2011,151 +2274,95 @@ export default function Painel() {
 
                     {/* MODAL DETALHES DO COLABORADOR */}
                     <Dialog open={modalAberto} onOpenChange={setModalAberto}>
-                        <DialogContent className="max-w-2xl bg-gradient-to-br from-white to-gray-50 border-0 shadow-2xl max-h-[90vh] overflow-y-auto">
-                            <DialogHeader className="pb-6">
-                                <DialogTitle className="flex items-center gap-3 text-xl font-bold text-gray-900">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
-                                        <User className="w-5 h-5 text-white" />
+                        <DialogContent className="max-w-md bg-white border-0 shadow-xl">
+                            <DialogHeader className="pb-4">
+                                <DialogTitle className="flex items-center gap-3 text-lg font-bold text-gray-900">
+                                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
+                                        <User className="w-4 h-4 text-white" />
                                     </div>
                                     Detalhes do Staff
                                 </DialogTitle>
                             </DialogHeader>
 
                             {selectedParticipant && (
-                                <div className="space-y-8">
-                                    {/* Informações principais */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-gray-600">
-                                        <div className="space-y-4">
-                                            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Nome</label>
-                                                <p className="text-lg font-semibold text-gray-900 mt-1">{selectedParticipant.name}</p>
+                                <div className="space-y-4">
+                                    {/* Informações principais - Layout compacto */}
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                                                <span className="text-sm font-bold text-white">
+                                                    {getInitials(selectedParticipant.name)}
+                                                </span>
                                             </div>
-                                            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">CPF</label>
-                                                <p className="text-lg font-mono text-gray-900 mt-1">{formatCPF(selectedParticipant.cpf?.trim() || '')}</p>
-                                            </div>
-                                            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Função</label>
-                                                <p className="text-lg font-semibold text-gray-900 mt-1">{selectedParticipant.role}</p>
+                                            <div className="flex-1">
+                                                <p className="font-semibold text-gray-900">{selectedParticipant.name}</p>
+                                                <p className="text-sm text-gray-600">{selectedParticipant.role}</p>
                                             </div>
                                         </div>
 
-                                        <div className="space-y-4">
-                                            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Empresa</label>
-                                                <p className="text-lg font-semibold text-gray-900 mt-1">{selectedParticipant.company}</p>
+                                        {/* Informações essenciais */}
+                                        <div className="grid grid-cols-3 gap-3 text-sm">
+                                            <div className="p-3 bg-white rounded-lg border border-gray-200">
+                                                <p className="text-xs font-medium text-gray-500 uppercase">CPF</p>
+                                                <p className="font-mono text-gray-900">{formatCPF(selectedParticipant.cpf?.trim() || '')}</p>
                                             </div>
-                                            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Tipo de Credencial</label>
-                                                <p className="text-lg font-semibold text-gray-900 mt-1">
-                                                    {(() => {
-                                                        const wristband = wristbands.find(w => w.id === selectedParticipant.wristbandId);
-                                                        const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
-                                                        return wristbandModel?.credentialType || selectedParticipant.wristbandId || '-';
-                                                    })()}
-                                                </p>
+                                            <div className="p-3 bg-white rounded-lg border border-gray-200">
+                                                <p className="text-xs font-medium text-gray-500 uppercase">Empresa</p>
+                                                <p className="text-gray-900">{selectedParticipant.company}</p>
                                             </div>
-                                            {selectedParticipant.daysWork && selectedParticipant.daysWork.length > 0 && (
-                                                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                    <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Dias de Trabalho</label>
-                                                    <div className="mt-2 space-y-2">
-                                                        {(() => {
-                                                            const categorized = categorizeDaysWork(selectedParticipant);
-                                                            return (
-                                                                <>
-                                                                    {categorized.setup.length > 0 && (
-                                                                        <div className="flex items-center gap-2">
-                                                                            <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                                                                            <span className="text-sm font-medium text-gray-700">Montagem:</span>
-                                                                            <span className="text-sm text-gray-600">{categorized.setup.join(', ')}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {categorized.preparation.length > 0 && (
-                                                                        <div className="flex items-center gap-2">
-                                                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                                                                            <span className="text-sm font-medium text-gray-700">Preparo:</span>
-                                                                            <span className="text-sm text-gray-600">{categorized.preparation.join(', ')}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {categorized.finalization.length > 0 && (
-                                                                        <div className="flex items-center gap-2">
-                                                                            <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                                                                            <span className="text-sm font-medium text-gray-700">Finalização:</span>
-                                                                            <span className="text-sm text-gray-600">{categorized.finalization.join(', ')}</span>
-                                                                        </div>
-                                                                    )}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Campo para nova pulseira */}
-                                    <div className="bg-gradient-to-r from-blue-50 text-gray-600 to-purple-50 border border-blue-200 rounded-lg p-6">
-                                        <label className="block text-sm font-semibold text-gray-700 mb-3">
-                                            Nova Pulseira (pressione Enter para salvar)
-                                        </label>
-                                        <Input
-                                            type="text"
-                                            value={novaPulseira}
-                                            onChange={(e) => setNovaPulseira(e.target.value)}
-                                            onKeyPress={salvarNovaPulseira}
-                                            placeholder="Digite o código da nova pulseira"
-                                            disabled={loading}
-                                            className="max-w-md bg-white text-gray-600 border-blue-300 focus:border-purple-500 focus:ring-purple-500 shadow-sm"
-                                        />
-                                    </div>
-
-                                    {/* Status de check-in/out */}
-                                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-6">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Status de Acesso</h3>
-                                        <div className="grid grid-cols-1  gap-4">
-                                            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                <label className="font-semibold text-gray-600 text-sm">Código Pulseira</label>
-                                                <p className="text-lg font-mono text-gray-900 mt-1">{selectedParticipant.wristbandId || '-'}</p>
-                                            </div>
-                                            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                <label className="font-semibold text-gray-600 text-sm">Check-in</label>
-                                                <p className="text-lg font-semibold text-gray-900 mt-1">{selectedParticipant.checkIn || '-'}</p>
-                                            </div>
-                                            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                                <label className="font-semibold text-gray-600 text-sm">Check-out</label>
-                                                <p className="text-lg font-semibold text-gray-900 mt-1">{selectedParticipant.checkOut || '-'}</p>
+                                            <div className="p-3 bg-white rounded-lg border border-gray-200">
+                                                <p className="text-xs font-medium text-gray-500 uppercase">Credencial</p>
+                                                <p className="text-gray-900">{getCredencial(selectedParticipant)}</p>
                                             </div>
                                         </div>
+
+                                        {/* Status de presença atual */}
+                                        <div className="p-3 bg-white rounded-lg border border-gray-200">
+                                            <p className="text-xs font-medium text-gray-700 uppercase mb-2">Status Hoje</p>
+                                            {(() => {
+                                                const status = participantsAttendanceStatus.get(selectedParticipant.id);
+                                                if (!status) {
+                                                    return <span className="text-blue-600">Não verificado</span>;
+                                                } else if (status.checkIn && !status.checkOut) {
+                                                    return <span className="text-green-600">✓ Check-in realizado</span>;
+                                                } else if (status.checkIn && status.checkOut) {
+                                                    return <span className="text-gray-600">✓ Check-out realizado</span>;
+                                                } else {
+                                                    return <span className="text-orange-600">Pendente</span>;
+                                                }
+                                            })()}
+                                        </div>
+
+
                                     </div>
 
                                     {/* Botões de ação */}
-                                    <div className="flex gap-4 pt-6">
-                                        {getBotaoAcao(selectedParticipant) === "checkin" && (
-                                            <Button
-                                                onClick={() => {
-                                                    fecharPopup();
-                                                    abrirCheckin(selectedParticipant);
-                                                }}
-                                                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                                                disabled={loading}
-                                            >
-                                                <Check className="w-4 h-4 mr-2" />
-                                                Check-in
-                                            </Button>
-                                        )}
-                                        {getBotaoAcao(selectedParticipant) === "checkout" && (
-                                            <Button
-                                                onClick={() => {
-                                                    fecharPopup();
-                                                    abrirCheckout(selectedParticipant);
-                                                }}
-                                                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 w-full"
-                                                disabled={loading}
-                                            >
-                                                <Clock className="w-4 h-4 mr-2" />
-                                                Check-out
-                                            </Button>
-                                        )}
+                                    <div className="flex gap-2 pt-2">
+                                        <Button
+                                            onClick={() => {
+                                                if (selectedParticipant) {
+                                                    const botaoAcao = getBotaoAcao(selectedParticipant);
+                                                    if (botaoAcao === "checkin") {
+                                                        abrirCheckin(selectedParticipant);
+                                                    } else if (botaoAcao === "checkout") {
+                                                        abrirCheckout(selectedParticipant);
+                                                    }
+                                                    setModalAberto(false);
+                                                }
+                                            }}
+                                            className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
+                                            disabled={!getBotaoAcao(selectedParticipant)}
+                                        >
+                                            {getBotaoAcao(selectedParticipant) === "checkin" ? "Check-in" :
+                                                getBotaoAcao(selectedParticipant) === "checkout" ? "Check-out" : "Sem ação"}
+                                        </Button>
+                                        <Button
+                                            onClick={() => setModalAberto(false)}
+                                            variant="outline"
+                                            className="px-4"
+                                        >
+                                            Fechar
+                                        </Button>
                                     </div>
                                 </div>
                             )}
@@ -2184,11 +2391,7 @@ export default function Painel() {
                                         <p className="text-sm text-gray-600 mt-1">{formatCPF(participantAction.cpf?.trim() || '')}</p>
                                         <p className="text-sm text-gray-600 mt-1">{participantAction.role}</p>
                                         <p className="text-sm text-gray-600 mt-1">
-                                            Tipo de Credencial: {(() => {
-                                                const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
-                                                const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
-                                                return wristbandModel?.credentialType || '-';
-                                            })()}
+                                            Tipo de Credencial: {getCredencial(participantAction)}
                                         </p>
                                         {selectedDateForAction && selectedDateForAction !== 'all' && (
                                             <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -2272,11 +2475,7 @@ export default function Painel() {
                                         <p className="text-sm text-gray-600 mt-1">{formatCPF(participantAction.cpf?.trim() || '')}</p>
                                         <p className="text-sm text-gray-600 mt-1">{participantAction.role}</p>
                                         <p className="text-sm text-gray-600 mt-1">
-                                            Tipo de Credencial: {(() => {
-                                                const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
-                                                const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
-                                                return wristbandModel?.credentialType || '-';
-                                            })()}
+                                            Tipo de Credencial: {getCredencial(participantAction)}
                                         </p>
                                         {selectedDateForAction && selectedDateForAction !== 'all' && (
                                             <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -3098,6 +3297,118 @@ export default function Painel() {
                             )}
                         </DialogContent>
                     </Dialog>
+
+                    {/* Modal de Troca de Pulseira */}
+                    <Dialog open={popupTrocaPulseira} onOpenChange={setPopupTrocaPulseira}>
+                        <DialogContent className="sm:max-w-lg bg-white text-gray-900">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-3">
+                                    <CreditCard className="w-5 h-5 text-blue-600" />
+                                    Trocar Credencial
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Busque e selecione um participante para trocar a credencial
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="space-y-4">
+                                {/* Campo de busca */}
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                    <Input
+                                        type="text"
+                                        placeholder="Busque por nome ou CPF..."
+                                        value={filtro.nome}
+                                        onChange={(e) => handleBuscaOtimizada(e.target.value)}
+                                        className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 shadow-sm transition-all duration-200"
+                                    />
+                                </div>
+
+                                {/* Lista de participantes */}
+                                <div className="max-h-60 overflow-y-auto space-y-2">
+                                    {paginatedData.data.map((participant) => {
+                                        const attendanceStatus = participantsAttendanceStatus.get(participant.id);
+                                        const hasCheckIn = attendanceStatus?.checkIn;
+
+                                        return (
+                                            <div
+                                                key={participant.id}
+                                                onClick={() => {
+                                                    if (!hasCheckIn) {
+                                                        toast.error("Participante precisa ter check-in para trocar pulseira");
+                                                        return;
+                                                    }
+                                                    setSelectedParticipantForPulseira(participant);
+                                                    setPopupTrocaPulseira(false);
+                                                }}
+                                                className={`p-3 border rounded-lg cursor-pointer transition-colors ${hasCheckIn
+                                                    ? "border-gray-200 hover:bg-gray-50"
+                                                    : "border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed"
+                                                    }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${hasCheckIn
+                                                        ? "bg-gradient-to-br from-blue-500 to-blue-600"
+                                                        : "bg-gray-300"
+                                                        }`}>
+                                                        <span className="text-sm font-bold text-white">
+                                                            {getInitials(participant.name)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <p className="font-medium text-gray-900">{participant.name}</p>
+                                                        <p className="text-sm text-gray-600">{participant.role} • {participant.company}</p>
+                                                        <p className="text-xs text-gray-500">{participant.cpf}</p>
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        {hasCheckIn ? (
+                                                            <div className="flex items-center gap-1 text-green-600">
+                                                                <Check className="w-3 h-3" />
+                                                                <span className="text-xs">Check-in</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-1 text-gray-400">
+                                                                <Clock className="w-3 h-3" />
+                                                                <span className="text-xs">Sem check-in</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {paginatedData.data.length === 0 && (
+                                    <div className="text-center py-8 text-gray-500">
+                                        <User className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                                        <p>Nenhum participante encontrado</p>
+                                    </div>
+                                )}
+
+                                {/* Informação sobre check-in */}
+                                <div className="bg-blue-50 p-3 rounded-lg">
+                                    <p className="text-sm text-blue-800">
+                                        <strong>Nota:</strong> Apenas participantes com check-in podem ter suas pulseiras trocadas.
+                                    </p>
+                                </div>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* Modal de Troca de Pulseira para Participante Específico */}
+                    {selectedParticipantForPulseira && (
+                        <ModalTrocaPulseira
+                            isOpen={!!selectedParticipantForPulseira}
+                            onClose={() => setSelectedParticipantForPulseira(null)}
+                            participant={selectedParticipantForPulseira}
+                            eventId={eventId}
+                            onSuccess={() => {
+                                setSelectedParticipantForPulseira(null);
+                                // Recarregar dados se necessário
+                            }}
+                        />
+                    )}
                 </>
             )}
         </div>

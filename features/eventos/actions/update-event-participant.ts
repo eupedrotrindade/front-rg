@@ -65,12 +65,27 @@ export const checkInEventParticipantByDate = async (
     notes?: string;
     performedBy: string;
   }
-): Promise<EventParticipant | null> => {
+): Promise<{
+  id: string;
+  participantId: string;
+  eventId: string;
+  date: string;
+  checkIn: string;
+  checkOut: string | null;
+  validatedBy: string | null;
+  notes: string | null;
+  performedBy: string;
+  createdAt: string;
+  updatedAt: string;
+} | null> => {
   try {
-    const { data } = await apiClient.patch<EventParticipant>(
-      `/event-participants/${id}/check-in/${date}`,
-      checkInData
-    );
+    // Converter data para formato dd-mm-yyyy se necessário
+    const formattedDate = date.includes("/") ? date.split("/").join("-") : date;
+
+    const { data } = await apiClient.post(`/check/check-in/${formattedDate}`, {
+      participantId: id,
+      ...checkInData,
+    });
     return data;
   } catch (error) {
     console.error("Erro ao fazer check-in por data:", error);
@@ -86,12 +101,27 @@ export const checkOutEventParticipantByDate = async (
     notes?: string;
     performedBy: string;
   }
-): Promise<EventParticipant | null> => {
+): Promise<{
+  id: string;
+  participantId: string;
+  eventId: string;
+  date: string;
+  checkIn: string | null;
+  checkOut: string;
+  validatedBy: string | null;
+  notes: string | null;
+  performedBy: string;
+  createdAt: string;
+  updatedAt: string;
+} | null> => {
   try {
-    const { data } = await apiClient.patch<EventParticipant>(
-      `/event-participants/${id}/check-out/${date}`,
-      checkOutData
-    );
+    // Converter data para formato dd-mm-yyyy se necessário
+    const formattedDate = date.includes("/") ? date.split("/").join("-") : date;
+
+    const { data } = await apiClient.put(`/check/check-out/${formattedDate}`, {
+      participantId: id,
+      ...checkOutData,
+    });
     return data;
   } catch (error) {
     console.error("Erro ao fazer check-out por data:", error);
@@ -110,9 +140,10 @@ export const getEventParticipantAttendanceByDate = async (
   status: string;
 } | null> => {
   try {
-    const { data } = await apiClient.get(
-      `/event-participants/${id}/attendance/${date}`
-    );
+    // Converter data para formato dd-mm-yyyy se necessário
+    const formattedDate = date.includes("/") ? date.split("/").join("-") : date;
+
+    const { data } = await apiClient.get(`/check/${id}/${formattedDate}`);
     return data;
   } catch (error) {
     console.error("Erro ao obter presença por data:", error);

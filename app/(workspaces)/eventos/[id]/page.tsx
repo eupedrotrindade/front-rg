@@ -10,6 +10,9 @@ import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coorde
 import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { useUpdateEventParticipant } from '@/features/eventos/api/mutation/use-update-event-participant'
+import { useCheckIn, useCheckOut } from '@/features/eventos/api/mutation/use-check-operations'
+import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/use-event-attendance'
+import { changeCredentialCode } from '@/features/eventos/actions/movement-credentials'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
@@ -46,6 +49,8 @@ export default function EventoDetalhesPage() {
     })
     const { data: empresas = [], isLoading: empresasLoading } = useEmpresasByEvent(String(params.id))
     const { mutate: updateParticipant, isPending: isUpdatingParticipant } = useUpdateEventParticipant()
+    const checkInMutation = useCheckIn()
+    const checkOutMutation = useCheckOut()
 
     const [deletingParticipant, setDeletingParticipant] = useState<EventParticipant | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
@@ -70,6 +75,56 @@ export default function EventoDetalhesPage() {
         reset: 0,
         currentParticipant: ''
     })
+
+    // Estados para check-in/check-out
+    const [participantAction, setParticipantAction] = useState<EventParticipant | null>(null)
+    const [codigoPulseira, setCodigoPulseira] = useState<string>('')
+    const [selectedDateForAction, setSelectedDateForAction] = useState<string>('')
+    const [popupCheckin, setPopupCheckin] = useState(false)
+    const [popupCheckout, setPopupCheckout] = useState(false)
+    const [loading, setLoading] = useState(false)
+
+    // Função para converter data para formato da API (dd-mm-yyyy)
+    const formatDateForAPI = useCallback((dateStr: string): string => {
+        // Se já está no formato dd-mm-yyyy, retorna como está
+        if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) {
+            return dateStr;
+        }
+
+        // Se está no formato dd/mm/yyyy, converte para dd-mm-yyyy
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+            const [day, month, year] = dateStr.split('/');
+            return `${day}-${month}-${year}`;
+        }
+
+        // Se está no formato yyyy-mm-dd, converte para dd-mm-yyyy
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            const [year, month, day] = dateStr.split('-');
+            return `${day}-${month}-${year}`;
+        }
+
+        // Se é uma data JavaScript, converte para dd-mm-yyyy
+        try {
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+                const day = date.getDate().toString().padStart(2, '0');
+                const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                const year = date.getFullYear().toString();
+                return `${day}-${month}-${year}`;
+            }
+        } catch (error) {
+            console.error('Erro ao converter data para API:', dateStr, error);
+        }
+
+        return dateStr;
+    }, []);
+
+    // Hook para buscar dados de attendance do dia selecionado
+    // Este hook busca os dados reais de check-in/check-out do sistema
+    const { data: attendanceData = [], isLoading: attendanceLoading } = useEventAttendanceByEventAndDate(
+        String(params.id),
+        formatDateForAPI(selectedDay)
+    )
 
     const evento = Array.isArray(eventos)
         ? eventos.find((e) => String(e.id) === String(params.id))
@@ -216,13 +271,41 @@ export default function EventoDetalhesPage() {
         }
     }, []);
 
+    // Função para verificar se o participante já fez check-in no dia selecionado
+    const hasCheckIn = useCallback((participantId: string, date: string): boolean => {
+        if (!attendanceData || attendanceData.length === 0) return false;
+
+        const normalizedDate = normalizeDate(date);
+        return attendanceData.some(attendance => {
+            const normalizedAttendanceDate = normalizeDate(attendance.date);
+            return attendance.participantId === participantId &&
+                attendance.checkIn !== null &&
+                normalizedAttendanceDate === normalizedDate;
+        });
+    }, [attendanceData, normalizeDate]);
+
+    // Função para verificar se o participante já fez check-out no dia selecionado
+    const hasCheckOut = useCallback((participantId: string, date: string): boolean => {
+        if (!attendanceData || attendanceData.length === 0) return false;
+
+        const normalizedDate = normalizeDate(date);
+        return attendanceData.some(attendance => {
+            const normalizedAttendanceDate = normalizeDate(attendance.date);
+            return attendance.participantId === participantId &&
+                attendance.checkOut !== null &&
+                normalizedAttendanceDate === normalizedDate;
+        });
+    }, [attendanceData, normalizeDate]);
+
     // KPIs baseados no dia selecionado
     const participantesDoDia = getParticipantesPorDia(selectedDay)
     const totalParticipants = participantesDoDia.length
     const participantsWithWristbands = participantesDoDia.filter(p => p.wristbandId).length
     const participantsWithoutWristbands = totalParticipants - participantsWithWristbands
-    const checkedInParticipants = participantesDoDia.filter(p => p.checkIn).length
-    const checkedOutParticipants = participantesDoDia.filter(p => p.checkOut).length
+
+    // Calcular check-ins e check-outs baseado nos dados reais de attendance
+    const checkedInParticipants = participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length
+    const checkedOutParticipants = participantesDoDia.filter(p => hasCheckOut(p.id, selectedDay)).length
     const activeParticipants = checkedInParticipants - checkedOutParticipants
 
     // Filtrar participantes
@@ -282,10 +365,199 @@ export default function EventoDetalhesPage() {
 
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 
+    // Função para abrir popup de check-in
+    const abrirCheckin = (participant: EventParticipant) => {
+        // Verificar se já fez check-in no dia selecionado
+        if (hasCheckIn(participant.id, selectedDay)) {
+            toast.error("Este participante já fez check-in neste dia!");
+            return;
+        }
+
+        setParticipantAction(participant);
+        setCodigoPulseira("");
+        setSelectedDateForAction(selectedDay);
+        setPopupCheckin(true);
+    };
+
+    // Função para abrir popup de check-out
+    const abrirCheckout = (participant: EventParticipant) => {
+        // Verificar se já fez check-out no dia selecionado
+        if (hasCheckOut(participant.id, selectedDay)) {
+            toast.error("Este participante já fez check-out neste dia!");
+            return;
+        }
+
+        // Verificar se fez check-in antes de fazer check-out
+        if (!hasCheckIn(participant.id, selectedDay)) {
+            toast.error("Este participante precisa fazer check-in antes do check-out!");
+            return;
+        }
+
+        setParticipantAction(participant);
+        setSelectedDateForAction(selectedDay);
+        setPopupCheckout(true);
+    };
+
+    // Função para confirmar check-in
+    const confirmarCheckin = async () => {
+        if (!participantAction || !codigoPulseira.trim()) {
+            toast.error("Dados insuficientes para realizar check-in");
+            return;
+        }
+
+        // Verificar se já fez check-in no dia selecionado
+        const dateToCheck = selectedDateForAction || selectedDay;
+        if (hasCheckIn(participantAction.id, dateToCheck)) {
+            toast.error("Este participante já fez check-in neste dia!");
+            setPopupCheckin(false);
+            setParticipantAction(null);
+            setCodigoPulseira("");
+            setSelectedDateForAction("");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const today = new Date()
+            const day = String(today.getDate()).padStart(2, '0')
+            const month = String(today.getMonth() + 1).padStart(2, '0')
+            const year = today.getFullYear()
+            const todayFormatted = `${day}-${month}-${year}`
+
+            const dateToUse = selectedDateForAction
+                ? selectedDateForAction
+                : todayFormatted;
+
+            await checkInMutation.mutateAsync({
+                participantId: participantAction.id,
+                date: dateToUse,
+                validatedBy: "Sistema",
+                performedBy: "Sistema",
+                notes: `Check-in realizado via painel de eventos - Pulseira: ${codigoPulseira.trim()}`,
+            });
+
+            // Salvar pulseira no sistema de movement_credentials
+            try {
+                await changeCredentialCode(
+                    String(params.id),
+                    participantAction.id,
+                    codigoPulseira.trim()
+                );
+            } catch (error) {
+                console.error("⚠️ Erro ao salvar pulseira no sistema:", error);
+            }
+
+            toast.success("Check-in realizado com sucesso!");
+            setPopupCheckin(false);
+            setParticipantAction(null);
+            setCodigoPulseira("");
+            setSelectedDateForAction("");
+        } catch (error) {
+            console.error("❌ Erro ao realizar check-in:", error);
+            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+            toast.error(`Erro ao realizar check-in: ${errorMessage}`);
+        }
+        setLoading(false);
+    };
+
+    // Função para confirmar check-out
+    const confirmarCheckout = async () => {
+        if (!participantAction) {
+            toast.error("Participante não selecionado");
+            return;
+        }
+
+        // Verificar se já fez check-out no dia selecionado
+        const dateToCheck = selectedDateForAction || selectedDay;
+        if (hasCheckOut(participantAction.id, dateToCheck)) {
+            toast.error("Este participante já fez check-out neste dia!");
+            setPopupCheckout(false);
+            setParticipantAction(null);
+            setSelectedDateForAction("");
+            return;
+        }
+
+        // Verificar se fez check-in antes de fazer check-out
+        if (!hasCheckIn(participantAction.id, dateToCheck)) {
+            toast.error("Este participante precisa fazer check-in antes do check-out!");
+            setPopupCheckout(false);
+            setParticipantAction(null);
+            setSelectedDateForAction("");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const today = new Date()
+            const day = String(today.getDate()).padStart(2, '0')
+            const month = String(today.getMonth() + 1).padStart(2, '0')
+            const year = today.getFullYear()
+            const todayFormatted = `${day}-${month}-${year}`
+
+            const dateToUse = selectedDateForAction
+                ? selectedDateForAction
+                : todayFormatted;
+
+            await checkOutMutation.mutateAsync({
+                participantId: participantAction.id,
+                date: dateToUse,
+                validatedBy: "Sistema",
+                performedBy: "Sistema",
+                notes: "Check-out realizado via painel de eventos",
+            });
+
+            toast.success("Check-out realizado com sucesso!");
+            setPopupCheckout(false);
+            setParticipantAction(null);
+            setSelectedDateForAction("");
+        } catch (error) {
+            console.error("❌ Erro ao realizar check-out:", error);
+            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+            toast.error(`Erro ao realizar check-out: ${errorMessage}`);
+        }
+        setLoading(false);
+    };
+
+    // Função utilitária para obter a credencial do participante
+    const getCredencial = (participant: EventParticipant): string => {
+        const wristband = wristbandsArray.find(w => w.id === participant.wristbandId);
+        if (wristband && participant.wristbandId) {
+            return participant.wristbandId;
+        } else {
+            return 'SEM CREDENCIAL';
+        }
+    };
+
     const getBotaoAcao = (participant: EventParticipant) => {
-        if (!participant.checkIn) return "checkin"
-        if (participant.checkIn && !participant.checkOut) return "checkout"
-        return "none"
+        // Verificar se o participante trabalha no dia selecionado usando normalização
+        if (!participant.daysWork || participant.daysWork.length === 0) {
+            return null; // Não trabalha nesta data
+        }
+
+        // Normalizar o dia selecionado
+        const normalizedSelectedDay = normalizeDate(selectedDay);
+
+        // Verificar se algum dos dias de trabalho do participante corresponde ao dia selecionado
+        const hasDay = participant.daysWork.some(workDay => {
+            const normalizedWorkDay = normalizeDate(workDay);
+            return normalizedWorkDay === normalizedSelectedDay;
+        });
+
+        if (!hasDay) {
+            return null; // Não trabalha nesta data
+        }
+
+        // Verificar status de presença baseado nos dados reais de attendance
+        const hasCheckInToday = hasCheckIn(participant.id, selectedDay);
+        const hasCheckOutToday = hasCheckOut(participant.id, selectedDay);
+
+        if (!hasCheckInToday) {
+            return "checkin";
+        } else if (hasCheckInToday && !hasCheckOutToday) {
+            return "checkout";
+        } else {
+            return null; // Já fez check-in e check-out
+        }
     }
 
     // Função para abrir popup de replicação de staff
@@ -432,7 +704,7 @@ export default function EventoDetalhesPage() {
         }
     }
 
-    const isLoading = participantsLoading || wristbandsLoading || wristbandModelsLoading || coordenadoresLoading || vagasLoading || empresasLoading
+    const isLoading = participantsLoading || wristbandsLoading || wristbandModelsLoading || coordenadoresLoading || vagasLoading || empresasLoading || attendanceLoading
 
     return (
         <EventLayout eventId={String(params.id)} eventName={evento.name}>
@@ -818,7 +1090,24 @@ export default function EventoDetalhesPage() {
                                             </div>
                                         </TableCell>
                                         <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 hidden md:table-cell">
-                                            <p className="text-gray-600">{participant.validatedBy || '-'}</p>
+                                            <div className="space-y-1">
+                                                <p className="text-gray-600">{participant.validatedBy || '-'}</p>
+                                                {/* Indicadores de status de check-in/check-out */}
+                                                <div className="flex gap-1">
+                                                    {hasCheckIn(participant.id, selectedDay) && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                                            <Check className="w-3 h-3 mr-1" />
+                                                            Check-in
+                                                        </span>
+                                                    )}
+                                                    {hasCheckOut(participant.id, selectedDay) && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                                            <Clock className="w-3 h-3 mr-1" />
+                                                            Check-out
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </TableCell>
                                         <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
                                             <p className="text-gray-600">{participant.cpf}</p>
@@ -829,7 +1118,8 @@ export default function EventoDetalhesPage() {
                                                     <Button
                                                         size="sm"
                                                         className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                        disabled={isLoading}
+                                                        disabled={loading}
+                                                        onClick={() => abrirCheckin(participant)}
                                                     >
                                                         <Check className="w-4 h-4 mr-1" />
                                                         Check-in
@@ -839,7 +1129,8 @@ export default function EventoDetalhesPage() {
                                                     <Button
                                                         size="sm"
                                                         className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                        disabled={isLoading}
+                                                        disabled={loading}
+                                                        onClick={() => abrirCheckout(participant)}
                                                     >
                                                         <Clock className="w-4 h-4 mr-1" />
                                                         Check-out
@@ -849,6 +1140,7 @@ export default function EventoDetalhesPage() {
                                                 <Button
                                                     variant="destructive"
                                                     size="sm"
+                                                    className='bg-red-600 hover:bg-red-700'
                                                     onClick={() => handleDeleteParticipant(participant)}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
@@ -1053,6 +1345,108 @@ export default function EventoDetalhesPage() {
 
             {/* DIALOG RESUMO IMPORTAÇÃO */}
             {/* This section is no longer needed as the import/export system handles resumo */}
+
+            {/* Dialog de Check-in */}
+            <AlertDialog open={popupCheckin} onOpenChange={setPopupCheckin}>
+                <AlertDialogContent className="bg-white text-black max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <Check className="h-5 w-5 text-green-600" />
+                            Realizar Check-in
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Digite o código da pulseira para realizar o check-in.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Código da Pulseira
+                            </label>
+                            <Input
+                                type="text"
+                                value={codigoPulseira}
+                                onChange={(e) => setCodigoPulseira(e.target.value)}
+                                placeholder="Digite o código da pulseira"
+                                className="w-full"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        confirmarCheckin();
+                                    }
+                                }}
+                            />
+                        </div>
+
+                        {participantAction && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2">
+                                    <User className="h-4 w-4 text-blue-600" />
+                                    <span className="text-sm font-medium text-blue-800">
+                                        {participantAction.name}
+                                    </span>
+                                </div>
+                                <div className="text-xs text-blue-700 mt-1">
+                                    CPF: {participantAction.cpf}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={confirmarCheckin}
+                            disabled={loading || !codigoPulseira.trim()}
+                            className="bg-green-600 hover:bg-green-700"
+                        >
+                            {loading ? "Processando..." : "Confirmar Check-in"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Dialog de Check-out */}
+            <AlertDialog open={popupCheckout} onOpenChange={setPopupCheckout}>
+                <AlertDialogContent className="bg-white text-black max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <Clock className="h-5 w-5 text-red-600" />
+                            Realizar Check-out
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Confirme o check-out do participante.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        {participantAction && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2">
+                                    <User className="h-4 w-4 text-red-600" />
+                                    <span className="text-sm font-medium text-red-800">
+                                        {participantAction.name}
+                                    </span>
+                                </div>
+                                <div className="text-xs text-red-700 mt-1">
+                                    CPF: {participantAction.cpf}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={confirmarCheckout}
+                            disabled={loading}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            {loading ? "Processando..." : "Confirmar Check-out"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </EventLayout>
     )
 }

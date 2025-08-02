@@ -13,27 +13,113 @@ import { Calendar, LogOut, User, AlertCircle, RefreshCw } from "lucide-react"
 const getOperatorFromStorage = () => {
     if (typeof window === "undefined") return null
     const raw = localStorage.getItem("operador")
-    if (!raw) return null
+    console.log("🔍 getOperatorFromStorage - raw:", raw);
+
+    if (!raw) {
+        console.log("❌ Nenhum operador encontrado no localStorage");
+        return null;
+    }
+
     try {
-        return JSON.parse(raw)
-    } catch {
-        return null
+        const operator = JSON.parse(raw);
+        console.log("🔍 Operador parseado do localStorage:", operator);
+        console.log("🔍 operator.id_events:", operator.id_events);
+        console.log("🔍 typeof operator.id_events:", typeof operator.id_events);
+
+        // Verificar se o operador tem os dados necessários
+        if (!operator.id) {
+            console.log("❌ Operador não tem ID");
+            return null;
+        }
+
+        if (!operator.id_events) {
+            console.log("❌ Operador não tem id_events");
+            return null;
+        }
+
+        return operator;
+    } catch (error) {
+        console.error("❌ Erro ao fazer parse do operador:", error);
+        return null;
     }
 }
 
 const getEventIds = (operator: Operator | null): string[] => {
-    if (!operator || !operator.id_events) return []
-    if (Array.isArray(operator.id_events)) return operator.id_events.map(String)
-    if (typeof operator.id_events === "string") {
-        try {
-            const arr = JSON.parse(operator.id_events)
-            if (Array.isArray(arr)) return arr.map(String)
-            return [operator.id_events]
-        } catch {
-            return [operator.id_events]
-        }
+    console.log("🔍 getEventIds - operator:", operator);
+
+    if (!operator) {
+        console.log("❌ Operador não encontrado");
+        return [];
     }
-    return []
+
+    console.log("🔍 operator.id_events:", operator.id_events);
+    console.log("🔍 typeof operator.id_events:", typeof operator.id_events);
+
+    if (!operator.id_events) {
+        console.log("❌ operator.id_events está vazio");
+        return [];
+    }
+
+    // Função para extrair apenas o ID do evento (removendo a data se existir)
+    const extractEventId = (eventString: string): string => {
+        // Se contém dois pontos, pegar apenas a parte antes dos dois pontos (ID do evento)
+        if (eventString.includes(':')) {
+            const parts = eventString.split(':');
+            const eventId = parts[0].trim();
+            console.log(`🔍 Extraindo ID de "${eventString}" -> "${eventId}"`);
+            return eventId;
+        }
+        return eventString.trim();
+    };
+
+    // Se já é um array
+    if (Array.isArray(operator.id_events)) {
+        console.log("✅ id_events é um array:", operator.id_events);
+        return operator.id_events.map(item => extractEventId(String(item)));
+    }
+
+    // Se é uma string
+    if (typeof operator.id_events === "string") {
+        console.log("✅ id_events é uma string:", operator.id_events);
+
+        // Se contém vírgulas, é uma lista separada por vírgulas
+        if (operator.id_events.includes(",")) {
+            const ids = operator.id_events
+                .split(",")
+                .map(id => extractEventId(id))
+                .filter(id => id.length > 0);
+            console.log("✅ IDs extraídos da string com vírgulas:", ids);
+            return ids;
+        }
+
+        // Se é um JSON string
+        if (operator.id_events.startsWith("[") || operator.id_events.startsWith("{")) {
+            try {
+                const parsed = JSON.parse(operator.id_events);
+                console.log("✅ JSON parseado:", parsed);
+
+                if (Array.isArray(parsed)) {
+                    return parsed.map(item => extractEventId(String(item)));
+                } else if (typeof parsed === "object" && parsed !== null) {
+                    // Se é um objeto, tentar extrair IDs de propriedades comuns
+                    const possibleIds = Object.values(parsed)
+                        .filter(val => typeof val === "string" && val.length > 0)
+                        .map(val => extractEventId(String(val)));
+                    console.log("✅ IDs extraídos do objeto:", possibleIds);
+                    return possibleIds;
+                }
+            } catch (error) {
+                console.error("❌ Erro ao fazer parse do JSON:", error);
+            }
+        }
+
+        // Se é apenas uma string simples
+        console.log("✅ Retornando string única:", operator.id_events);
+        return [extractEventId(operator.id_events)];
+    }
+
+    console.log("❌ Formato não reconhecido para id_events");
+    return [];
 }
 
 const formatDate = (date: string) => {
@@ -74,8 +160,37 @@ const OperadorEventosPage = () => {
         )
         : []
 
+    console.log("🔍 eventosArray:", eventosArray);
+    console.log("🔍 eventIds:", eventIds);
+    console.log("🔍 currentOperator:", currentOperator);
+
     // Filtrar eventos do operador
-    const eventosOperador = eventosArray.filter((evento) => eventIds.includes(String(evento.id)))
+    const eventosOperador = eventosArray.filter((evento) => {
+        const eventoId = String(evento.id);
+        const isIncluded = eventIds.includes(eventoId);
+        console.log(`🔍 Evento ${evento.name} (${eventoId}) - Incluído: ${isIncluded}`);
+        return isIncluded;
+    });
+
+    console.log("🔍 eventosOperador filtrados:", eventosOperador);
+
+    // Testar se o operador tem acesso ao evento específico
+    const testEventId = "e6a4738a-b446-48d7-b5aa-d976613edf70";
+    const hasAccessToTestEvent = eventIds.includes(testEventId);
+    console.log(`🔍 Operador tem acesso ao evento teste (${testEventId}): ${hasAccessToTestEvent}`);
+
+    // Verificar se o evento teste existe na lista de eventos
+    const testEventExists = eventosArray.find(evento => String(evento.id) === testEventId);
+    console.log(`🔍 Evento teste existe na lista: ${!!testEventExists}`);
+    if (testEventExists) {
+        console.log("🔍 Evento teste encontrado:", testEventExists.name);
+    }
+
+    // Testar formato id:data
+    const testIdWithDate = "e6a4738a-b446-48d7-b5aa-d976613edf70:2025-08-01";
+    const extractedId = testIdWithDate.split(':')[0];
+    console.log(`🔍 Teste formato id:data - Original: "${testIdWithDate}" -> Extraído: "${extractedId}"`);
+    console.log(`🔍 ID extraído está na lista de IDs: ${eventIds.includes(extractedId)}`);
 
     // Sistema de sincronização em tempo real
     useEffect(() => {
@@ -177,6 +292,23 @@ const OperadorEventosPage = () => {
                             <div className="mt-4 flex items-center justify-center gap-2 text-pink-600">
                                 <RefreshCw className="w-4 h-4 animate-spin" />
                                 <span className="text-sm">Sincronizando dados em tempo real...</span>
+                            </div>
+                        )}
+
+                        {/* Debug info */}
+                        {operadorInfo && (
+                            <div className="mt-4 p-4 bg-gray-100 rounded-lg text-left max-w-2xl mx-auto">
+                                <h3 className="font-semibold text-gray-800 mb-2">Debug Info:</h3>
+                                <div className="text-sm text-gray-600 space-y-1">
+                                    <p>Total de eventos carregados: {eventosArray.length}</p>
+                                    <p>IDs de eventos do operador: {eventIds.join(', ') || 'Nenhum'}</p>
+                                    <p>Eventos filtrados: {eventosOperador.length}</p>
+                                    <p>Operador: {operadorInfo.nome} (CPF: {operadorInfo.cpf})</p>
+                                    <p>Acesso ao evento teste: {hasAccessToTestEvent ? 'Sim' : 'Não'}</p>
+                                    <p>Evento teste existe: {testEventExists ? 'Sim' : 'Não'}</p>
+                                    {testEventExists && <p>Nome do evento teste: {testEventExists.name}</p>}
+                                    <p>Teste formato id:data: {eventIds.includes(extractedId) ? 'Funcionando' : 'Falhou'}</p>
+                                </div>
                             </div>
                         )}
                     </div>

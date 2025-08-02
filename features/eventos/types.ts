@@ -299,3 +299,45 @@ export type CreateEmpresaEventoRequest = {
   empresaId: string;
   eventoId: string;
 };
+
+export interface EventAttendance {
+  id: string;
+  participantId: string;
+  eventId: string;
+  date: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  validatedBy: string | null;
+  notes: string | null;
+  performedBy: string;
+  createdAt: string;
+  updatedAt: string;
+  participant?: {
+    id: string;
+    name: string;
+    cpf: string;
+    role: string;
+    company: string;
+  };
+}
+
+export interface EventAttendanceListResponse {
+  data: EventAttendance[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface EventAttendanceStats {
+  totalChecks: number;
+  totalCheckIns: number;
+  totalCheckOuts: number;
+  averageCheckInTime: string | null;
+  averageCheckOutTime: string | null;
+  checksByDate: {
+    date: string;
+    checkIns: number;
+    checkOuts: number;
+  }[];
+}

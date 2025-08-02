@@ -12,10 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import apiClient from "@/lib/api-client"
 import { formatCpf, isValidCpf } from "@/lib/utils"
 import { toast } from "sonner"
-import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw } from "lucide-react"
+import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw, Activity } from "lucide-react"
 import { useParams } from "next/navigation"
 import { useOperatorsByEvent } from "@/features/operadores/api/query/use-operators-by-event"
 import { useOperators } from "@/features/operadores/api/query/use-operators"
@@ -55,6 +56,7 @@ export default function OperadoresPage() {
         cpf: "",
         senha: ""
     })
+    const [editSelectedEventDates, setEditSelectedEventDates] = useState<string[]>([])
 
     // Estados para criação
     const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -73,13 +75,23 @@ export default function OperadoresPage() {
     const [selectedOperators, setSelectedOperators] = useState<string[]>([])
     const [assignLoading, setAssignLoading] = useState(false)
     const [assignSearch, setAssignSearch] = useState("")
+    const [selectedEventDates, setSelectedEventDates] = useState<string[]>([])
 
-    // Estados para seleção de data do evento
-    const [showDateSelection, setShowDateSelection] = useState(false)
-    const [selectedEventDate, setSelectedEventDate] = useState<string>("")
+    // Debug: Log do estado de seleção
+    useEffect(() => {
+        console.log("🔍 Estado selectedOperators atualizado:", selectedOperators)
+    }, [selectedOperators])
+
+
 
     // Estados para armazenar o arquivo selecionado para importação
     const [fileToImport, setFileToImport] = useState<File | null>(null)
+
+    // Estados para a aba de ações
+    const [activeTab, setActiveTab] = useState("operadores")
+    const [actionsFilter, setActionsFilter] = useState({ busca: "", tipo: "all-types", operador: "all-operators" })
+    const [allActions, setAllActions] = useState<any[]>([])
+    const [loadingActions, setLoadingActions] = useState(false)
 
     // Função para gerar datas do evento
     const getEventDates = () => {
@@ -208,8 +220,21 @@ export default function OperadoresPage() {
             cpf: operador.cpf,
             senha: operador.senha
         })
-        // Carregar data de atribuição atual
-        setSelectedEventDate(getOperatorAssignmentDate(operador) || "")
+
+        // Carregar datas de atribuição atuais
+        const currentDates: string[] = []
+        if (operador.id_events) {
+            const eventAssignments = operador.id_events.split(',').map((assignment: string) => assignment.trim())
+            for (const assignment of eventAssignments) {
+                if (assignment.includes(':')) {
+                    const [eventIdFromAssignment, date] = assignment.split(':')
+                    if (eventIdFromAssignment === eventId) {
+                        currentDates.push(date)
+                    }
+                }
+            }
+        }
+        setEditSelectedEventDates(currentDates)
         setEditDialogOpen(true)
     }
 
@@ -231,22 +256,27 @@ export default function OperadoresPage() {
             return
         }
 
+        if (editSelectedEventDates.length === 0) {
+            toast.error("Selecione pelo menos um dia do evento")
+            return
+        }
+
         setLoading(true)
         try {
-            // Criar atribuição com data específica se disponível
-            const eventAssignment = selectedEventDate ? `${eventId}:${selectedEventDate}` : eventId
+            // Criar atribuições para todas as datas selecionadas
+            const eventAssignments = editSelectedEventDates.map(date => `${eventId}:${date}`).join(',')
 
             await apiClient.put(`/operadores/${operatorToEdit.id}`, {
                 nome: editForm.nome,
                 cpf: editForm.cpf,
                 senha: editForm.senha,
-                id_events: eventAssignment
+                id_events: eventAssignments
             })
 
             toast.success("Operador atualizado com sucesso!")
             setEditDialogOpen(false)
             setEditForm({ nome: "", cpf: "", senha: "" })
-            setSelectedEventDate("")
+            setEditSelectedEventDates([])
 
             // Forçar atualização dos dados após edição
             await forceRefreshData()
@@ -290,7 +320,7 @@ export default function OperadoresPage() {
         setLoading(true)
         try {
             // Criar atribuição com data específica se disponível
-            const eventAssignment = selectedEventDate ? `${eventId}:${selectedEventDate}` : eventId
+            const eventAssignment = eventId
 
             await apiClient.post("/operadores", {
                 nome: createForm.nome,
@@ -302,7 +332,6 @@ export default function OperadoresPage() {
             toast.success("Operador criado com sucesso!")
             setCreateDialogOpen(false)
             setCreateForm({ nome: "", cpf: "", senha: "" })
-            setSelectedEventDate("")
 
             // Forçar atualização dos dados após criação
             await forceRefreshData()
@@ -317,16 +346,19 @@ export default function OperadoresPage() {
     const abrirAtribuirOperadores = () => {
         setSelectedOperators([])
         setAssignSearch("")
-        setSelectedEventDate("")
-        setShowDateSelection(true)
+        setSelectedEventDates([])
+        setAssignDialogOpen(true)
     }
 
     const handleSelectOperator = (operatorId: string) => {
-        setSelectedOperators(prev =>
-            prev.includes(operatorId)
+        console.log("🔍 Selecionando operador:", operatorId)
+        setSelectedOperators(prev => {
+            const newSelection = prev.includes(operatorId)
                 ? prev.filter(id => id !== operatorId)
                 : [...prev, operatorId]
-        )
+            console.log("📋 Nova seleção:", newSelection)
+            return newSelection
+        })
     }
 
     const handleSelectAllOperators = () => {
@@ -343,8 +375,8 @@ export default function OperadoresPage() {
             return
         }
 
-        if (!selectedEventDate) {
-            toast.error("Selecione uma data do evento")
+        if (selectedEventDates.length === 0) {
+            toast.error("Selecione pelo menos um dia do evento")
             return
         }
 
@@ -353,13 +385,15 @@ export default function OperadoresPage() {
             for (const operatorId of selectedOperators) {
                 const operator = availableOperators.find(op => op.id === operatorId)
                 if (operator) {
-                    // Criar uma estrutura que inclui a data do evento
-                    const eventAssignment = `${eventId}:${selectedEventDate}`
+                    // Criar atribuições para todos os dias selecionados
                     const currentEvents = operator.id_events ? operator.id_events.split(',').filter(Boolean) : []
 
                     // Remover atribuições existentes para este evento (se houver)
                     const filteredEvents = currentEvents.filter((event: string) => !event.startsWith(`${eventId}:`))
-                    const newEvents = [...filteredEvents, eventAssignment]
+
+                    // Adicionar novas atribuições para cada dia selecionado
+                    const newEventAssignments = selectedEventDates.map(date => `${eventId}:${date}`)
+                    const newEvents = [...filteredEvents, ...newEventAssignments]
 
                     await apiClient.put(`/operadores/${operatorId}`, {
                         nome: operator.nome,
@@ -370,10 +404,11 @@ export default function OperadoresPage() {
                 }
             }
 
-            toast.success(`${selectedOperators.length} operador(es) atribuído(s) com sucesso para a data ${new Date(selectedEventDate).toLocaleDateString('pt-BR')}!`)
+            const datesText = selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')).join(', ')
+            toast.success(`${selectedOperators.length} operador(es) atribuído(s) com sucesso para os dias: ${datesText}!`)
             setAssignDialogOpen(false)
             setSelectedOperators([])
-            setSelectedEventDate("")
+            setSelectedEventDates([])
 
             // Forçar atualização dos dados após atribuição
             await forceRefreshData()
@@ -384,15 +419,24 @@ export default function OperadoresPage() {
         }
     }
 
-    const handleConfirmAssignOperators = async () => {
-        if (!selectedEventDate) {
-            toast.error("Selecione uma data do evento")
-            return
-        }
-
-        setShowDateSelection(false)
-        setAssignDialogOpen(true)
+    const handleDateSelection = (date: string) => {
+        setSelectedEventDates(prev =>
+            prev.includes(date)
+                ? prev.filter(d => d !== date)
+                : [...prev, date]
+        )
     }
+
+    const handleSelectAllDates = () => {
+        const eventDates = getEventDates()
+        if (selectedEventDates.length === eventDates.length) {
+            setSelectedEventDates([])
+        } else {
+            setSelectedEventDates(eventDates)
+        }
+    }
+
+
 
     const formatCPF = (cpf: string): string => {
         return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
@@ -430,14 +474,14 @@ export default function OperadoresPage() {
         const file = e.target.files?.[0]
         if (!file) return
 
-        // Mostrar modal de seleção de data primeiro
-        setShowDateSelection(true)
         // Armazenar o arquivo para processamento posterior
         setFileToImport(file)
+        // Abrir dialog de atribuição que agora inclui seleção de datas
+        setAssignDialogOpen(true)
     }
 
     const handleConfirmImport = async () => {
-        if (!fileToImport || !selectedEventDate) return
+        if (!fileToImport || selectedEventDates.length === 0) return
 
         setImportDialogLoading(true)
         try {
@@ -466,15 +510,15 @@ export default function OperadoresPage() {
                     continue
                 }
 
-                // Criar atribuição com data específica
-                const eventAssignment = `${eventId}:${selectedEventDate}`
+                // Criar atribuições para todos os dias selecionados
+                const eventAssignments = selectedEventDates.map(date => `${eventId}:${date}`).join(',')
 
                 operadoresImportados.push({
                     id: "",
                     nome: row.nome,
                     cpf: row.cpf,
                     senha: row.senha,
-                    id_events: eventAssignment,
+                    id_events: eventAssignments,
                     acoes: []
                 })
             }
@@ -482,8 +526,7 @@ export default function OperadoresPage() {
             setRegistrosUnicos(operadoresImportados)
             setResumoImportacao({ importados: operadoresImportados, falhados })
             setResumoDialogOpen(true)
-            setShowDateSelection(false)
-            setSelectedEventDate("")
+            setSelectedEventDates([])
             setFileToImport(null)
         } catch (error) {
             toast.error("Erro ao processar arquivo")
@@ -540,6 +583,90 @@ export default function OperadoresPage() {
         return null
     }
 
+    // Função para coletar todas as ações dos operadores
+    const collectAllActions = useMemo(() => {
+        if (!operadores || operadores.length === 0) return []
+
+        const actions: any[] = []
+
+        operadores.forEach(operator => {
+            if (operator.acoes && Array.isArray(operator.acoes)) {
+                operator.acoes.forEach((action: any) => {
+                    actions.push({
+                        ...action,
+                        operadorId: operator.id,
+                        operadorNome: operator.nome,
+                        operadorCpf: operator.cpf
+                    })
+                })
+            }
+        })
+
+        return actions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    }, [operadores])
+
+    // Função para filtrar ações
+    const filteredActions = useMemo(() => {
+        let filtered = collectAllActions
+
+        if (actionsFilter.busca) {
+            filtered = filtered.filter(action =>
+                action.operadorNome?.toLowerCase().includes(actionsFilter.busca.toLowerCase()) ||
+                action.credencial?.toLowerCase().includes(actionsFilter.busca.toLowerCase()) ||
+                action.pulseira?.toLowerCase().includes(actionsFilter.busca.toLowerCase()) ||
+                action.type?.toLowerCase().includes(actionsFilter.busca.toLowerCase())
+            )
+        }
+
+        if (actionsFilter.tipo && actionsFilter.tipo !== "all-types") {
+            filtered = filtered.filter(action => action.type === actionsFilter.tipo)
+        }
+
+        if (actionsFilter.operador && actionsFilter.operador !== "all-operators") {
+            filtered = filtered.filter(action => action.operadorId === actionsFilter.operador)
+        }
+
+        return filtered
+    }, [collectAllActions, actionsFilter])
+
+    // Função para obter tipos únicos de ações
+    const uniqueActionTypes = useMemo(() => {
+        const types = new Set(collectAllActions.map(action => action.type))
+        return Array.from(types).sort()
+    }, [collectAllActions])
+
+    // Função para formatar timestamp
+    const formatTimestamp = (timestamp: string) => {
+        return new Date(timestamp).toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        })
+    }
+
+    // Função para obter cor do badge baseado no tipo de ação
+    const getActionBadgeColor = (type: string) => {
+        switch (type?.toLowerCase()) {
+            case 'check-in':
+            case 'checkin':
+                return 'bg-green-100 text-green-800 border-green-200'
+            case 'check-out':
+            case 'checkout':
+                return 'bg-red-100 text-red-800 border-red-200'
+            case 'distribuição':
+            case 'distribuicao':
+                return 'bg-blue-100 text-blue-800 border-blue-200'
+            case 'troca':
+                return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+            case 'retirada':
+                return 'bg-orange-100 text-orange-800 border-orange-200'
+            default:
+                return 'bg-gray-100 text-gray-800 border-gray-200'
+        }
+    }
+
     if (loadingOperadores || loadingAllOperators) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -573,107 +700,256 @@ export default function OperadoresPage() {
                     </div>
                 </div>
 
-                {/* Filtros */}
-                <div className="bg-white rounded-lg shadow-sm border p-4 mb-6">
-                    <div className="flex flex-wrap gap-4">
-                        <div className="flex-1 min-w-[200px]">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Buscar por nome ou CPF
-                            </label>
-                            <Input
-                                placeholder="Digite o nome ou CPF..."
-                                value={filtro.busca}
-                                onChange={(e) => setFiltro(prev => ({ ...prev, busca: e.target.value }))}
-                            />
-                        </div>
-                        <div className="flex items-end">
-                            <Button variant="outline" onClick={exportarParaExcel}>
-                                <Download className="h-4 w-4 mr-2" />
-                                Exportar
-                            </Button>
-                        </div>
-                        <div className="flex items-end">
-                            <Button variant="outline" onClick={baixarModeloExcel}>
-                                <Download className="h-4 w-4 mr-2" />
-                                Modelo
-                            </Button>
-                        </div>
-                        <div className="flex items-end">
-                            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                                <Upload className="h-4 w-4 mr-2" />
-                                Importar
-                            </Button>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept=".xlsx,.xls"
-                                onChange={importarDoExcel}
-                                className="hidden"
-                            />
-                        </div>
-                    </div>
-                </div>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="operadores" className="flex items-center gap-2">
+                            <Users className="h-4 w-4" />
+                            Operadores ({operadores.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="acoes" className="flex items-center gap-2">
+                            <Activity className="h-4 w-4" />
+                            Ações ({collectAllActions.length})
+                        </TabsTrigger>
+                    </TabsList>
 
-                {/* Tabela */}
-                <div className="bg-white rounded-lg shadow-sm border">
-                    <div className="overflow-x-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="text-left font-medium text-gray-900">Nome</TableHead>
-                                    <TableHead className="text-left font-medium text-gray-900">CPF</TableHead>
-                                    <TableHead className="text-left font-medium text-gray-900">Data de Atribuição</TableHead>
-                                    <TableHead className="text-left font-medium text-gray-900">Ações</TableHead>
-                                    <TableHead className="text-left font-medium text-gray-900">Operações</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {operadores.length > 0 ? (
-                                    operadores.map((operador) => (
-                                        <TableRow key={operador.id} className="hover:bg-gray-50 transition-colors">
-                                            <TableCell className="font-medium">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                                        <span className="text-sm font-medium text-blue-600">
-                                                            {getInitials(operador.nome)}
-                                                        </span>
-                                                    </div>
-                                                    <span className="text-gray-900">{capitalizeWords(operador.nome)}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-gray-700">{formatCPF(operador.cpf)}</TableCell>
-                                            <TableCell className="text-gray-700">
-                                                {getOperatorAssignmentDate(operador) ? (
-                                                    <Badge variant="outline" className="text-blue-600 border-blue-200">
-                                                        {new Date(getOperatorAssignmentDate(operador)!).toLocaleDateString('pt-BR')}
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="outline" className="text-gray-500 border-gray-200">
-                                                        Sem data específica
-                                                    </Badge>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="text-sm text-gray-500">
-                                                    {operador.acoes?.length || 0} ações
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                {getBotaoAcao(operador)}
-                                            </TableCell>
+                    <TabsContent value="operadores" className="space-y-6">
+                        {/* Filtros */}
+                        <div className="bg-white rounded-lg shadow-sm border p-4">
+                            <div className="flex flex-wrap gap-4">
+                                <div className="flex-1 min-w-[200px]">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Buscar por nome ou CPF
+                                    </label>
+                                    <Input
+                                        placeholder="Digite o nome ou CPF..."
+                                        value={filtro.busca}
+                                        onChange={(e) => setFiltro(prev => ({ ...prev, busca: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="flex items-end">
+                                    <Button variant="outline" onClick={exportarParaExcel}>
+                                        <Download className="h-4 w-4 mr-2" />
+                                        Exportar
+                                    </Button>
+                                </div>
+                                <div className="flex items-end">
+                                    <Button variant="outline" onClick={baixarModeloExcel}>
+                                        <Download className="h-4 w-4 mr-2" />
+                                        Modelo
+                                    </Button>
+                                </div>
+                                <div className="flex items-end">
+                                    <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                                        <Upload className="h-4 w-4 mr-2" />
+                                        Importar
+                                    </Button>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept=".xlsx,.xls"
+                                        onChange={importarDoExcel}
+                                        className="hidden"
+                                    />
+                                </div>
+                                <div className="flex items-end">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            console.log("🔍 Teste: Estado atual:", selectedOperators)
+                                            handleSelectOperator("test-id")
+                                        }}
+                                    >
+                                        Teste Seleção
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tabela */}
+                        <div className="bg-white rounded-lg shadow-sm border">
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="text-left font-medium text-gray-900">Nome</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">CPF</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Data de Atribuição</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Ações</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Operações</TableHead>
                                         </TableRow>
-                                    ))
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={5} className="text-center py-8 text-gray-500">
-                                            Nenhum operador encontrado
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </div>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {operadores.length > 0 ? (
+                                            operadores.map((operador) => (
+                                                <TableRow key={operador.id} className="hover:bg-gray-50 transition-colors">
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                                <span className="text-sm font-medium text-blue-600">
+                                                                    {getInitials(operador.nome)}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-gray-900">{capitalizeWords(operador.nome)}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-gray-700">{formatCPF(operador.cpf)}</TableCell>
+                                                    <TableCell className="text-gray-700">
+                                                        {getOperatorAssignmentDate(operador) ? (
+                                                            <Badge variant="outline" className="text-blue-600 border-blue-200">
+                                                                {new Date(getOperatorAssignmentDate(operador)!).toLocaleDateString('pt-BR')}
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="outline" className="text-gray-500 border-gray-200">
+                                                                Sem data específica
+                                                            </Badge>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="text-sm text-gray-500">
+                                                            {operador.acoes?.length || 0} ações
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {getBotaoAcao(operador)}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                                                    Nenhum operador encontrado
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="acoes" className="space-y-6">
+                        {/* Filtros para Ações */}
+                        <div className="bg-white rounded-lg shadow-sm border p-4">
+                            <div className="flex flex-wrap gap-4">
+                                <div className="flex-1 min-w-[200px]">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Buscar ações
+                                    </label>
+                                    <Input
+                                        placeholder="Digite para buscar..."
+                                        value={actionsFilter.busca}
+                                        onChange={(e) => setActionsFilter(prev => ({ ...prev, busca: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="min-w-[200px]">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Tipo de Ação
+                                    </label>
+                                    <Select value={actionsFilter.tipo} onValueChange={(value) => setActionsFilter(prev => ({ ...prev, tipo: value }))}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Todos os tipos" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all-types">Todos os tipos</SelectItem>
+                                            {uniqueActionTypes.map((type) => (
+                                                <SelectItem key={type} value={type}>
+                                                    {type}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="min-w-[200px]">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Operador
+                                    </label>
+                                    <Select value={actionsFilter.operador} onValueChange={(value) => setActionsFilter(prev => ({ ...prev, operador: value }))}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Todos os operadores" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all-operators">Todos os operadores</SelectItem>
+                                            {operadores.map((operador) => (
+                                                <SelectItem key={operador.id} value={operador.id}>
+                                                    {operador.nome}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="flex items-end">
+                                    <Button variant="outline" onClick={() => setActionsFilter({ busca: "", tipo: "all-types", operador: "all-operators" })}>
+                                        Limpar Filtros
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tabela de Ações */}
+                        <div className="bg-white rounded-lg shadow-sm border">
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="text-left font-medium text-gray-900">Operador</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Tipo</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Credencial</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Pulseira</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Tabela</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Data/Hora</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredActions.length > 0 ? (
+                                            filteredActions.map((action, index) => (
+                                                <TableRow key={index} className="hover:bg-gray-50 transition-colors">
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                                <span className="text-sm font-medium text-blue-600">
+                                                                    {getInitials(action.operadorNome)}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-900">{capitalizeWords(action.operadorNome)}</span>
+                                                                <p className="text-xs text-gray-500">{formatCPF(action.operadorCpf)}</p>
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className={getActionBadgeColor(action.type)}>
+                                                            {action.type}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-gray-700">
+                                                        {action.credencial || "-"}
+                                                    </TableCell>
+                                                    <TableCell className="text-gray-700">
+                                                        {action.pulseira || "-"}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="text-purple-600 border-purple-200">
+                                                            {action.tabela}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-gray-700">
+                                                        {formatTimestamp(action.timestamp)}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                                                    {collectAllActions.length === 0 ? "Nenhuma ação registrada" : "Nenhuma ação encontrada com os filtros aplicados"}
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </div>
+                    </TabsContent>
+                </Tabs>
 
                 {/* Modal de Detalhes */}
                 <Dialog open={modalAberto} onOpenChange={setModalAberto}>
@@ -738,58 +1014,121 @@ export default function OperadoresPage() {
 
                 {/* Modal de Edição */}
                 <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-                    <DialogContent>
+                    <DialogContent className="max-w-full sm:max-w-4xl md:max-w-5xl lg:max-w-6xl max-h-[95vh] bg-white overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle>Editar Operador</DialogTitle>
+                            <DialogTitle className="text-gray-900">Editar Operador</DialogTitle>
+                            <DialogDescription className="text-gray-600">
+                                Atualize as informações do operador e selecione os dias de atribuição
+                            </DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
-                                <Input
-                                    value={editForm.nome}
-                                    onChange={(e) => setEditForm(prev => ({ ...prev, nome: e.target.value }))}
-                                />
+                        <div className="space-y-6">
+                            {/* Informações Básicas */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-900 mb-1">Nome</label>
+                                    <Input
+                                        value={editForm.nome}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, nome: e.target.value }))}
+                                        className="text-gray-900"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-900 mb-1">CPF</label>
+                                    <Input
+                                        value={editForm.cpf}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, cpf: e.target.value }))}
+                                        className="text-gray-900"
+                                    />
+                                </div>
+                                <div className="text-gray-900">
+                                    <label className="block text-sm font-medium text-gray-900 mb-1">Senha</label>
+                                    <Input
+                                        type="password"
+                                        value={editForm.senha}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, senha: e.target.value }))}
+                                        className="text-gray-900"
+                                    />
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
-                                <Input
-                                    value={editForm.cpf}
-                                    onChange={(e) => setEditForm(prev => ({ ...prev, cpf: e.target.value }))}
-                                />
+
+                            {/* Seleção de Dias do Evento */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-medium text-gray-900">Selecionar Dias do Evento</h3>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            if (editSelectedEventDates.length === getEventDates().length) {
+                                                setEditSelectedEventDates([])
+                                            } else {
+                                                setEditSelectedEventDates(getEventDates())
+                                            }
+                                        }}
+                                        className="text-gray-900"
+                                    >
+                                        {editSelectedEventDates.length === getEventDates().length ? "Desmarcar Todos" : "Marcar Todos"}
+                                    </Button>
+                                </div>
+
+                                <div className="grid grid-cols-7 gap-2">
+                                    {getEventDates().map((date) => {
+                                        const isSelected = editSelectedEventDates.includes(date)
+                                        const dateObj = new Date(date)
+                                        const dayName = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' })
+                                        const dayNumber = dateObj.getDate()
+
+                                        return (
+                                            <button
+                                                key={date}
+                                                onClick={() => {
+                                                    if (isSelected) {
+                                                        setEditSelectedEventDates(prev => prev.filter(d => d !== date))
+                                                    } else {
+                                                        setEditSelectedEventDates(prev => [...prev, date])
+                                                    }
+                                                }}
+                                                className={`
+                                                    p-3 rounded-lg border-2 transition-all duration-200 text-center
+                                                    ${isSelected
+                                                        ? 'bg-blue-500 text-white border-blue-500'
+                                                        : 'bg-white text-gray-900 border-gray-300 hover:border-blue-300 hover:bg-blue-50'
+                                                    }
+                                                `}
+                                            >
+                                                <div className="text-xs font-medium">{dayName}</div>
+                                                <div className="text-lg font-bold">{dayNumber}</div>
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+
+                                {editSelectedEventDates.length > 0 && (
+                                    <div className="bg-blue-50 p-3 rounded-lg">
+                                        <p className="text-sm text-blue-900">
+                                            <strong>Dias selecionados:</strong> {editSelectedEventDates.length} dia(s)
+                                        </p>
+                                    </div>
+                                )}
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-                                <Input
-                                    type="password"
-                                    value={editForm.senha}
-                                    onChange={(e) => setEditForm(prev => ({ ...prev, senha: e.target.value }))}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Data de Atribuição (Opcional)</label>
-                                <Select value={selectedEventDate} onValueChange={setSelectedEventDate}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione uma data (opcional)" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="">Sem data específica</SelectItem>
-                                        {getEventDates().map((date) => (
-                                            <SelectItem key={date} value={date}>
-                                                {new Date(date).toLocaleDateString('pt-BR')}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => {
-                                    setEditDialogOpen(false)
-                                    setEditForm({ nome: "", cpf: "", senha: "" })
-                                    setSelectedEventDate("")
-                                }}>
+
+                            <div className="flex justify-end gap-2 pt-4 text-gray-900">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setEditDialogOpen(false)
+                                        setEditForm({ nome: "", cpf: "", senha: "" })
+                                        setEditSelectedEventDates([])
+                                    }}
+                                    className="text-gray-900"
+                                >
                                     Cancelar
                                 </Button>
-                                <Button onClick={salvarEdicao} disabled={loading}>
+                                <Button
+                                    onClick={salvarEdicao}
+                                    disabled={loading || editSelectedEventDates.length === 0}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
                                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
                                 </Button>
                             </div>
@@ -826,27 +1165,10 @@ export default function OperadoresPage() {
                                     onChange={(e) => setCreateForm(prev => ({ ...prev, senha: e.target.value }))}
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Data de Atribuição (Opcional)</label>
-                                <Select value={selectedEventDate} onValueChange={setSelectedEventDate}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione uma data (opcional)" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="">Sem data específica</SelectItem>
-                                        {getEventDates().map((date) => (
-                                            <SelectItem key={date} value={date}>
-                                                {new Date(date).toLocaleDateString('pt-BR')}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
                             <div className="flex justify-end gap-2">
                                 <Button variant="outline" onClick={() => {
                                     setCreateDialogOpen(false)
                                     setCreateForm({ nome: "", cpf: "", senha: "" })
-                                    setSelectedEventDate("")
                                 }}>
                                     Cancelar
                                 </Button>
@@ -880,105 +1202,207 @@ export default function OperadoresPage() {
 
                 {/* Modal de Atribuição de Operadores */}
                 <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-                    <DialogContent className="max-w-4xl max-h-[80vh]">
+                    <DialogContent className="max-w-full sm:max-w-4xl md:max-w-5xl lg:max-w-6xl max-h-[95vh] bg-white  overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle>Atribuir Operadores ao Evento</DialogTitle>
-                            <DialogDescription>
-                                Selecione os operadores que deseja atribuir ao evento &quot;{nomeEvento}&quot; para a data {selectedEventDate ? new Date(selectedEventDate).toLocaleDateString('pt-BR') : ''}
+                            <DialogTitle className="text-gray-900">
+                                {fileToImport ? "Importar Operadores" : "Atribuir Operadores ao Evento"}
+                            </DialogTitle>
+                            <DialogDescription className="text-gray-600">
+                                {fileToImport
+                                    ? `Selecione os dias do evento "${nomeEvento}" para importar os operadores`
+                                    : `Selecione os operadores e os dias do evento "${nomeEvento}" para atribuição`
+                                }
                             </DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                    <Input
-                                        placeholder="Buscar operadores..."
-                                        value={assignSearch}
-                                        onChange={(e) => setAssignSearch(e.target.value)}
-                                    />
+                        <div className="space-y-6">
+                            {/* Seção de Seleção de Dias */}
+                            <div className="bg-gray-50 rounded-lg p-2 sm:p-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
+                                    <h3 className="text-lg font-medium text-gray-900">Selecionar Dias do Evento</h3>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleSelectAllDates}
+                                    >
+                                        {selectedEventDates.length === getEventDates().length ? "Desmarcar Todos" : "Marcar Todos"}
+                                    </Button>
                                 </div>
-                                <div className="flex items-center gap-2 ml-4">
-                                    <Checkbox
-                                        checked={filteredAvailableOperators.length > 0 && selectedOperators.length === filteredAvailableOperators.length}
-                                        onCheckedChange={handleSelectAllOperators}
-                                    />
-                                    <span className="text-sm text-gray-600">Selecionar todos</span>
-                                </div>
-                            </div>
 
-                            <div className="border rounded-lg max-h-96 overflow-y-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-12"></TableHead>
-                                            <TableHead>Nome</TableHead>
-                                            <TableHead>CPF</TableHead>
-                                            <TableHead>Status</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {filteredAvailableOperators.length > 0 ? (
-                                            filteredAvailableOperators.map((operator) => (
-                                                <TableRow
-                                                    key={operator.id}
-                                                    className={`hover:bg-gray-50 transition-colors ${selectedOperators.includes(operator.id) ? 'bg-blue-50' : ''
-                                                        }`}
+                                <div className="overflow-x-auto">
+                                    <div className="grid grid-cols-7 min-w-[420px] gap-2">
+                                        {/* Cabeçalho dos dias da semana */}
+                                        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
+                                            <div key={day} className="text-center text-xs sm:text-sm font-medium text-gray-500 py-2">
+                                                {day}
+                                            </div>
+                                        ))}
+
+                                        {/* Dias do evento */}
+                                        {getEventDates().map((date, index) => {
+                                            const isSelected = selectedEventDates.includes(date)
+                                            const dayNumber = new Date(date).getDate()
+
+                                            return (
+                                                <div
+                                                    key={date}
+                                                    className={`
+                                                        relative p-2 text-center cursor-pointer rounded-lg border-2 transition-all
+                                                        ${isSelected
+                                                            ? 'bg-blue-500 text-white border-blue-500'
+                                                            : 'bg-white text-gray-900 border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                                                        }
+                                                    `}
+                                                    onClick={() => handleDateSelection(date)}
                                                 >
-                                                    <TableCell>
-                                                        <Checkbox
-                                                            checked={selectedOperators.includes(operator.id)}
-                                                            onCheckedChange={() => handleSelectOperator(operator.id)}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell className="font-medium">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                                                <span className="text-sm font-medium text-blue-600">
-                                                                    {getInitials(operator.nome)}
-                                                                </span>
-                                                            </div>
-                                                            <span className="text-gray-900">{capitalizeWords(operator.nome)}</span>
+                                                    <div className="text-xs sm:text-sm font-medium">{dayNumber}</div>
+                                                    <div className="text-[10px] sm:text-xs opacity-75">
+                                                        {new Date(date).toLocaleDateString('pt-BR', { month: 'short' })}
+                                                    </div>
+                                                    {isSelected && (
+                                                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
+                                                            <span className="text-white text-xs">✓</span>
                                                         </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-gray-700">{formatCPF(operator.cpf)}</TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline" className="text-green-600 border-green-200">
-                                                            Disponível
-                                                        </Badge>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        ) : (
-                                            <TableRow>
-                                                <TableCell colSpan={4} className="text-center py-8 text-gray-500">
-                                                    {assignSearch ? 'Nenhum operador encontrado' : 'Nenhum operador disponível para atribuição'}
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+
+                                {selectedEventDates.length > 0 && (
+                                    <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                                        <p className="text-sm text-blue-800">
+                                            <strong>Dias selecionados:</strong> {selectedEventDates.length} dia(s)
+                                        </p>
+                                        <p className="text-xs text-blue-600 mt-1 break-words">
+                                            {selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')).join(', ')}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="flex justify-between items-center">
-                                <div className="text-sm text-gray-600">
-                                    {selectedOperators.length} operador(es) selecionado(s)
+                            {/* Seção de Seleção de Operadores - Só aparece quando não está importando */}
+                            {!fileToImport && (
+                                <div className="bg-gray-50 rounded-lg p-2 sm:p-4">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
+                                        <h3 className="text-lg font-medium text-gray-900">Selecionar Operadores</h3>
+                                        <div className="flex items-center gap-2">
+                                            <Checkbox
+                                                checked={filteredAvailableOperators.length > 0 && selectedOperators.length === filteredAvailableOperators.length}
+                                                onCheckedChange={handleSelectAllOperators}
+                                            />
+                                            <span className="text-sm text-gray-600">Selecionar todos</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center mb-4">
+                                        <div className="flex-1">
+                                            <Input
+                                                placeholder="Buscar operadores..."
+                                                value={assignSearch}
+                                                onChange={(e) => setAssignSearch(e.target.value)}
+                                                className="bg-white"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="border rounded-lg max-h-48 sm:max-h-64 overflow-y-auto bg-white">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead className="w-8 sm:w-12"></TableHead>
+                                                    <TableHead className="text-gray-900">Nome</TableHead>
+                                                    <TableHead className="text-gray-900">CPF</TableHead>
+                                                    <TableHead className="text-gray-900">Status</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {filteredAvailableOperators.length > 0 ? (
+                                                    filteredAvailableOperators.map((operator) => (
+                                                        <TableRow
+                                                            key={operator.id}
+                                                            className={`hover:bg-gray-50 transition-colors ${selectedOperators.includes(operator.id) ? 'bg-blue-50' : ''
+                                                                }`}
+                                                        >
+                                                            <TableCell className="w-8 sm:w-12">
+                                                                <div className="flex items-center justify-center">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={selectedOperators.includes(operator.id)}
+                                                                        onChange={() => {
+                                                                            console.log("🔍 Checkbox nativa clicada para operador:", operator.id)
+                                                                            handleSelectOperator(operator.id)
+                                                                        }}
+                                                                        className="cursor-pointer w-4 h-4"
+                                                                    />
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="font-medium">
+                                                                <div className="flex items-center gap-2 sm:gap-3">
+                                                                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                                        <span className="text-xs sm:text-sm font-medium text-blue-600">
+                                                                            {getInitials(operator.nome)}
+                                                                        </span>
+                                                                    </div>
+                                                                    <span className="text-gray-900 truncate max-w-[100px] sm:max-w-[180px]">{capitalizeWords(operator.nome)}</span>
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-gray-700">{formatCPF(operator.cpf)}</TableCell>
+                                                            <TableCell>
+                                                                <Badge variant="outline" className="text-green-600 border-green-200">
+                                                                    Disponível
+                                                                </Badge>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))
+                                                ) : (
+                                                    <TableRow>
+                                                        <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                                                            {assignSearch ? 'Nenhum operador encontrado' : 'Nenhum operador disponível para atribuição'}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" onClick={() => {
-                                        setAssignDialogOpen(false)
-                                        setSelectedEventDate("")
-                                    }}>
+                            )}
+
+                            <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-2 sm:p-4 rounded-lg border gap-2">
+                                <div className="text-sm text-gray-600 w-full sm:w-auto flex flex-col sm:flex-row sm:items-center gap-1">
+                                    {!fileToImport && <div>{selectedOperators.length} operador(es) selecionado(s)</div>}
+                                    <div>{selectedEventDates.length} dia(s) selecionado(s)</div>
+                                    {fileToImport && <div className="text-blue-600 truncate max-w-xs">{fileToImport.name}</div>}
+                                </div>
+                                <div className="flex gap-2 w-full sm:w-auto justify-end">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            setAssignDialogOpen(false)
+                                            setSelectedEventDates([])
+                                            setFileToImport(null)
+                                        }}
+                                        className="w-full sm:w-auto"
+                                    >
                                         Cancelar
                                     </Button>
                                     <Button
-                                        onClick={handleAssignOperators}
-                                        disabled={assignLoading || selectedOperators.length === 0}
+                                        onClick={fileToImport ? handleConfirmImport : handleAssignOperators}
+                                        disabled={
+                                            assignLoading ||
+                                            selectedEventDates.length === 0 ||
+                                            (!fileToImport && selectedOperators.length === 0)
+                                        }
+                                        className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
                                     >
                                         {assignLoading ? (
                                             <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : fileToImport ? (
+                                            <Upload className="h-4 w-4 mr-2" />
                                         ) : (
                                             <UserPlus className="h-4 w-4 mr-2" />
                                         )}
-                                        Atribuir {selectedOperators.length > 0 && `(${selectedOperators.length})`}
+                                        {fileToImport ? "Importar" : `Atribuir ${selectedOperators.length > 0 ? `(${selectedOperators.length})` : ''}`}
                                     </Button>
                                 </div>
                             </div>
@@ -986,59 +1410,7 @@ export default function OperadoresPage() {
                     </DialogContent>
                 </Dialog>
 
-                {/* Modal de Seleção de Data */}
-                {showDateSelection && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-                            <h3 className="text-lg font-semibold mb-4">Selecionar Data do Evento</h3>
-                            <p className="text-gray-600 mb-4">
-                                {fileToImport
-                                    ? "Escolha a data do evento para a qual os operadores serão importados:"
-                                    : "Escolha a data do evento para a qual os operadores serão atribuídos:"
-                                }
-                            </p>
 
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Data do Evento
-                                </label>
-                                <Select value={selectedEventDate} onValueChange={setSelectedEventDate}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione uma data" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {getEventDates().map((date) => (
-                                            <SelectItem key={date} value={date}>
-                                                {new Date(date).toLocaleDateString('pt-BR')}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        setShowDateSelection(false)
-                                        setSelectedEventDate("")
-                                        setFileToImport(null)
-                                    }}
-                                    className="flex-1"
-                                >
-                                    Cancelar
-                                </Button>
-                                <Button
-                                    onClick={fileToImport ? handleConfirmImport : handleConfirmAssignOperators}
-                                    disabled={!selectedEventDate}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700"
-                                >
-                                    {fileToImport ? "Confirmar Importação" : "Continuar"}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Modal de Resumo de Importação */}
                 <Dialog open={resumoDialogOpen} onOpenChange={setResumoDialogOpen}>
@@ -1062,9 +1434,12 @@ export default function OperadoresPage() {
 
                             {resumoImportacao.importados.length > 0 && (
                                 <div className="p-4 bg-blue-50 rounded-lg">
-                                    <h3 className="font-medium text-blue-800">Data de Atribuição</h3>
+                                    <h3 className="font-medium text-blue-800">Dias de Atribuição</h3>
                                     <p className="text-blue-600">
-                                        {selectedEventDate ? new Date(selectedEventDate).toLocaleDateString('pt-BR') : 'Sem data específica'}
+                                        {selectedEventDates.length > 0
+                                            ? selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')).join(', ')
+                                            : 'Sem datas específicas'
+                                        }
                                     </p>
                                 </div>
                             )}
@@ -1086,7 +1461,7 @@ export default function OperadoresPage() {
                             <div className="flex justify-end gap-2">
                                 <Button variant="outline" onClick={() => {
                                     setResumoDialogOpen(false)
-                                    setSelectedEventDate("")
+                                    setSelectedEventDates([])
                                 }}>
                                     Cancelar
                                 </Button>
