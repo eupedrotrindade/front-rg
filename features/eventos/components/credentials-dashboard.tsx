@@ -206,12 +206,6 @@ export const CredentialsDashboard = ({
                         {credential.isActive ? "Ativa" : "Inativa"}
                       </Badge>
                     </span>
-                    <span>
-                      Distribuição:{" "}
-                      <Badge variant={credential.isDistributed ? "default" : "secondary"}>
-                        {credential.isDistributed ? "Distribuída" : "Não distribuída"}
-                      </Badge>
-                    </span>
                   </div>
                 </div>
               </CardContent>

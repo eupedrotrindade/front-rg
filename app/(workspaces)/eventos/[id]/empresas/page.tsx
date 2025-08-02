@@ -152,398 +152,369 @@ export default function EmpresasPage() {
         setIsEditDialogOpen(true)
     }
 
-    const resetForm = () => {
-        setFormData({
-            nome: "",
-            id_evento: "",
-            days: []
-        })
-    }
     const eventId = useParams().id as string
     const { data: event } = useEventos({ id: eventId })
     const eventName =
         Array.isArray(event)
             ? ""
             : event?.name || ""
+
+    const resetForm = () => {
+        setFormData({
+            nome: "",
+            id_evento: eventId, // Usar o ID do evento atual
+            days: []
+        })
+    }
+
+    // Inicializar formData com o evento atual
+    React.useEffect(() => {
+        if (eventId) {
+            setFormData(prev => ({
+                ...prev,
+                id_evento: eventId
+            }))
+        }
+    }, [eventId])
     return (
         <EventLayout eventId={eventId} eventName={eventName}>
-            <div className="p-8">
-                {/* Header */}
-                <div className="mb-8">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                                Empresas
-                            </h1>
-                            <p className="text-gray-600">
-                                Gerencie todas as empresas do sistema
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-blue-600">
-                                <Building className="h-3 w-3 mr-1" />
-                                {(empresas || []).length} empresas
-                            </Badge>
-                        </div>
+            <div className="p-6">
+                <div className="mb-6 flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900">Empresas</h1>
+                        <p className="text-gray-600">Gerencie as empresas do evento</p>
                     </div>
+                    <Button
+                        onClick={() => {
+                            // Garantir que o evento atual está selecionado
+                            setFormData({
+                                nome: "",
+                                id_evento: eventId,
+                                days: []
+                            })
+                            setIsCreateDialogOpen(true)
+                        }}
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nova Empresa
+                    </Button>
                 </div>
 
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Total de Empresas</p>
-                                    <p className="text-3xl font-bold">{(empresas || []).length}</p>
-                                </div>
-                                <Building className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Com Evento</p>
-                                    <p className="text-3xl font-bold">{(empresas || []).filter(e => e.id_evento).length}</p>
-                                </div>
-                                <Calendar className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Com Dias</p>
-                                    <p className="text-3xl font-bold">{(empresas || []).filter(e => Array.isArray(e.days) && e.days.length > 0).length}</p>
-                                </div>
-                                <FileText className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Média Dias</p>
-                                    <p className="text-3xl font-bold">
-                                        {(empresas || []).length > 0
-                                            ? Math.round((empresas || []).reduce((acc, e) => acc + (Array.isArray(e.days) ? e.days.length : 0), 0) / (empresas || []).length)
-                                            : 0
-                                        }
-                                    </p>
-                                </div>
-                                <Users className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-6">
-                    <div className="relative max-w-md w-full">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <div className="mb-6">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <Input
                             type="text"
-                            placeholder="Buscar empresas..."
+                            placeholder="Buscar empresa..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="pl-10"
                         />
                     </div>
-
-                    <div className="flex gap-2">
-                        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button onClick={() => resetForm()}>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Nova Empresa
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
-                                <DialogHeader>
-                                    <DialogTitle>Nova Empresa</DialogTitle>
-                                </DialogHeader>
-                                <form onSubmit={handleCreateEmpresa} className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Nome da Empresa *</label>
-                                            <Input
-                                                value={formData.nome}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                                                required
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">ID do Evento</label>
-                                            <Select value={formData.id_evento} onValueChange={(value) => {
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    id_evento: value,
-                                                    days: [] // Limpar dias quando evento mudar
-                                                }))
-                                            }}>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Selecione um evento" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {Array.isArray(eventos) && eventos.length > 0 ? (
-                                                        eventos.map((evento: any) => (
-                                                            <SelectItem key={evento.id} value={evento.id}>
-                                                                {evento.name}
-                                                            </SelectItem>
-                                                        ))
-                                                    ) : null}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Dias de Trabalho</label>
-                                        {formData.id_evento ? (
-                                            availableDays.length > 0 ? (
-                                                <>
-                                                    <div className="mb-2">
-                                                        <p className="text-sm text-gray-600">
-                                                            Evento selecionado tem {availableDays.length} dias disponíveis
-                                                        </p>
-                                                    </div>
-                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                                        {availableDays.map((dayObj) => (
-                                                            <div key={dayObj.value} className="flex items-center space-x-2">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    id={dayObj.value}
-                                                                    checked={Array.isArray(formData.days) && formData.days.includes(dayObj.value)}
-                                                                    onChange={(e) => {
-                                                                        if (e.target.checked) {
-                                                                            setFormData(prev => ({ ...prev, days: [...(prev.days || []), dayObj.value] }))
-                                                                        } else {
-                                                                            setFormData(prev => ({ ...prev, days: (prev.days || []).filter(d => d !== dayObj.value) }))
-                                                                        }
-                                                                    }}
-                                                                    className="rounded"
-                                                                />
-                                                                <label htmlFor={dayObj.value} className="text-sm">{dayObj.label}</label>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <p className="text-sm text-gray-500">Selecione um evento para ver os dias disponíveis</p>
-                                            )
-                                        ) : (
-                                            <p className="text-sm text-gray-500">Selecione um evento primeiro para ver os dias disponíveis</p>
-                                        )}
-                                    </div>
-
-                                    <div className="flex justify-end gap-2">
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => {
-                                                setIsCreateDialogOpen(false)
-                                                resetForm()
-                                            }}
-                                        >
-                                            Cancelar
-                                        </Button>
-                                        <Button
-                                            type="submit"
-                                            disabled={createEmpresaMutation.isPending}
-                                        >
-                                            {createEmpresaMutation.isPending ? (
-                                                <>
-                                                    <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                                    Criando...
-                                                </>
-                                            ) : (
-                                                "Criar Empresa"
-                                            )}
-                                        </Button>
-                                    </div>
-                                </form>
-                            </DialogContent>
-                        </Dialog>
-                    </div>
                 </div>
 
-                {/* Table */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Building className="h-5 w-5" />
-                            Lista de Empresas
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {filteredEmpresas.length === 0 ? (
-                            <div className="text-center py-8">
-                                <Building className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                <p className="text-gray-600">
-                                    {searchTerm ? "Nenhuma empresa encontrada" : "Nenhuma empresa cadastrada"}
+                {/* Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredEmpresas.length === 0 ? (
+                        <div className="col-span-full text-center py-12">
+                            <Building className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                {searchTerm ? "Nenhuma empresa encontrada" : "Nenhuma empresa cadastrada"}
+                            </h3>
+                            <p className="text-gray-600">
+                                {searchTerm ? "Tente ajustar os filtros de busca" : "Comece criando sua primeira empresa"}
+                            </p>
+                        </div>
+                    ) : (
+                        filteredEmpresas.map((empresa) => (
+                            <Card key={empresa.id} className="hover:shadow-lg transition-all duration-300 border-l-4 border-l-purple-500">
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                            <CardTitle className="text-lg font-semibold text-gray-900 mb-1">{empresa.nome}</CardTitle>
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Badge variant="secondary" className="font-mono text-xs">
+                                                    ID: {empresa.id.slice(0, 8)}...
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleEditEmpresa(empresa)}
+                                                className="h-8 w-8 p-0 hover:bg-purple-50"
+                                            >
+                                                <Edit className="h-4 w-4 text-purple-600" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleDeleteEmpresa(empresa)}
+                                                className="h-8 w-8 p-0 hover:bg-red-50"
+                                            >
+                                                <Trash2 className="h-4 w-4 text-red-600" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+
+                                <CardContent className="pt-0">
+                                    <div className="space-y-3">
+                                        {/* Evento */}
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="h-4 w-4 text-gray-500" />
+                                            <span className="text-sm text-gray-600">Evento:</span>
+                                            {empresa.id_evento ? (
+                                                <Badge variant="outline" className="font-mono text-xs">
+                                                    {empresa.id_evento}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-sm text-gray-400">Não definido</span>
+                                            )}
+                                        </div>
+
+                                        {/* Dias de trabalho */}
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <FileText className="h-4 w-4 text-gray-500" />
+                                                <span className="text-sm text-gray-600">
+                                                    Dias de trabalho ({Array.isArray(empresa.days) ? empresa.days.length : 0}):
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {Array.isArray(empresa.days) && empresa.days.length > 0 ? (
+                                                    empresa.days.slice(0, 6).map((day, index) => {
+                                                        // Converter YYYY-MM-DD para DD/MM
+                                                        const date = new Date(day)
+                                                        const dateStr = date.toLocaleDateString("pt-BR", {
+                                                            day: "2-digit",
+                                                            month: "2-digit",
+                                                        })
+                                                        return (
+                                                            <Badge
+                                                                key={index}
+                                                                variant="secondary"
+                                                                className="text-xs bg-purple-50 text-purple-700 border-purple-200"
+                                                            >
+                                                                {dateStr}
+                                                            </Badge>
+                                                        )
+                                                    })
+                                                ) : (
+                                                    <span className="text-sm text-gray-400 italic">Nenhum dia definido</span>
+                                                )}
+                                                {Array.isArray(empresa.days) && empresa.days.length > 6 && (
+                                                    <Badge variant="secondary" className="text-xs">
+                                                        +{empresa.days.length - 6} mais
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Status indicator */}
+                                        <div className="pt-2 border-t border-gray-100">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <div
+                                                        className={`w-2 h-2 rounded-full ${empresa.id_evento && Array.isArray(empresa.days) && empresa.days.length > 0
+                                                            ? "bg-green-500"
+                                                            : empresa.id_evento || (Array.isArray(empresa.days) && empresa.days.length > 0)
+                                                                ? "bg-yellow-500"
+                                                                : "bg-gray-400"
+                                                            }`}
+                                                    />
+                                                    <span className="text-xs text-gray-600">
+                                                        {empresa.id_evento && Array.isArray(empresa.days) && empresa.days.length > 0
+                                                            ? "Configurado"
+                                                            : empresa.id_evento || (Array.isArray(empresa.days) && empresa.days.length > 0)
+                                                                ? "Parcialmente configurado"
+                                                                : "Não configurado"}
+                                                    </span>
+                                                </div>
+                                                <Badge variant="outline" className="text-xs">
+                                                    <Building className="h-3 w-3 mr-1" />
+                                                    Empresa
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))
+                    )}
+                </div>
+
+                {/* Dialog de Criação */}
+                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900">
+                        <DialogHeader>
+                            <DialogTitle>Criar Nova Empresa</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={handleCreateEmpresa} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Nome da Empresa *
+                                </label>
+                                <Input
+                                    type="text"
+                                    value={formData.nome}
+                                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                                    placeholder="Digite o nome da empresa"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Evento
+                                </label>
+                                <div className="flex items-center gap-2 p-3 border rounded-lg bg-gray-50">
+                                    <Calendar className="h-4 w-4 text-gray-500" />
+                                    <span className="text-sm font-medium text-gray-900">
+                                        {Array.isArray(event) ? eventName : event?.name || "Evento atual"}
+                                    </span>
+                                    <Badge variant="secondary" className="text-xs">
+                                        {eventId}
+                                    </Badge>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Empresa será criada para este evento
                                 </p>
                             </div>
-                        ) : (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>ID</TableHead>
-                                        <TableHead>Nome</TableHead>
-                                        <TableHead>ID Evento</TableHead>
-                                        <TableHead>Dias</TableHead>
-                                        <TableHead>Ações</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredEmpresas.map((empresa) => (
-                                        <TableRow key={empresa.id}>
-                                            <TableCell>
-                                                <Badge variant="secondary" className="font-mono text-xs">
-                                                    {empresa.id.slice(0, 8)}...
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div>
-                                                    <p className="font-medium">{empresa.nome}</p>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant="secondary" className="font-mono text-xs">
-                                                    {empresa.id_evento || "-"}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {Array.isArray(empresa.days) && empresa.days.length > 0 ? (
-                                                        empresa.days.map((day, index) => {
-                                                            // Converter YYYY-MM-DD para DD/MM
-                                                            const date = new Date(day)
-                                                            const dateStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-                                                            return (
-                                                                <Badge key={index} variant="outline" className="text-xs">
-                                                                    {dateStr}
-                                                                </Badge>
-                                                            )
-                                                        })
-                                                    ) : (
-                                                        <span className="text-gray-500 text-sm">-</span>
-                                                    )}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleEditEmpresa(empresa)}
-                                                    >
-                                                        <Edit className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleDeleteEmpresa(empresa)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        )}
-                    </CardContent>
-                </Card>
 
-                {/* Edit Dialog */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Dias de Trabalho
+                                </label>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3">
+                                    {availableDays.map((day) => (
+                                        <Button
+                                            key={day.value}
+                                            type="button"
+                                            variant={(formData.days || []).includes(day.value) ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => {
+                                                const currentDays = formData.days || []
+                                                const newDays = currentDays.includes(day.value)
+                                                    ? currentDays.filter(d => d !== day.value)
+                                                    : [...currentDays, day.value]
+                                                setFormData({ ...formData, days: newDays })
+                                            }}
+                                            className="text-xs"
+                                        >
+                                            {day.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                                {(formData.days || []).length > 0 && (
+                                    <div className="mt-2">
+                                        <p className="text-sm text-gray-600">
+                                            Dias selecionados: {(formData.days || []).length}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-4">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        setIsCreateDialogOpen(false)
+                                        resetForm()
+                                    }}
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    disabled={!formData.nome || createEmpresaMutation.isPending}
+                                    className="bg-purple-600 hover:bg-purple-700"
+                                >
+                                    {createEmpresaMutation.isPending ? "Criando..." : "Criar Empresa"}
+                                </Button>
+                            </div>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Dialog de Edição */}
                 <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                    <DialogContent className="max-w-2xl">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900">
                         <DialogHeader>
                             <DialogTitle>Editar Empresa</DialogTitle>
                         </DialogHeader>
                         <form onSubmit={handleUpdateEmpresa} className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Nome da Empresa *</label>
-                                    <Input
-                                        value={formData.nome}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">ID do Evento</label>
-                                    <Select value={formData.id_evento} onValueChange={(value) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            id_evento: value,
-                                            days: [] // Limpar dias quando evento mudar
-                                        }))
-                                    }}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecione um evento" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {Array.isArray(eventos) && eventos.length > 0 ? (
-                                                eventos.map((evento: any) => (
-                                                    <SelectItem key={evento.id} value={evento.id}>
-                                                        {evento.name}
-                                                    </SelectItem>
-                                                ))
-                                            ) : null}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Nome da Empresa *
+                                </label>
+                                <Input
+                                    type="text"
+                                    value={formData.nome}
+                                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                                    placeholder="Digite o nome da empresa"
+                                    required
+                                />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-2">Dias de Trabalho</label>
-                                {formData.id_evento ? (
-                                    availableDays.length > 0 ? (
-                                        <>
-                                            <div className="mb-2">
-                                                <p className="text-sm text-gray-600">
-                                                    Evento selecionado tem {availableDays.length} dias disponíveis
-                                                </p>
-                                            </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                                {availableDays.map((dayObj) => (
-                                                    <div key={dayObj.value} className="flex items-center space-x-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            id={`edit-${dayObj.value}`}
-                                                            checked={Array.isArray(formData.days) && formData.days.includes(dayObj.value)}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) {
-                                                                    setFormData(prev => ({ ...prev, days: [...(prev.days || []), dayObj.value] }))
-                                                                } else {
-                                                                    setFormData(prev => ({ ...prev, days: (prev.days || []).filter(d => d !== dayObj.value) }))
-                                                                }
-                                                            }}
-                                                            className="rounded"
-                                                        />
-                                                        <label htmlFor={`edit-${dayObj.value}`} className="text-sm">{dayObj.label}</label>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <p className="text-sm text-gray-500">Selecione um evento para ver os dias disponíveis</p>
-                                    )
-                                ) : (
-                                    <p className="text-sm text-gray-500">Selecione um evento primeiro para ver os dias disponíveis</p>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Evento
+                                </label>
+                                <Select
+                                    value={formData.id_evento}
+                                    onValueChange={(value) => setFormData({ ...formData, id_evento: value })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione um evento" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Array.isArray(eventos) && eventos.map((evento: any) => (
+                                            <SelectItem key={evento.id} value={evento.id}>
+                                                {evento.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Dias de Trabalho
+                                </label>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3">
+                                    {availableDays.map((day) => (
+                                        <Button
+                                            key={day.value}
+                                            type="button"
+                                            variant={(formData.days || []).includes(day.value) ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => {
+                                                const currentDays = formData.days || []
+                                                const newDays = currentDays.includes(day.value)
+                                                    ? currentDays.filter(d => d !== day.value)
+                                                    : [...currentDays, day.value]
+                                                setFormData({ ...formData, days: newDays })
+                                            }}
+                                            className="text-xs"
+                                        >
+                                            {day.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                                {(formData.days || []).length > 0 && (
+                                    <div className="mt-2">
+                                        <p className="text-sm text-gray-600">
+                                            Dias selecionados: {(formData.days || []).length}
+                                        </p>
+                                    </div>
                                 )}
                             </div>
 
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-end gap-2 pt-4">
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -557,16 +528,10 @@ export default function EmpresasPage() {
                                 </Button>
                                 <Button
                                     type="submit"
-                                    disabled={updateEmpresaMutation.isPending}
+                                    disabled={!formData.nome || updateEmpresaMutation.isPending}
+                                    className="bg-purple-600 hover:bg-purple-700"
                                 >
-                                    {updateEmpresaMutation.isPending ? (
-                                        <>
-                                            <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                            Atualizando...
-                                        </>
-                                    ) : (
-                                        "Atualizar Empresa"
-                                    )}
+                                    {updateEmpresaMutation.isPending ? "Atualizando..." : "Atualizar Empresa"}
                                 </Button>
                             </div>
                         </form>

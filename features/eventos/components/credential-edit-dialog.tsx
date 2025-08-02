@@ -13,7 +13,7 @@ interface CredentialEditDialogProps {
 }
 
 export const CredentialEditDialog = ({ credential }: CredentialEditDialogProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const updateCredential = useUpdateCredential();
 
   const handleSubmit = async (data: UpdateCredentialRequest) => {
@@ -43,7 +43,7 @@ export const CredentialEditDialog = ({ credential }: CredentialEditDialogProps) 
         <DialogHeader>
           <DialogTitle>Editar Credencial</DialogTitle>
           <DialogDescription>
-            Edite os detalhes da credencial "{credential.nome}"
+            Edite os detalhes da credencial &quot;{credential.nome}&quot;
           </DialogDescription>
         </DialogHeader>
         <CredentialForm

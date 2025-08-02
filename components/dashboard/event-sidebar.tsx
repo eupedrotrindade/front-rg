@@ -22,7 +22,8 @@ import {
     Radio,
     Car,
     Building,
-    ChevronDown
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react'
 
 interface EventSidebarProps {
@@ -146,7 +147,7 @@ const EventSidebar = ({
                                                         <span className="font-semibold text-gray-900 truncate max-w-32">
                                                             {eventName || 'Carregando...'}
                                                         </span>
-                                                        <ChevronDown className="h-4 w-4 text-gray-400 ml-auto" />
+                                                        <ChevronUp className="h-4 w-4 text-gray-400 ml-auto" />
                                                     </div>
                                                 </SelectValue>
                                             </SelectTrigger>
@@ -227,7 +228,7 @@ const EventSidebar = ({
                                 href={item.href}
                                 onClick={onMobileClose}
                                 className={`flex items-center w-full h-12 px-3 rounded-md transition-colors duration-200 ${isActive
-                                    ? 'bg-purple-600 text-white hover:bg-purple-700'
+                                    ? 'bg-purple-600 text-white hover:bg-purple-700 hover:text-white'
                                     : 'text-gray-700 hover:bg-gray-100'
                                     } ${isCollapsed ? 'justify-center px-0' : ''}`}
                                 title={isCollapsed ? item.name : undefined}

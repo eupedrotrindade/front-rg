@@ -18,10 +18,22 @@ const EventParticipantEditDialog = ({ participant }: EventParticipantEditDialogP
     const { mutate, isPending } = useUpdateEventParticipant();
 
     const handleSubmit = (data: EventParticipantSchema) => {
+        // Validar dados antes de enviar
+        if (!data.name || !data.cpf || !data.company) {
+            toast.error("Por favor, preencha todos os campos obrigatórios");
+            return;
+        }
+
+        // Garantir que o role tenha um valor padrão se estiver vazio
+        const submitData = {
+            ...data,
+            role: data.role || "Participante"
+        };
+
         mutate(
             {
                 id: participant.id,
-                ...data
+                ...submitData
             },
             {
                 onSuccess: () => {
@@ -36,19 +48,38 @@ const EventParticipantEditDialog = ({ participant }: EventParticipantEditDialogP
         );
     };
 
+    const handleOpenChange = (newOpen: boolean) => {
+        setOpen(newOpen);
+        if (!newOpen) {
+            // Limpar qualquer erro quando fechar o dialog
+            toast.dismiss();
+        }
+    };
+
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setOpen(true)}
+                    disabled={isPending}
+                >
                     <Edit className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900">
                 <DialogHeader>
                     <DialogTitle>Editar Participante</DialogTitle>
                 </DialogHeader>
                 <EventParticipantForm
-                    defaultValues={participant}
+                    defaultValues={{
+                        ...participant,
+                        role: participant.role || "Participante",
+                        presenceConfirmed: participant.presenceConfirmed || false,
+                        certificateIssued: participant.certificateIssued || false,
+                        daysWork: participant.daysWork || []
+                    }}
                     onSubmit={handleSubmit}
                     loading={isPending}
                     isEditing={true}

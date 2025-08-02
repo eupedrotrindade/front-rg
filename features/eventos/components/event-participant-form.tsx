@@ -15,6 +15,7 @@ import { useEventWristbandModels } from "@/features/eventos/api/query/use-event-
 import { formatCpf, formatPhone } from "@/lib/utils";
 import { Calendar } from "lucide-react";
 import { useCallback } from "react";
+import { toast } from "sonner";
 
 interface EventParticipantFormProps {
     defaultValues?: Partial<EventParticipantSchema> & { id?: string };
@@ -36,6 +37,7 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
             presenceConfirmed: false,
             certificateIssued: false,
             daysWork: [],
+            role: "Participante",
             ...defaultValues,
         },
     });
@@ -272,8 +274,23 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
             return;
         }
 
+        // Garantir que campos obrigatórios estejam preenchidos
+        if (!data.name || !data.cpf || !data.company || !data.eventId) {
+            toast.error("Por favor, preencha todos os campos obrigatórios");
+            return;
+        }
+
+        // Garantir que o role tenha um valor
+        const submitData = {
+            ...data,
+            role: data.role || "Participante",
+            presenceConfirmed: data.presenceConfirmed || false,
+            certificateIssued: data.certificateIssued || false,
+            daysWork: data.daysWork || []
+        };
+
         console.log("✅ Validação passou, enviando dados");
-        onSubmit(data as EventParticipantSchema);
+        onSubmit(submitData as EventParticipantSchema);
     };
 
     return (
@@ -454,33 +471,7 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                     )}
                 />
 
-                <FormField
-                    control={form.control}
-                    name="shirtSize"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Tamanho da Camiseta</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={loading}>
-                                <FormControl>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione o tamanho" />
-                                    </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                    <SelectItem value="PP">PP</SelectItem>
-                                    <SelectItem value="P">P</SelectItem>
-                                    <SelectItem value="M">M</SelectItem>
-                                    <SelectItem value="G">G</SelectItem>
-                                    <SelectItem value="GG">GG</SelectItem>
-                                    <SelectItem value="XG">XG</SelectItem>
-                                    <SelectItem value="XXG">XXG</SelectItem>
-                                    <SelectItem value="EXG">EXG</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
+
 
                 {/* Dias de Trabalho */}
                 <FormField
@@ -618,51 +609,6 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                     )}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                        control={form.control}
-                        name="presenceConfirmed"
-                        render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                                <div className="space-y-0.5">
-                                    <FormLabel className="text-base">Presença Confirmada</FormLabel>
-                                    <div className="text-sm text-muted-foreground">
-                                        Marque se a presença foi confirmada
-                                    </div>
-                                </div>
-                                <FormControl>
-                                    <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        disabled={loading}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-
-                    <FormField
-                        control={form.control}
-                        name="certificateIssued"
-                        render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                                <div className="space-y-0.5">
-                                    <FormLabel className="text-base">Certificado Emitido</FormLabel>
-                                    <div className="text-sm text-muted-foreground">
-                                        Marque se o certificado foi emitido
-                                    </div>
-                                </div>
-                                <FormControl>
-                                    <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        disabled={loading}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                </div>
 
                 <div className="flex justify-end space-x-2 pt-4">
                     <Button

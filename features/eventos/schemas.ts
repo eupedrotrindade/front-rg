@@ -94,7 +94,7 @@ export const eventParticipantSchema = z.object({
   cpf: z.string().min(11, "CPF obrigatório"),
   email: z.string().email("E-mail inválido").optional(),
   phone: z.string().optional(),
-  role: z.string().min(1, "Função obrigatória"),
+  role: z.string().optional(),
   company: z.string().min(1, "Empresa obrigatória"),
   checkIn: z.string().optional(),
   checkOut: z.string().optional(),
@@ -115,7 +115,9 @@ export const credentialSchema = z.object({
   nome: z.string().min(1, "Nome obrigatório"),
   cor: z.string().min(1, "Cor obrigatória"),
   id_events: z.string().min(1, "Evento obrigatório"),
-  days_works: z.array(z.string()).min(1, "Pelo menos um dia de trabalho é obrigatório"),
+  days_works: z
+    .array(z.string())
+    .min(1, "Pelo menos um dia de trabalho é obrigatório"),
   isActive: z.boolean().optional(),
   isDistributed: z.boolean().optional(),
 });
@@ -124,7 +126,10 @@ export const credentialUpdateSchema = z.object({
   nome: z.string().min(1, "Nome obrigatório").optional(),
   cor: z.string().min(1, "Cor obrigatória").optional(),
   id_events: z.string().min(1, "Evento obrigatório").optional(),
-  days_works: z.array(z.string()).min(1, "Pelo menos um dia de trabalho é obrigatório").optional(),
+  days_works: z
+    .array(z.string())
+    .min(1, "Pelo menos um dia de trabalho é obrigatório")
+    .optional(),
   isActive: z.boolean().optional(),
   isDistributed: z.boolean().optional(),
 });

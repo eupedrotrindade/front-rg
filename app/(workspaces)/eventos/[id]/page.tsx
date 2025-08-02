@@ -805,7 +805,7 @@ export default function EventoDetalhesPage() {
                                 size="sm"
                                 className="btn-brand-green"
                                 disabled={isLoading}
-                                onClick={() => router.push(`/eventos/${params.id}/import-export`)}
+                                onClick={() => window.open(`/eventos/${params.id}/import-export`, '_blank')}
                             >
                                 <Download className="w-4 h-4 mr-2" />
                                 Importar/Exportar

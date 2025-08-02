@@ -33,7 +33,7 @@ const RootLayout = ({
       <html lang="pt-BR" >
         <body className={`${firaSans.variable} antialiased`}>
           <QueryClientWrapper>
-            <NextTopLoader color="blue"></NextTopLoader>
+            <NextTopLoader color="purple"></NextTopLoader>
             {children}
             <Toaster></Toaster>
           </QueryClientWrapper>

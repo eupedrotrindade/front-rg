@@ -104,9 +104,9 @@ export type EventParticipant = {
   company: string;
   checkIn?: string;
   checkOut?: string;
-  // presenceConfirmed?: boolean;
-  // certificateIssued?: boolean;
-  // shirtSize?: "PP" | "P" | "M" | "G" | "GG" | "XG" | "XXG" | "EXG";
+  presenceConfirmed?: boolean;
+  certificateIssued?: boolean;
+  shirtSize?: "PP" | "P" | "M" | "G" | "GG" | "XG" | "XXG" | "EXG";
   notes?: string;
   photo?: string;
   documentPhoto?: string;

@@ -2,11 +2,8 @@
 
 import { useState } from "react";
 import { CredentialsDashboard } from "@/features/eventos/components/credentials-dashboard";
-import { CredentialCreateDialog } from "@/features/eventos/components/credential-create-dialog";
 import { CredentialEditDialog } from "@/features/eventos/components/credential-edit-dialog";
 import { Credential } from "@/features/eventos/types";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useParams } from "next/navigation";
 import { useEventos } from "@/features/eventos/api/query/use-eventos";

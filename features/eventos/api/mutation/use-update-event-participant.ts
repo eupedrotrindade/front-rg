@@ -9,11 +9,25 @@ export const useUpdateEventParticipant = () => {
       id,
       ...dados
     }: EventParticipantSchema & { id: string }) => {
-      const { data } = await apiClient.put(`/event-participants/${id}`, dados);
-      return data;
+      try {
+        const { data } = await apiClient.put(
+          `/event-participants/${id}`,
+          dados
+        );
+        return data;
+      } catch (error) {
+        console.error("Erro na mutation updateEventParticipant:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event-participants"] });
+      queryClient.invalidateQueries({
+        queryKey: ["event-participants-by-event"],
+      });
+    },
+    onError: (error) => {
+      console.error("Erro ao atualizar participante:", error);
     },
   });
 };
