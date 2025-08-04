@@ -279,16 +279,11 @@ export default function ImportExportSystem({ eventId, isOpen, onClose }: ImportE
     const downloadTemplate = () => {
         const templateData = [
             {
-                name: 'João Silva',
-                cpf: '123.456.789-00',
-                company: 'RG Produções',
-                role: 'Segurança',
-                email: 'joao@email.com',
-                phone: '(11) 99999-9999',
-                shirtSize: 'M',
-                notes: 'Observações aqui',
-                daysWork: '15/12/2024, 16/12/2024',
-                wristbandId: 'wristband-001'
+                nome: 'João Silva',
+                cpf: '12345678900',
+                funcao: 'Segurança',
+                empresa: 'RG Produções',
+                credencial: 'CREDENCIAL-001'
             }
         ]
 
@@ -300,26 +295,18 @@ export default function ImportExportSystem({ eventId, isOpen, onClose }: ImportE
 
     // Função para baixar modelo com 5000 participantes fictícios
     const downloadBigTestTemplate = () => {
-        const wristbandId = 'ebd215b9-498d-4af6-b557-dab178c8f9aa'
-
-        // Função para gerar CPF único e válido
-        const generateValidCPF = (index: number): string => {
-            // Usar uma base que garante CPFs únicos e válidos
+        // Função para gerar CPF único
+        const generateCPF = (index: number): string => {
             const base = 100000000 + index
             return String(base).padStart(11, '0')
         }
 
         const templateData = Array.from({ length: 5000 }).map((_, i) => ({
-            name: `Participante ${i + 1}`,
-            cpf: generateValidCPF(i),
-            company: `Empresa ${((i % 50) + 1)}`,
-            role: `Função ${((i % 10) + 1)}`,
-            email: `participante${i + 1}@teste.com`,
-            phone: `1199${String(i).padStart(6, '0')}`,
-            shirtSize: ['P', 'M', 'G', 'GG'][i % 4],
-            notes: `Observação ${i + 1}`,
-            daysWork: '28/07/2025, 01/08/2025',
-            wristbandId,
+            nome: `Participante ${i + 1}`,
+            cpf: generateCPF(i),
+            funcao: `Função ${((i % 10) + 1)}`,
+            empresa: `Empresa ${((i % 50) + 1)}`,
+            credencial: `CREDENCIAL-${String(i + 1).padStart(4, '0')}`,
         }))
 
         const ws = XLSX.utils.json_to_sheet(templateData)

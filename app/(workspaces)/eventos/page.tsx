@@ -136,12 +136,7 @@ const EventosPage = () => {
                         <Calendar className="h-4 w-4" />
                         Dashboard de Eventos
                     </div>
-                    <h1 className="text-4xl font-bold text-purple-950">
-                        Meus Eventos
-                    </h1>
-                    <p className="text-lg text-purple-800 max-w-2xl mx-auto">
-                        Gerencie seus eventos, acesse workspaces e acompanhe o progresso de cada projeto
-                    </p>
+
                 </div>
 
                 {/* Grid de Cards */}

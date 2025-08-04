@@ -702,92 +702,7 @@ export default function EventoDetalhesPage() {
     return (
         <EventLayout eventId={String(params.id)} eventName={evento.name}>
             <div className="p-8">
-                {/* KPIs */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
-                    <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Participantes</p>
-                                    <p className="text-3xl font-bold">{totalParticipants}</p>
-                                </div>
-                                <Users className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
 
-                    <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Com Pulseira</p>
-                                    <p className="text-3xl font-bold">{participantsWithWristbands}</p>
-                                </div>
-                                <div className="h-8 w-8 opacity-80 rounded-full border-2 border-white"></div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Check-in</p>
-                                    <p className="text-3xl font-bold">{checkedInParticipants}</p>
-                                </div>
-                                <Check className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Ativos</p>
-                                    <p className="text-3xl font-bold">{activeParticipants}</p>
-                                </div>
-                                <User className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Coordenadores</p>
-                                    <p className="text-3xl font-bold">{coordenadores.length}</p>
-                                </div>
-                                <UserCog className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-r from-teal-500 to-teal-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Vagas</p>
-                                    <p className="text-3xl font-bold">{vagas.length}</p>
-                                </div>
-                                <Building className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Empresas</p>
-                                    <p className="text-3xl font-bold">{empresas?.length || 0}</p>
-                                </div>
-                                <Building className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
 
                 {/* Action Bar */}
                 <div className="mb-8">
@@ -797,7 +712,7 @@ export default function EventoDetalhesPage() {
                                 variant="outline"
                                 size="sm"
                                 className="btn-brand-green"
-                                disabled={isLoading}
+
                                 onClick={() => window.open(`/eventos/${params.id}/import-export`, '_blank')}
                             >
                                 <Download className="w-4 h-4 mr-2" />
@@ -826,94 +741,7 @@ export default function EventoDetalhesPage() {
                     </div>
                 </div>
 
-                {/* Estatísticas Detalhadas */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    {/* Estatísticas de Coordenadores */}
-                    <Card className="bg-white shadow-lg border border-gray-200">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center">
-                                <UserCog className="h-5 w-5 mr-2 text-indigo-600" />
-                                Coordenadores
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Total</span>
-                                    <span className="font-semibold text-indigo-600">{coordenadores.length}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Coordenadores Gerais</span>
-                                    <span className="font-semibold text-indigo-600">
-                                        {coordenadores.filter(c => c.metadata?.eventos?.[0]?.role === 'coordenador_geral').length}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Coordenadores</span>
-                                    <span className="font-semibold text-indigo-600">
-                                        {coordenadores.filter(c => c.metadata?.eventos?.[0]?.role === 'coordenador').length}
-                                    </span>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
 
-                    {/* Estatísticas de Vagas */}
-                    <Card className="bg-white shadow-lg border border-gray-200">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center">
-                                <Building className="h-5 w-5 mr-2 text-teal-600" />
-                                Vagas
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Total</span>
-                                    <span className="font-semibold text-teal-600">{vagas.length}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Retiradas</span>
-                                    <span className="font-semibold text-teal-600">
-                                        {vagas.filter(v => v.retirada === "retirada").length}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Pendentes</span>
-                                    <span className="font-semibold text-teal-600">
-                                        {vagas.filter(v => v.retirada === "pendente").length}
-                                    </span>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Estatísticas de Participantes */}
-                    <Card className="bg-white shadow-lg border border-gray-200">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center">
-                                <Users className="h-5 w-5 mr-2 text-blue-600" />
-                                Participantes
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Total</span>
-                                    <span className="font-semibold text-blue-600">{totalParticipants}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Com Pulseira</span>
-                                    <span className="font-semibold text-blue-600">{participantsWithWristbands}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Ativos</span>
-                                    <span className="font-semibold text-blue-600">{activeParticipants}</span>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
 
                 {/* Search Bar */}
                 <div className="mb-8">
