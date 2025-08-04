@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import apiClient from "@/lib/api-client"
-import { formatCpf, isValidCpf } from "@/lib/utils"
+import { formatCpf, isValidCpf, formatCpfInput, unformatCpf } from "@/lib/utils"
 import { toast } from "sonner"
 import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw, Activity } from "lucide-react"
 import { useParams } from "next/navigation"
@@ -226,7 +226,7 @@ export default function OperadoresPage() {
         setOperatorToEdit(operador)
         setEditForm({
             nome: operador.nome,
-            cpf: operador.cpf,
+            cpf: formatCpf(operador.cpf),
             senha: operador.senha
         })
 
@@ -260,7 +260,7 @@ export default function OperadoresPage() {
             return
         }
 
-        if (!isValidCpf(editForm.cpf)) {
+        if (!isValidCpf(unformatCpf(editForm.cpf))) {
             toast.error("CPF inválido")
             return
         }
@@ -277,7 +277,7 @@ export default function OperadoresPage() {
 
             await apiClient.put(`/operadores/${operatorToEdit.id}`, {
                 nome: editForm.nome,
-                cpf: editForm.cpf,
+                cpf: unformatCpf(editForm.cpf),
                 senha: editForm.senha,
                 id_events: eventAssignments
             })
@@ -321,7 +321,7 @@ export default function OperadoresPage() {
             return
         }
 
-        if (!isValidCpf(createForm.cpf)) {
+        if (!isValidCpf(unformatCpf(createForm.cpf))) {
             toast.error("CPF inválido")
             return
         }
@@ -333,7 +333,7 @@ export default function OperadoresPage() {
 
             await apiClient.post("/operadores", {
                 nome: createForm.nome,
-                cpf: createForm.cpf,
+                cpf: unformatCpf(createForm.cpf),
                 senha: createForm.senha,
                 id_events: eventAssignment
             })
@@ -406,7 +406,7 @@ export default function OperadoresPage() {
 
                     await apiClient.put(`/operadores/${operatorId}`, {
                         nome: operator.nome,
-                        cpf: operator.cpf,
+                        cpf: unformatCpf(operator.cpf),
                         senha: operator.senha,
                         id_events: newEvents.join(',')
                     })
@@ -512,7 +512,7 @@ export default function OperadoresPage() {
                     continue
                 }
 
-                if (!isValidCpf(row.cpf)) {
+                if (!isValidCpf(unformatCpf(row.cpf))) {
                     falhados.push({
                         item: { id: "", nome: row.nome, cpf: row.cpf, senha: row.senha, id_events: eventId, acoes: [] },
                         motivo: "CPF inválido"
@@ -526,7 +526,7 @@ export default function OperadoresPage() {
                 operadoresImportados.push({
                     id: "",
                     nome: row.nome,
-                    cpf: row.cpf,
+                    cpf: unformatCpf(row.cpf),
                     senha: row.senha,
                     id_events: eventAssignments,
                     acoes: []
@@ -1194,7 +1194,9 @@ export default function OperadoresPage() {
                                     <label className="block text-sm font-medium text-gray-900 mb-1">CPF</label>
                                     <Input
                                         value={editForm.cpf}
-                                        onChange={(e) => setEditForm(prev => ({ ...prev, cpf: e.target.value }))}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, cpf: formatCpfInput(e.target.value) }))}
+                                        placeholder="000.000.000-00"
+                                        maxLength={14}
                                         className="text-gray-900"
                                     />
                                 </div>
@@ -1312,7 +1314,9 @@ export default function OperadoresPage() {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
                                 <Input
                                     value={createForm.cpf}
-                                    onChange={(e) => setCreateForm(prev => ({ ...prev, cpf: e.target.value }))}
+                                    onChange={(e) => setCreateForm(prev => ({ ...prev, cpf: formatCpfInput(e.target.value) }))}
+                                    placeholder="000.000.000-00"
+                                    maxLength={14}
                                 />
                             </div>
                             <div>

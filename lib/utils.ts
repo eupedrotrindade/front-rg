@@ -63,3 +63,12 @@ export const isValidCpf = (cpf: string): boolean => {
   if (check2 >= 10) check2 = 0;
   return check2 === parseInt(cleaned.charAt(10));
 };
+
+// Formatação de CPF para input (formata conforme o usuário digita)
+export const formatCpfInput = (value: string): string => {
+  const cleaned = value.replace(/\D/g, "");
+  if (cleaned.length <= 3) return cleaned;
+  if (cleaned.length <= 6) return `${cleaned.slice(0, 3)}.${cleaned.slice(3)}`;
+  if (cleaned.length <= 9) return `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6)}`;
+  return `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6, 9)}-${cleaned.slice(9, 11)}`;
+};
