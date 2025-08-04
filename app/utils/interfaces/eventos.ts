@@ -78,6 +78,7 @@ export interface EventParticipant {
   role: string;
   company: string;
   wristband: EventWristband;
+  credentialId?: string;
   checkIn: string | Date;
   checkOut: string | Date;
   presenceConfirmed?: boolean;

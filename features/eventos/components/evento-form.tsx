@@ -286,7 +286,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                                             <ImageIcon className="h-5 w-5" />
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent className="max-w-2xl">
+                                                    <DialogContent className="max-w-2xl bg-white text-gray-800">
                                                         <DialogHeader>
                                                             <DialogTitle>Selecionar imagem da galeria</DialogTitle>
                                                         </DialogHeader>
@@ -303,7 +303,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                                             <Upload className="h-5 w-5" />
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent className="max-w-md">
+                                                    <DialogContent className="max-w-md bg-white text-gray-800">
                                                         <DialogHeader>
                                                             <DialogTitle>Fazer upload de imagem</DialogTitle>
                                                         </DialogHeader>
@@ -317,13 +317,15 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                             </div>
                                             {field.value && (
                                                 <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
-                                                    <Image
-                                                        src={field.value || "/placeholder.svg"}
-                                                        alt="Banner preview"
-                                                        width={400}
-                                                        height={150}
-                                                        className="rounded border object-cover w-full max-h-40"
-                                                    />
+                                                    <div className="w-full max-w-md mx-auto">
+                                                        <Image
+                                                            src={field.value || "/placeholder.svg"}
+                                                            alt="Banner preview"
+                                                            width={400}
+                                                            height={400}
+                                                            className="rounded border object-contain w-full h-80 bg-white"
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -583,29 +585,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                         </CardHeader>
                         <CardContent className="space-y-4 pt-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FormField
-                                    control={form.control}
-                                    name="status"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel className="text-gray-700 font-medium">Status *</FormLabel>
-                                            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={loading}>
-                                                <FormControl>
-                                                    <SelectTrigger className="border-gray-300 focus:border-purple-500 focus:ring-purple-500">
-                                                        <SelectValue placeholder="Selecione o status" />
-                                                    </SelectTrigger>
-                                                </FormControl>
-                                                <SelectContent>
-                                                    <SelectItem value="draft">Rascunho</SelectItem>
-                                                    <SelectItem value="active">Ativo</SelectItem>
-                                                    <SelectItem value="closed">Fechado</SelectItem>
-                                                    <SelectItem value="canceled">Cancelado</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
+
                                 <FormField
                                     control={form.control}
                                     name="visibility"
@@ -717,28 +697,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                 )}
                             />
 
-                            <FormField
-                                control={form.control}
-                                name="isActive"
-                                render={({ field }) => (
-                                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-gray-300 p-4 bg-gray-50">
-                                        <div className="space-y-0.5">
-                                            <FormLabel className="text-base font-medium text-gray-800">Evento Ativo</FormLabel>
-                                            <div className="text-sm text-gray-600">
-                                                Marque se o evento está ativo no sistema
-                                            </div>
-                                        </div>
-                                        <FormControl>
-                                            <Switch
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                disabled={loading}
-                                                className="data-[state=checked]:bg-purple-600"
-                                            />
-                                        </FormControl>
-                                    </FormItem>
-                                )}
-                            />
+
                         </CardContent>
                     </Card>
 
@@ -815,8 +774,8 @@ const GalleryImagePicker = ({ onSelect }: { onSelect: (url: string) => void }) =
                             src={img.url || "/placeholder.svg"}
                             alt={img.name}
                             width={100}
-                            height={80}
-                            className="object-cover w-full h-20"
+                            height={100}
+                            className="object-contain w-full h-20 bg-white"
                         />
                         <div className="truncate text-xs text-center p-1 bg-gray-50">{img.name}</div>
                     </button>
@@ -885,8 +844,8 @@ const GalleryImageUpload = ({ onUpload }: { onUpload: (url: string) => void }) =
                         src={preview || "/placeholder.svg"}
                         alt="preview"
                         width={200}
-                        height={120}
-                        className="rounded border object-cover"
+                        height={200}
+                        className="rounded border object-contain bg-white"
                     />
                 </div>
             )}

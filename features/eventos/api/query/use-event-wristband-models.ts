@@ -3,9 +3,9 @@ import apiClient from "@/lib/api-client";
 
 export const useEventWristbandModels = () => {
   return useQuery({
-    queryKey: ["event-wristband-models"],
+    queryKey: ["credentials"],
     queryFn: async () => {
-      const { data } = await apiClient.get("/event-wristband-models");
+      const { data } = await apiClient.get("/credentials");
       return data;
     },
   });

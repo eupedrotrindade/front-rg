@@ -6,9 +6,9 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Calendar, Plus, Loader2 } from "lucide-react";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
-import { createEventParticipant } from "@/features/eventos/actions/create-event-participant";
-import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands";
-import { useEventWristbandModels } from "@/features/eventos/api/query/use-event-wristband-models";
+import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
+import { useCredentials } from "@/features/eventos/api/query";
+import { Credential } from "@/features/eventos/types";
 
 interface ModalAdicionarStaffProps {
   isOpen: boolean;
@@ -31,14 +31,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
   });
 
   // Hooks para dados
-  const { data: wristbands = [] } = useEventWristbandsByEvent(eventId);
-  const { data: wristbandModels = [] } = useEventWristbandModels();
-
-  // Criar mapa de modelos de pulseira
-  const wristbandModelMap = wristbandModels.reduce((map: any, model: any) => {
-    map[model.id] = model;
-    return map;
-  }, {});
+  const { data: credentials = [] } = useCredentials({ eventId: eventId });
 
   // Função para formatar CPF
   const formatCPF = (cpf: string): string => {
@@ -55,9 +48,13 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
     str.replace(/(\b\w)/g, (char) => char);
 
   // Função para obter tipos de credencial únicos
-  const tiposCredencialUnicosFiltrados = Array.from(new Set(wristbands.map(w => w.id))).filter(
-    (tipo): tipo is string => typeof tipo === "string" && !!tipo && tipo.trim() !== ""
-  );
+  const tiposCredencialUnicosFiltrados = credentials
+    .filter((credential: Credential) => credential.isActive !== false)
+    .map((credential: Credential) => ({
+      id: credential.id,
+      nome: credential.nome,
+      cor: credential.cor
+    }));
 
   // Função para validar e processar dias de trabalho
   const validateAndProcessDaysWork = useCallback((inputValue: string): string[] => {
@@ -223,11 +220,16 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
       return;
     }
 
+    if (tiposCredencialUnicosFiltrados.length === 0) {
+      toast.error("Não há credenciais disponíveis para este evento!");
+      return;
+    }
+
     setLoading(true);
     try {
       await createEventParticipant({
         eventId: eventId,
-        wristbandId: novoStaff.tipo_credencial,
+        credentialId: novoStaff.tipo_credencial,
         name: novoStaff.name,
         cpf: novoStaff.cpf,
         role: novoStaff.funcao,
@@ -336,26 +338,60 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
             <label className="block text-sm font-semibold text-gray-700 mb-3">
               Tipo de Credencial *
             </label>
-            <Select
-              value={novoStaff.tipo_credencial || ""}
-              onValueChange={(value) => setNovoStaff({ ...novoStaff, tipo_credencial: value.toUpperCase() })}
-              disabled={tiposCredencialUnicosFiltrados.length === 0 || loading}
-            >
-              <SelectTrigger className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500">
-                <SelectValue placeholder="Selecione o tipo de credencial" />
-              </SelectTrigger>
-              <SelectContent>
-                {tiposCredencialUnicosFiltrados.map((tipo, idx) => {
-                  const wristband = wristbands.find(w => w.id === tipo);
-                  const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
-                  return (
-                    <SelectItem key={idx} value={tipo}>
-                      {wristbandModel?.credentialType || tipo}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+            {tiposCredencialUnicosFiltrados.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-sm text-yellow-800">
+                  <strong>Atenção:</strong> Nenhuma credencial disponível para este evento.
+                  Crie credenciais primeiro na seção de credenciais.
+                </p>
+              </div>
+            ) : (
+              <>
+                <Select
+                  value={novoStaff.tipo_credencial || ""}
+                  onValueChange={(value) => setNovoStaff({ ...novoStaff, tipo_credencial: value })}
+                  disabled={loading}
+                >
+                  <SelectTrigger className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500">
+                    <SelectValue placeholder="Selecione o tipo de credencial" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tiposCredencialUnicosFiltrados.map((credential, idx) => (
+                      <SelectItem key={idx} value={credential.id}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-4 h-4 rounded-full border-2 border-gray-300"
+                            style={{ backgroundColor: credential.cor }}
+                          />
+                          {credential.nome}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {novoStaff.tipo_credencial && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const selectedCredential = tiposCredencialUnicosFiltrados.find(c => c.id === novoStaff.tipo_credencial);
+                        return selectedCredential ? (
+                          <>
+                            <div
+                              className="w-6 h-6 rounded-full border-2 border-gray-300"
+                              style={{ backgroundColor: selectedCredential.cor }}
+                            />
+                            <span className="text-sm font-medium text-blue-800">
+                              Credencial selecionada: {selectedCredential.nome}
+                            </span>
+                          </>
+                        ) : null;
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">

@@ -4,8 +4,6 @@ import { useParams } from 'next/navigation'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
 import { useDeleteEventParticipant } from '@/features/eventos/api/mutation/use-delete-event-participant'
-import { useEventWristbandsByEvent } from '@/features/eventos/api/query/use-event-wristbands'
-import { useEventWristbandModels } from '@/features/eventos/api/query/use-event-wristband-models'
 import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coordenadores-by-event'
 import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
@@ -28,6 +26,7 @@ import EventParticipantCreateDialog from '@/features/eventos/components/event-pa
 import EventParticipantEditDialog from '@/features/eventos/components/event-participant-edit-dialog'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import ModalAdicionarStaff from '@/components/operador/modalAdicionarStaff'
+import { useCredentials } from '@/features/eventos/api/query'
 
 export default function EventoDetalhesPage() {
     const params = useParams()
@@ -37,10 +36,9 @@ export default function EventoDetalhesPage() {
         data: participantsData = [],
         isLoading: participantsLoading,
     } = useEventParticipantsByEvent({ eventId: String(params.id) });
-    const { data: wristbands, isLoading: wristbandsLoading } = useEventWristbandsByEvent(String(params.id))
-    const { data: wristbandModels, isLoading: wristbandModelsLoading } = useEventWristbandModels()
-    const { mutate: deleteParticipant, isPending: isDeleting } = useDeleteEventParticipant()
 
+    const { mutate: deleteParticipant, isPending: isDeleting } = useDeleteEventParticipant()
+    const { data: credentials } = useCredentials({ eventId: String(params.id) })
     // Hooks para coordenadores, vagas e empresas
     const { data: coordenadores = [], isLoading: coordenadoresLoading } = useCoordenadoresByEvent({
         eventId: String(params.id)
@@ -135,17 +133,7 @@ export default function EventoDetalhesPage() {
         : undefined
 
     const participantsArray = Array.isArray(participantsData) ? participantsData : []
-    const wristbandsArray = Array.isArray(wristbands) ? wristbands : []
-    const wristbandModelsArray = Array.isArray(wristbandModels) ? wristbandModels : []
 
-    // Criar mapa de modelos de pulseira
-    const wristbandModelMap = useMemo(() => {
-        const map: Record<string, unknown> = {}
-        wristbandModelsArray.forEach(model => {
-            map[model.id] = model
-        })
-        return map
-    }, [wristbandModelsArray])
 
     // Função para normalizar formato de data
     const normalizeDate = useCallback((dateStr: string): string => {
@@ -522,11 +510,12 @@ export default function EventoDetalhesPage() {
         setLoading(false);
     };
 
-    // Função utilitária para obter a credencial do participante
+    const credentialsArray = Array.isArray(credentials) ? credentials : [];
+
     const getCredencial = (participant: EventParticipant): string => {
-        const wristband = wristbandsArray.find(w => w.id === participant.wristbandId);
-        if (wristband && participant.wristbandId) {
-            return participant.wristbandId;
+        const credential = credentialsArray.find((c: { id: string }) => c.id === participant.credentialId);
+        if (credential && participant.credentialId) {
+            return participant.credentialId;
         } else {
             return 'SEM CREDENCIAL';
         }
@@ -708,7 +697,7 @@ export default function EventoDetalhesPage() {
         }
     }
 
-    const isLoading = participantsLoading || wristbandsLoading || wristbandModelsLoading || coordenadoresLoading || vagasLoading || empresasLoading || attendanceLoading
+    const isLoading = participantsLoading || coordenadoresLoading || vagasLoading || empresasLoading || attendanceLoading
 
     return (
         <EventLayout eventId={String(params.id)} eventName={evento.name}>
@@ -1051,8 +1040,6 @@ export default function EventoDetalhesPage() {
                             )}
                             {filteredParticipants.map((participant: EventParticipant, index: number) => {
                                 const botaoTipo = getBotaoAcao(participant)
-                                const wristband = wristbandsArray.find(w => w.id === participant.wristbandId)
-                                const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined
 
                                 return (
                                     <TableRow

@@ -9,9 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useEventos } from "@/features/eventos/api/query/use-eventos";
-import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands";
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event";
-import { useEventWristbandModels } from "@/features/eventos/api/query/use-event-wristband-models";
+import { useCredentials } from "@/features/eventos/api/query";
+import { Credential } from "@/features/eventos/types";
 import { formatCpf, formatPhone } from "@/lib/utils";
 import { Calendar } from "lucide-react";
 import { useCallback } from "react";
@@ -27,8 +27,6 @@ interface EventParticipantFormProps {
 const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = false }: EventParticipantFormProps) => {
     const { data: eventos } = useEventos();
     const eventosArray = Array.isArray(eventos) ? eventos : [];
-    const { data: wristbandModels } = useEventWristbandModels();
-    const wristbandModelsArray = Array.isArray(wristbandModels) ? wristbandModels : [];
 
     const form = useForm<FieldValues>({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,6 +36,8 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
             certificateIssued: false,
             daysWork: [],
             role: "Participante",
+            // Migrar wristbandId para credentialId se necessário
+            credentialId: defaultValues?.credentialId || defaultValues?.wristbandId,
             ...defaultValues,
         },
     });
@@ -47,16 +47,23 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
     const currentCpf = form.watch("cpf");
     const currentDaysWork = form.watch("daysWork");
 
-    // Busca credenciais e participantes do evento selecionado
-    const { data: wristbands } = useEventWristbandsByEvent(selectedEventId || "");
-    const { data: participants } = useEventParticipantsByEvent(selectedEventId || "");
 
-    const wristbandsArray = Array.isArray(wristbands) ? wristbands : [];
+    const { data: participants } = useEventParticipantsByEvent(selectedEventId || "");
+    const { data: credentials = [] } = useCredentials({ eventId: selectedEventId || "" });
+
+
     const participantsArray = Array.isArray(participants) ? participants : [];
 
-    // Função para buscar o modelo de pulseira correspondente
-    const getWristbandModel = (wristbandModelId: string) =>
-        wristbandModelsArray.find((model) => model.id === wristbandModelId);
+
+
+    // Função para obter credenciais ativas filtradas
+    const activeCredentials = credentials
+        .filter((credential: Credential) => credential.isActive !== false)
+        .map((credential: Credential) => ({
+            id: credential.id,
+            nome: credential.nome,
+            cor: credential.cor
+        }));
 
     // Função para categorizar dias de trabalho
     const categorizeDaysWork = useCallback((daysWork: string[], eventId: string) => {
@@ -280,6 +287,21 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
             return;
         }
 
+        // Verificar se há credenciais disponíveis e se uma foi selecionada
+        if (activeCredentials.length > 0 && !data.credentialId) {
+            toast.error("Por favor, selecione uma credencial");
+            form.setError("credentialId", {
+                type: "manual",
+                message: "Credencial obrigatória"
+            });
+            return;
+        }
+
+        // Se não há credenciais disponíveis, permitir continuar sem credentialId
+        if (activeCredentials.length === 0) {
+            delete data.credentialId;
+        }
+
         // Garantir que o role tenha um valor
         const submitData = {
             ...data,
@@ -323,28 +345,62 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
 
                 <FormField
                     control={form.control}
-                    name="wristbandId"
+                    name="credentialId"
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel>Credencial *</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={loading || !selectedEventId}>
-                                <FormControl>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder={selectedEventId ? "Selecione uma credencial" : "Selecione um evento primeiro"} />
-                                    </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                    {wristbandsArray.map((wristband) => {
-                                        const model = getWristbandModel(wristband.wristbandModelId);
-                                        const event = model ? eventosArray.find(e => e.id === model.eventId) : undefined;
-                                        return (
-                                            <SelectItem key={wristband.id} value={wristband.id}>
-                                                {wristband.code} - {model?.credentialType || '-'} - {model?.color || '-'} {event ? `(${event.name})` : ''}
-                                            </SelectItem>
-                                        );
-                                    })}
-                                </SelectContent>
-                            </Select>
+                            {activeCredentials.length === 0 ? (
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                    <p className="text-sm text-yellow-800">
+                                        <strong>Atenção:</strong> Nenhuma credencial disponível para este evento.
+                                        {isEditing ? " O participante será salvo sem credencial." : " Crie credenciais primeiro na seção de credenciais."}
+                                    </p>
+                                </div>
+                            ) : (
+                                <>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={loading || !selectedEventId}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder={selectedEventId ? "Selecione uma credencial" : "Selecione um evento primeiro"} />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            {activeCredentials.map((credential) => (
+                                                <SelectItem key={credential.id} value={credential.id}>
+                                                    <div className="flex items-center gap-2">
+                                                        <div
+                                                            className="w-4 h-4 rounded-full border-2 border-gray-300"
+                                                            style={{ backgroundColor: credential.cor }}
+                                                        />
+                                                        {credential.nome}
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
+                                    {field.value && (
+                                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <div className="flex items-center gap-2">
+                                                {(() => {
+                                                    const selectedCredential = activeCredentials.find(c => c.id === field.value);
+                                                    return selectedCredential ? (
+                                                        <>
+                                                            <div
+                                                                className="w-6 h-6 rounded-full border-2 border-gray-300"
+                                                                style={{ backgroundColor: selectedCredential.cor }}
+                                                            />
+                                                            <span className="text-sm font-medium text-blue-800">
+                                                                Credencial selecionada: {selectedCredential.nome}
+                                                            </span>
+                                                        </>
+                                                    ) : null;
+                                                })()}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
                             <FormMessage />
                         </FormItem>
                     )}

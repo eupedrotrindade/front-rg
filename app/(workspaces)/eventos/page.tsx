@@ -56,9 +56,6 @@ const EventosPage = () => {
         router.push(`/eventos/${evento.id}`)
     }
 
-    const handleCreateEvent = () => {
-        router.push("/eventos/criar")
-    }
 
     const handleDeleteEvent = (evento: EventType) => {
         setDeletingEvent(evento)
@@ -165,13 +162,15 @@ const EventosPage = () => {
                                     {/* Banner/Header do Card */}
                                     <div className="relative h-32 bg-gradient-to-r from-purple-400 via-purple-500 to-blue-500 overflow-hidden">
                                         {evento.bannerUrl ? (
-                                            <Image
-                                                src={evento.bannerUrl}
-                                                alt={evento.name}
-                                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                                                width={1000}
-                                                height={1000}
-                                            />
+                                            <div className="w-full h-full flex items-center justify-center bg-white">
+                                                <Image
+                                                    src={evento.bannerUrl}
+                                                    alt={evento.name}
+                                                    className="object-contain group-hover:scale-110 transition-transform duration-300"
+                                                    width={128}
+                                                    height={128}
+                                                />
+                                            </div>
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center">
                                                 <ImageIcon className="h-12 w-12 text-white/70" />
@@ -345,14 +344,7 @@ const EventosPage = () => {
                             <p className="text-gray-600 mb-8 leading-relaxed">
                                 Comece criando seu primeiro evento para acessar ferramentas de gestão e workspace personalizado
                             </p>
-                            <Button
-                                onClick={handleCreateEvent}
-                                size="lg"
-                                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-3 rounded-full font-semibold shadow-lg hover:shadow-xl transition-all"
-                            >
-                                <Plus className="h-5 w-5 mr-2" />
-                                Criar Primeiro Evento
-                            </Button>
+
                         </div>
                     </div>
                 )}
