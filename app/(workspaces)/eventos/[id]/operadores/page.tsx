@@ -458,9 +458,10 @@ export default function OperadoresPage() {
         const dadosParaExportar = operadores.map(operador => ({
             Nome: operador.nome,
             CPF: formatCPF(operador.cpf),
-            "Data de Atribuição": getOperatorAssignmentDate(operador)
-                ? formatDatePtBr(getOperatorAssignmentDate(operador)!)
-                : "Sem data específica",
+            "Data de Atribuição": (() => {
+                const assignmentDate = getOperatorAssignmentDate(operador);
+                return assignmentDate ? formatDatePtBr(assignmentDate) : "Sem data específica";
+            })(),
             "Data de Criação": formatDatePtBr(new Date())
         }))
 
@@ -576,17 +577,21 @@ export default function OperadoresPage() {
 
     // Função para extrair a data de atribuição do operador
     const getOperatorAssignmentDate = (operator: Operator) => {
-        if (!operator.id_events) return null
+        if (!operator?.id_events) return null
 
-        const eventAssignments = operator.id_events.split(',').map((assignment: string) => assignment.trim())
+        try {
+            const eventAssignments = operator.id_events.split(',').map((assignment: string) => assignment.trim())
 
-        for (const assignment of eventAssignments) {
-            if (assignment.includes(':')) {
-                const [eventIdFromAssignment, date] = assignment.split(':')
-                if (eventIdFromAssignment === eventId) {
-                    return date
+            for (const assignment of eventAssignments) {
+                if (assignment.includes(':')) {
+                    const [eventIdFromAssignment, date] = assignment.split(':')
+                    if (eventIdFromAssignment === eventId && date) {
+                        return date.trim()
+                    }
                 }
             }
+        } catch (error) {
+            console.error('Erro ao processar data de atribuição:', error)
         }
 
         return null
@@ -656,7 +661,11 @@ export default function OperadoresPage() {
     }
 
     // Função para formatar data no padrão pt-BR yyyy/mm/dd
-    const formatDatePtBr = (date: string | Date) => {
+    const formatDatePtBr = (date: string | Date | null | undefined) => {
+        if (!date) {
+            return 'Data inválida'
+        }
+
         const dateObj = typeof date === 'string' ? new Date(date) : date
 
         // Verificar se a data é válida
@@ -821,15 +830,21 @@ export default function OperadoresPage() {
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm text-gray-600">Data de Atribuição:</span>
-                                                {getOperatorAssignmentDate(operador) ? (
-                                                    <Badge variant="outline" className="text-blue-600 border-blue-200">
-                                                        {formatDatePtBr(getOperatorAssignmentDate(operador)!)}
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="outline" className="text-gray-500 border-gray-200">
-                                                        Sem data específica
-                                                    </Badge>
-                                                )}
+                                                {(() => {
+                                                    const assignmentDate = getOperatorAssignmentDate(operador);
+                                                    if (!assignmentDate) {
+                                                        return (
+                                                            <Badge variant="outline" className="text-gray-500 border-gray-200">
+                                                                Sem data específica
+                                                            </Badge>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <Badge variant="outline" className="text-blue-600 border-blue-200">
+                                                            {formatDatePtBr(assignmentDate)}
+                                                        </Badge>
+                                                    );
+                                                })()}
                                             </div>
 
                                             <div className="flex items-center justify-between">
@@ -1109,15 +1124,21 @@ export default function OperadoresPage() {
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">Data de Atribuição</label>
                                     <p className="text-gray-900">
-                                        {getOperatorAssignmentDate(selectedOperator) ? (
-                                            <Badge variant="outline" className="text-blue-600 border-blue-200">
-                                                {formatDatePtBr(getOperatorAssignmentDate(selectedOperator)!)}
-                                            </Badge>
-                                        ) : (
-                                            <Badge variant="outline" className="text-gray-500 border-gray-200">
-                                                Sem data específica
-                                            </Badge>
-                                        )}
+                                        {(() => {
+                                            const assignmentDate = getOperatorAssignmentDate(selectedOperator);
+                                            if (!assignmentDate) {
+                                                return (
+                                                    <Badge variant="outline" className="text-gray-500 border-gray-200">
+                                                        Sem data específica
+                                                    </Badge>
+                                                );
+                                            }
+                                            return (
+                                                <Badge variant="outline" className="text-blue-600 border-blue-200">
+                                                    {formatDatePtBr(assignmentDate)}
+                                                </Badge>
+                                            );
+                                        })()}
                                     </p>
                                 </div>
                                 <div>
@@ -1275,13 +1296,13 @@ export default function OperadoresPage() {
 
                 {/* Modal de Criação */}
                 <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                    <DialogContent>
+                    <DialogContent className="bg-white text-gray-900">
                         <DialogHeader>
                             <DialogTitle>Novo Operador</DialogTitle>
                         </DialogHeader>
-                        <div className="space-y-4">
+                        <div className="space-y-4 ">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                                <label className="block text-sm font-medium text-gray-700  mb-1">Nome</label>
                                 <Input
                                     value={createForm.nome}
                                     onChange={(e) => setCreateForm(prev => ({ ...prev, nome: e.target.value }))}
