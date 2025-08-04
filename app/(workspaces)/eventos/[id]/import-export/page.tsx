@@ -2697,12 +2697,21 @@ export default function ImportExportPage() {
                                                     <div className="flex items-center gap-4 mb-4">
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-sm text-gray-600">Cor:</span>
-                                                            <input
-                                                                type="color"
-                                                                value={credentialColor}
-                                                                onChange={(e) => setCredentialColor(e.target.value)}
-                                                                className="w-8 h-8 rounded border"
-                                                            />
+                                                            <div className="flex items-center gap-2">
+                                                                <input
+                                                                    type="color"
+                                                                    value={credentialColor}
+                                                                    onChange={(e) => setCredentialColor(e.target.value)}
+                                                                    className="w-8 h-8 rounded border"
+                                                                />
+                                                                <Input
+                                                                    type="text"
+                                                                    value={credentialColor}
+                                                                    onChange={(e) => setCredentialColor(e.target.value)}
+                                                                    placeholder="#000000"
+                                                                    className="w-24 text-sm font-mono"
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <Button

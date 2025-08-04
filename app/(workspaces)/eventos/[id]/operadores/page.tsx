@@ -65,6 +65,7 @@ export default function OperadoresPage() {
         cpf: "",
         senha: ""
     })
+    const [cpfExists, setCpfExists] = useState(false)
 
     // Estados para exclusão
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -82,6 +83,18 @@ export default function OperadoresPage() {
     useEffect(() => {
         console.log("🔍 Estado selectedOperators atualizado:", selectedOperators)
     }, [selectedOperators])
+
+    // Verificar CPF quando o campo é alterado
+    useEffect(() => {
+        if (createForm.cpf && createForm.cpf.length === 14) {
+            const timeoutId = setTimeout(() => {
+                checkCpfExists(createForm.cpf)
+            }, 500)
+            return () => clearTimeout(timeoutId)
+        } else {
+            setCpfExists(false)
+        }
+    }, [createForm.cpf])
 
 
 
@@ -289,8 +302,13 @@ export default function OperadoresPage() {
 
             // Forçar atualização dos dados após edição
             await forceRefreshData()
-        } catch (error) {
-            toast.error("Erro ao atualizar operador")
+        } catch (error: any) {
+            // Verificar se é erro de CPF duplicado
+            if (error?.response?.data?.error?.includes("Já existe um operador cadastrado com o CPF")) {
+                toast.error("CPF já cadastrado. Verifique se o operador já existe no sistema.")
+            } else {
+                toast.error("Erro ao atualizar operador")
+            }
         } finally {
             setLoading(false)
         }
@@ -341,11 +359,17 @@ export default function OperadoresPage() {
             toast.success("Operador criado com sucesso!")
             setCreateDialogOpen(false)
             setCreateForm({ nome: "", cpf: "", senha: "" })
+            setCpfExists(false)
 
             // Forçar atualização dos dados após criação
             await forceRefreshData()
-        } catch (error) {
-            toast.error("Erro ao criar operador")
+        } catch (error: any) {
+            // Verificar se é erro de CPF duplicado
+            if (error?.response?.data?.error?.includes("Já existe um operador cadastrado com o CPF")) {
+                toast.error("CPF já cadastrado. Verifique se o operador já existe no sistema.")
+            } else {
+                toast.error("Erro ao criar operador")
+            }
         } finally {
             setLoading(false)
         }
@@ -553,20 +577,40 @@ export default function OperadoresPage() {
         setLoading(true)
         try {
             for (const operador of registrosUnicos) {
-                await apiClient.post("/operadores", {
-                    nome: operador.nome,
-                    cpf: operador.cpf,
-                    senha: operador.senha,
-                    id_events: operador.id_events
-                })
+                try {
+                    await apiClient.post("/operadores", {
+                        nome: operador.nome,
+                        cpf: operador.cpf,
+                        senha: operador.senha,
+                        id_events: operador.id_events
+                    })
+                } catch (error: any) {
+                    // Se for erro de CPF duplicado, adicionar à lista de falhados
+                    if (error?.response?.data?.error?.includes("Já existe um operador cadastrado com o CPF")) {
+                        const falhados = resumoImportacao.falhados || []
+                        falhados.push({
+                            item: operador,
+                            motivo: "CPF já cadastrado no sistema"
+                        })
+                        setResumoImportacao(prev => ({ ...prev, falhados }))
+                    } else {
+                        throw error // Re-throw outros erros
+                    }
+                }
             }
 
-            toast.success(`${registrosUnicos.length} operadores importados com sucesso!`)
-            setResumoDialogOpen(false)
+            const importadosComSucesso = registrosUnicos.length - (resumoImportacao.falhados?.length || 0)
+            if (importadosComSucesso > 0) {
+                toast.success(`${importadosComSucesso} operadores importados com sucesso!`)
+            }
+
+            if (resumoImportacao.falhados && resumoImportacao.falhados.length > 0) {
+                toast.error(`${resumoImportacao.falhados.length} operadores falharam na importação`)
+            }
 
             // Forçar atualização dos dados após importação
             await forceRefreshData()
-        } catch (error) {
+        } catch (error: any) {
             toast.error("Erro ao importar operadores")
         } finally {
             setLoading(false)
@@ -680,6 +724,25 @@ export default function OperadoresPage() {
         return `${year}/${month}/${day}`
     }
 
+    // Função para verificar se CPF já existe
+    const checkCpfExists = async (cpf: string) => {
+        if (!cpf || !isValidCpf(unformatCpf(cpf))) {
+            setCpfExists(false)
+            return
+        }
+
+        try {
+            const { data } = await apiClient.get("/operadores", {
+                params: { search: unformatCpf(cpf), limit: 1 }
+            })
+
+            const exists = data.data && data.data.length > 0 && data.data[0].cpf === unformatCpf(cpf)
+            setCpfExists(exists)
+        } catch (error) {
+            setCpfExists(false)
+        }
+    }
+
     // Função para obter cor do badge baseado no tipo de ação
     const getActionBadgeColor = (type: string) => {
         switch (type?.toLowerCase()) {
@@ -735,16 +798,34 @@ export default function OperadoresPage() {
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="operadores" className="flex items-center gap-2">
+                    <TabsList className="grid w-full grid-cols-3 border border-[#610e5c] rounded-lg p-4 bg-white">
+                        <TabsTrigger
+                            value="operadores"
+                            className={`flex items-center gap-2 rounded-md transition-colors
+                                data-[state=active]:bg-[#610e5c] data-[state=active]:text-white
+                                focus:bg-[#610e5c] focus:text-white
+                            `}
+                        >
                             <Users className="h-4 w-4" />
                             Operadores ({operadores.length})
                         </TabsTrigger>
-                        <TabsTrigger value="todos-operadores" className="flex items-center gap-2">
+                        <TabsTrigger
+                            value="todos-operadores"
+                            className={`flex items-center gap-2 rounded-md transition-colors
+                                data-[state=active]:bg-[#610e5c] data-[state=active]:text-white
+                                focus:bg-[#610e5c] focus:text-white
+                            `}
+                        >
                             <UserPlus className="h-4 w-4" />
                             Todos os Operadores ({allOperators.length})
                         </TabsTrigger>
-                        <TabsTrigger value="acoes" className="flex items-center gap-2">
+                        <TabsTrigger
+                            value="acoes"
+                            className={`flex items-center gap-2 rounded-md transition-colors
+                                data-[state=active]:bg-[#610e5c] data-[state=active]:text-white
+                                focus:bg-[#610e5c] focus:text-white
+                            `}
+                        >
                             <Activity className="h-4 w-4" />
                             Ações ({collectAllActions.length})
                         </TabsTrigger>
@@ -946,7 +1027,7 @@ export default function OperadoresPage() {
                                                             {eventAssignments.slice(0, 2).map((assignment: string, index: number) => {
                                                                 const [eventIdFromAssignment, date] = assignment.split(':')
                                                                 return (
-                                                                    <Badge key={index} variant="outline" className="text-xs text-purple-600 border-purple-200">
+                                                                    <Badge key={index} variant="outline" className="text-xs text-[#610e5c] border-[#610e5c]">
                                                                         {eventIdFromAssignment === eventId ? `${formatDatePtBr(date)}` : eventIdFromAssignment}
                                                                     </Badge>
                                                                 )
@@ -1317,7 +1398,13 @@ export default function OperadoresPage() {
                                     onChange={(e) => setCreateForm(prev => ({ ...prev, cpf: formatCpfInput(e.target.value) }))}
                                     placeholder="000.000.000-00"
                                     maxLength={14}
+                                    className={cpfExists ? "border-red-500 focus:border-red-500" : ""}
                                 />
+                                {cpfExists && (
+                                    <p className="text-red-500 text-sm mt-1">
+                                        ⚠️ CPF já cadastrado no sistema
+                                    </p>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
@@ -1331,10 +1418,11 @@ export default function OperadoresPage() {
                                 <Button variant="outline" onClick={() => {
                                     setCreateDialogOpen(false)
                                     setCreateForm({ nome: "", cpf: "", senha: "" })
+                                    setCpfExists(false)
                                 }}>
                                     Cancelar
                                 </Button>
-                                <Button onClick={salvarNovo} disabled={loading}>
+                                <Button onClick={salvarNovo} disabled={loading || cpfExists}>
                                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar"}
                                 </Button>
                             </div>

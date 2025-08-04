@@ -5,14 +5,14 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --primary: #7c3aed;
+  --primary: #610e5c;
   --secondary: #f1f5f9;
   --muted: #64748b;
   --accent: #f1f5f9;
   --destructive: #ef4444;
   --border: #e2e8f0;
   --input: #ffffff;
-  --ring: #7c3aed;
+  --ring: #610e5c;
 }
 
 @layer base {

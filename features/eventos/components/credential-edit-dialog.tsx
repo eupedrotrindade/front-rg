@@ -39,7 +39,7 @@ export const CredentialEditDialog = ({ credential }: CredentialEditDialogProps) 
           <Edit className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-800">
         <DialogHeader>
           <DialogTitle>Editar Credencial</DialogTitle>
           <DialogDescription>

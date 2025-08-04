@@ -159,7 +159,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                     {/* Informações Básicas */}
                     <Card className="border-purple-200">
                         <CardHeader className="bg-purple-50">
-                            <CardTitle className="flex items-center gap-2 text-purple-800">
+                            <CardTitle className="flex items-center gap-2 text-[#610e5c]">
                                 <Tag className="h-5 w-5" />
                                 Informações Básicas
                             </CardTitle>
@@ -260,7 +260,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                     {/* Banner */}
                     <Card className="border-purple-200">
                         <CardHeader className="bg-purple-50">
-                            <CardTitle className="flex items-center gap-2 text-purple-800">
+                            <CardTitle className="flex items-center gap-2 text-[#610e5c]">
                                 <ImageIcon className="h-5 w-5" />
                                 Banner do Evento
                             </CardTitle>
@@ -339,7 +339,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                     {/* Datas e Cronograma */}
                     <Card className="border-purple-200">
                         <CardHeader className="bg-purple-50">
-                            <CardTitle className="flex items-center gap-2 text-purple-800">
+                            <CardTitle className="flex items-center gap-2 text-[#610e5c]">
                                 <Calendar className="h-5 w-5" />
                                 Cronograma do Evento
                             </CardTitle>
@@ -578,7 +578,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                     {/* Configurações */}
                     <Card className="border-purple-200">
                         <CardHeader className="bg-purple-50">
-                            <CardTitle className="flex items-center gap-2 text-purple-800">
+                            <CardTitle className="flex items-center gap-2 text-[#610e5c]">
                                 <Settings className="h-5 w-5" />
                                 Configurações
                             </CardTitle>
@@ -715,7 +715,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                             type="submit"
                             onClick={() => { console.log(form.getValues()); handleSubmit(form.getValues()) }}
                             disabled={loading}
-                            className="bg-purple-600 hover:bg-purple-700 text-white px-8"
+                            className="bg-[#610e5c]  hover:bg-[#610e5c] text-white px-8"
                         >
                             {loading ? (
                                 <>
@@ -853,7 +853,7 @@ const GalleryImageUpload = ({ onUpload }: { onUpload: (url: string) => void }) =
             <Button
                 onClick={handleUpload}
                 disabled={!file || uploadMutation.status === 'pending'}
-                className="bg-purple-600 hover:bg-purple-700 text-white"
+                className="bg-[#610e5c]  hover:bg-[#610e5c] text-white"
             >
                 {uploadMutation.status === 'pending' ? (
                     <Loader2 className="animate-spin h-4 w-4 mr-2" />

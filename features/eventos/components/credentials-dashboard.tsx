@@ -3,29 +3,25 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useCredentials } from "@/features/eventos/api/query/use-credentials";
-import { useDeleteCredential, useSetCredentialActive } from "@/features/eventos/api/mutation/use-credential-mutations";
-import { Credential } from "@/features/eventos/types";
+import { useDeleteCredential, useSetCredentialActive, useUpdateCredential } from "@/features/eventos/api/mutation/use-credential-mutations";
+import { Credential, UpdateCredentialRequest } from "@/features/eventos/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Edit, Trash2, Eye, EyeOff } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Plus, Edit, Trash2, Eye, EyeOff, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { CredentialCreateDialog } from "./credential-create-dialog";
+import { CredentialForm } from "./credential-form";
 
-interface CredentialsDashboardProps {
-  onOpenCreateDialog: () => void;
-  onOpenEditDialog: (credential: Credential) => void;
-}
-
-export const CredentialsDashboard = ({
-  onOpenCreateDialog,
-  onOpenEditDialog,
-}: CredentialsDashboardProps) => {
+export const CredentialsDashboard = () => {
   const params = useParams();
   const eventId = params.id as string;
   const [searchTerm, setSearchTerm] = useState("");
+  const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const { data: credentials = [], isLoading, error } = useCredentials({
     eventId,
@@ -34,6 +30,7 @@ export const CredentialsDashboard = ({
 
   const deleteCredential = useDeleteCredential();
   const setCredentialActive = useSetCredentialActive();
+  const updateCredential = useUpdateCredential();
 
   const handleDelete = async (credential: Credential) => {
     try {
@@ -58,6 +55,33 @@ export const CredentialsDashboard = ({
     }
   };
 
+  const handleEdit = (credential: Credential) => {
+    setEditingCredential(credential);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCredential(null);
+    setIsEditDialogOpen(false);
+  };
+
+  const handleSaveEdit = async (data: UpdateCredentialRequest) => {
+    if (!editingCredential) return;
+
+    try {
+      await updateCredential.mutateAsync({
+        id: editingCredential.id,
+        data,
+      });
+      setEditingCredential(null);
+      setIsEditDialogOpen(false);
+      toast.success("Credencial atualizada com sucesso!");
+    } catch (error) {
+      console.error("Erro ao atualizar credencial:", error);
+      toast.error("Erro ao atualizar credencial");
+    }
+  };
+
   const filteredCredentials = credentials.filter((credential) =>
     credential.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
     credential.cor.toLowerCase().includes(searchTerm.toLowerCase())
@@ -68,7 +92,6 @@ export const CredentialsDashboard = ({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Credenciais</h2>
-          {/* Diálogo de criação */}
           <CredentialCreateDialog>
             <Button className="bg-blue-600 hover:bg-blue-700">
               <Plus className="mr-2 h-4 w-4" />
@@ -106,9 +129,8 @@ export const CredentialsDashboard = ({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div></div>
-        {/* Diálogo de criação */}
         <CredentialCreateDialog>
-          <Button className="bg-blue-600 hover:bg-blue-700">
+          <Button className="">
             <Plus className="mr-2 h-4 w-4" />
             Nova Credencial
           </Button>
@@ -145,7 +167,7 @@ export const CredentialsDashboard = ({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => onOpenEditDialog(credential)}
+                        onClick={() => handleEdit(credential)}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -213,6 +235,26 @@ export const CredentialsDashboard = ({
           ))}
         </div>
       )}
+
+      {/* Modal de Edição */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-800">
+          <DialogHeader>
+            <DialogTitle>Editar Credencial</DialogTitle>
+            <DialogDescription>
+              {editingCredential && `Edite os detalhes da credencial "${editingCredential.nome}"`}
+            </DialogDescription>
+          </DialogHeader>
+          {editingCredential && (
+            <CredentialForm
+              credential={editingCredential}
+              onSubmit={handleSaveEdit}
+              onCancel={handleCancelEdit}
+              isLoading={updateCredential.isPending}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }; 

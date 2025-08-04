@@ -10,6 +10,7 @@ import { useCreateCredential } from "@/features/eventos/api/mutation/use-credent
 import { CreateCredentialRequest } from "@/features/eventos/types"
 import { toast } from "sonner"
 import { Loader2, Plus, Palette } from "lucide-react"
+import { HexColorPicker } from "react-colorful"
 
 interface CreateCredentialDialogProps {
     eventId: string
@@ -141,7 +142,7 @@ const CreateCredentialDialog = ({
 
                     <div>
                         <Label htmlFor="cor">Cor da Credencial</Label>
-                        
+
                         {/* Cor atual selecionada */}
                         <div className="flex items-center gap-3 mt-2 p-3 border rounded-lg bg-gray-50">
                             <div
@@ -171,8 +172,8 @@ const CreateCredentialDialog = ({
                                         onClick={() => handleColorSelect(color.value)}
                                         className={`
                                             w-8 h-8 rounded-full border-2 transition-all duration-200 hover:scale-110
-                                            ${formData.cor === color.value 
-                                                ? 'border-gray-800 shadow-lg' 
+                                            ${formData.cor === color.value
+                                                ? 'border-gray-800 shadow-lg'
                                                 : 'border-gray-300 hover:border-gray-400'
                                             }
                                         `}
@@ -197,14 +198,13 @@ const CreateCredentialDialog = ({
                                     Cor Personalizada
                                 </Label>
                             </div>
-                            
+
                             {showCustomColor && (
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        type="color"
-                                        value={formData.cor}
-                                        onChange={(e) => handleCustomColorChange(e.target.value)}
-                                        className="w-12 h-10 p-1 border border-gray-300 rounded cursor-pointer"
+                                <div className="space-y-3">
+                                    <HexColorPicker
+                                        color={formData.cor}
+                                        onChange={handleCustomColorChange}
+                                        className="w-full"
                                     />
                                     <Input
                                         type="text"

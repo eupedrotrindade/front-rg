@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { X, Palette, Wrench, Calendar, Truck } from "lucide-react";
+import { HexColorPicker } from "react-colorful";
 
 interface CredentialFormProps {
     credential?: Credential;
@@ -359,14 +360,26 @@ export const CredentialForm = ({
                                             <Palette className="h-4 w-4 text-white" />
                                         </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-3">
-                                        <div className="space-y-2">
-                                            <Input
-                                                type="color"
-                                                value={selectedColor}
-                                                onChange={(e) => handleColorChange(e.target.value)}
-                                                className="w-full h-10"
+                                    <PopoverContent className="w-auto p-4 bg-white text-gray-800">
+                                        <div className="space-y-3">
+                                            <HexColorPicker
+                                                color={selectedColor}
+                                                onChange={handleColorChange}
+                                                className="w-full"
                                             />
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    value={selectedColor}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+                                                            handleColorChange(value);
+                                                        }
+                                                    }}
+                                                    placeholder="#000000"
+                                                    className="flex-1 text-sm font-mono"
+                                                />
+                                            </div>
                                             <div className="grid grid-cols-8 gap-1">
                                                 {[
                                                     "#FF0000", "#FF4500", "#FF8C00", "#FFD700",
@@ -394,8 +407,9 @@ export const CredentialForm = ({
                                     {...register("cor")}
                                     value={selectedColor}
                                     onChange={(e) => {
-                                        setSelectedColor(e.target.value);
-                                        setValue("cor", e.target.value);
+                                        const value = e.target.value;
+                                        setSelectedColor(value);
+                                        setValue("cor", value);
                                         trigger("cor");
                                     }}
                                     placeholder="#000000"
