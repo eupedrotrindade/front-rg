@@ -93,9 +93,7 @@ export default function Dashboard() {
     const radiosRetirados = radiosArray.filter((r) => r.status === "retirado").length
     const radiosManutencao = radiosArray.filter((r) => r.status === "manutencao").length
 
-    // Estatísticas de vagas por status
-    const vagasAtivas = vagasArray.filter((v) => v.status).length
-    const vagasInativas = vagasArray.filter((v) => !v.status).length
+
 
     // Estatísticas de participantes usando dados de attendance
     const participantesComCheckIn = attendanceData.filter((attendance) => attendance.checkIn !== null).length

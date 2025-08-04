@@ -145,8 +145,8 @@ export default function RelatoriosPage() {
             participantesComPulseira,
             totalCoordenadores: coordenadores.length,
             totalVagas: vagas.length,
-            vagasRetiradas: vagas.filter(v => v.status).length,
-            vagasPendentes: vagas.filter(v => !v.status).length
+            vagasRetiradas: vagas.filter(v => v.retirada === "retirada").length,
+            vagasPendentes: vagas.filter(v => v.retirada === "pendente").length
         }
     }, [participantesDoDia, coordenadores, vagas])
 
@@ -208,8 +208,7 @@ export default function RelatoriosPage() {
                     empresa: v.empresa,
                     placa: v.placa,
                     modelo: v.modelo,
-                    credencial: v.credencial,
-                    status: v.status ? "Retirada" : "Pendente"
+                    retirada: v.retirada,
                 }))
                 break
 
@@ -277,7 +276,7 @@ export default function RelatoriosPage() {
                         placa: v.placa,
                         empresa: v.empresa,
                         funcao: v.modelo,
-                        status: v.status ? "Retirada" : "Pendente"
+                        retirada: v.retirada
                     }))
                 ]
         }

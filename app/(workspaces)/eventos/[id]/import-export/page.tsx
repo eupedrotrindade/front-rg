@@ -1164,7 +1164,7 @@ export default function ImportExportPage() {
             const matchesSearch = searchTerm === "" ||
                 participant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 participant.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                participant.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                participant.role?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 participant.cpf.includes(searchTerm)
 
             const matchesCompany = filterCompany === "all" ||
@@ -1175,8 +1175,8 @@ export default function ImportExportPage() {
 
         // Ordenação
         filtered.sort((a, b) => {
-            const aValue = a[sortBy].toLowerCase()
-            const bValue = b[sortBy].toLowerCase()
+            const aValue = a[sortBy]?.toLowerCase() || ""
+            const bValue = b[sortBy]?.toLowerCase() || ""
 
             if (sortOrder === "asc") {
                 return aValue.localeCompare(bValue)

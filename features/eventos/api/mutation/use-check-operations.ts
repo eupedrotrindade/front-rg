@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 
 // Hook para check-in
@@ -20,14 +20,19 @@ export const useCheckIn = () => {
       performedBy?: string;
     }) => {
       // Converter data se necessário
-      const formattedDate = date.includes("/") ? date.split("/").join("-") : date;
+      const formattedDate = date.includes("/")
+        ? date.split("/").join("-")
+        : date;
 
-      const { data } = await apiClient.post(`/check/check-in/${formattedDate}`, {
-        participantId,
-        validatedBy,
-        notes,
-        performedBy,
-      });
+      const { data } = await apiClient.post(
+        `/check/check-in/${formattedDate}`,
+        {
+          participantId,
+          validatedBy,
+          notes,
+          performedBy,
+        }
+      );
       return data;
     },
     onSuccess: (data, variables) => {
@@ -36,7 +41,11 @@ export const useCheckIn = () => {
         queryKey: ["event-attendance"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["event-attendance-by-event-date", data.eventId, variables.date],
+        queryKey: [
+          "event-attendance-by-event-date",
+          data.eventId,
+          variables.date,
+        ],
       });
       queryClient.invalidateQueries({
         queryKey: ["event-attendance-by-participant", variables.participantId],
@@ -64,14 +73,19 @@ export const useCheckOut = () => {
       performedBy?: string;
     }) => {
       // Converter data se necessário
-      const formattedDate = date.includes("/") ? date.split("/").join("-") : date;
+      const formattedDate = date.includes("/")
+        ? date.split("/").join("-")
+        : date;
 
-      const { data } = await apiClient.put(`/check/check-out/${formattedDate}`, {
-        participantId,
-        validatedBy,
-        notes,
-        performedBy,
-      });
+      const { data } = await apiClient.put(
+        `/check/check-out/${formattedDate}`,
+        {
+          participantId,
+          validatedBy,
+          notes,
+          performedBy,
+        }
+      );
       return data;
     },
     onSuccess: (data, variables) => {
@@ -80,7 +94,11 @@ export const useCheckOut = () => {
         queryKey: ["event-attendance"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["event-attendance-by-event-date", data.eventId, variables.date],
+        queryKey: [
+          "event-attendance-by-event-date",
+          data.eventId,
+          variables.date,
+        ],
       });
       queryClient.invalidateQueries({
         queryKey: ["event-attendance-by-participant", variables.participantId],
@@ -95,11 +113,15 @@ export const useAttendanceStatus = (participantId: string, date: string) => {
     queryKey: ["attendance-status", participantId, date],
     queryFn: async () => {
       // Converter data se necessário
-      const formattedDate = date.includes("/") ? date.split("/").join("-") : date;
+      const formattedDate = date.includes("/")
+        ? date.split("/").join("-")
+        : date;
 
-      const { data } = await apiClient.get(`/check/${participantId}/${formattedDate}`);
+      const { data } = await apiClient.get(
+        `/check/${participantId}/${formattedDate}`
+      );
       return data;
     },
     enabled: !!participantId && !!date,
   });
-}; 
+};
