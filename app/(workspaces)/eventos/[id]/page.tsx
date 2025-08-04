@@ -27,6 +27,7 @@ import { EventParticipant } from '@/features/eventos/types'
 import EventParticipantCreateDialog from '@/features/eventos/components/event-participant-create-dialog'
 import EventParticipantEditDialog from '@/features/eventos/components/event-participant-edit-dialog'
 import EventLayout from '@/components/dashboard/dashboard-layout'
+import ModalAdicionarStaff from '@/components/operador/modalAdicionarStaff'
 
 export default function EventoDetalhesPage() {
     const params = useParams()
@@ -75,6 +76,9 @@ export default function EventoDetalhesPage() {
         reset: 0,
         currentParticipant: ''
     })
+
+    // Estado para modal de adicionar staff
+    const [showAdicionarStaffModal, setShowAdicionarStaffModal] = useState(false)
 
     // Estados para check-in/check-out
     const [participantAction, setParticipantAction] = useState<EventParticipant | null>(null)
@@ -823,7 +827,13 @@ export default function EventoDetalhesPage() {
                             </Button>
                         </div>
 
-                        <EventParticipantCreateDialog />
+                        <Button
+                            onClick={() => setShowAdicionarStaffModal(true)}
+                            className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                        >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Adicionar Staff
+                        </Button>
                     </div>
                 </div>
 
@@ -876,13 +886,13 @@ export default function EventoDetalhesPage() {
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm text-gray-600">Retiradas</span>
                                     <span className="font-semibold text-teal-600">
-                                        {vagas.filter(v => v.status).length}
+                                        {vagas.filter(v => v.retirada === "retirada").length}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm text-gray-600">Pendentes</span>
                                     <span className="font-semibold text-teal-600">
-                                        {vagas.filter(v => !v.status).length}
+                                        {vagas.filter(v => v.retirada === "pendente").length}
                                     </span>
                                 </div>
                             </div>
@@ -1447,6 +1457,18 @@ export default function EventoDetalhesPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Modal de Adicionar Staff */}
+            <ModalAdicionarStaff
+                isOpen={showAdicionarStaffModal}
+                onClose={() => setShowAdicionarStaffModal(false)}
+                eventId={String(params.id)}
+                evento={evento}
+                onSuccess={() => {
+                    // Recarregar dados se necessário
+                    console.log("Staff adicionado com sucesso!");
+                }}
+            />
         </EventLayout>
     )
 }

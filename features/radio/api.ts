@@ -1,105 +1,226 @@
 import apiClient from "@/lib/api-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  RadioAssignment,
+  RadioAssignmentListResponse,
+  RadioAssignmentFilters,
+  CreateRadioAssignmentData,
+  UpdateRadioAssignmentData,
+  PartialReturnData,
+  RadioExchangeData,
+  AvailableRadiosResponse,
+  RadioOperationsResponse,
+} from "@/app/(workspaces)/eventos/[id]/radios/types";
 
-export type RadioStatus = "disponivel" | "retirado" | "manutencao";
+// ========================================
+// QUERIES
+// ========================================
 
-export interface Radio {
-  id: string;
-  codes: string[];
-  codes_trocados: string[];
-  codes_devolvidos: string[];
-  status: RadioStatus;
-  last_retirada_id?: string | null;
-  event_id?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  historico?: any[];
-}
-
-// Listar todos os rádios
-export const getRadios = async (params?: {
-  eventId?: string;
-}): Promise<Radio[]> => {
-  const queryParams = new URLSearchParams();
-  if (params?.eventId) {
-    queryParams.append("eventId", params.eventId);
-  }
-
-  const url = `/radios${
-    queryParams.toString() ? `?${queryParams.toString()}` : ""
-  }`;
-  const { data } = await apiClient.get<Radio[]>(url);
-  return data;
-};
-
-// Buscar rádio por ID
-export const getRadioById = async (id: string): Promise<Radio> => {
-  const { data } = await apiClient.get<Radio>(`/radios/${id}`);
-  return data;
-};
-
-// Criar novo rádio
-export const createRadio = async (payload: {
-  codes: string[];
-  status: RadioStatus;
-  event_id?: string | null;
-  last_retirada_id?: string | null;
-}): Promise<Radio> => {
-  const { data } = await apiClient.post<Radio>("/radios", payload);
-  return data;
-};
-
-// Atualizar rádio
-export const updateRadio = async (
-  id: string,
-  radio: Partial<Radio>
-): Promise<Radio> => {
-  const { data } = await apiClient.put<Radio>(`/radios/${id}`, radio);
-  return data;
-};
-
-// Deletar rádio
-export const deleteRadio = async (id: string): Promise<void> => {
-  await apiClient.delete(`/radios/${id}`);
-};
-
-// Hook para buscar todos os rádios
-export const useRadios = (params?: { eventId?: string }) => {
-  return useQuery<Radio[]>({
-    queryKey: ["radios", params],
-    queryFn: () => getRadios(params),
+// Buscar rádios disponíveis por evento
+export const useAvailableRadios = (eventId: string) => {
+  return useQuery({
+    queryKey: ["available-radios", eventId],
+    queryFn: async (): Promise<AvailableRadiosResponse> => {
+      const response = await apiClient.get(`/radios/available/${eventId}`);
+      return response.data;
+    },
+    enabled: !!eventId,
   });
 };
 
-// Hook para criar rádio
-export const useCreateRadio = () => {
+// Buscar atribuições de rádios
+export const useRadioAssignments = (filters: RadioAssignmentFilters) => {
+  return useQuery({
+    queryKey: ["radio-assignments", filters],
+    queryFn: async (): Promise<RadioAssignmentListResponse> => {
+      const params = new URLSearchParams();
+
+      if (filters.eventId) params.append("eventId", filters.eventId);
+      if (filters.eventDay) params.append("eventDay", filters.eventDay);
+      if (filters.status) params.append("status", filters.status);
+      if (filters.page) params.append("page", filters.page.toString());
+      if (filters.limit) params.append("limit", filters.limit.toString());
+      if (filters.search) params.append("search", filters.search);
+
+      const response = await apiClient.get(
+        `/radios/assignments?${params.toString()}`
+      );
+      return response.data;
+    },
+    enabled: !!filters.eventId && !!filters.eventDay,
+  });
+};
+
+// Buscar operações de uma atribuição específica
+export const useRadioOperations = (assignmentId: string) => {
+  return useQuery({
+    queryKey: ["radio-operations", assignmentId],
+    queryFn: async (): Promise<RadioOperationsResponse> => {
+      const response = await apiClient.get(
+        `/radios/assignments/${assignmentId}/operations`
+      );
+      return response.data;
+    },
+    enabled: !!assignmentId,
+  });
+};
+
+// ========================================
+// MUTATIONS
+// ========================================
+
+// Criar nova atribuição de rádios
+export const useCreateRadioAssignment = () => {
   const queryClient = useQueryClient();
-  return useMutation<Radio, unknown, Parameters<typeof createRadio>[0]>({
-    mutationFn: createRadio,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["radios"] });
+
+  return useMutation({
+    mutationFn: async (
+      data: CreateRadioAssignmentData
+    ): Promise<RadioAssignment> => {
+      const response = await apiClient.post("/radios/assignments", data);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      // Invalidar queries relacionadas
+      queryClient.invalidateQueries({ queryKey: ["radio-assignments"] });
+      queryClient.invalidateQueries({
+        queryKey: ["available-radios", data.event_id],
+      });
     },
   });
 };
 
-// Hook para atualizar rádio
-export const useUpdateRadio = () => {
+// Atualizar atribuição (devolução total)
+export const useUpdateRadioAssignment = () => {
   const queryClient = useQueryClient();
-  return useMutation<Radio, unknown, { id: string; radio: Partial<Radio> }>({
-    mutationFn: ({ id, radio }) => updateRadio(id, radio),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["radios"] });
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: UpdateRadioAssignmentData;
+    }): Promise<RadioAssignment> => {
+      const response = await apiClient.put(`/radios/assignments/${id}`, data);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["radio-assignments"] });
+      queryClient.invalidateQueries({
+        queryKey: ["available-radios", data.event_id],
+      });
     },
   });
 };
 
-// Hook para deletar rádio (opcional, se quiser usar React Query)
-export const useDeleteRadio = () => {
+// Devolução parcial
+export const usePartialReturn = () => {
   const queryClient = useQueryClient();
-  return useMutation<void, unknown, string>({
-    mutationFn: deleteRadio,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["radios"] });
+
+  return useMutation({
+    mutationFn: async (
+      data: PartialReturnData
+    ): Promise<{ message: string }> => {
+      console.log("Dados sendo enviados para devolução parcial:", data);
+      console.log("Tipo de returned_radio_codes:", typeof data.returned_radio_codes);
+      console.log("É array?", Array.isArray(data.returned_radio_codes));
+      console.log("Conteúdo:", data.returned_radio_codes);
+      
+      const response = await apiClient.post(
+        `/radios/assignments/${data.assignment_id}/partial-return`,
+        data
+      );
+      return response.data;
     },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["radio-assignments"] });
+      queryClient.invalidateQueries({
+        queryKey: ["radio-operations", variables.assignment_id],
+      });
+    },
+  });
+};
+
+// Troca de rádios
+export const useRadioExchange = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      data: RadioExchangeData
+    ): Promise<{ message: string }> => {
+      const response = await apiClient.post(
+        `/radios/assignments/${data.assignment_id}/exchange`,
+        data
+      );
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["radio-assignments"] });
+      queryClient.invalidateQueries({
+        queryKey: ["radio-operations", variables.assignment_id],
+      });
+    },
+  });
+};
+
+// Importar rádios em massa
+export const useImportRadios = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      event_id: string;
+      radio_codes: string[];
+      status?: string;
+    }): Promise<{ message: string; imported: number }> => {
+      const response = await apiClient.post("/radios/import", data);
+      return response.data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["available-radios", variables.event_id],
+      });
+    },
+  });
+};
+
+// ========================================
+// HOOKS UTILITÁRIOS
+// ========================================
+
+// Hook para obter atribuições por dia específico
+export const useRadioAssignmentsByDay = (eventId: string, eventDay: string) => {
+  return useRadioAssignments({
+    eventId,
+    eventDay,
+    limit: 100, // Buscar mais registros para o dia
+  });
+};
+
+// Hook para obter atribuições ativas por dia
+export const useActiveRadioAssignmentsByDay = (
+  eventId: string,
+  eventDay: string
+) => {
+  return useRadioAssignments({
+    eventId,
+    eventDay,
+    status: "ativo",
+    limit: 100,
+  });
+};
+
+// Hook para obter atribuições pendentes por dia
+export const usePendingRadioAssignmentsByDay = (
+  eventId: string,
+  eventDay: string
+) => {
+  return useRadioAssignments({
+    eventId,
+    eventDay,
+    status: "ativo",
+    limit: 100,
   });
 };

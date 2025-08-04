@@ -75,6 +75,7 @@ export default function OperadoresPage() {
     const [selectedOperators, setSelectedOperators] = useState<string[]>([])
     const [assignLoading, setAssignLoading] = useState(false)
     const [assignSearch, setAssignSearch] = useState("")
+    const [allOperatorsSearch, setAllOperatorsSearch] = useState("")
     const [selectedEventDates, setSelectedEventDates] = useState<string[]>([])
 
     // Debug: Log do estado de seleção
@@ -163,6 +164,14 @@ export default function OperadoresPage() {
             op.cpf.includes(assignSearch)
         )
     }, [availableOperators, assignSearch])
+
+    // Filtrar todos os operadores baseado na busca
+    const filteredAllOperators = useMemo(() => {
+        return allOperators.filter(op =>
+            op.nome.toLowerCase().includes(allOperatorsSearch.toLowerCase()) ||
+            op.cpf.includes(allOperatorsSearch)
+        )
+    }, [allOperators, allOperatorsSearch])
 
     // Função para forçar atualização dos dados
     const forceRefreshData = async () => {
@@ -404,7 +413,7 @@ export default function OperadoresPage() {
                 }
             }
 
-            const datesText = selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')).join(', ')
+            const datesText = selectedEventDates.map(date => formatDatePtBr(date)).join(', ')
             toast.success(`${selectedOperators.length} operador(es) atribuído(s) com sucesso para os dias: ${datesText}!`)
             setAssignDialogOpen(false)
             setSelectedOperators([])
@@ -450,9 +459,9 @@ export default function OperadoresPage() {
             Nome: operador.nome,
             CPF: formatCPF(operador.cpf),
             "Data de Atribuição": getOperatorAssignmentDate(operador)
-                ? new Date(getOperatorAssignmentDate(operador)!).toLocaleDateString('pt-BR')
+                ? formatDatePtBr(getOperatorAssignmentDate(operador)!)
                 : "Sem data específica",
-            "Data de Criação": new Date().toLocaleDateString('pt-BR')
+            "Data de Criação": formatDatePtBr(new Date())
         }))
 
         const ws = XLSX.utils.json_to_sheet(dadosParaExportar)
@@ -646,6 +655,22 @@ export default function OperadoresPage() {
         })
     }
 
+    // Função para formatar data no padrão pt-BR yyyy/mm/dd
+    const formatDatePtBr = (date: string | Date) => {
+        const dateObj = typeof date === 'string' ? new Date(date) : date
+
+        // Verificar se a data é válida
+        if (isNaN(dateObj.getTime())) {
+            return 'Data inválida'
+        }
+
+        const year = dateObj.getFullYear()
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+        const day = String(dateObj.getDate()).padStart(2, '0')
+
+        return `${year}/${month}/${day}`
+    }
+
     // Função para obter cor do badge baseado no tipo de ação
     const getActionBadgeColor = (type: string) => {
         switch (type?.toLowerCase()) {
@@ -701,10 +726,14 @@ export default function OperadoresPage() {
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
+                    <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="operadores" className="flex items-center gap-2">
                             <Users className="h-4 w-4" />
                             Operadores ({operadores.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="todos-operadores" className="flex items-center gap-2">
+                            <UserPlus className="h-4 w-4" />
+                            Todos os Operadores ({allOperators.length})
                         </TabsTrigger>
                         <TabsTrigger value="acoes" className="flex items-center gap-2">
                             <Activity className="h-4 w-4" />
@@ -751,79 +780,187 @@ export default function OperadoresPage() {
                                         className="hidden"
                                     />
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Cards de Operadores */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {operadores.length > 0 ? (
+                                operadores.map((operador) => (
+                                    <div key={operador.id} className="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition-shadow">
+                                        <div className="flex items-start justify-between mb-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                                    <span className="text-lg font-medium text-blue-600">
+                                                        {getInitials(operador.nome)}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-semibold text-gray-900">{capitalizeWords(operador.nome)}</h3>
+                                                    <p className="text-sm text-gray-600">{formatCPF(operador.cpf)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-1">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => abrirEditar(operador)}
+                                                >
+                                                    <Edit className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => abrirExcluir(operador)}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-gray-600">Data de Atribuição:</span>
+                                                {getOperatorAssignmentDate(operador) ? (
+                                                    <Badge variant="outline" className="text-blue-600 border-blue-200">
+                                                        {formatDatePtBr(getOperatorAssignmentDate(operador)!)}
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge variant="outline" className="text-gray-500 border-gray-200">
+                                                        Sem data específica
+                                                    </Badge>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-gray-600">Ações Realizadas:</span>
+                                                <Badge variant="outline" className="text-green-600 border-green-200">
+                                                    {operador.acoes?.length || 0} ações
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="col-span-full text-center py-12">
+                                    <div className="text-gray-400 mb-4">
+                                        <Users className="h-16 w-16 mx-auto" />
+                                    </div>
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum operador encontrado</h3>
+                                    <p className="text-gray-500">Adicione operadores ao evento para começar</p>
+                                </div>
+                            )}
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="todos-operadores" className="space-y-6">
+                        {/* Filtros para Todos os Operadores */}
+                        <div className="bg-white rounded-lg shadow-sm border p-4">
+                            <div className="flex flex-wrap gap-4">
+                                <div className="flex-1 min-w-[200px]">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Buscar operadores
+                                    </label>
+                                    <Input
+                                        placeholder="Digite o nome ou CPF..."
+                                        value={allOperatorsSearch}
+                                        onChange={(e) => setAllOperatorsSearch(e.target.value)}
+                                    />
+                                </div>
                                 <div className="flex items-end">
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            console.log("🔍 Teste: Estado atual:", selectedOperators)
-                                            handleSelectOperator("test-id")
-                                        }}
-                                    >
-                                        Teste Seleção
+                                    <Button onClick={abrirAtribuirOperadores} variant="outline">
+                                        <UserPlus className="h-4 w-4 mr-2" />
+                                        Atribuir ao Evento
                                     </Button>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Tabela */}
-                        <div className="bg-white rounded-lg shadow-sm border">
-                            <div className="overflow-x-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="text-left font-medium text-gray-900">Nome</TableHead>
-                                            <TableHead className="text-left font-medium text-gray-900">CPF</TableHead>
-                                            <TableHead className="text-left font-medium text-gray-900">Data de Atribuição</TableHead>
-                                            <TableHead className="text-left font-medium text-gray-900">Ações</TableHead>
-                                            <TableHead className="text-left font-medium text-gray-900">Operações</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {operadores.length > 0 ? (
-                                            operadores.map((operador) => (
-                                                <TableRow key={operador.id} className="hover:bg-gray-50 transition-colors">
-                                                    <TableCell className="font-medium">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                                                <span className="text-sm font-medium text-blue-600">
-                                                                    {getInitials(operador.nome)}
-                                                                </span>
-                                                            </div>
-                                                            <span className="text-gray-900">{capitalizeWords(operador.nome)}</span>
+                        {/* Cards de Todos os Operadores */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {filteredAllOperators.length > 0 ? (
+                                filteredAllOperators.map((operador) => {
+                                    const isAssignedToEvent = operadores.some(op => op.id === operador.id)
+                                    const eventAssignments = operador.id_events ? operador.id_events.split(',').filter(Boolean) : []
+
+                                    return (
+                                        <div key={operador.id} className={`bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition-shadow ${isAssignedToEvent ? 'ring-2 ring-blue-200' : ''}`}>
+                                            <div className="flex items-start justify-between mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isAssignedToEvent ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                                                        <span className={`text-lg font-medium ${isAssignedToEvent ? 'text-blue-600' : 'text-gray-600'}`}>
+                                                            {getInitials(operador.nome)}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-semibold text-gray-900">{capitalizeWords(operador.nome)}</h3>
+                                                        <p className="text-sm text-gray-600">{formatCPF(operador.cpf)}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    {isAssignedToEvent && (
+                                                        <Badge variant="outline" className="text-blue-600 border-blue-200 text-xs">
+                                                            Atribuído
+                                                        </Badge>
+                                                    )}
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            setSelectedOperators([operador.id])
+                                                            setAssignDialogOpen(true)
+                                                        }}
+                                                    >
+                                                        <UserPlus className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-600">Status:</span>
+                                                    <Badge variant="outline" className={isAssignedToEvent ? "text-green-600 border-green-200" : "text-gray-500 border-gray-200"}>
+                                                        {isAssignedToEvent ? "Atribuído ao Evento" : "Disponível"}
+                                                    </Badge>
+                                                </div>
+
+                                                {eventAssignments.length > 0 && (
+                                                    <div className="space-y-1">
+                                                        <span className="text-sm text-gray-600">Eventos Atribuídos:</span>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {eventAssignments.slice(0, 2).map((assignment: string, index: number) => {
+                                                                const [eventIdFromAssignment, date] = assignment.split(':')
+                                                                return (
+                                                                    <Badge key={index} variant="outline" className="text-xs text-purple-600 border-purple-200">
+                                                                        {eventIdFromAssignment === eventId ? `${formatDatePtBr(date)}` : eventIdFromAssignment}
+                                                                    </Badge>
+                                                                )
+                                                            })}
+                                                            {eventAssignments.length > 2 && (
+                                                                <Badge variant="outline" className="text-xs text-gray-600 border-gray-200">
+                                                                    +{eventAssignments.length - 2} mais
+                                                                </Badge>
+                                                            )}
                                                         </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-gray-700">{formatCPF(operador.cpf)}</TableCell>
-                                                    <TableCell className="text-gray-700">
-                                                        {getOperatorAssignmentDate(operador) ? (
-                                                            <Badge variant="outline" className="text-blue-600 border-blue-200">
-                                                                {new Date(getOperatorAssignmentDate(operador)!).toLocaleDateString('pt-BR')}
-                                                            </Badge>
-                                                        ) : (
-                                                            <Badge variant="outline" className="text-gray-500 border-gray-200">
-                                                                Sem data específica
-                                                            </Badge>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <div className="text-sm text-gray-500">
-                                                            {operador.acoes?.length || 0} ações
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {getBotaoAcao(operador)}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        ) : (
-                                            <TableRow>
-                                                <TableCell colSpan={5} className="text-center py-8 text-gray-500">
-                                                    Nenhum operador encontrado
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )
+                                })
+                            ) : (
+                                <div className="col-span-full text-center py-12">
+                                    <div className="text-gray-400 mb-4">
+                                        <Users className="h-16 w-16 mx-auto" />
+                                    </div>
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                        {allOperatorsSearch ? 'Nenhum operador encontrado' : 'Nenhum operador disponível'}
+                                    </h3>
+                                    <p className="text-gray-500">
+                                        {allOperatorsSearch ? 'Tente ajustar os filtros de busca' : 'Crie operadores para começar'}
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     </TabsContent>
 
@@ -974,7 +1111,7 @@ export default function OperadoresPage() {
                                     <p className="text-gray-900">
                                         {getOperatorAssignmentDate(selectedOperator) ? (
                                             <Badge variant="outline" className="text-blue-600 border-blue-200">
-                                                {new Date(getOperatorAssignmentDate(selectedOperator)!).toLocaleDateString('pt-BR')}
+                                                {formatDatePtBr(getOperatorAssignmentDate(selectedOperator)!)}
                                             </Badge>
                                         ) : (
                                             <Badge variant="outline" className="text-gray-500 border-gray-200">
@@ -1275,7 +1412,7 @@ export default function OperadoresPage() {
                                             <strong>Dias selecionados:</strong> {selectedEventDates.length} dia(s)
                                         </p>
                                         <p className="text-xs text-blue-600 mt-1 break-words">
-                                            {selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')).join(', ')}
+                                            {selectedEventDates.map(date => formatDatePtBr(date)).join(', ')}
                                         </p>
                                     </div>
                                 )}
@@ -1437,7 +1574,7 @@ export default function OperadoresPage() {
                                     <h3 className="font-medium text-blue-800">Dias de Atribuição</h3>
                                     <p className="text-blue-600">
                                         {selectedEventDates.length > 0
-                                            ? selectedEventDates.map(date => new Date(date).toLocaleDateString('pt-BR')).join(', ')
+                                            ? selectedEventDates.map(date => formatDatePtBr(date)).join(', ')
                                             : 'Sem datas específicas'
                                         }
                                     </p>

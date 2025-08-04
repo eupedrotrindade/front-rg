@@ -19,6 +19,22 @@ apiClient.interceptors.request.use(
       config.headers.set("Content-Type", "application/json");
     }
 
+    // Garantir que arrays sejam enviados corretamente
+    if (config.data && typeof config.data === "object") {
+      // Verificar se há arrays nos dados
+      const hasArrays = Object.values(config.data).some((value) =>
+        Array.isArray(value)
+      );
+      if (hasArrays) {
+        console.log("🔍 Dados contêm arrays, verificando serialização...");
+        console.log("📤 Dados originais:", config.data);
+
+        // Garantir que os arrays sejam serializados corretamente
+        config.data = JSON.parse(JSON.stringify(config.data));
+        console.log("📤 Dados serializados:", config.data);
+      }
+    }
+
     console.log(`🚀 ${config.method?.toUpperCase()} ${config.url}`);
     console.log("📤 Headers:", config.headers);
     if (config.data) {

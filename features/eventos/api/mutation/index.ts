@@ -8,6 +8,7 @@ export { useDeleteCoordenador } from "./use-delete-coordenador";
 export { useCreateEventVehicle } from "./use-create-event-vehicle";
 export { useUpdateEventVehicle } from "./use-update-event-vehicle";
 export { useDeleteEventVehicle } from "./use-delete-event-vehicle";
+export { useRetrieveEventVehicle } from "./use-retrieve-event-vehicle";
 export { useExportPDF } from "./use-export-pdf";
 
 // Empresas mutations

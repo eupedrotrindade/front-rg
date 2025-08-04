@@ -16,17 +16,18 @@ export default function VeiculoItem({ veiculo, onEdit, onDelete }: VeiculoItemPr
   return (
     <TableRow className="hover:bg-gray-50">
       <TableCell>{veiculo.empresa || "-"}</TableCell>
-      <TableCell>{veiculo.placa || "-"}</TableCell>
       <TableCell>{veiculo.modelo || "-"}</TableCell>
-      <TableCell>{veiculo.credencial || "-"}</TableCell>
+      <TableCell>{veiculo.placa || "-"}</TableCell>
+      <TableCell>{veiculo.tipo_de_credencial || "-"}</TableCell>
       <TableCell>
         <Badge
-          variant={veiculo.status ? "default" : "destructive"}
-          className={veiculo.status ? "bg-green-500 hover:bg-green-600" : "bg-red-500 hover:bg-red-600"}
+          variant={veiculo.retirada === "retirada" ? "default" : "destructive"}
+          className={veiculo.retirada === "retirada" ? "bg-green-500 hover:bg-green-600" : "bg-red-500 hover:bg-red-600"}
         >
-          {veiculo.status ? "Retirada" : "Pendente"}
+          {veiculo.retirada === "retirada" ? "Retirada" : "Pendente"}
         </Badge>
       </TableCell>
+      <TableCell>Dia {veiculo.dia}</TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
           {onEdit && (

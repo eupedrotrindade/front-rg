@@ -1,22 +1,23 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { deleteEventVehicle } from "../../actions/delete-event-vehicle";
+import { retrieveEventVehicle, RetrieveEventVehicleData } from "../../actions/retrieve-event-vehicle";
 import { toast } from "sonner";
 
-export const useDeleteEventVehicle = () => {
+export const useRetrieveEventVehicle = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => deleteEventVehicle(id),
+    mutationFn: ({ id, data }: { id: string; data: RetrieveEventVehicleData }) =>
+      retrieveEventVehicle(id, data),
     onSuccess: () => {
-      toast.success("Veículo removido com sucesso!");
+      toast.success("Veículo retirado com sucesso!");
       // Invalidar todas as queries relacionadas a event-vehicles
       queryClient.invalidateQueries({ queryKey: ["event-vehicles"] });
       queryClient.invalidateQueries({ queryKey: ["event-vehicles-by-event"] });
     },
     onError: (error: any) => {
-      console.error("Erro ao remover veículo:", error);
-      const message = error?.response?.data?.error || "Erro ao remover veículo";
+      console.error("Erro ao retirar veículo:", error);
+      const message = error?.response?.data?.error || "Erro ao retirar veículo";
       toast.error(message);
     },
   });
-};
+}; 

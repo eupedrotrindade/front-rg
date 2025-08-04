@@ -3,10 +3,11 @@ import { EventVehicle } from "./create-event-vehicle";
 
 export interface UpdateEventVehicleData {
   empresa?: string;
-  placa?: string;
   modelo?: string;
-  status?: boolean;
-  credencial?: string;
+  placa?: string;
+  tipo_de_credencial?: string;
+  retirada?: "pendente" | "retirada";
+  dia?: string;
 }
 
 export const updateEventVehicle = async (
@@ -15,4 +16,4 @@ export const updateEventVehicle = async (
 ): Promise<EventVehicle> => {
   const response = await apiClient.put(`/event-vehicles/${id}`, data);
   return response.data;
-}; 
+};

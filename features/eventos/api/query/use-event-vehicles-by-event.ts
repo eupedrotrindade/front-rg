@@ -9,6 +9,7 @@ interface UseEventVehiclesByEventParams {
   sortOrder?: "asc" | "desc";
   statusFilter?: "all" | "retirada" | "pendente";
   empresaFilter?: string;
+  diaFilter?: string;
 }
 
 export const useEventVehiclesByEvent = ({
@@ -18,6 +19,7 @@ export const useEventVehiclesByEvent = ({
   sortOrder = "asc",
   statusFilter = "all",
   empresaFilter,
+  diaFilter,
 }: UseEventVehiclesByEventParams) => {
   const {
     data: allVehicles = [],
@@ -31,22 +33,26 @@ export const useEventVehiclesByEvent = ({
         if (search) {
           const searchLower = search.toLowerCase();
           const matchesSearch =
-            vehicle.empresa.toLowerCase().includes(searchLower) ||
-            vehicle.placa.toLowerCase().includes(searchLower) ||
-            vehicle.modelo.toLowerCase().includes(searchLower) ||
-            vehicle.credencial.toLowerCase().includes(searchLower);
+            (vehicle.empresa?.toLowerCase().includes(searchLower) || false) ||
+            (vehicle.placa?.toLowerCase().includes(searchLower) || false) ||
+            (vehicle.modelo?.toLowerCase().includes(searchLower) || false) ||
+            (vehicle.tipo_de_credencial?.toLowerCase().includes(searchLower) || false);
           if (!matchesSearch) return false;
         }
 
         // Filtro por status
         if (statusFilter !== "all") {
-          const isRetirada = statusFilter === "retirada";
-          if (vehicle.status !== isRetirada) return false;
+          if (vehicle.retirada !== statusFilter) return false;
         }
 
         // Filtro por empresa
         if (empresaFilter && empresaFilter !== "all") {
           if (vehicle.empresa !== empresaFilter) return false;
+        }
+
+        // Filtro por dia
+        if (diaFilter && diaFilter !== "all") {
+          if (vehicle.dia !== diaFilter) return false;
         }
 
         return true;

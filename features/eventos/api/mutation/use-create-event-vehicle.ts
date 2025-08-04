@@ -9,8 +9,12 @@ export const useCreateEventVehicle = () => {
     mutationFn: (data: CreateEventVehicleData) => createEventVehicle(data),
     onSuccess: (data, variables) => {
       toast.success("Veículo adicionado com sucesso!");
+      // Invalidar todas as queries relacionadas a event-vehicles
       queryClient.invalidateQueries({
-        queryKey: ["event-vehicles", variables.eventId],
+        queryKey: ["event-vehicles"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["event-vehicles-by-event"],
       });
     },
     onError: (error: any) => {
