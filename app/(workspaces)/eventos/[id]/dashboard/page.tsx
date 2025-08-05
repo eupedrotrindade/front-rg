@@ -7,7 +7,7 @@ import Image from "next/image"
 
 // Hooks existentes
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
-import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands"
+
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
 import { useOperatorsByEvent } from "@/features/operadores/api/query/use-operators-by-event"
 import { useRadios } from "@/features/radio/api/query/use-radios"
@@ -24,6 +24,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 
 // Recharts components
 import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell } from "recharts"
+import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
 
 // Tipos para os dados
 interface Credencial {
@@ -60,7 +61,7 @@ export default function Dashboard() {
 
     // Hooks para buscar dados usando React Query
     const { data: coordenadores = [], isLoading: coordenadoresLoading } = useCoordenadoresByEvent({ eventId })
-    const { data: credenciais = [], isLoading: credenciaisLoading } = useEventWristbandsByEvent(eventId)
+    const { data: credenciais = [], isLoading: credenciaisLoading } = useCredentialsByEvent(eventId)
     const { data: participantes = [], isLoading: participantesLoading } = useEventParticipantsByEvent({
         eventId: String(params.id),
     })
@@ -169,7 +170,7 @@ export default function Dashboard() {
     }
 
     return (
-        <EventLayout eventId={String(params.id)} eventName="Relatório">
+        <EventLayout eventId={String(params.id)} eventName={evento?.name || ''}>
             <div className="min-h-screen bg-slate-50 p-6">
                 {/* Header */}
                 <div className="mb-8">

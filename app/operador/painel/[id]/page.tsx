@@ -2022,13 +2022,7 @@ export default function Painel() {
                                                 >
                                                     <TableCell className="px-6 py-4 whitespace-nowrap text-gray-600">
                                                         <div className="flex items-center">
-                                                            <div className="flex-shrink-0 h-12 w-12">
-                                                                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-md">
-                                                                    <span className="text-sm font-bold text-white">
-                                                                        {getInitials(colab.name)}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
+
                                                             <div className="ml-4">
                                                                 <div className="text-sm font-semibold text-gray-900">
                                                                     {colab.name}

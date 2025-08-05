@@ -57,21 +57,16 @@ export default function EventoDetalhesPage() {
     const [replicatingStaff, setReplicatingStaff] = useState<string | null>(null)
     const [showReplicateDialog, setShowReplicateDialog] = useState(false)
     const [replicateSourceDay, setReplicateSourceDay] = useState<string>('')
-    const [replicateMode, setReplicateMode] = useState<'replace' | 'skip' | 'reset'>('skip')
     const [showProgressDialog, setShowProgressDialog] = useState(false)
     const [progressData, setProgressData] = useState<{
         total: number
         current: number
         processed: number
-        skipped: number
-        reset: number
         currentParticipant: string
     }>({
         total: 0,
         current: 0,
         processed: 0,
-        skipped: 0,
-        reset: 0,
         currentParticipant: ''
     })
 
@@ -567,33 +562,27 @@ export default function EventoDetalhesPage() {
         setShowReplicateDialog(false)
 
         try {
-            console.log('Todos os participantes disponíveis:', participantsArray)
-            console.log('Dia atual selecionado:', selectedDay)
+            // Buscar todos os participantes que trabalham no dia atual (origem)
+            const participantsFromCurrentDay = getParticipantesPorDia(selectedDay)
 
-            // Buscar todos os participantes que trabalham no dia de origem
-            const participantsFromSourceDay = getParticipantesPorDia(replicateSourceDay)
-
-            console.log('Dia de origem:', replicateSourceDay)
-            console.log('Participantes encontrados no dia de origem:', participantsFromSourceDay)
+            console.log('Dia de origem:', selectedDay)
+            console.log('Dia de destino:', replicateSourceDay)
+            console.log('Participantes encontrados no dia de origem:', participantsFromCurrentDay)
 
             // Inicializar dados de progresso
             setProgressData({
-                total: participantsFromSourceDay.length,
+                total: participantsFromCurrentDay.length,
                 current: 0,
                 processed: 0,
-                skipped: 0,
-                reset: 0,
                 currentParticipant: ''
             })
             setShowProgressDialog(true)
 
             let processedCount = 0
-            let skippedCount = 0
-            let resetCount = 0
 
-            // Para cada participante do dia de origem, adicionar ao dia atual
-            for (let i = 0; i < participantsFromSourceDay.length; i++) {
-                const participant = participantsFromSourceDay[i]
+            // Para cada participante do dia atual, adicionar ao dia de destino
+            for (let i = 0; i < participantsFromCurrentDay.length; i++) {
+                const participant = participantsFromCurrentDay[i]
                 const currentParticipantName = participant.name || 'Participante sem nome'
 
                 // Atualizar progresso
@@ -604,49 +593,21 @@ export default function EventoDetalhesPage() {
                 }))
 
                 const currentDaysWork = participant.daysWork || []
-                const alreadyWorksToday = currentDaysWork.includes(selectedDay)
+                const alreadyWorksInDestination = currentDaysWork.includes(replicateSourceDay)
 
-                if (alreadyWorksToday) {
-                    switch (replicateMode) {
-                        case 'skip':
-                            console.log(`Pulando ${participant.name} - já trabalha no dia ${selectedDay}`)
-                            skippedCount++
-                            setProgressData(prev => ({ ...prev, skipped: skippedCount }))
-                            break
-                        case 'replace':
-                            // Manter o dia, mas resetar check-in/check-out se necessário
-                            // TODO: Implementar reset via API
-                            console.log(`Resetando check-in/check-out para ${participant.name} no dia ${selectedDay}`)
-                            resetCount++
-                            processedCount++
-                            setProgressData(prev => ({
-                                ...prev,
-                                reset: resetCount,
-                                processed: processedCount
-                            }))
-                            break
-                        case 'reset':
-                            // TODO: Implementar reset via API
-                            console.log(`Resetando check-in/check-out para ${participant.name} no dia ${selectedDay}`)
-                            resetCount++
-                            processedCount++
-                            setProgressData(prev => ({
-                                ...prev,
-                                reset: resetCount,
-                                processed: processedCount
-                            }))
-                            break
-                    }
+                if (alreadyWorksInDestination) {
+                    // Se já trabalha no dia de destino, apenas limpar dados de check-in/check-out
+                    console.log(`Resetando dados para ${participant.name} no dia ${replicateSourceDay}`)
+                    processedCount++
+                    setProgressData(prev => ({ ...prev, processed: processedCount }))
                 } else {
-                    // Adicionar o dia atual aos dias de trabalho
-                    const updatedDaysWork = [...currentDaysWork, selectedDay]
+                    // Adicionar o dia de destino aos dias de trabalho
+                    const updatedDaysWork = [...currentDaysWork, replicateSourceDay]
 
                     try {
-                        // Atualizar participante via API
-                        console.log(`Adicionando dia ${selectedDay} para ${participant.name}`)
-                        console.log(`Dias de trabalho atualizados: ${updatedDaysWork.join(', ')}`)
+                        // Atualizar participante via API - apenas dados básicos
+                        console.log(`Adicionando dia ${replicateSourceDay} para ${participant.name}`)
 
-                        // Chamar a API para atualizar o participante
                         const updateData = {
                             id: participant.id,
                             eventId: participant.eventId || String(params.id),
@@ -654,6 +615,7 @@ export default function EventoDetalhesPage() {
                             cpf: participant.cpf || '',
                             role: participant.role || '',
                             company: participant.company || '',
+                            credentialId: participant.credentialId || undefined,
                             daysWork: updatedDaysWork
                         }
 
@@ -685,7 +647,7 @@ export default function EventoDetalhesPage() {
                 setReplicatingStaff(null)
 
                 toast.success(
-                    `Replicação concluída! ${processedCount} processados, ${skippedCount} pulados, ${resetCount} resetados.`
+                    `Replicação concluída! ${processedCount} participantes processados para ${replicateSourceDay}.`
                 )
             }, 1000)
 
@@ -1006,22 +968,22 @@ export default function EventoDetalhesPage() {
                             Replicar Participantes
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Escolha o dia de origem e como tratar participantes que já trabalham no dia atual.
+                            Escolha a nova data para onde os participantes serão replicados.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
 
                     <div className="space-y-4 py-4">
-                        {/* Seleção do dia de origem */}
+                        {/* Seleção da nova data */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Dia de Origem
+                                Nova Data
                             </label>
                             <select
                                 value={replicateSourceDay}
                                 onChange={(e) => setReplicateSourceDay(e.target.value)}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                             >
-                                <option value="">Selecione um dia</option>
+                                <option value="">Selecione uma data</option>
                                 {getEventDays().map((day) => (
                                     <option key={day.id} value={day.id}>
                                         {day.label}
@@ -1030,57 +992,15 @@ export default function EventoDetalhesPage() {
                             </select>
                         </div>
 
-                        {/* Opções de tratamento de dados existentes */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Se o staff já trabalha no dia atual:
-                            </label>
-                            <div className="space-y-2">
-                                <label className="flex items-center">
-                                    <input
-                                        type="radio"
-                                        name="replicateMode"
-                                        value="skip"
-                                        checked={replicateMode === 'skip'}
-                                        onChange={(e) => setReplicateMode(e.target.value as 'replace' | 'skip' | 'reset')}
-                                        className="mr-2 text-green-600 focus:ring-green-500"
-                                    />
-                                    <span className="text-sm text-gray-700">Pular (manter como está)</span>
-                                </label>
-                                <label className="flex items-center">
-                                    <input
-                                        type="radio"
-                                        name="replicateMode"
-                                        value="replace"
-                                        checked={replicateMode === 'replace'}
-                                        onChange={(e) => setReplicateMode(e.target.value as 'replace' | 'skip' | 'reset')}
-                                        className="mr-2 text-green-600 focus:ring-green-500"
-                                    />
-                                    <span className="text-sm text-gray-700">Resetar check-in/check-out</span>
-                                </label>
-                                <label className="flex items-center">
-                                    <input
-                                        type="radio"
-                                        name="replicateMode"
-                                        value="reset"
-                                        checked={replicateMode === 'reset'}
-                                        onChange={(e) => setReplicateMode(e.target.value as 'replace' | 'skip' | 'reset')}
-                                        className="mr-2 text-green-600 focus:ring-green-500"
-                                    />
-                                    <span className="text-sm text-gray-700">Resetar check-in/check-out</span>
-                                </label>
-                            </div>
-                        </div>
-
                         {/* Informações sobre a replicação */}
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-2">
-                                <Users className="h-4 w-4 text-blue-600" />
-                                <span className="text-sm font-medium text-blue-800">Como funciona</span>
+                                <Users className="h-4 w-4 text-yellow-600" />
+                                <span className="text-sm font-medium text-yellow-800">Atenção</span>
                             </div>
-                            <div className="text-xs text-blue-700">
-                                Serão trazidos todos os participantes (coordenadores, organizadores, etc.)
-                                que trabalham no dia selecionado para o dia atual.
+                            <div className="text-xs text-yellow-700">
+                                Serão levados apenas: NOME, CPF, FUNÇÃO, EMPRESA e TIPO DE CREDENCIAL.
+                                Todos os dados de check-in/check-out serão limpos na nova data.
                             </div>
                         </div>
                     </div>
@@ -1092,7 +1012,7 @@ export default function EventoDetalhesPage() {
                             disabled={!replicateSourceDay}
                             className="bg-green-600 hover:bg-green-700"
                         >
-                            {replicatingStaff ? "Replicando..." : "Replicar Participantes"}
+                            {replicatingStaff ? "Replicando..." : "Confirmar Replicação"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -1100,7 +1020,7 @@ export default function EventoDetalhesPage() {
 
             {/* Popup de Progresso */}
             <AlertDialog open={showProgressDialog} onOpenChange={setShowProgressDialog}>
-                <AlertDialogContent className="max-w-md">
+                <AlertDialogContent className="max-w-md bg-white text-black">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
@@ -1141,19 +1061,9 @@ export default function EventoDetalhesPage() {
                         )}
 
                         {/* Estatísticas */}
-                        <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div className="bg-green-50 border border-green-200 rounded p-2 text-center">
-                                <div className="font-bold text-green-700">{progressData.processed}</div>
-                                <div className="text-xs text-green-600">Processados</div>
-                            </div>
-                            <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-center">
-                                <div className="font-bold text-yellow-700">{progressData.skipped}</div>
-                                <div className="text-xs text-yellow-600">Pulados</div>
-                            </div>
-                            <div className="bg-orange-50 border border-orange-200 rounded p-2 text-center">
-                                <div className="font-bold text-orange-700">{progressData.reset}</div>
-                                <div className="text-xs text-orange-600">Resetados</div>
-                            </div>
+                        <div className="bg-green-50 border border-green-200 rounded p-3 text-center">
+                            <div className="font-bold text-green-700 text-lg">{progressData.processed}</div>
+                            <div className="text-sm text-green-600">Participantes processados</div>
                         </div>
                     </div>
                 </AlertDialogContent>
