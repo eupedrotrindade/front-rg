@@ -55,7 +55,7 @@ const OperadorLoginPage = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                     <div className="text-center">
                         <Image
-                            src="/placeholder.svg?height=64&width=160&text=RG+Logo"
+                            src="/images/logo-rg.png"
                             alt="Logo RG"
                             className="mx-auto mb-4 h-16 w-auto drop-shadow-lg"
                             width={160}
@@ -89,7 +89,7 @@ const OperadorLoginPage = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                     <div className="text-center">
                         <Image
-                            src="/placeholder.svg?height=48&width=160&text=RG+Produções"
+                            src="/images/slogan-rg.png"
                             width={160}
                             height={48}
                             alt="Se tem RG, é sucesso!"
