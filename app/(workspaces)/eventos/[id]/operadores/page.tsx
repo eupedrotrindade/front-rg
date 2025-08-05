@@ -430,7 +430,7 @@ export default function OperadoresPage() {
 
                     await apiClient.put(`/operadores/${operatorId}`, {
                         nome: operator.nome,
-                        cpf: unformatCpf(operator.cpf),
+                        cpf: operator.cpf,
                         senha: operator.senha,
                         id_events: newEvents.join(',')
                     })

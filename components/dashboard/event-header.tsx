@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Menu, Settings } from 'lucide-react'
+import { DoorOpen, Menu, Settings } from 'lucide-react'
 
 interface EventHeaderProps {
     eventName?: string
@@ -51,9 +51,9 @@ const EventHeader = ({ eventName, onMobileMenuOpen }: EventHeaderProps) => {
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                         <span>Evento Ativo</span>
                     </div>
-                    <Button variant="outline" size="sm">
-                        <Settings className="w-4 h-4 mr-2" />
-                        Configurações
+                    <Button variant="outline" size="sm" onClick={() => router.push(`/operador`)}>
+                        <DoorOpen className="w-4 h-4 mr-2" />
+                        Credenciamento
                     </Button>
                 </div>
             </div>

@@ -16,36 +16,31 @@ import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import apiClient from "@/lib/api-client"
-import { formatCpf, isValidCpf } from "@/lib/utils"
 import { toast } from "sonner"
 import Image from "next/image"
-import { Loader2, Filter, Download, Upload, Plus, Search, Check, Clock, User, Calendar, X, RefreshCw, CreditCard } from "lucide-react"
+import { Loader2, Filter, Download, Plus, Search, Check, Clock, User, Calendar, X, RefreshCw, CreditCard } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
 import type { EventParticipant } from "@/features/eventos/types"
 import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
 import {
     updateEventParticipant,
-    getEventOperatorPermissions,
-    getOperatorEventPermissions,
-    setOperatorEventPermissions,
-    removeOperatorEventPermissions,
-    checkOperatorDatePermission,
+
+
 } from "@/features/eventos/actions/update-event-participant"
-import { getEventAttendance } from "@/features/eventos/actions/event-attendance"
 import { useCheckIn, useCheckOut, useAttendanceStatus } from "@/features/eventos/api/mutation/use-check-operations"
 import { useEventAttendanceByEventAndDate } from "@/features/eventos/api/query/use-event-attendance"
-import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands"
-import { useEventWristbandModels } from "@/features/eventos/api/query/use-event-wristband-models"
+
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import ModalTrocaPulseira from "@/components/operador/modalTrocaPulseira"
 import { changeCredentialCode } from "@/features/eventos/actions/movement-credentials"
+import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
 
 export default function Painel() {
 
     // TODOS OS useState PRIMEIRO
     const [filtro, setFiltro] = useState({ nome: "", cpf: "", pulseira: "", empresa: "", funcao: "" });
-    const [colunasExtras, setColunasExtras] = useState<string[]>([]);
+
     const [selectedParticipant, setSelectedParticipant] = useState<EventParticipant | null>(null);
     const [modalAberto, setModalAberto] = useState(false);
     const [nomeEvento, setNomeEvento] = useState<string>("");
@@ -172,9 +167,7 @@ export default function Painel() {
         isError: participantsError,
         error: participantsErrorObj,
     } = useEventParticipantsByEvent({ eventId });
-    const { data: wristbands = [] } = useEventWristbandsByEvent(params?.id as string);
-    const { data: wristbandModels = [] } = useEventWristbandModels();
-
+    const { data: credential = [] } = useCredentialsByEvent(eventId)
     // Hooks para operações de check-in/check-out
     const checkInMutation = useCheckIn();
     const checkOutMutation = useCheckOut();
@@ -186,21 +179,6 @@ export default function Painel() {
     );
 
     // TODOS OS useMemo DEPOIS DOS HOOKS DE DADOS
-    const wristbandMap = useMemo(() => {
-        const map: Record<string, string> = {};
-        wristbands.forEach(w => {
-            map[w.id] = w.code;
-        });
-        return map;
-    }, [wristbands]);
-
-    const wristbandModelMap = useMemo(() => {
-        const map: Record<string, typeof wristbandModels[0]> = {};
-        wristbandModels.forEach((model: any) => {
-            map[model.id] = model;
-        });
-        return map;
-    }, [wristbandModels]);
 
     // TODOS OS useCallback DEPOIS DOS useMemo
     const generateFilterHash = useCallback((filtro: any, selectedDay: string, filtroAvancado: any) => {
@@ -383,7 +361,7 @@ export default function Painel() {
                 const dateStr = date.toLocaleDateString('pt-BR');
                 console.log("🔍 Adicionando dia de montagem:", dateStr);
                 days.push({
-                    id: `setup_${dateStr}`,
+                    id: `${dateStr}`,
                     label: `${dateStr} (MONTAGEM)`,
                     date: dateStr,
                     type: 'setup'
@@ -704,22 +682,6 @@ export default function Painel() {
 
     // Adicione após os outros useCallback, antes dos useEffect:
 
-    const carregarPermissoesOperador = useCallback(async () => {
-        if (!operadorInfo?.id) return;
-        try {
-            const permissions = await getOperatorEventPermissions(eventId, operadorInfo.id);
-            setOperatorPermissions(permissions);
-            if (permissions) {
-                setAvailableDatesForOperator(permissions.allowedDates);
-            } else {
-                setAvailableDatesForOperator(getEventDays().map(day => day.id));
-            }
-        } catch (error) {
-            console.error("Erro ao carregar permissões:", error);
-            setAvailableDatesForOperator(getEventDays().map(day => day.id));
-        }
-    }, [operadorInfo?.id, eventId, getOperatorEventPermissions, getEventDays]);
-
     // TODOS OS useMemo DEPOIS DOS useCallback
     const filtrarColaboradores = useMemo(() => {
         const filterHash = generateFilterHash(filtro, selectedDay, filtroAvancado);
@@ -741,11 +703,11 @@ export default function Painel() {
                 (cpfSemPontuacao && buscaSemPontuacao && cpfSemPontuacao === buscaSemPontuacao) ||
                 (buscaSemPontuacao.length >= 3 && cpfSemPontuacao?.includes(buscaSemPontuacao))
             );
-            const pulseiraMatch = colab.wristbandId?.toLowerCase() === filtro.nome.toLowerCase();
+            const credentialMatch = colab.credentialId?.toLowerCase() === filtro.nome.toLowerCase();
             const empresaMatch = filtro.empresa ? colab.company === filtro.empresa : true;
             const funcaoMatch = filtro.funcao ? colab.role === filtro.funcao : true;
 
-            let match = (nomeMatch || cpfMatch || pulseiraMatch) && empresaMatch && funcaoMatch;
+            let match = (nomeMatch || cpfMatch || credentialMatch) && empresaMatch && funcaoMatch;
 
             Object.entries(filtroAvancado).forEach(([campo, valor]) => {
                 const colabValue = (colab as any)[campo];
@@ -881,25 +843,7 @@ export default function Painel() {
             router.push("/");
             return;
         }
-        if (participantsError) {
-            console.error("❌ Erro ao carregar colaboradores:", participantsErrorObj);
-            setColunasExtras([]);
-            return;
-        }
-        if (!participantsData || participantsData.length === 0) {
-            setColunasExtras([]);
-            return;
-        }
 
-        if (participantsData.length > 0) {
-            const chaves = Object.keys(participantsData[0]);
-            const indexEmpresa = chaves.indexOf("empresa");
-            const indexPulseira = chaves.indexOf("pulseira_codigo");
-            if (indexEmpresa !== -1 && indexPulseira !== -1) {
-                const extras = chaves.slice(indexEmpresa + 1, indexPulseira);
-                setColunasExtras(extras);
-            }
-        }
     }, [eventId, participantsError, participantsErrorObj, participantsData, router]);
 
     // useEffect para gerenciar cache
@@ -921,12 +865,7 @@ export default function Painel() {
         setTotalItems(paginatedData.total);
     }, [paginatedData.total]);
 
-    // useEffect para carregar permissões do operador
-    useEffect(() => {
-        if (operadorInfo?.id && eventId) {
-            carregarPermissoesOperador();
-        }
-    }, [operadorInfo?.id, eventId]);
+
 
     // useEffect para definir o primeiro dia disponível como selecionado
     useEffect(() => {
@@ -939,7 +878,6 @@ export default function Painel() {
     // Variáveis computadas
     const empresasUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.company))];
     const funcoesUnicas = [...new Set(participantsData.map((c: EventParticipant) => c.role))];
-    const tiposCredencialUnicos = [...new Set(participantsData.map((c: EventParticipant) => c.wristbandId).filter(Boolean))];
 
     const empresasUnicasFiltradas = Array.from(new Set(empresasUnicas)).filter(
         (e): e is string => typeof e === "string" && !!e && e.trim() !== ""
@@ -947,9 +885,7 @@ export default function Painel() {
     const funcoesUnicasFiltradas = Array.from(new Set(funcoesUnicas)).filter(
         (f): f is string => typeof f === "string" && !!f && f.trim() !== ""
     );
-    const tiposCredencialUnicosFiltrados = Array.from(new Set(tiposCredencialUnicos)).filter(
-        (tipo): tipo is string => typeof tipo === "string" && !!tipo && tipo.trim() !== ""
-    );
+    const tiposCredencialUnicosFiltrados = credential.map(c => c.nome);
 
     // Normalizar dias dos participantes após carregar os dados
     useEffect(() => {
@@ -1247,6 +1183,8 @@ export default function Painel() {
                 performedByCpf: operadorInfo.cpf,
                 details: acao.details,
                 timestamp: new Date().toISOString(),
+                description: acao.details,
+
             });
         } catch (error) {
             console.error("Erro ao registrar ação:", error);
@@ -1371,9 +1309,8 @@ export default function Painel() {
                 staffName: participantAction.name,
                 pulseira: novaPulseira.trim(),
                 credencial: (() => {
-                    const wristband = wristbands.find(w => w.id === participantAction.wristbandId);
-                    const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
-                    return wristbandModel?.credentialType || '';
+                    const credentialSelected = credential.find(w => w.id === participantAction.credentialId);
+                    return credentialSelected?.nome || '';
                 })()
             });
         } catch (error) {
@@ -1410,12 +1347,12 @@ export default function Painel() {
             toast.error("Já existe um staff cadastrado com este CPF.");
             return;
         }
-
+        const credentialSelected = credential.find(w => w.nome === novoStaff.tipo_credencial);
         setLoading(true);
         try {
             await createEventParticipant({
                 eventId: params?.id as string,
-                wristbandId: novoStaff.tipo_credencial,
+                credentialId: credentialSelected?.id || '',
                 name: novoStaff.name,
                 cpf: novoStaff.cpf,
                 role: novoStaff.funcao,
@@ -1432,8 +1369,8 @@ export default function Painel() {
                 type: "add_staff",
                 staffName: novoStaff.name,
                 credencial: (() => {
-                    const wristbandModel = wristbandModelMap[novoStaff.tipo_credencial];
-                    return wristbandModel?.credentialType || '';
+                    const credentialSelected = credential.find(w => w.id === novoStaff.tipo_credencial);
+                    return credentialSelected?.nome || '';
                 })()
             });
             toast.success("Novo staff adicionado com sucesso!");
@@ -1692,17 +1629,13 @@ export default function Painel() {
 
     // Função utilitária para obter a credencial do participante
     const getCredencial = (colab: EventParticipant): string => {
-        const wristband = wristbands.find(w => w.id === colab.wristbandId);
-        const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
-        if (wristband && wristbandModel) {
-            return wristbandModel.credentialType;
-        } else if ((colab as any).credentialType) {
-            return (colab as any).credentialType;
-        } else if (colab.wristbandId) {
-            return colab.wristbandId;
+        const credentialSelected = credential.find(w => w.id === colab.credentialId);
+        if (credentialSelected) {
+            return credentialSelected.nome;
         } else {
             return 'SEM CREDENCIAL';
         }
+
     };
 
 
@@ -2008,8 +1941,7 @@ export default function Painel() {
                                     ) : (
                                         paginatedData.data.map((colab: EventParticipant, index: number) => {
                                             const botaoTipo = getBotaoAcao(colab);
-                                            const wristband = wristbands.find(w => w.id === colab.wristbandId);
-                                            const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
+                                            const credentialSelected = credential.find(w => w.id === colab.credentialId);
 
                                             return (
                                                 <TableRow
@@ -2425,11 +2357,10 @@ export default function Painel() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             {tiposCredencialUnicosFiltrados.map((tipo, idx) => {
-                                                const wristband = wristbands.find(w => w.id === tipo);
-                                                const wristbandModel = wristband ? wristbandModelMap[wristband.wristbandModelId] : undefined;
+
                                                 return (
                                                     <SelectItem key={idx} value={tipo}>
-                                                        {wristbandModel?.credentialType || tipo}
+                                                        {tipo}
                                                     </SelectItem>
                                                 );
                                             })}
@@ -2774,103 +2705,6 @@ export default function Painel() {
                         </DialogContent>
                     </Dialog>
 
-                    {/* MODAL GERENCIAR PERMISSÕES DE OPERADORES */}
-                    <Dialog open={showPermissionModal} onOpenChange={setShowPermissionModal}>
-                        <DialogContent className="max-w-2xl bg-gradient-to-br from-white to-blue-50 border-0 shadow-2xl">
-                            <DialogHeader className="pb-6">
-                                <DialogTitle className="flex items-center gap-3 text-xl font-bold text-gray-900">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
-                                        <User className="w-5 h-5 text-white" />
-                                    </div>
-                                    Gerenciar Permissões de Operador
-                                </DialogTitle>
-                                <DialogDescription className="text-gray-600">
-                                    Configure quais dias este operador pode acessar
-                                </DialogDescription>
-                            </DialogHeader>
-
-                            {selectedOperatorForPermissions && (
-                                <div className="space-y-6">
-                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
-                                        <h3 className="font-semibold text-blue-900 mb-2">Operador Selecionado</h3>
-                                        <p className="text-blue-800">{selectedOperatorForPermissions.nome}</p>
-                                        <p className="text-sm text-blue-600">ID: {selectedOperatorForPermissions.id}</p>
-                                    </div>
-
-                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                        <h4 className="font-semibold text-gray-900 mb-4">Dias Disponíveis do Evento</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            {getEventDays().filter(day => day.id !== 'all').map((day) => (
-                                                <Button
-                                                    key={day.id}
-                                                    type="button"
-                                                    variant={availableDatesForOperator.includes(day.id) ? "default" : "outline"}
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        const newDates = availableDatesForOperator.includes(day.id)
-                                                            ? availableDatesForOperator.filter(d => d !== day.id)
-                                                            : [...availableDatesForOperator, day.id];
-                                                        setAvailableDatesForOperator(newDates);
-                                                    }}
-                                                    className={`text-xs transition-all duration-200 ${availableDatesForOperator.includes(day.id)
-                                                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md"
-                                                        : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:border-blue-300 shadow-sm"
-                                                        }`}
-                                                >
-                                                    {day.label}
-                                                </Button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {availableDatesForOperator.length > 0 && (
-                                        <div className="bg-gradient-to-r from-green-100 to-emerald-100 border border-green-300 rounded-lg p-4">
-                                            <p className="text-sm text-green-800 font-medium">
-                                                <strong>Dias selecionados:</strong> {availableDatesForOperator.join(', ')}
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    <div className="flex gap-4 pt-6">
-                                        <Button
-                                            onClick={() => {
-                                                setShowPermissionModal(false);
-                                                setSelectedOperatorForPermissions(null);
-                                                setAvailableDatesForOperator([]);
-                                            }}
-                                            variant="outline"
-                                            className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
-                                        >
-                                            Cancelar
-                                        </Button>
-                                        <Button
-                                            onClick={async () => {
-                                                if (selectedOperatorForPermissions) {
-                                                    try {
-                                                        await setOperatorEventPermissions(
-                                                            eventId,
-                                                            selectedOperatorForPermissions.id,
-                                                            availableDatesForOperator,
-                                                            operadorInfo?.nome
-                                                        );
-                                                        toast.success("Permissões atualizadas com sucesso!");
-                                                        setShowPermissionModal(false);
-                                                        setSelectedOperatorForPermissions(null);
-                                                        setAvailableDatesForOperator([]);
-                                                    } catch (error) {
-                                                        toast.error("Erro ao atualizar permissões.");
-                                                    }
-                                                }
-                                            }}
-                                            className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                                        >
-                                            Salvar Permissões
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-                        </DialogContent>
-                    </Dialog>
 
                     {/* Modal de Troca de Pulseira */}
                     <Dialog open={popupTrocaPulseira} onOpenChange={setPopupTrocaPulseira}>
