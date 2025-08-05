@@ -341,3 +341,73 @@ export interface EventAttendanceStats {
     checkOuts: number;
   }[];
 }
+
+export interface ImportRequest {
+  id: string;
+  eventId: string;
+  empresaId: string;
+  fileName: string;
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  duplicateRows: number;
+  status: "pending" | "approved" | "rejected" | "completed";
+  requestedBy: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  notes?: string;
+  data: Array<{
+    cpf: string;
+    nome: string;
+    funcao: string;
+    empresa: string;
+    credencial: string;
+  }>;
+  errors: Array<{ item: Record<string, unknown>; error: string; row: number }>;
+  duplicates: Array<{
+    item: Record<string, unknown>;
+    existing: Record<string, unknown>;
+    row: number;
+  }>;
+  missingCredentials: Array<{ name: string; count: number }>;
+  missingCompanies: Array<{ name: string; count: number }>;
+  createdAt: string;
+  updatedAt?: string;
+  empresa?: { nome: string };
+  event?: { name: string };
+}
+
+export interface CreateImportRequestRequest {
+  eventId: string;
+  empresaId: string;
+  fileName: string;
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  duplicateRows: number;
+  data: Array<{
+    cpf: string;
+    nome: string;
+    funcao: string;
+    empresa: string;
+    credencial: string;
+  }>;
+  errors: Array<{ item: Record<string, unknown>; error: string; row: number }>;
+  duplicates: Array<{
+    item: Record<string, unknown>;
+    existing: Record<string, unknown>;
+    row: number;
+  }>;
+  missingCredentials: Array<{ name: string; count: number }>;
+  missingCompanies: Array<{ name: string; count: number }>;
+  requestedBy: string;
+}
+
+export interface ApproveImportRequestRequest {
+  approvedBy: string;
+}
+
+export interface RejectImportRequestRequest {
+  approvedBy: string;
+  reason: string;
+}

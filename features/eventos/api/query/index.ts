@@ -50,3 +50,9 @@ export { useCoordenadoresByEvent } from "./use-coordenadores-by-event";
 
 // Radios queries
 export { useRadios, useRadio } from "../../../radio/api/query/use-radios";
+
+// Import Requests queries
+export {
+  useImportRequestsByEvent,
+  useAllImportRequests,
+} from "./use-import-requests";

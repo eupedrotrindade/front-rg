@@ -549,7 +549,7 @@ export default function EmpresasPage() {
                                                                 <MoreHorizontal className="w-4 h-4" />
                                                             </Button>
                                                         </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end" className="w-48">
+                                                        <DropdownMenuContent align="end" className="w-48 bg-white text-black border-gray-200">
                                                             <DropdownMenuItem
                                                                 onClick={() => copyPublicUrl(empresa)}
                                                                 className="cursor-pointer"

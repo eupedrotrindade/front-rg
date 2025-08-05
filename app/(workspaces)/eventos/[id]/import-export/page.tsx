@@ -40,7 +40,9 @@ import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credenti
 import { useCreateCredential } from "@/features/eventos/api/mutation/use-credential-mutations"
 import { useEmpresas } from "@/features/eventos/api/query/use-empresas"
 import { useCreateEmpresa } from "@/features/eventos/api/mutation"
-import type { EventParticipant, CreateCredentialRequest, CreateEmpresaRequest } from "@/features/eventos/types"
+import { useCreateImportRequest } from "@/features/eventos/api/mutation/use-create-import-request"
+import { useImportRequestsByEvent } from "@/features/eventos/api/query/use-import-requests"
+import type { EventParticipant, CreateCredentialRequest, CreateEmpresaRequest, CreateImportRequestRequest } from "@/features/eventos/types"
 import type { EventParticipantSchema } from "@/features/eventos/schemas"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
@@ -91,7 +93,7 @@ type ImportStep = "date" | "upload" | "preview" | "validation" | "creation" | "i
 export default function ImportExportPage() {
     const params = useParams()
     const eventId = params.id as string
-    const [activeTab, setActiveTab] = useState<"import" | "export">("import")
+    const [activeTab, setActiveTab] = useState<"import" | "export" | "requests">("import")
 
     // Import States
     const [currentStep, setCurrentStep] = useState<ImportStep>("date")
@@ -150,6 +152,10 @@ export default function ImportExportPage() {
     const { mutate: createEmpresa } = useCreateEmpresa()
     const { data: eventos = [] } = useEventos()
     const evento = Array.isArray(eventos) ? eventos.find((e) => e.id === eventId) : null
+
+    // Import Request hooks
+    const { mutate: createImportRequest } = useCreateImportRequest()
+    const { data: importRequests = [] } = useImportRequestsByEvent(eventId)
 
     // Keyboard shortcuts
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -748,6 +754,35 @@ export default function ImportExportPage() {
         }
     }
 
+    const handleCreateImportRequest = async () => {
+        if (!processedData || selectedEventDates.length === 0) return
+
+        try {
+            const importRequestData: CreateImportRequestRequest = {
+                eventId,
+                empresaId: "empresa-id", // Será obtido do contexto da empresa
+                fileName: processedData.fileName,
+                totalRows: processedData.totalRows,
+                validRows: processedData.validRows,
+                invalidRows: processedData.invalidRows,
+                duplicateRows: processedData.duplicateRows,
+                data: processedData.data,
+                errors: processedData.errors,
+                duplicates: processedData.duplicates,
+                missingCredentials: processedData.missingCredentials,
+                missingCompanies: processedData.missingCompanies,
+                requestedBy: "user-id" // Será obtido do contexto do usuário
+            }
+
+            createImportRequest(importRequestData)
+            setCurrentStep("complete")
+            toast.success("Solicitação de importação criada com sucesso! Aguarde a aprovação do administrador.")
+        } catch (error) {
+            toast.error("Erro ao criar solicitação de importação")
+            console.error(error)
+        }
+    }
+
     const handleStartImport = async () => {
         if (!processedData || selectedEventDates.length === 0) return
 
@@ -1007,12 +1042,16 @@ export default function ImportExportPage() {
                                 <Download className="w-4 h-4 mr-2" />
                                 Exportar
                             </Button>
+                            <Button variant="outline" size="sm" onClick={() => setActiveTab("requests")}>
+                                <FileText className="w-4 h-4 mr-2" />
+                                Solicitações
+                            </Button>
                             <div className="text-xs text-gray-500 flex items-center gap-1">
                                 <span>Ctrl+I</span>
                                 <span>•</span>
                                 <span>Ctrl+E</span>
                                 <span>•</span>
-                                <span>Ctrl+O</span>
+                                <span>Ctrl+R</span>
                             </div>
                         </div>
                     </div>
@@ -1038,6 +1077,14 @@ export default function ImportExportPage() {
                     >
                         <Download className="w-4 h-4 mr-2 inline" />
                         Exportar
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("requests")}
+                        className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === "requests" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                            }`}
+                    >
+                        <FileText className="w-4 h-4 mr-2 inline" />
+                        Solicitações
                     </button>
                 </div>
 
@@ -1681,14 +1728,27 @@ export default function ImportExportPage() {
                                 </Card>
 
                                 {!isImporting && (
-                                    <div className="text-center">
+                                    <div className="text-center space-y-4">
+                                        <Button
+                                            onClick={handleCreateImportRequest}
+                                            className="bg-purple-600 hover:bg-purple-700"
+                                            disabled={!processedData || processedData.validRows === 0}
+                                        >
+                                            <FileText className="w-4 h-4 mr-2" />
+                                            Criar Solicitação de Importação ({processedData?.validRows || 0} participantes)
+                                        </Button>
+                                        <div className="text-sm text-gray-600">
+                                            A solicitação será enviada para aprovação do administrador
+                                        </div>
+                                        <Separator />
                                         <Button
                                             onClick={handleStartImport}
-                                            className="bg-green-600 hover:bg-green-700"
+                                            variant="outline"
+                                            className="bg-transparent"
                                             disabled={!processedData || processedData.validRows === 0}
                                         >
                                             <Upload className="w-4 h-4 mr-2" />
-                                            Iniciar Importação ({processedData?.validRows || 0} participantes)
+                                            Importar Diretamente ({processedData?.validRows || 0} participantes)
                                         </Button>
                                     </div>
                                 )}
@@ -1803,6 +1863,93 @@ export default function ImportExportPage() {
                                     </p>
                                     <p>• Dados incluídos: nome, CPF, empresa, função, email, telefone, dias de trabalho, etc.</p>
                                 </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+
+                {/* Requests Tab */}
+                {activeTab === "requests" && (
+                    <div className="space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center space-x-2">
+                                    <FileText className="h-5 w-5" />
+                                    <span>Solicitações de Importação</span>
+                                    <Badge variant="outline" className="ml-2">
+                                        {importRequests.length} solicitações
+                                    </Badge>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {importRequests.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {importRequests.map((request) => (
+                                            <div
+                                                key={request.id}
+                                                className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                                            >
+                                                <div className="flex items-center space-x-4">
+                                                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                                                        <FileText className="h-5 w-5 text-white" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-medium text-gray-900">
+                                                            {request.fileName}
+                                                        </h3>
+                                                        <p className="text-sm text-gray-600">
+                                                            {request.empresa?.nome} - {request.event?.name}
+                                                        </p>
+                                                        <div className="flex items-center space-x-4 mt-1">
+                                                            <span className="text-xs text-gray-500">
+                                                                {request.validRows} válidos, {request.invalidRows} inválidos
+                                                            </span>
+                                                            <span className="text-xs text-gray-500">
+                                                                {request.duplicateRows} duplicatas
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center space-x-4">
+                                                    <Badge
+                                                        variant={
+                                                            request.status === 'pending' ? 'secondary' :
+                                                                request.status === 'approved' ? 'default' :
+                                                                    request.status === 'rejected' ? 'destructive' :
+                                                                        'outline'
+                                                        }
+                                                        className={
+                                                            request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                                request.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                                                    request.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                                                        'bg-gray-100 text-gray-800'
+                                                        }
+                                                    >
+                                                        {request.status === 'pending' ? 'Pendente' :
+                                                            request.status === 'approved' ? 'Aprovada' :
+                                                                request.status === 'rejected' ? 'Rejeitada' :
+                                                                    'Concluída'}
+                                                    </Badge>
+
+                                                    <div className="text-xs text-gray-500">
+                                                        {new Date(request.createdAt).toLocaleDateString('pt-BR')}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8">
+                                        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                            Nenhuma solicitação encontrada
+                                        </h3>
+                                        <p className="text-gray-600">
+                                            As solicitações de importação aparecerão aqui.
+                                        </p>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     </div>

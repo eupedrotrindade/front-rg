@@ -23,7 +23,8 @@ import {
     Car,
     Building,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    FileText
 } from 'lucide-react'
 
 interface EventSidebarProps {
@@ -95,6 +96,12 @@ const EventSidebar = ({
             href: `/eventos/${eventId}/empresas`,
             icon: Building,
             description: 'Empresas vinculadas ao evento'
+        },
+        {
+            name: 'Solicitações',
+            href: `/eventos/${eventId}/solicitacao`,
+            icon: FileText,
+            description: 'Solicitações de importação'
         },
         {
             name: 'Relatórios',

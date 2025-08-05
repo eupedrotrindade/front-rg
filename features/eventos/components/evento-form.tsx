@@ -575,7 +575,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                         </CardContent>
                     </Card>
 
-                    {/* Configurações */}
+                    {/* Configurações
                     <Card className="border-purple-200">
                         <CardHeader className="bg-purple-50">
                             <CardTitle className="flex items-center gap-2 text-[#610e5c]">
@@ -610,7 +610,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                 />
                             </div>
 
-                            {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <FormField
                                     control={form.control}
                                     name="capacity"
@@ -652,7 +652,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                         </FormItem>
                                     )}
                                 />
-                            </div> */}
+                            </div> 
 
                             <FormField
                                 control={form.control}
@@ -699,7 +699,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
 
 
                         </CardContent>
-                    </Card>
+                    </Card> */}
 
                     {/* Botões de ação */}
                     <div className="flex justify-end space-x-3 pt-6 border-t">

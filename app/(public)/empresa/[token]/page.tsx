@@ -4,22 +4,52 @@ import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Building, Users, Calendar, MapPin, Phone, Mail, User, Clock, CheckCircle, XCircle } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Building, Users, Calendar, MapPin, Phone, Mail, User, Clock, CheckCircle, XCircle, Upload, FileSpreadsheet, Download, AlertCircle, Loader2, FileText, Check, X, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { useParams } from "next/navigation"
 import { getEmpresa } from "@/features/eventos/actions/get-empresas"
 import { getEvent } from "@/features/eventos/actions/get-event"
 import { getEventParticipantsByEvent } from "@/features/eventos/actions/get-event-participant"
 import { updateEventParticipant } from "@/features/eventos/actions/update-event-participant"
-import type { Empresa, EventParticipant, Event } from "@/features/eventos/types"
+import { useImportRequestsByEmpresa } from "@/features/eventos/api/query/use-import-requests"
+import type { Empresa, EventParticipant, Event, ImportRequest } from "@/features/eventos/types"
 import { apiClient } from "@/lib/api-client"
 import { useClerk } from "@clerk/nextjs"
+import * as XLSX from "xlsx"
 
 interface DecodedToken {
     empresaId: string
     eventId: string
     timestamp: number
 }
+
+interface ImportData {
+    nome: string
+    cpf: string
+    funcao: string
+    empresa: string
+    credencial: string
+}
+
+interface ProcessedImportData {
+    fileName: string
+    totalRows: number
+    validRows: number
+    invalidRows: number
+    data: ImportData[]
+    errors: Array<{ item: Record<string, unknown>; error: string; row: number }>
+}
+
+interface ImportRequestData {
+    nome: string
+    cpf: string
+    funcao: string
+    empresa: string
+    credencial: string
+}
+
+
 
 export default function PublicEmpresaPage() {
     const [empresa, setEmpresa] = useState<Empresa | null>(null)
@@ -35,11 +65,27 @@ export default function PublicEmpresaPage() {
     const [editingEmpresa, setEditingEmpresa] = useState<string | null>(null)
     const [empresaEditValue, setEmpresaEditValue] = useState<string>("")
 
+    // Import states
+    const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+    const [processedData, setProcessedData] = useState<ProcessedImportData | null>(null)
+    const [isProcessing, setIsProcessing] = useState(false)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [dragActive, setDragActive] = useState(false)
+
     const { user } = useClerk()
     const isClerkUser = !!user
 
     const params = useParams()
     const token = params.token as string
+
+    // Buscar histórico de importações da empresa
+    const { data: importHistory, isLoading: loadingHistory } = useImportRequestsByEmpresa(
+        empresa?.id || ""
+    )
+
+
+
+
 
     // Decodificar token
     const decodeToken = (token: string): DecodedToken | null => {
@@ -154,6 +200,22 @@ export default function PublicEmpresaPage() {
         }
 
         return 'Evento'
+    }
+
+    // Função para formatar status da importação
+    const getImportStatusInfo = (status: string) => {
+        switch (status) {
+            case 'pending':
+                return { label: 'Pendente', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' }
+            case 'approved':
+                return { label: 'Aprovada', color: 'bg-green-100 text-green-800 border-green-200' }
+            case 'rejected':
+                return { label: 'Rejeitada', color: 'bg-red-100 text-red-800 border-red-200' }
+            case 'completed':
+                return { label: 'Concluída', color: 'bg-blue-100 text-blue-800 border-blue-200' }
+            default:
+                return { label: 'Desconhecido', color: 'bg-gray-100 text-gray-800 border-gray-200' }
+        }
     }
 
     // Filtrar participantes por dia selecionado
@@ -346,6 +408,189 @@ export default function PublicEmpresaPage() {
         )
     }
 
+    // Funções de importação
+    const downloadTemplate = () => {
+        const templateData = [
+            {
+                nome: "João Silva",
+                cpf: "12345678900",
+                funcao: "Desenvolvedor",
+                empresa: "Empresa ABC",
+                credencial: "CREDENCIAL-001",
+            }
+        ]
+
+        const ws = XLSX.utils.json_to_sheet(templateData)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, "Modelo")
+        XLSX.writeFile(wb, `modelo-colaboradores-${empresa?.nome || 'empresa'}-${new Date().toISOString().split("T")[0]}.xlsx`)
+    }
+
+    const validateImportData = (data: Record<string, unknown>): { isValid: boolean; errors: string[] } => {
+        const errors: string[] = []
+
+        if (!data.nome || data.nome.toString().trim().length < 2) {
+            errors.push("Nome é obrigatório e deve ter pelo menos 2 caracteres")
+        }
+
+        if (!data.cpf || data.cpf.toString().trim() === "") {
+            errors.push("CPF é obrigatório")
+        }
+
+        if (!data.funcao || data.funcao.toString().trim().length < 2) {
+            errors.push("Função é obrigatória e deve ter pelo menos 2 caracteres")
+        }
+
+        if (!data.empresa || data.empresa.toString().trim().length < 2) {
+            errors.push("Empresa é obrigatória e deve ter pelo menos 2 caracteres")
+        }
+
+        if (!data.credencial || data.credencial.toString().trim() === "") {
+            errors.push("Credencial é obrigatória")
+        }
+
+        return {
+            isValid: errors.length === 0,
+            errors,
+        }
+    }
+
+    const processExcelFile = async (file: File): Promise<ProcessedImportData> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target?.result as ArrayBuffer)
+                    const workbook = XLSX.read(data, { type: "array" })
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[]
+
+                    const result: ProcessedImportData = {
+                        fileName: file.name,
+                        totalRows: jsonData.length,
+                        validRows: 0,
+                        invalidRows: 0,
+                        data: [],
+                        errors: [],
+                    }
+
+                    jsonData.forEach((row, index) => {
+                        const rowNumber = index + 2
+                        const validation = validateImportData(row)
+
+                        if (!validation.isValid) {
+                            result.errors.push({
+                                item: row,
+                                error: validation.errors.join(", "),
+                                row: rowNumber,
+                            })
+                            result.invalidRows++
+                            return
+                        }
+
+                        const importData: ImportData = {
+                            nome: String(row.nome || '').trim(),
+                            cpf: String(row.cpf || '').trim(),
+                            funcao: String(row.funcao || '').trim(),
+                            empresa: String(row.empresa || '').trim(),
+                            credencial: String(row.credencial || '').trim(),
+                        }
+
+                        result.data.push(importData)
+                        result.validRows++
+                    })
+
+                    resolve(result)
+                } catch (error) {
+                    reject(new Error("Erro ao processar arquivo Excel"))
+                }
+            }
+            reader.onerror = () => reject(new Error("Erro ao ler arquivo"))
+            reader.readAsArrayBuffer(file)
+        })
+    }
+
+    const handleFileUpload = async (file: File) => {
+        if (!file.name.match(/\.(xlsx|xls)$/)) {
+            toast.error("Por favor, selecione um arquivo Excel (.xlsx ou .xls)")
+            return
+        }
+
+        setIsProcessing(true)
+        try {
+            const processed = await processExcelFile(file)
+            setProcessedData(processed)
+            setUploadedFile(file)
+            toast.success("Arquivo processado com sucesso!")
+        } catch (error) {
+            toast.error("Erro ao processar arquivo")
+            console.error(error)
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleSubmitImport = async () => {
+        if (!processedData || !empresa || !event) return
+
+        setIsSubmitting(true)
+        try {
+            const decoded = decodeToken(token)
+            if (!decoded) {
+                toast.error("Token inválido")
+                return
+            }
+
+            const importRequestData = {
+                eventId: decoded.eventId,
+                empresaId: decoded.empresaId,
+                fileName: processedData.fileName,
+                totalRows: processedData.totalRows,
+                validRows: processedData.validRows,
+                invalidRows: processedData.invalidRows,
+                duplicateRows: 0,
+                data: processedData.data,
+                errors: processedData.errors,
+                duplicates: [],
+                missingCredentials: [],
+                missingCompanies: [],
+                requestedBy: empresa.nome || "Empresa"
+            }
+
+            const response = await apiClient.post('/import-requests', importRequestData)
+
+            if (response.data) {
+                toast.success("Solicitação de importação enviada com sucesso! Aguarde a aprovação do administrador.")
+                setProcessedData(null)
+                setUploadedFile(null)
+            }
+        } catch (error) {
+            console.error("Erro ao enviar solicitação:", error)
+            toast.error("Erro ao enviar solicitação de importação")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleDrag = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setDragActive(true)
+        } else if (e.type === "dragleave") {
+            setDragActive(false)
+        }
+    }
+
+    const handleDrop = async (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setDragActive(false)
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            await handleFileUpload(e.dataTransfer.files[0])
+        }
+    }
+
     if (loading) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
@@ -492,139 +737,405 @@ export default function PublicEmpresaPage() {
                                 </div>
                             </CardContent>
                         </Card>
+
+
                     </div>
 
-                    {/* Lista de Colaboradores */}
+                    {/* Área Principal com Abas */}
                     <div className="lg:col-span-2">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center space-x-2">
-                                    <Users className="h-5 w-5" />
+                        <Tabs defaultValue="colaboradores" className="w-full">
+                            <TabsList className="grid w-full grid-cols-3 gap-8">
+                                <TabsTrigger value="colaboradores" className="flex items-center justify-center space-x-2 p-4 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white rounded-md">
+                                    <Users className="h-4 w-4" />
                                     <span>Colaboradores</span>
-                                    {selectedDay && (
-                                        <Badge variant="outline" className="ml-2">
-                                            {formatDate(selectedDay)} - {getDayPeriod(selectedDay)}
-                                        </Badge>
-                                    )}
-                                    {isClerkUser && (
-                                        <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-600 border-blue-200">
-                                            Edição Ativa
-                                        </Badge>
-                                    )}
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                {selectedDay ? (
-                                    participantsByDay.length > 0 ? (
-                                        <div className="space-y-4">
-                                            {participantsByDay.map((participant) => (
-                                                <div
-                                                    key={participant.id}
-                                                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                                                >
-                                                    <div className="flex items-center space-x-4">
-                                                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                                                            <User className="h-5 w-5 text-white" />
+                                </TabsTrigger>
+                                <TabsTrigger value="importar" className="flex items-center justify-center space-x-2 p-4 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white rounded-md">
+                                    <Upload className="h-4 w-4" />
+                                    <span>Importar</span>
+                                </TabsTrigger>
+                                <TabsTrigger value="historico" className="flex items-center justify-center space-x-2 p-4 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white rounded-md">
+                                    <FileText className="h-4 w-4" />
+                                    <span>Histórico</span>
+                                </TabsTrigger>
+                            </TabsList>
+
+                            {/* Aba Colaboradores */}
+                            <TabsContent value="colaboradores" className="space-y-6">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center space-x-2">
+                                            <Users className="h-5 w-5" />
+                                            <span>Colaboradores</span>
+                                            {selectedDay && (
+                                                <Badge variant="outline" className="ml-2">
+                                                    {formatDate(selectedDay)} - {getDayPeriod(selectedDay)}
+                                                </Badge>
+                                            )}
+                                            {isClerkUser && (
+                                                <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-600 border-blue-200">
+                                                    Edição Ativa
+                                                </Badge>
+                                            )}
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {selectedDay ? (
+                                            participantsByDay.length > 0 ? (
+                                                <div className="space-y-4">
+                                                    {participantsByDay.map((participant) => (
+                                                        <div
+                                                            key={participant.id}
+                                                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                                                        >
+                                                            <div className="flex items-center space-x-4">
+                                                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                                                                    <User className="h-5 w-5 text-white" />
+                                                                </div>
+                                                                <div>
+                                                                    <h3 className="font-medium text-gray-900">
+                                                                        {participant.name}
+                                                                    </h3>
+                                                                    <p className="text-sm text-gray-600">
+                                                                        {participant.role || 'Colaborador'}
+                                                                    </p>
+                                                                    {participant.cpf && (
+                                                                        <p className="text-xs text-gray-500">
+                                                                            CPF: {participant.cpf}
+                                                                        </p>
+                                                                    )}
+                                                                    {isClerkUser && (
+                                                                        <p className="text-xs text-blue-500">
+                                                                            Clique nos campos vazios para editar
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex items-center space-x-4">
+                                                                {renderEditableField(participant, 'email', 'Email', <Mail className="h-4 w-4 text-gray-400" />)}
+                                                                {renderEditableField(participant, 'phone', 'Telefone', <Phone className="h-4 w-4 text-gray-400" />)}
+
+                                                                <div className="flex items-center space-x-2">
+                                                                    {participant.checkIn ? (
+                                                                        <CheckCircle className="h-4 w-4 text-green-500" />
+                                                                    ) : (
+                                                                        <Clock className="h-4 w-4 text-yellow-500" />
+                                                                    )}
+                                                                    <span className="text-xs text-gray-500">
+                                                                        {participant.checkIn ? 'Check-in realizado' : 'Aguardando check-in'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <h3 className="font-medium text-gray-900">
-                                                                {participant.name}
-                                                            </h3>
-                                                            <p className="text-sm text-gray-600">
-                                                                {participant.role || 'Colaborador'}
-                                                            </p>
-                                                            {participant.cpf && (
-                                                                <p className="text-xs text-gray-500">
-                                                                    CPF: {participant.cpf}
-                                                                </p>
-                                                            )}
-                                                            {isClerkUser && (
-                                                                <p className="text-xs text-blue-500">
-                                                                    Clique nos campos vazios para editar
-                                                                </p>
-                                                            )}
-                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-8">
+                                                    <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                                        Nenhum colaborador encontrado
+                                                    </h3>
+                                                    <p className="text-gray-600">
+                                                        Não há colaboradores registrados para este dia.
+                                                    </p>
+                                                </div>
+                                            )
+                                        ) : (
+                                            <div className="text-center py-8">
+                                                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                                    Selecione um dia
+                                                </h3>
+                                                <p className="text-gray-600">
+                                                    Escolha um dia de trabalho para ver os colaboradores.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+
+                                {/* Estatísticas */}
+                                {selectedDay && participantsByDay.length > 0 && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Estatísticas do Dia</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-blue-600">
+                                                        {participantsByDay.length}
                                                     </div>
+                                                    <div className="text-sm text-gray-600">Total</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-green-600">
+                                                        {participantsByDay.filter(p => p.checkIn).length}
+                                                    </div>
+                                                    <div className="text-sm text-gray-600">Check-in</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-purple-600">
+                                                        {participantsByDay.filter(p => p.email).length}
+                                                    </div>
+                                                    <div className="text-sm text-gray-600">Com Email</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-orange-600">
+                                                        {participantsByDay.filter(p => p.phone).length}
+                                                    </div>
+                                                    <div className="text-sm text-gray-600">Com Telefone</div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+                            </TabsContent>
 
-                                                    <div className="flex items-center space-x-4">
-                                                        {renderEditableField(participant, 'email', 'Email', <Mail className="h-4 w-4 text-gray-400" />)}
-                                                        {renderEditableField(participant, 'phone', 'Telefone', <Phone className="h-4 w-4 text-gray-400" />)}
+                            {/* Aba Importar */}
+                            <TabsContent value="importar" className="space-y-6">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center space-x-2">
+                                            <FileSpreadsheet className="h-5 w-5" />
+                                            <span>Importar Colaboradores</span>
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-6">
+                                        {/* Instruções */}
+                                        <div className="bg-blue-50 p-4 rounded-lg">
+                                            <h4 className="font-medium text-blue-900 mb-2">Instruções para Importação</h4>
+                                            <div className="text-sm text-blue-800 space-y-1">
+                                                <p><strong>Colunas obrigatórias:</strong> nome, cpf, funcao, empresa, credencial</p>
+                                                <p><strong>Formato:</strong> Excel (.xlsx ou .xls)</p>
+                                                <p><strong>Limite:</strong> até 1000 colaboradores por importação</p>
+                                                <p><strong>Processo:</strong> A solicitação será enviada para aprovação do administrador</p>
+                                            </div>
+                                        </div>
 
-                                                        <div className="flex items-center space-x-2">
-                                                            {participant.checkIn ? (
-                                                                <CheckCircle className="h-4 w-4 text-green-500" />
-                                                            ) : (
-                                                                <Clock className="h-4 w-4 text-yellow-500" />
-                                                            )}
-                                                            <span className="text-xs text-gray-500">
-                                                                {participant.checkIn ? 'Check-in realizado' : 'Aguardando check-in'}
-                                                            </span>
-                                                        </div>
+                                        {/* Download do modelo */}
+                                        <div className="flex justify-center">
+                                            <Button onClick={downloadTemplate} variant="outline" className="bg-transparent">
+                                                <Download className="h-4 w-4 mr-2" />
+                                                Baixar Modelo
+                                            </Button>
+                                        </div>
+
+                                        {/* Área de upload */}
+                                        <div
+                                            onDragEnter={handleDrag}
+                                            onDragLeave={handleDrag}
+                                            onDragOver={handleDrag}
+                                            onDrop={handleDrop}
+                                            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dragActive ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-gray-400"
+                                                }`}
+                                        >
+                                            <FileSpreadsheet className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                                {uploadedFile ? "Arquivo carregado" : "Arraste e solte seu arquivo Excel aqui"}
+                                            </h3>
+                                            <p className="text-gray-600 mb-4">
+                                                {uploadedFile ? uploadedFile.name : "Ou clique para selecionar um arquivo"}
+                                            </p>
+                                            <input
+                                                type="file"
+                                                accept=".xlsx,.xls"
+                                                onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                                                className="hidden"
+                                                id="file-upload"
+                                            />
+                                            <label
+                                                htmlFor="file-upload"
+                                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 cursor-pointer"
+                                            >
+                                                {isProcessing ? (
+                                                    <>
+                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                        Processando...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Upload className="w-4 h-4 mr-2" />
+                                                        Selecionar Arquivo
+                                                    </>
+                                                )}
+                                            </label>
+                                        </div>
+
+                                        {/* Resultado do processamento */}
+                                        {processedData && (
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-3 gap-4">
+                                                    <div className="text-center p-4 bg-green-50 rounded-lg">
+                                                        <CheckCircle className="w-8 h-8 mx-auto text-green-600 mb-2" />
+                                                        <div className="text-2xl font-bold text-green-600">{processedData.validRows}</div>
+                                                        <div className="text-sm text-gray-600">Válidos</div>
+                                                    </div>
+                                                    <div className="text-center p-4 bg-red-50 rounded-lg">
+                                                        <XCircle className="w-8 h-8 mx-auto text-red-600 mb-2" />
+                                                        <div className="text-2xl font-bold text-red-600">{processedData.invalidRows}</div>
+                                                        <div className="text-sm text-gray-600">Inválidos</div>
+                                                    </div>
+                                                    <div className="text-center p-4 bg-blue-50 rounded-lg">
+                                                        <FileText className="w-8 h-8 mx-auto text-blue-600 mb-2" />
+                                                        <div className="text-2xl font-bold text-blue-600">{processedData.totalRows}</div>
+                                                        <div className="text-sm text-gray-600">Total</div>
                                                     </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-center py-8">
-                                            <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                            <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                                Nenhum colaborador encontrado
-                                            </h3>
-                                            <p className="text-gray-600">
-                                                Não há colaboradores registrados para este dia.
-                                            </p>
-                                        </div>
-                                    )
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                        <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                            Selecione um dia
-                                        </h3>
-                                        <p className="text-gray-600">
-                                            Escolha um dia de trabalho para ver os colaboradores.
-                                        </p>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
 
-                        {/* Estatísticas */}
-                        {selectedDay && participantsByDay.length > 0 && (
-                            <Card className="mt-6">
-                                <CardHeader>
-                                    <CardTitle>Estatísticas do Dia</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                        <div className="text-center">
-                                            <div className="text-2xl font-bold text-blue-600">
-                                                {participantsByDay.length}
+                                                {/* Erros detalhados */}
+                                                {processedData.errors.length > 0 && (
+                                                    <div className="bg-red-50 p-4 rounded-lg">
+                                                        <h4 className="font-medium text-red-900 mb-2">Erros encontrados:</h4>
+                                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                                            {processedData.errors.map((error, index) => (
+                                                                <div key={index} className="text-sm text-red-800">
+                                                                    <strong>Linha {error.row}:</strong> {error.error}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Botão de envio */}
+                                                <div className="flex justify-center">
+                                                    <Button
+                                                        onClick={handleSubmitImport}
+                                                        disabled={isSubmitting || processedData.validRows === 0}
+                                                        className="bg-green-600 hover:bg-green-700"
+                                                    >
+                                                        {isSubmitting ? (
+                                                            <>
+                                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                                Enviando...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Upload className="w-4 h-4 mr-2" />
+                                                                Enviar Solicitação ({processedData.validRows} colaboradores)
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                </div>
                                             </div>
-                                            <div className="text-sm text-gray-600">Total</div>
-                                        </div>
-                                        <div className="text-center">
-                                            <div className="text-2xl font-bold text-green-600">
-                                                {participantsByDay.filter(p => p.checkIn).length}
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+
+                            {/* Aba Histórico */}
+                            <TabsContent value="historico" className="space-y-6">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center space-x-2">
+                                            <FileText className="h-5 w-5" />
+                                            <span>Histórico de Importações</span>
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {loadingHistory ? (
+                                            <div className="text-center py-8">
+                                                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-400" />
+                                                <p className="text-gray-600">Carregando histórico...</p>
                                             </div>
-                                            <div className="text-sm text-gray-600">Check-in</div>
-                                        </div>
-                                        <div className="text-center">
-                                            <div className="text-2xl font-bold text-purple-600">
-                                                {participantsByDay.filter(p => p.email).length}
+                                        ) : importHistory && importHistory.length > 0 ? (
+                                            <div className="space-y-4">
+                                                {importHistory.map((importReq) => {
+                                                    const statusInfo = getImportStatusInfo(importReq.status)
+                                                    return (
+                                                        <div key={importReq.id} className="border rounded-lg p-4 space-y-3">
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="flex items-center space-x-2">
+                                                                    <FileSpreadsheet className="h-4 w-4 text-gray-400" />
+                                                                    <span className="font-medium text-sm">{importReq.fileName}</span>
+                                                                </div>
+                                                                <Badge className={`text-xs ${statusInfo.color}`}>
+                                                                    {statusInfo.label}
+                                                                </Badge>
+                                                            </div>
+
+                                                            {/* Informações do evento */}
+                                                            {importReq.event && (
+                                                                <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                                                                    <span className="font-medium">Evento:</span> {importReq.event.name || 'N/A'}
+                                                                </div>
+                                                            )}
+
+                                                            <div className="grid grid-cols-2 gap-4 text-xs text-gray-600">
+                                                                <div>
+                                                                    <span className="font-medium">Total:</span> {importReq.totalRows ?? 'N/A'}
+                                                                </div>
+                                                                <div>
+                                                                    <span className="font-medium">Válidos:</span> {importReq.validRows ?? 'N/A'}
+                                                                </div>
+                                                                <div>
+                                                                    <span className="font-medium">Inválidos:</span> {importReq.invalidRows ?? 'N/A'}
+                                                                </div>
+                                                                <div>
+                                                                    <span className="font-medium">Duplicados:</span> {importReq.duplicateRows ?? 'N/A'}
+                                                                </div>
+                                                            </div>
+
+
+
+                                                            <div className="text-xs text-gray-500">
+                                                                <div>Solicitado em: {formatDate(importReq.createdAt)}</div>
+                                                                {importReq.approvedAt && (
+                                                                    <div>Processado em: {formatDate(importReq.approvedAt)}</div>
+                                                                )}
+                                                                {importReq.approvedBy && (
+                                                                    <div>Aprovado por: {importReq.approvedBy}</div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Dados da importação (expandível) */}
+                                                            {importReq.data && Array.isArray(importReq.data) && importReq.data.length > 0 && (
+                                                                <details className="text-xs">
+                                                                    <summary className="cursor-pointer font-medium text-gray-700 hover:text-gray-900">
+                                                                        Ver dados importados ({importReq.data.length} colaboradores)
+                                                                    </summary>
+                                                                    <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                                                                        {importReq.data.slice(0, 5).map((item: ImportRequestData, index: number) => (
+                                                                            <div key={index} className="bg-gray-50 p-2 rounded text-xs">
+                                                                                <div><strong>Nome:</strong> {item.nome || 'N/A'}</div>
+                                                                                <div><strong>CPF:</strong> {item.cpf || 'N/A'}</div>
+                                                                                <div><strong>Função:</strong> {item.funcao || 'N/A'}</div>
+                                                                                <div><strong>Credencial:</strong> {item.credencial || 'N/A'}</div>
+                                                                            </div>
+                                                                        ))}
+                                                                        {importReq.data.length > 5 && (
+                                                                            <div className="text-gray-500 italic">
+                                                                                ... e mais {importReq.data.length - 5} colaboradores
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </details>
+                                                            )}
+
+                                                            {importReq.status === 'rejected' && importReq.notes && (
+                                                                <div className="bg-red-50 p-3 rounded text-xs text-red-800">
+                                                                    <strong>Motivo da rejeição:</strong> {importReq.notes}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                })}
                                             </div>
-                                            <div className="text-sm text-gray-600">Com Email</div>
-                                        </div>
-                                        <div className="text-center">
-                                            <div className="text-2xl font-bold text-orange-600">
-                                                {participantsByDay.filter(p => p.phone).length}
+                                        ) : (
+                                            <div className="text-center py-8">
+                                                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                                    Nenhuma importação encontrada
+                                                </h3>
+                                                <p className="text-gray-600">
+                                                    Ainda não foram realizadas solicitações de importação.
+                                                </p>
                                             </div>
-                                            <div className="text-sm text-gray-600">Com Telefone</div>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+                        </Tabs>
                     </div>
                 </div>
             </div>
