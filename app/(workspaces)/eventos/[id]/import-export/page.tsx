@@ -988,7 +988,7 @@ export default function ImportExportPage() {
                 <div className="mb-8">
                     <button
                         className="text-white hover:text-white bg-purple-600 p-2 rounded-full flex items-center justify-center"
-                        onClick={() => window.history.back()}
+                        onClick={() => window.location.href = `/eventos/${params.id}`}
                     >
                         <ArrowLeft className="w-4 h-4 mr-2" />
                         Voltar

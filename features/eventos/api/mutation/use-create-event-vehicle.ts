@@ -1,5 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createEventVehicle, CreateEventVehicleData } from "../../actions/create-event-vehicle";
+import {
+  createEventVehicle,
+  CreateEventVehicleData,
+} from "../../actions/create-event-vehicle";
 import { toast } from "sonner";
 
 export const useCreateEventVehicle = () => {
@@ -13,14 +16,20 @@ export const useCreateEventVehicle = () => {
       queryClient.invalidateQueries({
         queryKey: ["event-vehicles"],
       });
+      // Invalidar queries específicas do evento
       queryClient.invalidateQueries({
-        queryKey: ["event-vehicles-by-event"],
+        queryKey: ["event-vehicles", variables.eventId],
+      });
+      // Forçar refetch das queries
+      queryClient.refetchQueries({
+        queryKey: ["event-vehicles", variables.eventId],
       });
     },
     onError: (error: any) => {
       console.error("Erro ao criar veículo:", error);
-      const message = error?.response?.data?.error || "Erro ao adicionar veículo";
+      const message =
+        error?.response?.data?.error || "Erro ao adicionar veículo";
       toast.error(message);
     },
   });
-}; 
+};

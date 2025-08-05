@@ -6,10 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Edit, Trash2, Building, Users, FileText, Calendar } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import { useEmpresas } from "@/features/eventos/api/query/use-empresas"
 import { useCreateEmpresa, useDeleteEmpresa, useUpdateEmpresa } from "@/features/eventos/api/mutation"
@@ -23,6 +23,7 @@ export default function EmpresasPage() {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
     const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null)
+    const [selectedDate, setSelectedDate] = useState<string>("")
     const [formData, setFormData] = useState<CreateEmpresaRequest>({
         nome: "",
         id_evento: "",
@@ -36,6 +37,9 @@ export default function EmpresasPage() {
     const updateEmpresaMutation = useUpdateEmpresa()
     const deleteEmpresaMutation = useDeleteEmpresa()
 
+    const eventId = useParams().id as string
+    const { data: event } = useEventos({ id: eventId })
+
     // Função para calcular os dias do evento com período
     const getEventDays = (event: Event): { label: string; value: string; periodo: string }[] => {
         if (!event.startDate || !event.endDate) return []
@@ -46,8 +50,8 @@ export default function EmpresasPage() {
         const setupEnd = parse(event.setupEndDate)
         const prepStart = parse(event.preparationStartDate)
         const prepEnd = parse(event.preparationEndDate)
-        const eventStart = parse(event.startDate)
-        const eventEnd = parse(event.endDate)
+        const eventStart = parse(event.preparationStartDate)
+        const eventEnd = parse(event.preparationEndDate)
         const finalStart = parse(event.finalizationStartDate)
         const finalEnd = parse(event.finalizationEndDate)
 
@@ -61,8 +65,6 @@ export default function EmpresasPage() {
             let periodo = ''
             if (setupStart && setupEnd && d >= setupStart && d <= setupEnd) {
                 periodo = 'montagem'
-            } else if (prepStart && prepEnd && d >= prepStart && d <= prepEnd) {
-                periodo = 'preparação'
             } else if (eventStart && eventEnd && d >= eventStart && d <= eventEnd) {
                 periodo = 'evento'
             } else if (finalStart && finalEnd && d >= finalStart && d <= finalEnd) {
@@ -92,12 +94,88 @@ export default function EmpresasPage() {
         return getEventDays(selectedEvent)
     }, [formData.id_evento, eventos])
 
+    // Organizar empresas por data
+    const empresasByDate = useMemo(() => {
+        if (!event || Array.isArray(event) || !empresas) return {}
+
+        const days = getEventDays(event)
+        const grouped: Record<string, Empresa[]> = {}
+
+        // Inicializar todas as datas
+        days.forEach(day => {
+            grouped[day.value] = []
+        })
+
+        // Agrupar empresas por data
+        empresas.forEach(empresa => {
+            if (Array.isArray(empresa.days)) {
+                empresa.days.forEach(day => {
+                    if (grouped[day]) {
+                        grouped[day].push(empresa)
+                    }
+                })
+            }
+        })
+
+        // Ordenar empresas alfabeticamente em cada data
+        Object.keys(grouped).forEach(date => {
+            grouped[date].sort((a, b) => a.nome.localeCompare(b.nome))
+        })
+
+        return grouped
+    }, [empresas, event])
+
     // Filtrar empresas por termo de pesquisa
-    const filteredEmpresas = (empresas || []).filter(empresa =>
-        empresa.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (empresa.id_evento && empresa.id_evento.includes(searchTerm)) ||
-        (Array.isArray(empresa.days) && empresa.days.some((day: string) => day.toLowerCase().includes(searchTerm.toLowerCase())))
-    )
+    const filteredEmpresasByDate = useMemo(() => {
+        if (!searchTerm) return empresasByDate
+
+        const filtered: Record<string, Empresa[]> = {}
+
+        Object.keys(empresasByDate).forEach(date => {
+            const filteredEmpresas = empresasByDate[date].filter(empresa =>
+                empresa.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (empresa.id_evento && empresa.id_evento.includes(searchTerm)) ||
+                (Array.isArray(empresa.days) && empresa.days.some((day: string) => day.toLowerCase().includes(searchTerm.toLowerCase())))
+            )
+
+            if (filteredEmpresas.length > 0) {
+                filtered[date] = filteredEmpresas
+            }
+        })
+
+        return filtered
+    }, [empresasByDate, searchTerm])
+
+    // Datas disponíveis para o menu
+    const availableDates = useMemo(() => {
+        if (!event || Array.isArray(event)) return []
+
+        return getEventDays(event)
+    }, [event])
+
+    // Estatísticas
+    const stats = useMemo(() => {
+        if (!empresas) {
+            return {
+                total: 0,
+                configuradas: 0,
+                parcialmenteConfiguradas: 0,
+                naoConfiguradas: 0
+            }
+        }
+
+        const total = empresas.length
+        const configuradas = empresas.filter(e => e.id_evento && Array.isArray(e.days) && e.days.length > 0).length
+        const parcialmenteConfiguradas = empresas.filter(e => (e.id_evento || (Array.isArray(e.days) && e.days.length > 0)) && !(e.id_evento && Array.isArray(e.days) && e.days.length > 0)).length
+        const naoConfiguradas = empresas.filter(e => !e.id_evento && (!Array.isArray(e.days) || e.days.length === 0)).length
+
+        return {
+            total,
+            configuradas,
+            parcialmenteConfiguradas,
+            naoConfiguradas
+        }
+    }, [empresas])
 
     const handleCreateEmpresa = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -152,8 +230,6 @@ export default function EmpresasPage() {
         setIsEditDialogOpen(true)
     }
 
-    const eventId = useParams().id as string
-    const { data: event } = useEventos({ id: eventId })
     const eventName =
         Array.isArray(event)
             ? ""
@@ -162,9 +238,31 @@ export default function EmpresasPage() {
     const resetForm = () => {
         setFormData({
             nome: "",
-            id_evento: eventId, // Usar o ID do evento atual
+            id_evento: eventId,
             days: []
         })
+    }
+
+    // Função para gerar token de acesso público
+    // O token contém: empresaId:eventId:timestamp
+    // A página pública decodifica o token e busca os dados correspondentes
+    // Usuários Clerk podem editar informações dos colaboradores diretamente na página pública
+    const generatePublicToken = (empresa: Empresa) => {
+        const token = btoa(`${empresa.id}:${eventId}:${Date.now()}`)
+        const publicUrl = `${window.location.origin}/empresa/${token}`
+        return publicUrl
+    }
+
+    // Função para copiar URL pública
+    const copyPublicUrl = async (empresa: Empresa) => {
+        try {
+            const url = generatePublicToken(empresa)
+            await navigator.clipboard.writeText(url)
+            toast.success("URL pública copiada para a área de transferência!")
+        } catch (error) {
+            console.error("Erro ao copiar URL:", error)
+            toast.error("Erro ao copiar URL")
+        }
     }
 
     // Inicializar formData com o evento atual
@@ -176,174 +274,320 @@ export default function EmpresasPage() {
             }))
         }
     }, [eventId])
+
+    // Selecionar primeira data por padrão
+    React.useEffect(() => {
+        if (availableDates.length > 0 && !selectedDate) {
+            setSelectedDate(availableDates[0].value)
+        }
+    }, [availableDates, selectedDate])
+
+    // Função para obter cor da tab baseada no período
+    const getTabColor = (periodo: string, isActive: boolean) => {
+        if (isActive) {
+            switch (periodo) {
+                case 'montagem':
+                    return 'border-yellow-500 text-yellow-600 bg-yellow-50'
+                case 'evento':
+                    return 'border-green-500 text-green-600 bg-green-50'
+                case 'desmontagem':
+                    return 'border-purple-500 text-purple-600 bg-purple-50'
+                default:
+                    return 'border-purple-500 text-purple-600 bg-purple-50'
+            }
+        } else {
+            switch (periodo) {
+                case 'montagem':
+                    return 'hover:text-yellow-700 hover:border-yellow-300'
+                case 'evento':
+                    return 'hover:text-green-700 hover:border-green-300'
+                case 'desmontagem':
+                    return 'hover:text-purple-700 hover:border-purple-300'
+                default:
+                    return 'hover:text-gray-700 hover:border-gray-300'
+            }
+        }
+    }
+
+    // Função para obter status badge
+    const getStatusBadge = (empresa: Empresa) => {
+        if (empresa.id_evento && Array.isArray(empresa.days) && empresa.days.length > 0) {
+            return <Badge className="bg-green-100 text-green-800">Configurado</Badge>
+        } else if (empresa.id_evento || (Array.isArray(empresa.days) && empresa.days.length > 0)) {
+            return <Badge className="bg-yellow-100 text-yellow-800">Parcial</Badge>
+        } else {
+            return <Badge className="bg-gray-100 text-gray-800">Não configurado</Badge>
+        }
+    }
+
+    if (!event || Array.isArray(event)) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center">
+                    <h2 className="text-2xl font-bold mb-4">Evento não encontrado</h2>
+                </div>
+            </div>
+        )
+    }
+
     return (
         <EventLayout eventId={eventId} eventName={eventName}>
-            <div className="p-6">
-                <div className="mb-6 flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Empresas</h1>
-                        <p className="text-gray-600">Gerencie as empresas do evento</p>
-                    </div>
-                    <Button
-                        onClick={() => {
-                            // Garantir que o evento atual está selecionado
-                            setFormData({
-                                nome: "",
-                                id_evento: eventId,
-                                days: []
-                            })
-                            setIsCreateDialogOpen(true)
-                        }}
-                        className="bg-purple-600 hover:bg-purple-700 text-white"
-                    >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Nova Empresa
-                    </Button>
+            <div className="p-8">
+                {/* KPIs */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm opacity-90">Total de Empresas</p>
+                                    <p className="text-3xl font-bold">{stats.total}</p>
+                                </div>
+                                <Building className="h-8 w-8 opacity-80" />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm opacity-90">Configuradas</p>
+                                    <p className="text-3xl font-bold">{stats.configuradas}</p>
+                                </div>
+                                <Check className="h-8 w-8 opacity-80" />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm opacity-90">Parcialmente</p>
+                                    <p className="text-3xl font-bold">{stats.parcialmenteConfiguradas}</p>
+                                </div>
+                                <Calendar className="h-8 w-8 opacity-80" />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-r from-gray-500 to-gray-600 text-white">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm opacity-90">Não Configuradas</p>
+                                    <p className="text-3xl font-bold">{stats.naoConfiguradas}</p>
+                                </div>
+                                <X className="h-8 w-8 opacity-80" />
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
 
-                <div className="mb-6">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input
-                            type="text"
-                            placeholder="Buscar empresa..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10"
-                        />
-                    </div>
-                </div>
+                {/* Action Bar */}
+                <div className="mb-8">
+                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                        <div className="flex flex-wrap gap-3">
+                            <Button
+                                onClick={() => {
+                                    setFormData({
+                                        nome: "",
+                                        id_evento: eventId,
+                                        days: []
+                                    })
+                                    setIsCreateDialogOpen(true)
+                                }}
+                                className="bg-purple-600 hover:bg-purple-700 text-white"
+                            >
+                                <Plus className="w-4 h-4 mr-2" />
+                                Nova Empresa
+                            </Button>
 
-                {/* Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredEmpresas.length === 0 ? (
-                        <div className="col-span-full text-center py-12">
-                            <Building className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                {searchTerm ? "Nenhuma empresa encontrada" : "Nenhuma empresa cadastrada"}
-                            </h3>
-                            <p className="text-gray-600">
-                                {searchTerm ? "Tente ajustar os filtros de busca" : "Comece criando sua primeira empresa"}
-                            </p>
+                            <Input
+                                type="text"
+                                placeholder="Buscar empresa..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full sm:w-80"
+                            />
                         </div>
-                    ) : (
-                        filteredEmpresas.map((empresa) => (
-                            <Card key={empresa.id} className="hover:shadow-lg transition-all duration-300 border-l-4 border-l-purple-500">
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <CardTitle className="text-lg font-semibold text-gray-900 mb-1">{empresa.nome}</CardTitle>
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <Badge variant="secondary" className="font-mono text-xs">
-                                                    ID: {empresa.id.slice(0, 8)}...
-                                                </Badge>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleEditEmpresa(empresa)}
-                                                className="h-8 w-8 p-0 hover:bg-purple-50"
-                                            >
-                                                <Edit className="h-4 w-4 text-purple-600" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleDeleteEmpresa(empresa)}
-                                                className="h-8 w-8 p-0 hover:bg-red-50"
-                                            >
-                                                <Trash2 className="h-4 w-4 text-red-600" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </CardHeader>
+                    </div>
+                </div>
 
-                                <CardContent className="pt-0">
-                                    <div className="space-y-3">
-                                        {/* Evento */}
-                                        <div className="flex items-center gap-2">
-                                            <Calendar className="h-4 w-4 text-gray-500" />
-                                            <span className="text-sm text-gray-600">Evento:</span>
-                                            {empresa.id_evento ? (
-                                                <Badge variant="outline" className="font-mono text-xs">
-                                                    {empresa.id_evento}
-                                                </Badge>
-                                            ) : (
-                                                <span className="text-sm text-gray-400">Não definido</span>
-                                            )}
-                                        </div>
+                {/* Tabs dos dias */}
+                <div className="mb-8">
+                    <div className="border-b border-gray-200 bg-white rounded-t-lg">
+                        <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
+                            {availableDates.map((date) => {
+                                const empresasInDay = empresasByDate[date.value]?.length || 0
+                                const isActive = selectedDate === date.value
 
-                                        {/* Dias de trabalho */}
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <FileText className="h-4 w-4 text-gray-500" />
-                                                <span className="text-sm text-gray-600">
-                                                    Dias de trabalho ({Array.isArray(empresa.days) ? empresa.days.length : 0}):
-                                                </span>
-                                            </div>
-                                            <div className="flex flex-wrap gap-1">
-                                                {Array.isArray(empresa.days) && empresa.days.length > 0 ? (
-                                                    empresa.days.slice(0, 6).map((day, index) => {
-                                                        // Converter YYYY-MM-DD para DD/MM
-                                                        const date = new Date(day)
-                                                        const dateStr = date.toLocaleDateString("pt-BR", {
-                                                            day: "2-digit",
-                                                            month: "2-digit",
-                                                        })
-                                                        return (
-                                                            <Badge
-                                                                key={index}
-                                                                variant="secondary"
-                                                                className="text-xs bg-purple-50 text-purple-700 border-purple-200"
-                                                            >
-                                                                {dateStr}
-                                                            </Badge>
-                                                        )
-                                                    })
-                                                ) : (
-                                                    <span className="text-sm text-gray-400 italic">Nenhum dia definido</span>
-                                                )}
-                                                {Array.isArray(empresa.days) && empresa.days.length > 6 && (
-                                                    <Badge variant="secondary" className="text-xs">
-                                                        +{empresa.days.length - 6} mais
-                                                    </Badge>
-                                                )}
-                                            </div>
+                                return (
+                                    <button
+                                        key={date.value}
+                                        onClick={() => setSelectedDate(date.value)}
+                                        className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
+                                            ? getTabColor(date.periodo, true)
+                                            : `border-transparent text-gray-500 ${getTabColor(date.periodo, false)}`
+                                            }`}
+                                    >
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-xs font-medium">
+                                                {date.label.split(' - ')[0]}
+                                            </span>
+                                            <span className="text-xs opacity-75">
+                                                {date.periodo}
+                                            </span>
+                                            <span className="text-xs opacity-75">
+                                                ({empresasInDay})
+                                            </span>
                                         </div>
+                                    </button>
+                                )
+                            })}
+                        </nav>
+                    </div>
+                </div>
 
-                                        {/* Status indicator */}
-                                        <div className="pt-2 border-t border-gray-100">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <div
-                                                        className={`w-2 h-2 rounded-full ${empresa.id_evento && Array.isArray(empresa.days) && empresa.days.length > 0
-                                                            ? "bg-green-500"
-                                                            : empresa.id_evento || (Array.isArray(empresa.days) && empresa.days.length > 0)
-                                                                ? "bg-yellow-500"
-                                                                : "bg-gray-400"
-                                                            }`}
-                                                    />
-                                                    <span className="text-xs text-gray-600">
-                                                        {empresa.id_evento && Array.isArray(empresa.days) && empresa.days.length > 0
-                                                            ? "Configurado"
-                                                            : empresa.id_evento || (Array.isArray(empresa.days) && empresa.days.length > 0)
-                                                                ? "Parcialmente configurado"
-                                                                : "Não configurado"}
-                                                    </span>
+                {/* Tabela de empresas */}
+                <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
+                                <tr>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                        Empresa
+                                    </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                        ID
+                                    </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                        Dias de Trabalho
+                                    </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                        Status
+                                    </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                        Ações
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-100">
+                                {filteredEmpresasByDate[selectedDate]?.length > 0 ? (
+                                    filteredEmpresasByDate[selectedDate].map((empresa) => (
+                                        <tr key={empresa.id} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="flex items-center">
+
+                                                    <div className="ml-4">
+                                                        <div className="text-sm font-medium text-gray-900">
+                                                            {empresa.nome}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <Badge variant="outline" className="text-xs">
-                                                    <Building className="h-3 w-3 mr-1" />
-                                                    Empresa
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <Badge variant="outline" className="font-mono text-xs">
+                                                    {empresa.id.slice(0, 8)}...
                                                 </Badge>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {Array.isArray(empresa.days) && empresa.days.length > 0 ? (
+                                                        empresa.days.slice(0, 3).map((day, index) => {
+                                                            const date = new Date(day)
+                                                            const dateStr = date.toLocaleDateString("pt-BR", {
+                                                                day: "2-digit",
+                                                                month: "2-digit",
+                                                            })
+
+                                                            // Encontrar o período da data
+                                                            const availableDate = availableDates.find(d => d.value === day)
+                                                            const periodo = availableDate?.periodo || ''
+
+                                                            return (
+                                                                <Badge
+                                                                    key={index}
+                                                                    variant="secondary"
+                                                                    className="text-xs bg-purple-50 text-purple-700 border-purple-200"
+                                                                >
+                                                                    {dateStr} - {periodo}
+                                                                </Badge>
+                                                            )
+                                                        })
+                                                    ) : (
+                                                        <span className="text-sm text-gray-400 italic">Nenhum</span>
+                                                    )}
+                                                    {Array.isArray(empresa.days) && empresa.days.length > 3 && (
+                                                        <Badge variant="secondary" className="text-xs">
+                                                            +{empresa.days.length - 3}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                {getStatusBadge(empresa)}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                <div className="flex space-x-2">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleEditEmpresa(empresa)}
+                                                        className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                                                    >
+                                                        <Edit className="w-4 h-4 mr-1" />
+                                                        Editar
+                                                    </Button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="text-gray-600 border-gray-200 hover:bg-gray-50"
+                                                            >
+                                                                <MoreHorizontal className="w-4 h-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-48">
+                                                            <DropdownMenuItem
+                                                                onClick={() => copyPublicUrl(empresa)}
+                                                                className="cursor-pointer"
+                                                            >
+                                                                <ExternalLink className="w-4 h-4 mr-2" />
+                                                                Copiar URL Pública
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                onClick={() => handleDeleteEmpresa(empresa)}
+                                                                className="cursor-pointer text-red-600"
+                                                            >
+                                                                <Trash2 className="w-4 h-4 mr-2" />
+                                                                Excluir
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                                            <div className="flex flex-col items-center">
+                                                <Building className="w-8 h-8 text-gray-400 mb-2" />
+                                                <p className="text-lg font-semibold text-gray-700 mb-2">
+                                                    {selectedDate ? `Nenhuma empresa encontrada para ${availableDates.find(d => d.value === selectedDate)?.label || selectedDate}` : 'Selecione um dia'}
+                                                </p>
+                                                <p className="text-sm text-gray-500">
+                                                    {selectedDate ? 'Crie uma nova empresa para este dia' : 'Escolha um dia do evento para ver as empresas'}
+                                                </p>
                                             </div>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))
-                    )}
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 {/* Dialog de Criação */}
@@ -366,23 +610,7 @@ export default function EmpresasPage() {
                                 />
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Evento
-                                </label>
-                                <div className="flex items-center gap-2 p-3 border rounded-lg bg-gray-50">
-                                    <Calendar className="h-4 w-4 text-gray-500" />
-                                    <span className="text-sm font-medium text-gray-900">
-                                        {Array.isArray(event) ? eventName : event?.name || "Evento atual"}
-                                    </span>
-                                    <Badge variant="secondary" className="text-xs">
-                                        {eventId}
-                                    </Badge>
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Empresa será criada para este evento
-                                </p>
-                            </div>
+
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">

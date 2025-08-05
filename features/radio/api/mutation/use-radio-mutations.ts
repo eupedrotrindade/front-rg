@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CreateRadioData, UpdateRadioData } from "../../types";
 import { createRadio, updateRadio, deleteRadio } from "../../actions/radio-actions";
+import { apiClient } from "@/lib/api-client";
 
 export const useCreateRadio = () => {
   const queryClient = useQueryClient();
@@ -21,6 +22,33 @@ export const useCreateRadio = () => {
     onError: (error) => {
       console.error("Erro ao criar rádio:", error);
       toast.error("Erro ao criar rádio");
+    },
+  });
+};
+
+export const useCreateMultipleRadios = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      radios: Array<{
+        event_id: string;
+        radio_code: string;
+        status?: string;
+      }>;
+    }) => {
+      const response = await apiClient.post("/radios/create", data);
+      return response.data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["available-radios"] });
+      queryClient.invalidateQueries({ queryKey: ["radios"] });
+      toast.success(data.message || `${variables.radios.length} rádio(s) criado(s) com sucesso!`);
+    },
+    onError: (error: any) => {
+      console.error("Erro ao criar rádios:", error);
+      const errorMessage = error?.response?.data?.error || "Erro ao criar rádios";
+      toast.error(errorMessage);
     },
   });
 };

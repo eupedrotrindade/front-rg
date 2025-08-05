@@ -13,7 +13,7 @@ export const useEventVehicles = (eventId: string) => {
       return result;
     },
     enabled: !!eventId,
-    staleTime: 5 * 60 * 1000, // 5 minutos
+    staleTime: 0, // Sempre buscar dados frescos
     gcTime: 10 * 60 * 1000, // 10 minutos
     refetchOnWindowFocus: false,
   });

@@ -18,7 +18,9 @@ import {
     useUpdateRadioAssignment,
     usePartialReturn,
     useRadioExchange,
-    useRadioOperations
+    useRadioOperations,
+    useCreateMultipleRadios,
+    useAllRadioAssignments
 } from '@/features/radio/api'
 import { RadioAssignment, NewAssignmentForm, PartialReturnForm, ExchangeForm } from './types'
 import ImportRadiosModal from './components/ImportRadiosModal'
@@ -63,7 +65,9 @@ export default function RadiosPage() {
     const [createRadioForm, setCreateRadioForm] = useState({
         radio_code: '',
         quantity: 1,
-        radio_codes: [] as string[]
+        radio_codes: [] as string[],
+        quickStart: '',
+        quickEnd: ''
     })
 
     // Queries
@@ -72,8 +76,12 @@ export default function RadiosPage() {
 
     const { data: assignmentsData, isLoading: assignmentsLoading } = useRadioAssignmentsByDay(
         eventId,
-        selectedDay || ''
+        selectedDay || '',
+        { enabled: !!selectedDay }
     )
+
+    // Query para buscar todas as atribuições do evento (para contadores)
+    const { data: allAssignmentsData, isLoading: allAssignmentsLoading } = useAllRadioAssignments(eventId)
 
     const { data: availableRadiosData, isLoading: availableRadiosLoading } = useAvailableRadios(eventId)
 
@@ -87,9 +95,11 @@ export default function RadiosPage() {
     const updateAssignmentMutation = useUpdateRadioAssignment()
     const partialReturnMutation = usePartialReturn()
     const exchangeMutation = useRadioExchange()
+    const createMultipleRadiosMutation = useCreateMultipleRadios()
 
     // Dados processados
     const assignments = assignmentsData?.data || []
+    const allAssignments = allAssignmentsData?.data || [] // Todas as atribuições para contadores
     const availableRadios = availableRadiosData?.data || []
 
     // Função para gerar dias do evento
@@ -230,7 +240,9 @@ export default function RadiosPage() {
         setCreateRadioForm({
             radio_code: '',
             quantity: 1,
-            radio_codes: []
+            radio_codes: [],
+            quickStart: '',
+            quickEnd: ''
         })
         setIsCreateRadioModalOpen(true)
     }
@@ -268,6 +280,40 @@ export default function RadiosPage() {
         if (value) {
             handleAddRadioCode(value)
         }
+    }
+
+    const handleQuickCreate = () => {
+        const start = parseInt(createRadioForm.quickStart)
+        const end = parseInt(createRadioForm.quickEnd)
+
+        if (isNaN(start) || isNaN(end)) {
+            toast.error('Digite números válidos para início e fim')
+            return
+        }
+
+        if (start > end) {
+            toast.error('O número inicial deve ser menor que o final')
+            return
+        }
+
+        if (end - start > 100) {
+            toast.error('O intervalo máximo é de 100 rádios')
+            return
+        }
+
+        const newCodes: string[] = []
+        for (let i = start; i <= end; i++) {
+            newCodes.push(i.toString())
+        }
+
+        setCreateRadioForm(prev => ({
+            ...prev,
+            radio_codes: [...prev.radio_codes, ...newCodes],
+            quickStart: '',
+            quickEnd: ''
+        }))
+
+        toast.success(`${newCodes.length} rádios adicionados`)
     }
 
     const openPartialReturnModal = (assignment: RadioAssignment) => {
@@ -317,11 +363,11 @@ export default function RadiosPage() {
                 assigned_by: 'Sistema'
             })
 
-            toast.success('Atribuição criada com sucesso!')
+            toast.success('Retirada criada com sucesso!')
             setIsNewAssignmentModalOpen(false)
         } catch (error) {
-            console.error('Erro ao criar atribuição:', error)
-            toast.error('Erro ao criar atribuição')
+            console.error('Erro ao criar Retirada:', error)
+            toast.error('Erro ao criar Retirada')
         }
     }
 
@@ -362,18 +408,6 @@ export default function RadiosPage() {
         }
 
         try {
-            console.log('Estado do formulário:', partialReturnForm);
-            console.log('Rádios selecionados:', partialReturnForm.returned_radio_codes);
-            console.log('Tipo dos rádios selecionados:', typeof partialReturnForm.returned_radio_codes);
-            console.log('É array?', Array.isArray(partialReturnForm.returned_radio_codes));
-
-            console.log('Iniciando devolução parcial:', {
-                assignment_id: selectedAssignment.id,
-                returned_radio_codes: partialReturnForm.returned_radio_codes,
-                notes: partialReturnForm.notes?.trim() || undefined,
-                performed_by: 'Sistema'
-            })
-
             await partialReturnMutation.mutateAsync({
                 assignment_id: selectedAssignment.id,
                 returned_radio_codes: partialReturnForm.returned_radio_codes,
@@ -465,27 +499,11 @@ export default function RadiosPage() {
                 status: 'disponivel'
             }))
 
-            // Fazer chamada para criar rádios
-            const response = await fetch('http://localhost:3333/radios/create', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ radios: radiosToCreate }),
-            })
+            await createMultipleRadiosMutation.mutateAsync({ radios: radiosToCreate })
 
-            if (!response.ok) {
-                throw new Error('Erro ao criar rádios')
-            }
-
-            toast.success(`${createRadioForm.radio_codes.length} rádio(s) criado(s) com sucesso!`)
             setIsCreateRadioModalOpen(false)
-
-            // Recarregar dados
-            window.location.reload()
         } catch (error) {
             console.error('Erro ao criar rádios:', error)
-            toast.error('Erro ao criar rádios')
         }
     }
 
@@ -577,7 +595,7 @@ export default function RadiosPage() {
                                 className="bg-purple-600 hover:bg-purple-700 text-white"
                             >
                                 <Plus className="w-4 h-4 mr-2" />
-                                Nova Atribuição
+                                Nova Retirada
                             </Button>
 
                             <Button
@@ -631,7 +649,7 @@ export default function RadiosPage() {
                     <div className="border-b border-gray-200 bg-white rounded-t-lg">
                         <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
                             {getEventDays().map((day) => {
-                                const assignmentsInDay = assignments.filter(a => a.event_day === day.id).length
+                                const assignmentsInDay = allAssignments.filter(a => a.event_day === day.id).length
                                 const isActive = selectedDay === day.id
 
                                 return (
@@ -648,7 +666,11 @@ export default function RadiosPage() {
                                                 {day.label.split(' ')[0]}
                                             </span>
                                             <span className="text-xs opacity-75">
-                                                ({assignmentsInDay})
+                                                {allAssignmentsLoading ? (
+                                                    <span className="inline-block w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></span>
+                                                ) : (
+                                                    `(${assignmentsInDay})`
+                                                )}
                                             </span>
                                         </div>
                                     </button>
@@ -703,10 +725,10 @@ export default function RadiosPage() {
                                             <div className="flex flex-col items-center">
                                                 <Radio className="w-8 h-8 text-gray-400 mb-2" />
                                                 <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                    {selectedDay ? `Nenhuma atribuição encontrada para ${selectedDay}` : 'Selecione um dia'}
+                                                    {selectedDay ? `Nenhuma Retirada encontrada para ${selectedDay}` : 'Selecione um dia'}
                                                 </p>
                                                 <p className="text-sm text-gray-500">
-                                                    {selectedDay ? 'Crie uma nova atribuição para este dia' : 'Escolha um dia do evento para ver as atribuições'}
+                                                    {selectedDay ? 'Crie uma nova Retirada para este dia' : 'Escolha um dia do evento para ver as atribuições'}
                                                 </p>
                                             </div>
                                         </td>
@@ -716,11 +738,7 @@ export default function RadiosPage() {
                                         <tr key={assignment.id} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
-                                                    <div className="flex-shrink-0 h-10 w-10">
-                                                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                                                            <User className="h-5 w-5 text-white" />
-                                                        </div>
-                                                    </div>
+
                                                     <div className="ml-4">
                                                         <div className="text-sm font-medium text-gray-900">
                                                             {assignment.assigned_to}
@@ -817,11 +835,11 @@ export default function RadiosPage() {
                     </div>
                 </div>
 
-                {/* Modal Nova Atribuição */}
+                {/* Modal Nova Retirada */}
                 <AlertDialog open={isNewAssignmentModalOpen} onOpenChange={setIsNewAssignmentModalOpen} >
                     <AlertDialogContent className="max-w-md bg-white text-gray-800">
                         <AlertDialogHeader>
-                            <AlertDialogTitle>Nova Atribuição de Rádios</AlertDialogTitle>
+                            <AlertDialogTitle>Nova Retirada de Rádios</AlertDialogTitle>
                             <AlertDialogDescription>
                                 Atribuir rádios para {selectedDay}
                             </AlertDialogDescription>
@@ -908,7 +926,7 @@ export default function RadiosPage() {
                                 disabled={!newAssignmentForm.assigned_to.trim() || newAssignmentForm.radio_codes.length === 0}
                                 className="bg-purple-600 hover:bg-purple-700"
                             >
-                                Criar Atribuição
+                                Criar Retirada
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
@@ -1149,7 +1167,44 @@ export default function RadiosPage() {
                                 Adicionar novos rádios disponíveis para o evento
                             </AlertDialogDescription>
                         </AlertDialogHeader>
-
+                        <div className="border-t pt-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Criação Rápida
+                            </label>
+                            <div className="flex gap-2 items-end">
+                                <div className="flex-1">
+                                    <label className="block text-xs text-gray-600 mb-1">Início</label>
+                                    <Input
+                                        type="number"
+                                        value={createRadioForm.quickStart}
+                                        onChange={(e) => setCreateRadioForm(prev => ({ ...prev, quickStart: e.target.value }))}
+                                        placeholder="1"
+                                        className="text-sm"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-xs text-gray-600 mb-1">Fim</label>
+                                    <Input
+                                        type="number"
+                                        value={createRadioForm.quickEnd}
+                                        onChange={(e) => setCreateRadioForm(prev => ({ ...prev, quickEnd: e.target.value }))}
+                                        placeholder="10"
+                                        className="text-sm"
+                                    />
+                                </div>
+                                <Button
+                                    type="button"
+                                    onClick={handleQuickCreate}
+                                    disabled={!createRadioForm.quickStart || !createRadioForm.quickEnd}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white text-sm"
+                                >
+                                    Criar Sequência
+                                </Button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Ex: 1-10 criará rádios 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+                            </p>
+                        </div>
                         <div className="space-y-4 py-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1166,6 +1221,8 @@ export default function RadiosPage() {
                                     Digite o código do rádio e pressione Enter ou Espaço para adicionar
                                 </p>
                             </div>
+
+
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1229,7 +1286,7 @@ export default function RadiosPage() {
 
                         <div className="space-y-4 py-4">
                             <div className="bg-gray-50 p-4 rounded-lg">
-                                <h4 className="text-sm font-medium text-gray-700 mb-2">Informações da Atribuição:</h4>
+                                <h4 className="text-sm font-medium text-gray-700 mb-2">Informações da Retirada:</h4>
                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                     <div>
                                         <span className="font-medium">Pessoa/Empresa:</span> {selectedAssignment?.assigned_to}
@@ -1238,7 +1295,7 @@ export default function RadiosPage() {
                                         <span className="font-medium">Status:</span> {getStatusBadge(selectedAssignment?.status || '')}
                                     </div>
                                     <div>
-                                        <span className="font-medium">Data de Atribuição:</span> {selectedAssignment?.assigned_at ? new Date(selectedAssignment.assigned_at).toLocaleDateString('pt-BR') : '-'}
+                                        <span className="font-medium">Data de Retirada:</span> {selectedAssignment?.assigned_at ? new Date(selectedAssignment.assigned_at).toLocaleDateString('pt-BR') : '-'}
                                     </div>
                                     <div>
                                         <span className="font-medium">Rádios Atuais:</span> {selectedAssignment?.radio_codes.join(', ') || '-'}
@@ -1249,11 +1306,11 @@ export default function RadiosPage() {
                             <div>
                                 <h4 className="text-sm font-medium text-gray-700 mb-3">Operações Realizadas:</h4>
                                 <div className="space-y-3">
-                                    {/* Operação de Atribuição Inicial */}
+                                    {/* Operação de Retirada Inicial */}
                                     <div className="border-l-4 border-blue-500 pl-4 py-2 bg-blue-50 rounded-r-lg">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <div className="font-medium text-blue-800">Atribuição Inicial</div>
+                                                <div className="font-medium text-blue-800">Retirada Inicial</div>
                                                 <div className="text-sm text-blue-600">
                                                     {selectedAssignment?.assigned_at ? new Date(selectedAssignment.assigned_at).toLocaleString('pt-BR') : '-'}
                                                 </div>
@@ -1261,7 +1318,7 @@ export default function RadiosPage() {
                                                     Rádios atribuídos: {selectedAssignment?.radio_codes.join(', ')}
                                                 </div>
                                             </div>
-                                            <Badge className="bg-blue-100 text-blue-800">Atribuição</Badge>
+                                            <Badge className="bg-blue-100 text-blue-800">Retirada</Badge>
                                         </div>
                                     </div>
 
@@ -1273,7 +1330,6 @@ export default function RadiosPage() {
                                         </div>
                                     ) : operationsData?.data && operationsData.data.length > 0 ? (
                                         operationsData.data.map((operation) => {
-                                            console.log('Operação:', operation)
                                             return (
                                                 <div key={operation.id} className={`border-l-4 pl-4 py-2 rounded-r-lg ${operation.operation_type === 'devolucao_total' ? 'border-green-500 bg-green-50' :
                                                     operation.operation_type === 'devolucao_parcial' ? 'border-yellow-500 bg-yellow-50' :

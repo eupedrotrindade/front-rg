@@ -11,7 +11,10 @@ export const useDeleteEventVehicle = () => {
       toast.success("Veículo removido com sucesso!");
       // Invalidar todas as queries relacionadas a event-vehicles
       queryClient.invalidateQueries({ queryKey: ["event-vehicles"] });
-      queryClient.invalidateQueries({ queryKey: ["event-vehicles-by-event"] });
+      // Forçar refetch das queries
+      queryClient.refetchQueries({
+        queryKey: ["event-vehicles"],
+      });
     },
     onError: (error: any) => {
       console.error("Erro ao remover veículo:", error);

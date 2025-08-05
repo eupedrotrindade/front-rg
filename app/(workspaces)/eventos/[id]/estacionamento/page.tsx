@@ -36,20 +36,6 @@ export default function VagasPage() {
     const { data: eventos = [] } = useEventos()
     const evento = Array.isArray(eventos) ? eventos.find(e => e.id === eventId) : null
 
-    const { data: veiculos = [], isLoading, error } = useEventVehiclesByEvent({
-        eventId,
-        search: searchTerm,
-        statusFilter: showOnlyActive ? "retirada" : "all",
-        empresaFilter: "all",
-        diaFilter: selectedDay || "all"
-    })
-
-    // Mutations
-    const createVehicleMutation = useCreateEventVehicle()
-    const updateVehicleMutation = useUpdateEventVehicle()
-    const deleteVehicleMutation = useDeleteEventVehicle()
-    const retrieveVehicleMutation = useRetrieveEventVehicle()
-
     // Função para gerar dias do evento
     const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string }> => {
         if (!evento) return []
@@ -106,6 +92,25 @@ export default function VagasPage() {
 
         return days
     }, [evento])
+
+    // Auto-selecionar primeiro dia se nenhum estiver selecionado
+    const eventDays = getEventDays()
+    const shouldAutoSelectDay = !selectedDay && eventDays.length > 0
+    const effectiveSelectedDay = shouldAutoSelectDay ? eventDays[0].id : selectedDay
+
+    const { data: veiculos = [], isLoading, error } = useEventVehiclesByEvent({
+        eventId,
+        search: searchTerm,
+        statusFilter: showOnlyActive ? "retirada" : "all",
+        empresaFilter: "all",
+        diaFilter: effectiveSelectedDay || "all"
+    })
+
+    // Mutations
+    const createVehicleMutation = useCreateEventVehicle()
+    const updateVehicleMutation = useUpdateEventVehicle()
+    const deleteVehicleMutation = useDeleteEventVehicle()
+    const retrieveVehicleMutation = useRetrieveEventVehicle()
 
     // Função para obter cor da tab baseada no tipo
     const getTabColor = useCallback((type: string, isActive: boolean) => {
@@ -219,7 +224,10 @@ export default function VagasPage() {
                     ...data
                 })
             }
+            // Fechar modal após sucesso
+            handleCloseModal()
         } catch (error) {
+            console.error("Erro ao salvar veículo:", error)
             toast.error("Erro ao salvar veículo")
         }
     }
@@ -316,17 +324,6 @@ export default function VagasPage() {
                         </CardContent>
                     </Card>
 
-                    <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm opacity-90">Dias Ativos</p>
-                                    <p className="text-3xl font-bold">{stats.totalDias}</p>
-                                </div>
-                                <Calendar className="h-8 w-8 opacity-80" />
-                            </div>
-                        </CardContent>
-                    </Card>
                 </div>
 
                 {/* Action Bar */}
@@ -473,11 +470,7 @@ export default function VagasPage() {
                                         <tr key={veiculo.id} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
-                                                    <div className="flex-shrink-0 h-10 w-10">
-                                                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                                                            <User className="h-5 w-5 text-white" />
-                                                        </div>
-                                                    </div>
+
                                                     <div className="ml-4">
                                                         <div className="text-sm font-medium text-gray-900">
                                                             {veiculo.empresa || '-'}

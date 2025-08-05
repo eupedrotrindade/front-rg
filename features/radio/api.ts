@@ -29,7 +29,10 @@ export const useAvailableRadios = (eventId: string) => {
 };
 
 // Buscar atribuições de rádios
-export const useRadioAssignments = (filters: RadioAssignmentFilters) => {
+export const useRadioAssignments = (
+  filters: RadioAssignmentFilters,
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
     queryKey: ["radio-assignments", filters],
     queryFn: async (): Promise<RadioAssignmentListResponse> => {
@@ -47,7 +50,8 @@ export const useRadioAssignments = (filters: RadioAssignmentFilters) => {
       );
       return response.data;
     },
-    enabled: !!filters.eventId && !!filters.eventDay,
+    enabled:
+      options?.enabled !== undefined ? options.enabled : !!filters.eventId, // Só precisa do eventId, eventDay é opcional
   });
 };
 
@@ -62,6 +66,23 @@ export const useRadioOperations = (assignmentId: string) => {
       return response.data;
     },
     enabled: !!assignmentId,
+  });
+};
+
+// Buscar todas as atribuições de um evento (para contadores)
+export const useAllRadioAssignments = (eventId: string) => {
+  return useQuery({
+    queryKey: ["all-radio-assignments", eventId],
+    queryFn: async (): Promise<RadioAssignmentListResponse> => {
+      const params = new URLSearchParams();
+      params.append("eventId", eventId);
+
+      const response = await apiClient.get(
+        `/radios/assignments?${params.toString()}`
+      );
+      return response.data;
+    },
+    enabled: !!eventId,
   });
 };
 
@@ -123,10 +144,13 @@ export const usePartialReturn = () => {
       data: PartialReturnData
     ): Promise<{ message: string }> => {
       console.log("Dados sendo enviados para devolução parcial:", data);
-      console.log("Tipo de returned_radio_codes:", typeof data.returned_radio_codes);
+      console.log(
+        "Tipo de returned_radio_codes:",
+        typeof data.returned_radio_codes
+      );
       console.log("É array?", Array.isArray(data.returned_radio_codes));
       console.log("Conteúdo:", data.returned_radio_codes);
-      
+
       const response = await apiClient.post(
         `/radios/assignments/${data.assignment_id}/partial-return`,
         data
@@ -191,12 +215,19 @@ export const useImportRadios = () => {
 // ========================================
 
 // Hook para obter atribuições por dia específico
-export const useRadioAssignmentsByDay = (eventId: string, eventDay: string) => {
-  return useRadioAssignments({
-    eventId,
-    eventDay,
-    limit: 100, // Buscar mais registros para o dia
-  });
+export const useRadioAssignmentsByDay = (
+  eventId: string,
+  eventDay: string,
+  options?: { enabled?: boolean }
+) => {
+  return useRadioAssignments(
+    {
+      eventId,
+      eventDay,
+      limit: 100, // Buscar mais registros para o dia
+    },
+    options
+  );
 };
 
 // Hook para obter atribuições ativas por dia
@@ -224,3 +255,6 @@ export const usePendingRadioAssignmentsByDay = (
     limit: 100,
   });
 };
+
+// Exportar hooks de mutations
+export { useCreateMultipleRadios } from "./api/mutation/use-radio-mutations";

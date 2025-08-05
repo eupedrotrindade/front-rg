@@ -1,18 +1,30 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { retrieveEventVehicle, RetrieveEventVehicleData } from "../../actions/retrieve-event-vehicle";
+import {
+  retrieveEventVehicle,
+  RetrieveEventVehicleData,
+} from "../../actions/retrieve-event-vehicle";
 import { toast } from "sonner";
 
 export const useRetrieveEventVehicle = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: RetrieveEventVehicleData }) =>
-      retrieveEventVehicle(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: RetrieveEventVehicleData;
+    }) => retrieveEventVehicle(id, data),
     onSuccess: () => {
       toast.success("Veículo retirado com sucesso!");
       // Invalidar todas as queries relacionadas a event-vehicles
       queryClient.invalidateQueries({ queryKey: ["event-vehicles"] });
-      queryClient.invalidateQueries({ queryKey: ["event-vehicles-by-event"] });
+      // Forçar refetch das queries
+      queryClient.refetchQueries({
+        queryKey: ["event-vehicles"],
+      });
     },
     onError: (error: any) => {
       console.error("Erro ao retirar veículo:", error);
@@ -20,4 +32,4 @@ export const useRetrieveEventVehicle = () => {
       toast.error(message);
     },
   });
-}; 
+};

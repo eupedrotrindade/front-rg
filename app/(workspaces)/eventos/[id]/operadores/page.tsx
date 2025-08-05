@@ -71,7 +71,7 @@ export default function OperadoresPage() {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [operatorToDelete, setOperatorToDelete] = useState<Operator | null>(null)
 
-    // Estados para atribuição de operadores
+    // Estados para Retirada de operadores
     const [assignDialogOpen, setAssignDialogOpen] = useState(false)
     const [selectedOperators, setSelectedOperators] = useState<string[]>([])
     const [assignLoading, setAssignLoading] = useState(false)
@@ -243,7 +243,7 @@ export default function OperadoresPage() {
             senha: operador.senha
         })
 
-        // Carregar datas de atribuição atuais
+        // Carregar datas de Retirada atuais
         const currentDates: string[] = []
         if (operador.id_events) {
             const eventAssignments = operador.id_events.split(',').map((assignment: string) => assignment.trim())
@@ -346,7 +346,7 @@ export default function OperadoresPage() {
 
         setLoading(true)
         try {
-            // Criar atribuição com data específica se disponível
+            // Criar Retirada com data específica se disponível
             const eventAssignment = eventId
 
             await apiClient.post("/operadores", {
@@ -375,7 +375,7 @@ export default function OperadoresPage() {
         }
     }
 
-    // Funções para atribuição de operadores
+    // Funções para Retirada de operadores
     const abrirAtribuirOperadores = () => {
         setSelectedOperators([])
         setAssignSearch("")
@@ -443,7 +443,7 @@ export default function OperadoresPage() {
             setSelectedOperators([])
             setSelectedEventDates([])
 
-            // Forçar atualização dos dados após atribuição
+            // Forçar atualização dos dados após Retirada
             await forceRefreshData()
         } catch (error) {
             toast.error("Erro ao atribuir operadores")
@@ -482,7 +482,7 @@ export default function OperadoresPage() {
         const dadosParaExportar = operadores.map(operador => ({
             Nome: operador.nome,
             CPF: formatCPF(operador.cpf),
-            "Data de Atribuição": (() => {
+            "Data de Retirada": (() => {
                 const assignmentDate = getOperatorAssignmentDate(operador);
                 return assignmentDate ? formatDatePtBr(assignmentDate) : "Sem data específica";
             })(),
@@ -510,7 +510,7 @@ export default function OperadoresPage() {
 
         // Armazenar o arquivo para processamento posterior
         setFileToImport(file)
-        // Abrir dialog de atribuição que agora inclui seleção de datas
+        // Abrir dialog de Retirada que agora inclui seleção de datas
         setAssignDialogOpen(true)
     }
 
@@ -619,7 +619,7 @@ export default function OperadoresPage() {
 
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 
-    // Função para extrair a data de atribuição do operador
+    // Função para extrair a data de Retirada do operador
     const getOperatorAssignmentDate = (operator: Operator) => {
         if (!operator?.id_events) return null
 
@@ -635,7 +635,7 @@ export default function OperadoresPage() {
                 }
             }
         } catch (error) {
-            console.error('Erro ao processar data de atribuição:', error)
+            console.error('Erro ao processar data de Retirada:', error)
         }
 
         return null
@@ -798,10 +798,10 @@ export default function OperadoresPage() {
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 border border-[#610e5c] rounded-lg p-4 bg-white">
+                    <TabsList className="grid w-full grid-cols-3 gap-14 rounded-lg p-4 bg-white">
                         <TabsTrigger
                             value="operadores"
-                            className={`flex items-center gap-2 rounded-md transition-colors
+                            className={`flex items-center justify-center p-4 gap-2 rounded-md transition-colors
                                 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white
                                 focus:bg-[#610e5c] focus:text-white
                             `}
@@ -811,7 +811,7 @@ export default function OperadoresPage() {
                         </TabsTrigger>
                         <TabsTrigger
                             value="todos-operadores"
-                            className={`flex items-center gap-2 rounded-md transition-colors
+                            className={`flex items-center justify-center p-4 gap-2 rounded-md transition-colors
                                 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white
                                 focus:bg-[#610e5c] focus:text-white
                             `}
@@ -821,7 +821,7 @@ export default function OperadoresPage() {
                         </TabsTrigger>
                         <TabsTrigger
                             value="acoes"
-                            className={`flex items-center gap-2 rounded-md transition-colors
+                            className={`flex items-center justify-center p-4 gap-2 rounded-md transition-colors
                                 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white
                                 focus:bg-[#610e5c] focus:text-white
                             `}
@@ -910,7 +910,7 @@ export default function OperadoresPage() {
 
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-gray-600">Data de Atribuição:</span>
+                                                <span className="text-sm text-gray-600">Data de Retirada:</span>
                                                 {(() => {
                                                     const assignmentDate = getOperatorAssignmentDate(operador);
                                                     if (!assignmentDate) {
@@ -1128,7 +1128,7 @@ export default function OperadoresPage() {
                                             <TableHead className="text-left font-medium text-gray-900">Tipo</TableHead>
                                             <TableHead className="text-left font-medium text-gray-900">Credencial</TableHead>
                                             <TableHead className="text-left font-medium text-gray-900">Pulseira</TableHead>
-                                            <TableHead className="text-left font-medium text-gray-900">Tabela</TableHead>
+
                                             <TableHead className="text-left font-medium text-gray-900">Data/Hora</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -1160,11 +1160,7 @@ export default function OperadoresPage() {
                                                     <TableCell className="text-gray-700">
                                                         {action.pulseira || "-"}
                                                     </TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline" className="text-purple-600 border-purple-200">
-                                                            {action.tabela}
-                                                        </Badge>
-                                                    </TableCell>
+
                                                     <TableCell className="text-gray-700">
                                                         {formatTimestamp(action.timestamp)}
                                                     </TableCell>
@@ -1203,7 +1199,7 @@ export default function OperadoresPage() {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Data de Atribuição</label>
+                                    <label className="block text-sm font-medium text-gray-700">Data de Retirada</label>
                                     <p className="text-gray-900">
                                         {(() => {
                                             const assignmentDate = getOperatorAssignmentDate(selectedOperator);
@@ -1257,7 +1253,7 @@ export default function OperadoresPage() {
                         <DialogHeader>
                             <DialogTitle className="text-gray-900">Editar Operador</DialogTitle>
                             <DialogDescription className="text-gray-600">
-                                Atualize as informações do operador e selecione os dias de atribuição
+                                Atualize as informações do operador e selecione os dias de Retirada
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-6">
@@ -1450,7 +1446,7 @@ export default function OperadoresPage() {
                     </DialogContent>
                 </Dialog>
 
-                {/* Modal de Atribuição de Operadores */}
+                {/* Modal de Retirada de Operadores */}
                 <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
                     <DialogContent className="max-w-full sm:max-w-4xl md:max-w-5xl lg:max-w-6xl max-h-[95vh] bg-white  overflow-y-auto">
                         <DialogHeader>
@@ -1460,7 +1456,7 @@ export default function OperadoresPage() {
                             <DialogDescription className="text-gray-600">
                                 {fileToImport
                                     ? `Selecione os dias do evento "${nomeEvento}" para importar os operadores`
-                                    : `Selecione os operadores e os dias do evento "${nomeEvento}" para atribuição`
+                                    : `Selecione os operadores e os dias do evento "${nomeEvento}" para Retirada`
                                 }
                             </DialogDescription>
                         </DialogHeader>
@@ -1608,7 +1604,7 @@ export default function OperadoresPage() {
                                                 ) : (
                                                     <TableRow>
                                                         <TableCell colSpan={4} className="text-center py-8 text-gray-500">
-                                                            {assignSearch ? 'Nenhum operador encontrado' : 'Nenhum operador disponível para atribuição'}
+                                                            {assignSearch ? 'Nenhum operador encontrado' : 'Nenhum operador disponível para Retirada'}
                                                         </TableCell>
                                                     </TableRow>
                                                 )}
@@ -1684,7 +1680,7 @@ export default function OperadoresPage() {
 
                             {resumoImportacao.importados.length > 0 && (
                                 <div className="p-4 bg-blue-50 rounded-lg">
-                                    <h3 className="font-medium text-blue-800">Dias de Atribuição</h3>
+                                    <h3 className="font-medium text-blue-800">Dias de Retirada</h3>
                                     <p className="text-blue-600">
                                         {selectedEventDates.length > 0
                                             ? selectedEventDates.map(date => formatDatePtBr(date)).join(', ')

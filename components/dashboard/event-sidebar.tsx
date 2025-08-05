@@ -79,16 +79,16 @@ const EventSidebar = ({
             description: 'Gestão de coordenadores'
         },
         {
-            name: 'Rádio',
+            name: 'Rádio Comunicador',
             href: `/eventos/${eventId}/radios`,
             icon: Radio,
             description: 'Entrada e saída de rádios'
         },
         {
-            name: 'Vaga',
-            href: `/eventos/${eventId}/vagas`,
+            name: 'Estacionamento',
+            href: `/eventos/${eventId}/estacionamento`,
             icon: Car,
-            description: 'Entrada e saída de vagas'
+            description: 'Entrada e saída de veículos'
         },
         {
             name: 'Empresas',
