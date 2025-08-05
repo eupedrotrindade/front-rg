@@ -406,7 +406,7 @@ const ImportRequestsDashboard = () => {
                                     <h4 className="font-medium text-gray-900 mb-4">Duplicatas ({selectedRequest.duplicates.length})</h4>
                                     <div className="max-h-40 overflow-y-auto space-y-2">
                                         {selectedRequest.duplicates.map((duplicate, index) => (
-                                            <Alert key={index} variant="secondary">
+                                            <Alert key={index} variant="default">
                                                 <AlertTriangle className="h-4 w-4" />
                                                 <AlertDescription>
                                                     <strong>Linha {duplicate.row}:</strong> Participante duplicado

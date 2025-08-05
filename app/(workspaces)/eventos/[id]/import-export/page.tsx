@@ -64,14 +64,20 @@ interface ImportResult {
     errors: Array<{ item: any; error: string; row: number }>
     duplicates: Array<{ item: any; existing: EventParticipant; row: number }>
 }
-
+type dataType = {
+    cpf: string
+    nome: string
+    funcao: string
+    empresa: string
+    credencial: string
+}
 interface ProcessedData {
     fileName: string
     totalRows: number
     validRows: number
     invalidRows: number
     duplicateRows: number
-    data: EventParticipantSchema[]
+    data: dataType[]
     errors: Array<{ item: any; error: string; row: number }>
     duplicates: Array<{ item: any; existing: EventParticipant; row: number }>
     missingCredentials: Array<{ name: string; count: number }>
@@ -584,7 +590,13 @@ export default function ImportExportPage() {
                                 : undefined,
                         }
 
-                        result.data.push(participantData)
+                        result.data.push({
+                            cpf: participantData.cpf,
+                            nome: participantData.name,
+                            funcao: participantData.role || "",
+                            empresa: participantData.company || "",
+                            credencial: participantData.credentialId || "",
+                        })
                         result.validRows++
                     })
 
@@ -790,9 +802,21 @@ export default function ImportExportPage() {
         setCurrentStep("import")
 
         try {
-            const result = await importParticipants(processedData.data)
+            const result = await importParticipants(processedData.data.map((item) => ({
+                eventId: eventId,
+                name: item.nome,
+                cpf: item.cpf,
+                company: item.empresa,
+                credentialId: item.credencial,
+            })))
             setImportResult({
-                success: processedData.data,
+                success: processedData.data.map((item) => ({
+                    eventId: eventId,
+                    name: item.nome,
+                    cpf: item.cpf,
+                    company: item.empresa,
+                    credentialId: item.credencial,
+                })),
                 errors: processedData.errors,
                 duplicates: processedData.duplicates,
             })
