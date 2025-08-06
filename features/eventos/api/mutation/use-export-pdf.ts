@@ -10,13 +10,17 @@ interface ExportPDFData {
     | "vagas"
     | "checkin"
     | "checkout"
-    | "tempo";
+    | "tempo"
+    | "filtroEmpresa"
+    | "tipoCredencial"
+    | "cadastradoPor";
   dados: Record<string, unknown>[];
   filtros: {
     dia?: string;
     empresa?: string;
     funcao?: string;
     status?: string;
+    tipoCredencial?: string;
   };
 }
 
@@ -205,22 +209,83 @@ export const useExportPDF = () => {
             ]);
             break;
 
-          default: // geral
+          case "filtroEmpresa":
             colunas = [
-              "Tipo",
               "Nome",
-              "CPF/Email",
+              "CPF",
               "Empresa",
               "Função",
-              "Status",
+              "Pulseira",
+              "Tipo_pulseira",
+              "Check-in",
+              "Check-out",
             ];
             linhas = data.dados.map((d) => [
-              String(d.tipo ?? "-"),
               String(d.nome ?? "-"),
-              String((d.cpf || d.email) ?? "-"),
+              String(d.cpf ?? "-"),
               String(d.empresa ?? "-"),
               String(d.funcao ?? "-"),
-              String(d.status ?? "-"),
+              String(d.pulseira ?? "-"),
+              String(d.tipoPulseira ?? "-"),
+              String(d.checkIn ?? "-"),
+              String(d.checkOut ?? "-"),
+            ]);
+            break;
+
+          case "tipoCredencial":
+            colunas = [
+              "Nome",
+              "CPF",
+              "Empresa",
+              "Função",
+              "Tipo de Credencial",
+            ];
+            linhas = data.dados.map((d) => [
+              String(d.nome ?? "-"),
+              String(d.cpf ?? "-"),
+              String(d.empresa ?? "-"),
+              String(d.funcao ?? "-"),
+              String(d.tipoCredencial ?? "-"),
+            ]);
+            break;
+
+          case "cadastradoPor":
+            colunas = [
+              "Nome",
+              "CPF",
+              "Empresa",
+              "Função",
+              "Cadastrado Por",
+            ];
+            linhas = data.dados.map((d) => [
+              String(d.nome ?? "-"),
+              String(d.cpf ?? "-"),
+              String(d.empresa ?? "-"),
+              String(d.funcao ?? "-"),
+              String(d.cadastradoPor ?? "-"),
+            ]);
+            break;
+
+          default: // geral
+            colunas = [
+              "Nome",
+              "CPF",
+              "Função",
+              "Empresa",
+              "Pulseira",
+              "Tipo_pulseira",
+              "Check-in",
+              "Check-out",
+            ];
+            linhas = data.dados.map((d) => [
+              String(d.nome ?? "-"),
+              String(d.cpf ?? "-"),
+              String(d.funcao ?? "-"),
+              String(d.empresa ?? "-"),
+              String(d.pulseira ?? "-"),
+              String(d.tipoPulseira ?? "-"),
+              String(d.checkIn ?? "-"),
+              String(d.checkOut ?? "-"),
             ]);
         }
 

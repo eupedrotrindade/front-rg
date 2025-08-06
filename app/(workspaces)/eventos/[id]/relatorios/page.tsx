@@ -6,7 +6,6 @@ import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
 import { useCoordenadoresByEvent } from "@/features/eventos/api/query/use-coordenadores-by-event"
 import { useEventVehiclesByEvent } from "@/features/eventos/api/query/use-event-vehicles-by-event"
-import { useEventWristbandsByEvent } from "@/features/eventos/api/query/use-event-wristbands"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,15 +16,80 @@ import { toast } from "sonner"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import type { EventParticipant } from "@/features/eventos/types"
 import { useExportPDF } from "@/features/eventos/api/mutation/use-export-pdf"
+import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
+import { useAllEventAttendance, AttendanceRecord } from "@/features/eventos/api/mutation/use-check-operations"
+import { useMovementCredential } from "@/features/eventos/api/mutation/use-movement-credential"
 
 interface RelatorioConfig {
     titulo: string
-    tipo: "geral" | "participantes" | "coordenadores" | "vagas" | "checkin" | "checkout" | "tempo"
+    tipo: "geral" | "filtroEmpresa" | "checkin" | "checkout" | "tempo" | "tipoCredencial" | "cadastradoPor"
     filtroDia: string
     filtroEmpresa: string
     filtroFuncao: string
     filtroStatus: string
+    filtroTipoCredencial: string
 }
+
+// Interfaces para tipos específicos de dados do relatório
+interface RelatorioParticipanteBase {
+    nome: string
+    cpf: string
+    empresa: string
+    funcao: string | undefined
+}
+
+interface RelatorioParticipanteCompleto extends RelatorioParticipanteBase {
+    pulseira: string
+    tipoPulseira: string
+    checkIn: string
+    checkOut: string
+}
+
+interface RelatorioParticipanteCheckin extends RelatorioParticipanteBase {
+    pulseira: string
+    tipoPulseira: string
+    checkIn: string
+}
+
+interface RelatorioParticipanteCheckout extends RelatorioParticipanteBase {
+    pulseira: string
+    tipoPulseira: string
+    checkIn: string
+    checkOut: string
+}
+
+interface RelatorioParticipanteTempo extends RelatorioParticipanteBase {
+    pulseira: string
+    tipoPulseira: string
+    checkIn: string
+    checkOut: string
+    tempoTotal: string
+}
+
+interface RelatorioParticipanteCredencial extends RelatorioParticipanteBase {
+    tipoCredencial: string
+}
+
+interface RelatorioParticipanteCadastro extends RelatorioParticipanteBase {
+    cadastradoPor: string
+}
+
+interface RelatorioHeaderEmpresa {
+    isHeader: true
+    nomeEmpresa: string
+    totalParticipantes: number
+    participantesComCheckIn: number
+    headerText: string
+}
+
+type RelatorioDataItem =
+    | RelatorioParticipanteCompleto
+    | RelatorioParticipanteCheckin
+    | RelatorioParticipanteCheckout
+    | RelatorioParticipanteTempo
+    | RelatorioParticipanteCredencial
+    | RelatorioParticipanteCadastro
+    | RelatorioHeaderEmpresa
 
 export default function RelatoriosPage() {
     const params = useParams()
@@ -38,6 +102,9 @@ export default function RelatoriosPage() {
     const { data: participantes = [], isLoading: participantesLoading } = useEventParticipantsByEvent({ eventId })
     const { data: coordenadores = [], isLoading: coordenadoresLoading } = useCoordenadoresByEvent({ eventId })
     const { data: vagas = [], isLoading: vagasLoading } = useEventVehiclesByEvent({ eventId })
+    const { data: credenciais = [], isLoading: credenciaisLoading } = useCredentialsByEvent(eventId);
+    const { data: attendanceRecords = [], isLoading: attendanceLoading } = useAllEventAttendance(eventId);
+    const { data: movementCredentials = [], isLoading: movementLoading } = useMovementCredential(eventId);
 
     // Hook para exportação
     const exportPDFMutation = useExportPDF()
@@ -47,9 +114,10 @@ export default function RelatoriosPage() {
         titulo: "",
         tipo: "geral",
         filtroDia: "all",
-        filtroEmpresa: "",
-        filtroFuncao: "",
-        filtroStatus: ""
+        filtroEmpresa: "all_companies",
+        filtroFuncao: "all_functions",
+        filtroStatus: "",
+        filtroTipoCredencial: "all_credentials"
     })
 
     const [selectedDay, setSelectedDay] = useState<string>("all")
@@ -112,19 +180,88 @@ export default function RelatoriosPage() {
         return days
     }, [evento])
 
-    // Função para filtrar participantes por dia
-    const getParticipantesPorDia = useCallback((dia: string): EventParticipant[] => {
-        if (dia === 'all') {
-            return participantes
+    // Função para calcular tempo total de trabalho
+    const calcularTempoTotal = useCallback((checkIn: string, checkOut: string): string => {
+        try {
+            const entrada = new Date(checkIn)
+            const saida = new Date(checkOut)
+            const diff = saida.getTime() - entrada.getTime()
+
+            if (diff <= 0) return "00:00"
+
+            const hours = Math.floor(diff / (1000 * 60 * 60))
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+        } catch {
+            return "00:00"
+        }
+    }, [])
+
+    // Função para obter código da credencial/pulseira
+    const obterCodigoPulseira = useCallback((participantId?: string): string => {
+        if (!participantId) return ""
+        const credencial = movementCredentials.find(c => c.participant_id === participantId)
+        return credencial?.code || ""
+    }, [movementCredentials])
+
+    // Função para obter tipo da pulseira (nome da credencial)
+    const obterTipoPulseira = useCallback((credentialId?: string): string => {
+        if (!credentialId) return ""
+        const credencial = credenciais.find(c => c.id === credentialId)
+        return credencial?.nome || ""
+    }, [credenciais])
+
+    // Função para sincronizar dados de participante com attendance
+    const sincronizarAttendance = useCallback((participante: EventParticipant) => {
+        // Buscar registros de attendance para este participante
+        const participantAttendance = attendanceRecords.filter(
+            record => record.participantId === participante.id
+        )
+
+        // Se não há registros de attendance, retornar dados do participante original
+        if (participantAttendance.length === 0) {
+            return {
+                ...participante,
+                checkIn: participante.checkIn || "",
+                checkOut: participante.checkOut || ""
+            }
         }
 
-        return participantes.filter((participant: EventParticipant) => {
-            if (!participant.daysWork || participant.daysWork.length === 0) {
-                return false
-            }
-            return participant.daysWork.includes(dia)
-        })
-    }, [participantes])
+        // Pegar o registro mais recente ou combinar todos os check-ins/check-outs
+        const latestCheckin = participantAttendance
+            .filter(record => record.checkIn)
+            .sort((a, b) => new Date(b.checkIn!).getTime() - new Date(a.checkIn!).getTime())[0]
+
+        const latestCheckout = participantAttendance
+            .filter(record => record.checkOut)
+            .sort((a, b) => new Date(b.checkOut!).getTime() - new Date(a.checkOut!).getTime())[0]
+
+        return {
+            ...participante,
+            checkIn: latestCheckin?.checkIn || participante.checkIn || "",
+            checkOut: latestCheckout?.checkOut || participante.checkOut || ""
+        }
+    }, [attendanceRecords])
+
+    // Função para filtrar participantes por dia com dados de attendance sincronizados
+    const getParticipantesPorDia = useCallback((dia: string): EventParticipant[] => {
+        let participantesFiltrados: EventParticipant[]
+
+        if (dia === 'all') {
+            participantesFiltrados = participantes
+        } else {
+            participantesFiltrados = participantes.filter((participant: EventParticipant) => {
+                if (!participant.daysWork || participant.daysWork.length === 0) {
+                    return false
+                }
+                return participant.daysWork.includes(dia)
+            })
+        }
+
+        // Sincronizar com dados de attendance
+        return participantesFiltrados.map(p => sincronizarAttendance(p))
+    }, [participantes, sincronizarAttendance])
 
     // Dados filtrados por dia selecionado
     const participantesDoDia = getParticipantesPorDia(selectedDay)
@@ -135,7 +272,7 @@ export default function RelatoriosPage() {
         const participantesComCheckIn = participantesDoDia.filter(p => p.checkIn).length
         const participantesComCheckOut = participantesDoDia.filter(p => p.checkOut).length
         const participantesAtivos = participantesComCheckIn - participantesComCheckOut
-        const participantesComPulseira = participantesDoDia.filter(p => p.wristbandId).length
+        const participantesComPulseira = participantesDoDia.filter(p => p.credentialId).length
 
         return {
             totalParticipantes,
@@ -177,125 +314,174 @@ export default function RelatoriosPage() {
         }
     }, [])
 
-    // Função para gerar dados do relatório
-    const gerarDadosRelatorio = useCallback(() => {
-        let dados: Record<string, unknown>[] = []
+    // Função para gerar dados do relatório agrupados por empresa
+    const gerarDadosRelatorio = useCallback((): RelatorioDataItem[] => {
+        let participantesProcessados: Omit<RelatorioDataItem, 'isHeader'>[] = []
 
         switch (configRelatorio.tipo) {
-            case "participantes":
-                dados = participantesDoDia.map(p => ({
-                    nome: p.name,
-                    cpf: p.cpf,
-                    empresa: p.company,
-                    funcao: p.role,
-                    checkIn: p.checkIn,
-                    checkOut: p.checkOut,
-                    validadoPor: p.validatedBy,
-                    diasTrabalho: p.daysWork?.join(", ")
-                }))
+            case "geral":
+                // Relatório Geral: Lista todos staffs ordenados alfabeticamente
+                participantesProcessados = participantesDoDia
+                    .map(p => ({
+                        nome: p.name,
+                        cpf: p.cpf,
+                        empresa: p.company,
+                        funcao: p.role,
+                        pulseira: obterCodigoPulseira(p.id),
+                        tipoPulseira: obterTipoPulseira(p.credentialId),
+                        checkIn: p.checkIn || "",
+                        checkOut: p.checkOut || ""
+                    } as RelatorioParticipanteCompleto))
+                    .sort((a, b) => a.nome.localeCompare(b.nome))
                 break
 
-            case "coordenadores":
-                dados = coordenadores.map(c => ({
-                    nome: `${c.firstName} ${c.lastName}`,
-                    email: c.email,
-                    eventos: c.metadata?.eventos?.map(e => e.nome_evento).join(", ")
-                }))
-                break
-
-            case "vagas":
-                dados = vagas.map(v => ({
-                    empresa: v.empresa,
-                    placa: v.placa,
-                    modelo: v.modelo,
-                    retirada: v.retirada,
-                }))
+            case "filtroEmpresa":
+                // Filtro por Empresa: Similar ao geral mas com filtro adicional
+                participantesProcessados = participantesDoDia
+                    .map(p => ({
+                        nome: p.name,
+                        cpf: p.cpf,
+                        empresa: p.company,
+                        funcao: p.role,
+                        pulseira: obterCodigoPulseira(p.id),
+                        tipoPulseira: obterTipoPulseira(p.credentialId),
+                        checkIn: p.checkIn || "",
+                        checkOut: p.checkOut || ""
+                    } as RelatorioParticipanteCompleto))
+                    .sort((a, b) => a.nome.localeCompare(b.nome))
                 break
 
             case "checkin":
-                dados = participantesDoDia
+                // Quem fez Check-in (unificado com código da pulseira)
+                participantesProcessados = participantesDoDia
                     .filter(p => p.checkIn)
                     .map(p => ({
                         nome: p.name,
                         cpf: p.cpf,
                         empresa: p.company,
                         funcao: p.role,
-                        checkIn: p.checkIn,
-                        validadoPor: p.validatedBy
-                    }))
+                        pulseira: obterCodigoPulseira(p.id),
+                        tipoPulseira: obterTipoPulseira(p.credentialId),
+                        checkIn: p.checkIn!
+                    } as RelatorioParticipanteCheckin))
+                    .sort((a, b) => a.nome.localeCompare(b.nome))
                 break
 
             case "checkout":
-                dados = participantesDoDia
-                    .filter(p => p.checkOut)
-                    .map(p => ({
-                        nome: p.name,
-                        cpf: p.cpf,
-                        empresa: p.company,
-                        funcao: p.role,
-                        checkOut: p.checkOut,
-                        validadoPor: p.validatedBy
-                    }))
-                break
-
-            case "tempo":
-                dados = participantesDoDia
+                // Quem fez Check-out
+                participantesProcessados = participantesDoDia
                     .filter(p => p.checkIn && p.checkOut)
                     .map(p => ({
                         nome: p.name,
                         cpf: p.cpf,
                         empresa: p.company,
                         funcao: p.role,
-                        checkIn: p.checkIn,
-                        checkOut: p.checkOut,
-                        tempoTotal: "Calculado" // Implementar cálculo de tempo
-                    }))
+                        pulseira: obterCodigoPulseira(p.id),
+                        tipoPulseira: obterTipoPulseira(p.credentialId),
+                        checkIn: p.checkIn!,
+                        checkOut: p.checkOut!
+                    } as RelatorioParticipanteCheckout))
+                    .sort((a, b) => a.nome.localeCompare(b.nome))
                 break
 
-            default: // geral
-                dados = [
-                    ...participantesDoDia.map(p => ({
-                        tipo: "Participante",
+            case "tempo":
+                // Tempo de Serviço: Com tempo total de trabalho
+                participantesProcessados = participantesDoDia
+                    .filter(p => p.checkIn && p.checkOut)
+                    .map(p => ({
                         nome: p.name,
                         cpf: p.cpf,
                         empresa: p.company,
                         funcao: p.role,
-                        status: p.checkIn ? (p.checkOut ? "Finalizado" : "Ativo") : "Pendente"
-                    })),
-                    ...coordenadores.map(c => ({
-                        tipo: "Coordenador",
-                        nome: `${c.firstName} ${c.lastName}`,
-                        email: c.email,
-                        empresa: "-",
-                        funcao: "-",
-                        status: "Ativo"
-                    })),
-                    ...vagas.map(v => ({
-                        tipo: "Vaga",
-                        nome: v.empresa,
-                        placa: v.placa,
-                        empresa: v.empresa,
-                        funcao: v.modelo,
-                        retirada: v.retirada
-                    }))
-                ]
+                        pulseira: obterCodigoPulseira(p.id),
+                        tipoPulseira: obterTipoPulseira(p.credentialId),
+                        checkIn: p.checkIn!,
+                        checkOut: p.checkOut!,
+                        tempoTotal: calcularTempoTotal(p.checkIn!, p.checkOut!)
+                    } as RelatorioParticipanteTempo))
+                    .sort((a, b) => a.nome.localeCompare(b.nome))
+                break
+
+            case "tipoCredencial":
+                // Tipo de credencial
+                participantesProcessados = participantesDoDia
+                    .map(p => ({
+                        nome: p.name,
+                        cpf: p.cpf,
+                        empresa: p.company,
+                        funcao: p.role,
+                        tipoCredencial: p.credentialId || "Não informado"
+                    } as RelatorioParticipanteCredencial))
+                    .sort((a, b) => a.nome.localeCompare(b.nome))
+                break
+
+            case "cadastradoPor":
+                // Cadastrado por
+                participantesProcessados = participantesDoDia
+                    .map(p => ({
+                        nome: p.name,
+                        cpf: p.cpf,
+                        empresa: p.company,
+                        funcao: p.role,
+                        cadastradoPor: p.validatedBy || "Não informado"
+                    } as RelatorioParticipanteCadastro))
+                    .sort((a, b) => a.nome.localeCompare(b.nome))
+                break
         }
 
         // Aplicar filtros
-        if (configRelatorio.filtroEmpresa) {
-            dados = dados.filter(d => d.empresa === configRelatorio.filtroEmpresa)
+        if (configRelatorio.filtroEmpresa && configRelatorio.filtroEmpresa !== "all_companies") {
+            participantesProcessados = participantesProcessados.filter(d =>
+                'empresa' in d && d.empresa === configRelatorio.filtroEmpresa
+            )
         }
 
-        if (configRelatorio.filtroFuncao) {
-            dados = dados.filter(d => d.funcao === configRelatorio.filtroFuncao)
+        if (configRelatorio.filtroFuncao && configRelatorio.filtroFuncao !== "all_functions") {
+            participantesProcessados = participantesProcessados.filter(d =>
+                'funcao' in d && d.funcao === configRelatorio.filtroFuncao
+            )
         }
 
-        if (configRelatorio.filtroStatus) {
-            dados = dados.filter(d => d.status === configRelatorio.filtroStatus)
+        if (configRelatorio.filtroTipoCredencial && configRelatorio.filtroTipoCredencial !== "all_credentials") {
+            participantesProcessados = participantesProcessados.filter(d =>
+                'tipoCredencial' in d && d.tipoCredencial === configRelatorio.filtroTipoCredencial
+            )
         }
 
-        return dados
-    }, [configRelatorio, participantesDoDia, coordenadores, vagas])
+        // Agrupar por empresa com cabeçalhos
+        const empresas = Array.from(new Set(
+            participantesProcessados
+                .filter((p): p is RelatorioParticipanteBase => 'empresa' in p)
+                .map(p => p.empresa)
+        )).sort()
+        const dadosFinais: RelatorioDataItem[] = []
+
+        empresas.forEach(nomeEmpresa => {
+            const participantesDaEmpresa = participantesProcessados.filter(p =>
+                'empresa' in p && p.empresa === nomeEmpresa
+            )
+            const totalParticipantes = participantesDaEmpresa.length
+            const participantesComCheckIn = participantesDaEmpresa.filter(p =>
+                'checkIn' in p && p.checkIn
+            ).length
+
+            // Adicionar cabeçalho da empresa
+            dadosFinais.push({
+                isHeader: true,
+                nomeEmpresa,
+                totalParticipantes,
+                participantesComCheckIn,
+                headerText: `${nomeEmpresa} (${participantesComCheckIn}/${totalParticipantes})`
+            } as RelatorioHeaderEmpresa)
+
+            // Adicionar participantes da empresa
+            participantesDaEmpresa.forEach(participante => {
+                dadosFinais.push(participante as RelatorioDataItem)
+            })
+        })
+
+        return dadosFinais
+    }, [configRelatorio, participantesDoDia, calcularTempoTotal, obterCodigoPulseira, obterTipoPulseira])
 
     // Função para exportar PDF
     const exportarPDF = useCallback(() => {
@@ -309,12 +495,13 @@ export default function RelatoriosPage() {
         exportPDFMutation.mutate({
             titulo: configRelatorio.titulo,
             tipo: configRelatorio.tipo,
-            dados: dadosRelatorio,
+            dados: dadosRelatorio.filter(item => !('isHeader' in item && item.isHeader)) as unknown as Record<string, unknown>[],
             filtros: {
                 dia: configRelatorio.filtroDia,
                 empresa: configRelatorio.filtroEmpresa,
                 funcao: configRelatorio.filtroFuncao,
-                status: configRelatorio.filtroStatus
+                status: configRelatorio.filtroStatus,
+                tipoCredencial: configRelatorio.filtroTipoCredencial
             }
         })
 
@@ -323,13 +510,14 @@ export default function RelatoriosPage() {
             titulo: "",
             tipo: "geral",
             filtroDia: "all",
-            filtroEmpresa: "",
-            filtroFuncao: "",
-            filtroStatus: ""
+            filtroEmpresa: "all_companies",
+            filtroFuncao: "all_functions",
+            filtroStatus: "",
+            filtroTipoCredencial: "all_credentials"
         })
     }, [configRelatorio, gerarDadosRelatorio, exportPDFMutation])
 
-    const isLoading = participantesLoading || coordenadoresLoading || vagasLoading
+    const isLoading = participantesLoading || coordenadoresLoading || vagasLoading || credenciaisLoading || attendanceLoading
 
 
     if (!evento) {
@@ -394,8 +582,8 @@ export default function RelatoriosPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Vagas</p>
-                                    <p className="text-3xl font-bold">{estatisticas.totalVagas}</p>
+                                    <p className="text-sm opacity-90">Com Pulseira</p>
+                                    <p className="text-3xl font-bold">{estatisticas.participantesComPulseira}</p>
                                 </div>
                                 <Building className="h-8 w-8 opacity-80" />
                             </div>
@@ -461,12 +649,12 @@ export default function RelatoriosPage() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="geral">Relatório Geral</SelectItem>
-                                        <SelectItem value="participantes">Participantes</SelectItem>
-                                        <SelectItem value="coordenadores">Coordenadores</SelectItem>
-                                        <SelectItem value="vagas">Vagas</SelectItem>
-                                        <SelectItem value="checkin">Check-in</SelectItem>
-                                        <SelectItem value="checkout">Check-out</SelectItem>
+                                        <SelectItem value="filtroEmpresa">Filtro por Empresa</SelectItem>
+                                        <SelectItem value="checkin">Quem fez Check-in</SelectItem>
+                                        <SelectItem value="checkout">Quem fez Check-out</SelectItem>
                                         <SelectItem value="tempo">Tempo de Serviço</SelectItem>
+                                        <SelectItem value="tipoCredencial">Tipo de Credencial</SelectItem>
+                                        <SelectItem value="cadastradoPor">Cadastrado por</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -491,7 +679,30 @@ export default function RelatoriosPage() {
                             </div>
 
                             {/* Filtros adicionais baseados no tipo */}
-                            {configRelatorio.tipo === "participantes" && (
+                            {(configRelatorio.tipo === "filtroEmpresa" ||
+                                configRelatorio.tipo === "checkin" ||
+                                configRelatorio.tipo === "checkout" ||
+                                configRelatorio.tipo === "cadastradoPor") && (
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Filtrar por Empresa</label>
+                                        <Select
+                                            value={configRelatorio.filtroEmpresa}
+                                            onValueChange={(value) => setConfigRelatorio(prev => ({ ...prev, filtroEmpresa: value }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Todas as empresas" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all_companies">Todas as empresas</SelectItem>
+                                                {Array.from(new Set(participantesDoDia.map(p => p.company).filter(Boolean))).map(empresa => (
+                                                    <SelectItem key={empresa} value={empresa}>{empresa}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+
+                            {configRelatorio.tipo === "tipoCredencial" && (
                                 <>
                                     <div>
                                         <label className="block text-sm font-medium mb-2">Filtrar por Empresa</label>
@@ -503,7 +714,7 @@ export default function RelatoriosPage() {
                                                 <SelectValue placeholder="Todas as empresas" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="">Todas as empresas</SelectItem>
+                                                <SelectItem value="all_companies">Todas as empresas</SelectItem>
                                                 {Array.from(new Set(participantesDoDia.map(p => p.company).filter(Boolean))).map(empresa => (
                                                     <SelectItem key={empresa} value={empresa}>{empresa}</SelectItem>
                                                 ))}
@@ -512,19 +723,37 @@ export default function RelatoriosPage() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-medium mb-2">Filtrar por Status</label>
+                                        <label className="block text-sm font-medium mb-2">Filtrar por Função</label>
                                         <Select
-                                            value={configRelatorio.filtroStatus}
-                                            onValueChange={(value) => setConfigRelatorio(prev => ({ ...prev, filtroStatus: value }))}
+                                            value={configRelatorio.filtroFuncao}
+                                            onValueChange={(value) => setConfigRelatorio(prev => ({ ...prev, filtroFuncao: value }))}
                                         >
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Todos os status" />
+                                                <SelectValue placeholder="Todas as funções" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="">Todos os status</SelectItem>
-                                                <SelectItem value="Pendente">Pendente</SelectItem>
-                                                <SelectItem value="Ativo">Ativo</SelectItem>
-                                                <SelectItem value="Finalizado">Finalizado</SelectItem>
+                                                <SelectItem value="all_functions">Todas as funções</SelectItem>
+                                                {Array.from(new Set(participantesDoDia.map(p => p.role).filter(Boolean))).map(funcao => (
+                                                    <SelectItem key={funcao} value={funcao || "not_defined"}>{funcao}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Filtrar por Tipo de Credencial</label>
+                                        <Select
+                                            value={configRelatorio.filtroTipoCredencial}
+                                            onValueChange={(value) => setConfigRelatorio(prev => ({ ...prev, filtroTipoCredencial: value }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Todos os tipos" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all_credentials">Todos os tipos</SelectItem>
+                                                {Array.from(new Set(participantesDoDia.map(p => p.credentialId || "not_informed").filter(Boolean))).map(credencial => (
+                                                    <SelectItem key={credencial} value={credencial}>{credencial}</SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -571,8 +800,14 @@ export default function RelatoriosPage() {
                                     <span className="text-sm font-medium">Primeiros 5 registros:</span>
                                     <div className="space-y-1">
                                         {dadosRelatorio.slice(0, 5).map((item, index) => (
-                                            <div key={index} className="text-xs text-gray-600 p-2 bg-gray-50 rounded">
-                                                {String(item.nome || item.empresa || item.tipo)} - {String(item.funcao || item.status)}
+                                            <div key={index} className={`text-xs p-2 rounded ${'isHeader' in item && item.isHeader
+                                                ? 'bg-blue-100 text-blue-800 font-semibold'
+                                                : 'text-gray-600 bg-gray-50'
+                                                }`}>
+                                                {'isHeader' in item && item.isHeader
+                                                    ? item.headerText
+                                                    : `${'nome' in item ? item.nome : 'N/A'} - ${'funcao' in item ? item.funcao || 'Não informado' : ''}`
+                                                }
                                             </div>
                                         ))}
                                     </div>
@@ -590,12 +825,13 @@ export default function RelatoriosPage() {
                                         onClick={() => {
                                             const dadosTeste = [
                                                 {
-                                                    tipo: "Participante",
                                                     nome: "João Silva",
                                                     cpf: "123.456.789-00",
                                                     empresa: "RG Produções",
                                                     funcao: "Operador",
-                                                    status: "Ativo"
+                                                    pulseira: "P001",
+                                                    checkIn: "08:00",
+                                                    checkOut: "17:00"
                                                 }
                                             ]
 
@@ -605,9 +841,10 @@ export default function RelatoriosPage() {
                                                 dados: dadosTeste,
                                                 filtros: {
                                                     dia: "all",
-                                                    empresa: "",
-                                                    funcao: "",
-                                                    status: ""
+                                                    empresa: "all_companies",
+                                                    funcao: "all_functions",
+                                                    status: "",
+                                                    tipoCredencial: "all_credentials"
                                                 }
                                             })
                                         }}

@@ -64,7 +64,7 @@ const OperadorLoginPage = () => {
                         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2 drop-shadow-md">
                             Credenciamento RG Produções
                         </h1>
-                        <p className="text-lg text-gray-600 drop-shadow-sm">Login do Operador</p>
+                        <p className="text-lg text-gray-600 drop-shadow-sm">Entrada do Operador</p>
                     </div>
                 </div>
             </header>
@@ -76,7 +76,7 @@ const OperadorLoginPage = () => {
                         <div className="bg-pink-100 p-4 rounded-full mb-4">
                             <User className="h-12 w-12 text-pink-600" />
                         </div>
-                        <CardTitle className="text-2xl font-bold text-gray-900 text-center">Login do Operador</CardTitle>
+                        <CardTitle className="text-2xl font-bold text-gray-900 text-center">Entrada do Operador</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
                         <OperadorLoginForm onSuccess={handleSuccess} />
