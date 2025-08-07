@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export type Event = {
   id: string;
   slug: string;
@@ -29,11 +30,22 @@ export type Event = {
 
 export type EventHistory = {
   id: string;
-  entityType: 
-    | "event" | "participant" | "manager" | "staff" | "wristband" 
-    | "wristband_model" | "vehicle" | "attendance" | "operator" 
-    | "coordinator" | "company" | "credential" | "movement_credential" 
-    | "radio" | "import_request";
+  entityType:
+    | "event"
+    | "participant"
+    | "manager"
+    | "staff"
+    | "wristband"
+    | "wristband_model"
+    | "vehicle"
+    | "attendance"
+    | "operator"
+    | "coordinator"
+    | "company"
+    | "credential"
+    | "movement_credential"
+    | "radio"
+    | "import_request";
   entityId: string;
   action: string;
   performedBy: string;
@@ -171,16 +183,6 @@ export type EventParticipant = {
   documentPhoto?: string;
   validatedBy?: string;
   daysWork?: string[];
-};
-
-export type EventHistory = {
-  id: string;
-  entityType: "event" | "participant" | "manager" | "staff" | "wristband";
-  entityId: string;
-  action: "created" | "updated" | "deleted";
-  performedBy: string;
-  timestamp?: string;
-  description?: string;
 };
 
 export type Coordenador = {
