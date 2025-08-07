@@ -35,6 +35,7 @@ import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import ModalTrocaPulseira from "@/components/operador/modalTrocaPulseira"
 import { changeCredentialCode } from "@/features/eventos/actions/movement-credentials"
 import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
+import ExcelColumnFilter from "@/components/ui/excel-column-filter"
 
 export default function Painel() {
 
@@ -119,6 +120,21 @@ export default function Painel() {
     const [filteredDataCache, setFilteredDataCache] = useState<Map<string, EventParticipant[]>>(new Map());
     const [lastFilterHash, setLastFilterHash] = useState<string>('');
     const [isDataStale, setIsDataStale] = useState(false);
+
+    // Estados para filtros estilo Excel das colunas
+    const [columnFilters, setColumnFilters] = useState<{
+        nome: string[];
+        cpf: string[];
+        funcao: string[];
+        empresa: string[];
+        credencial: string[];
+    }>({
+        nome: [],
+        cpf: [],
+        funcao: [],
+        empresa: [],
+        credencial: []
+    });
 
     // Estados para check-in/check-out por data
     const [selectedDateForAction, setSelectedDateForAction] = useState<string>("");
@@ -388,7 +404,7 @@ export default function Painel() {
                 const isOnlyEventDay = !hasSetup && !hasFinalization;
                 console.log("🔍 Adicionando dia de preparação/evento:", dateStr);
                 days.push({
-                    id: `preparation_${dateStr}`,
+                    id: `${dateStr}`,
                     label: isOnlyEventDay ? `${dateStr} (DIA DO EVENTO)` : `${dateStr} (EVENTO)`,
                     date: dateStr,
                     type: 'preparation'
@@ -414,7 +430,7 @@ export default function Painel() {
                 const dateStr = date.toLocaleDateString('pt-BR');
                 console.log("🔍 Adicionando dia de finalização:", dateStr);
                 days.push({
-                    id: `finalization_${dateStr}`,
+                    id: `${dateStr}`,
                     label: `${dateStr} (DESMONTAGEM)`,
                     date: dateStr,
                     type: 'finalization'
@@ -653,6 +669,36 @@ export default function Painel() {
         setIsDataStale(false);
     }, []);
 
+    // Funções para filtros das colunas
+    const handleColumnFilterChange = useCallback((column: keyof typeof columnFilters, selectedValues: string[]) => {
+        setColumnFilters(prev => ({
+            ...prev,
+            [column]: selectedValues
+        }));
+        setCurrentPage(1);
+    }, []);
+
+    // Função para ordenar tabela por coluna específica
+    const handleColumnSort = useCallback((column: string, direction: "asc" | "desc") => {
+        setOrdenacao({ campo: column, direcao: direction });
+        setCurrentPage(1);
+    }, []);
+
+    const clearColumnFilters = useCallback(() => {
+        setColumnFilters({
+            nome: [],
+            cpf: [],
+            funcao: [],
+            empresa: [],
+            credencial: []
+        });
+        setCurrentPage(1);
+    }, []);
+
+    const hasActiveColumnFilters = useMemo(() => {
+        return Object.values(columnFilters).some(filters => filters.length > 0);
+    }, [columnFilters]);
+
     // Função utilitária para converter dd/mm/yyyy para Date
     const dataBRtoDate = (dataStr: string): Date => {
         const [dia, mes, ano] = dataStr.split('/');
@@ -682,9 +728,19 @@ export default function Painel() {
 
     // Adicione após os outros useCallback, antes dos useEffect:
 
+    // Função para formatar CPF (movida para antes dos useMemo)
+    const formatCPF = (cpf: string): string => {
+        if (!cpf) return "";
+        const trimmedCpf = cpf.trim();
+        if (!trimmedCpf) return "";
+        const digits = trimmedCpf.replace(/\D/g, "");
+        if (digits.length !== 11) return trimmedCpf;
+        return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+    };
+
     // TODOS OS useMemo DEPOIS DOS useCallback
     const filtrarColaboradores = useMemo(() => {
-        const filterHash = generateFilterHash(filtro, selectedDay, filtroAvancado);
+        const filterHash = generateFilterHash(filtro, selectedDay, filtroAvancado) + JSON.stringify(columnFilters);
 
         if (filteredDataCache.has(filterHash) && !isDataStale) {
             const cachedData = filteredDataCache.get(filterHash)!;
@@ -709,6 +765,7 @@ export default function Painel() {
 
             let match = (nomeMatch || cpfMatch || credentialMatch) && empresaMatch && funcaoMatch;
 
+            // Aplicar filtros avançados
             Object.entries(filtroAvancado).forEach(([campo, valor]) => {
                 const colabValue = (colab as any)[campo];
                 if (valor && String(valor).trim() !== "") {
@@ -718,21 +775,85 @@ export default function Painel() {
                 }
             });
 
+            // Aplicar filtros das colunas
+            if (match && hasActiveColumnFilters) {
+                const credentialSelected = credential.find(w => w.id === colab.credentialId);
+                const credentialName = credentialSelected?.nome || 'SEM CREDENCIAL';
+
+                // Filtro de nome
+                if (columnFilters.nome.length > 0 && !columnFilters.nome.includes(colab.name || '')) {
+                    match = false;
+                }
+
+                // Filtro de CPF
+                if (columnFilters.cpf.length > 0) {
+                    const formattedCpf = formatCPF(colab.cpf?.trim() || '');
+                    if (!columnFilters.cpf.includes(formattedCpf)) {
+                        match = false;
+                    }
+                }
+
+                // Filtro de função
+                if (columnFilters.funcao.length > 0 && !columnFilters.funcao.includes(colab.role || '')) {
+                    match = false;
+                }
+
+                // Filtro de empresa
+                if (columnFilters.empresa.length > 0 && !columnFilters.empresa.includes(colab.company || '')) {
+                    match = false;
+                }
+
+                // Filtro de credencial
+                if (columnFilters.credencial.length > 0 && !columnFilters.credencial.includes(credentialName)) {
+                    match = false;
+                }
+            }
+
             return match;
         });
 
         if (ordenacao.campo) {
-            type EventParticipantKey = keyof EventParticipant;
-            const campoOrdenacao = ordenacao.campo as EventParticipantKey;
             filtrados = filtrados.sort((a: EventParticipant, b: EventParticipant) => {
-                let aVal = a[campoOrdenacao] ?? '';
-                let bVal = b[campoOrdenacao] ?? '';
+                let aVal: any;
+                let bVal: any;
 
-                if (ordenacao.campo === 'empresa') {
-                    aVal = typeof aVal === 'string' ? aVal.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim() : '';
-                    bVal = typeof bVal === 'string' ? bVal.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim() : '';
+                // Mapear campos para valores corretos
+                switch (ordenacao.campo) {
+                    case 'name':
+                        aVal = a.name ?? '';
+                        bVal = b.name ?? '';
+                        break;
+                    case 'cpf':
+                        aVal = formatCPF(a.cpf?.trim() || '');
+                        bVal = formatCPF(b.cpf?.trim() || '');
+                        break;
+                    case 'role':
+                        aVal = a.role ?? '';
+                        bVal = b.role ?? '';
+                        break;
+                    case 'company':
+                        aVal = a.company ?? '';
+                        bVal = b.company ?? '';
+                        // Normalizar para comparação de empresa
+                        aVal = typeof aVal === 'string' ? aVal.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim() : '';
+                        bVal = typeof bVal === 'string' ? bVal.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim() : '';
+                        break;
+                    case 'credentialId':
+                        // Ordenar por nome da credencial, não pelo ID
+                        const credentialA = credential.find(w => w.id === a.credentialId);
+                        const credentialB = credential.find(w => w.id === b.credentialId);
+                        aVal = credentialA?.nome || 'SEM CREDENCIAL';
+                        bVal = credentialB?.nome || 'SEM CREDENCIAL';
+                        break;
+                    default:
+                        // Fallback para outros campos
+                        type EventParticipantKey = keyof EventParticipant;
+                        const campoOrdenacao = ordenacao.campo as EventParticipantKey;
+                        aVal = a[campoOrdenacao] ?? '';
+                        bVal = b[campoOrdenacao] ?? '';
                 }
 
+                // Comparar valores
                 if (typeof aVal === 'string' && typeof bVal === 'string') {
                     if (ordenacao.direcao === 'asc') return aVal.localeCompare(bVal);
                     else return bVal.localeCompare(aVal);
@@ -742,7 +863,7 @@ export default function Painel() {
         }
 
         return { data: filtrados, total: filtrados.length };
-    }, [filtro, selectedDay, filtroAvancado, ordenacao, getColaboradoresPorDia, generateFilterHash, isDataStale, filteredDataCache]);
+    }, [filtro, selectedDay, filtroAvancado, ordenacao, getColaboradoresPorDia, generateFilterHash, isDataStale, filteredDataCache, columnFilters, hasActiveColumnFilters, credential]);
 
     const paginatedData = useMemo(() => {
         const { data: allData, total } = filtrarColaboradores;
@@ -752,6 +873,22 @@ export default function Painel() {
 
     const isHighVolume = paginatedData.total > 1000;
     const showPerformanceIndicator = isHighVolume && !participantsLoading;
+
+    // Valores únicos para filtros das colunas
+    const columnUniqueValues = useMemo(() => {
+        const currentData = getColaboradoresPorDia(selectedDay);
+
+        return {
+            nome: Array.from(new Set(currentData.map(c => c.name).filter(Boolean))),
+            cpf: Array.from(new Set(currentData.map(c => formatCPF(c.cpf?.trim() || '')).filter(Boolean))),
+            funcao: Array.from(new Set(currentData.map(c => c.role).filter(Boolean))),
+            empresa: Array.from(new Set(currentData.map(c => c.company).filter(Boolean))),
+            credencial: Array.from(new Set(currentData.map(c => {
+                const credentialSelected = credential.find(w => w.id === c.credentialId);
+                return credentialSelected?.nome || 'SEM CREDENCIAL';
+            })))
+        };
+    }, [getColaboradoresPorDia, selectedDay, credential]);
 
     // TODOS OS useEffect POR ÚLTIMO
     useEffect(() => {
@@ -821,7 +958,7 @@ export default function Painel() {
         if (currentPage !== 1) {
             setCurrentPage(1);
         }
-    }, [filtro, selectedDay, filtroAvancado, ordenacao, currentPage]);
+    }, [filtro, selectedDay, filtroAvancado, ordenacao, currentPage, columnFilters]);
 
     // Carregar status de presença quando o dia selecionado mudar
     useEffect(() => {
@@ -1170,26 +1307,26 @@ export default function Painel() {
         }
     };
 
-    // Função para registrar ações do operador
-    const registerOperatorAction = async (acao: Record<string, unknown>) => {
-        if (!operadorInfo) return;
-        try {
-            await apiClient.post("/event-histories", {
-                eventId: params?.id as string,
-                entityType: "participant",
-                entityId: acao.entityId as string,
-                action: acao.action,
-                performedBy: operadorInfo.nome,
-                performedByCpf: operadorInfo.cpf,
-                details: acao.details,
-                timestamp: new Date().toISOString(),
-                description: acao.details,
+    // // Função para registrar ações do operador
+    // const registerOperatorAction = async (acao: Record<string, unknown>) => {
+    //     if (!operadorInfo) return;
+    //     try {
+    //         await apiClient.post("/event-histories", {
+    //             eventId: params?.id as string,
+    //             entityType: "participant",
+    //             entityId: acao.entityId as string,
+    //             action: acao.action,
+    //             performedBy: operadorInfo.nome,
+    //             performedByCpf: operadorInfo.cpf,
+    //             details: acao.details,
+    //             timestamp: new Date().toISOString(),
+    //             description: acao.details,
 
-            });
-        } catch (error) {
-            console.error("Erro ao registrar ação:", error);
-        }
-    };
+    //         });
+    //     } catch (error) {
+    //         console.error("Erro ao registrar ação:", error);
+    //     }
+    // };
 
     // Função para registrar ações na coluna acao do operador
     const registerOperatorActionInColumn = async (actionData: {
@@ -1298,11 +1435,11 @@ export default function Painel() {
             setNovaPulseira("");
             setParticipantAction(null);
             setModalAberto(false);
-            await registerOperatorAction({
-                action: "updated",
-                entityId: participantAction.id,
-                details: `Pulseira alterada para: ${novaPulseira.trim()}`,
-            });
+            // await registerOperatorAction({
+            //     action: "updated",
+            //     entityId: participantAction.id,
+            //     details: `Pulseira alterada para: ${novaPulseira.trim()}`,
+            // });
             await registerOperatorActionInColumn({
                 type: "update_wristband",
                 staffId: String(participantAction.id),
@@ -1319,15 +1456,6 @@ export default function Painel() {
         setLoading(false);
     };
 
-    // Função para formatar CPF
-    const formatCPF = (cpf: string): string => {
-        if (!cpf) return "";
-        const trimmedCpf = cpf.trim();
-        if (!trimmedCpf) return "";
-        const digits = trimmedCpf.replace(/\D/g, "");
-        if (digits.length !== 11) return trimmedCpf;
-        return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-    };
 
     // Função utilitária para capitalizar cada palavra
     const capitalizeWords = (str: string): string =>
@@ -1360,11 +1488,11 @@ export default function Painel() {
                 validatedBy: operadorInfo?.nome || undefined,
                 daysWork: novoStaff.daysWork,
             });
-            await registerOperatorAction({
-                action: "created",
-                entityId: "new",
-                details: `Novo staff adicionado: ${novoStaff.name} (${formatCPF(novoStaff.cpf?.trim() || '')}) - Função: ${novoStaff.funcao} - Empresa: ${novoStaff.empresa}`,
-            });
+            // await registerOperatorAction({
+            //     action: "created",
+            //     entityId: "new",
+            //     details: `Novo staff adicionado: ${novoStaff.name} (${formatCPF(novoStaff.cpf?.trim() || '')}) - Função: ${novoStaff.funcao} - Empresa: ${novoStaff.empresa}`,
+            // });
             await registerOperatorActionInColumn({
                 type: "add_staff",
                 staffName: novoStaff.name,
@@ -1456,6 +1584,10 @@ export default function Painel() {
             if (val && String(val).trim() !== "") count++;
         });
         if (ordenacao.campo && ordenacao.campo !== '') count++;
+        // Contar filtros das colunas
+        Object.values(columnFilters).forEach(filters => {
+            if (filters.length > 0) count++;
+        });
         return count;
     };
 
@@ -1466,7 +1598,7 @@ export default function Painel() {
         console.log("🔍 codigoPulseira:", codigoPulseira);
         console.log("🔍 operadorInfo:", operadorInfo);
 
-        if (!participantAction || !codigoPulseira.trim()) {
+        if (!participantAction) {
             console.log("❌ Dados insuficientes para realizar check-in");
             toast.error("Dados insuficientes para realizar check-in");
             return;
@@ -1531,11 +1663,11 @@ export default function Painel() {
                 return newMap;
             });
 
-            await registerOperatorAction({
-                action: "check_in",
-                entityId: participantAction.id,
-                details: `Check-in realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')}) - Pulseira: ${codigoPulseira.trim()}${selectedDateForAction ? ` - Data: ${selectedDateForAction}` : ''}`,
-            });
+            // await registerOperatorAction({
+            //     action: "check_in",
+            //     entityId: participantAction.id,
+            //     details: `Check-in realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')}) - Pulseira: ${codigoPulseira.trim()}${selectedDateForAction ? ` - Data: ${selectedDateForAction}` : ''}`,
+            // });
             await registerOperatorActionInColumn({
                 type: "checkin",
                 staffId: String(participantAction.id),
@@ -1601,11 +1733,11 @@ export default function Painel() {
                 return newMap;
             });
 
-            await registerOperatorAction({
-                action: "check_out",
-                entityId: participantAction.id,
-                details: `Check-out realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')})${selectedDateForAction ? ` - Data: ${selectedDateForAction}` : ''}`,
-            });
+            // await registerOperatorAction({
+            //     action: "check_out",
+            //     entityId: participantAction.id,
+            //     details: `Check-out realizado para: ${participantAction.name} (${formatCPF(participantAction.cpf?.trim() || '')})${selectedDateForAction ? ` - Data: ${selectedDateForAction}` : ''}`,
+            // });
             await registerOperatorActionInColumn({
                 type: "checkout",
                 staffId: String(participantAction.id),
@@ -1663,7 +1795,7 @@ export default function Painel() {
                             <div className="flex justify-between items-center h-16">
                                 <div className="flex items-center">
                                     <Image
-                                        src="/images/logo-rg.png"
+                                        src="/images/logo-rg-fone.png"
                                         width={120}
                                         height={40}
                                         className="h-8 w-auto"
@@ -1895,19 +2027,69 @@ export default function Painel() {
                                 <TableHeader>
                                     <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
                                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            Nome
+                                            <div className="flex items-center justify-between">
+                                                <span>Nome</span>
+                                                <ExcelColumnFilter
+                                                    values={columnUniqueValues.nome}
+                                                    selectedValues={columnFilters.nome}
+                                                    onSelectionChange={(values) => handleColumnFilterChange('nome', values)}
+                                                    onSortTable={(direction) => handleColumnSort('name', direction)}
+                                                    columnTitle="Nome"
+                                                    isActive={columnFilters.nome.length > 0}
+                                                />
+                                            </div>
                                         </TableHead>
                                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            CPF
+                                            <div className="flex items-center justify-between">
+                                                <span>CPF</span>
+                                                <ExcelColumnFilter
+                                                    values={columnUniqueValues.cpf}
+                                                    selectedValues={columnFilters.cpf}
+                                                    onSelectionChange={(values) => handleColumnFilterChange('cpf', values)}
+                                                    onSortTable={(direction) => handleColumnSort('cpf', direction)}
+                                                    columnTitle="CPF"
+                                                    isActive={columnFilters.cpf.length > 0}
+                                                />
+                                            </div>
                                         </TableHead>
                                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            Função
+                                            <div className="flex items-center justify-between">
+                                                <span>Função</span>
+                                                <ExcelColumnFilter
+                                                    values={columnUniqueValues.funcao.filter((v): v is string => typeof v === 'string')}
+                                                    selectedValues={columnFilters.funcao}
+                                                    onSelectionChange={(values) => handleColumnFilterChange('funcao', values)}
+                                                    onSortTable={(direction) => handleColumnSort('role', direction)}
+                                                    columnTitle="Função"
+                                                    isActive={columnFilters.funcao.length > 0}
+                                                />
+                                            </div>
                                         </TableHead>
                                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            Empresa
+                                            <div className="flex items-center justify-between">
+                                                <span>Empresa</span>
+                                                <ExcelColumnFilter
+                                                    values={columnUniqueValues.empresa}
+                                                    selectedValues={columnFilters.empresa}
+                                                    onSelectionChange={(values) => handleColumnFilterChange('empresa', values)}
+                                                    onSortTable={(direction) => handleColumnSort('company', direction)}
+                                                    columnTitle="Empresa"
+                                                    isActive={columnFilters.empresa.length > 0}
+                                                />
+                                            </div>
                                         </TableHead>
                                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            Tipo de Credencial
+                                            <div className="flex items-center justify-between">
+                                                <span>Tipo de Credencial</span>
+                                                <ExcelColumnFilter
+                                                    values={columnUniqueValues.credencial}
+                                                    selectedValues={columnFilters.credencial}
+                                                    onSelectionChange={(values) => handleColumnFilterChange('credencial', values)}
+                                                    onSortTable={(direction) => handleColumnSort('credentialId', direction)}
+                                                    columnTitle="Tipo de Credencial"
+                                                    isActive={columnFilters.credencial.length > 0}
+                                                />
+                                            </div>
                                         </TableHead>
 
                                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
@@ -2684,6 +2866,7 @@ export default function Painel() {
                                         onClick={() => {
                                             setFiltroAvancado({});
                                             setOrdenacao({ campo: '', direcao: 'asc' });
+                                            clearColumnFilters();
                                         }}
                                         className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
                                     >

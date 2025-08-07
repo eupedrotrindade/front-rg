@@ -295,7 +295,7 @@ const OperadorEventosPage = () => {
                             </div>
                         )}
 
-                        {/* Debug info */}
+                        {/* Debug info
                         {operadorInfo && (
                             <div className="mt-4 p-4 bg-gray-100 rounded-lg text-left max-w-2xl mx-auto">
                                 <h3 className="font-semibold text-gray-800 mb-2">Debug Info:</h3>
@@ -310,7 +310,7 @@ const OperadorEventosPage = () => {
                                     <p>Teste formato id:data: {eventIds.includes(extractedId) ? 'Funcionando' : 'Falhou'}</p>
                                 </div>
                             </div>
-                        )}
+                        )} */}
                     </div>
 
                     {operadorInfo && (

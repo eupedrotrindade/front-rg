@@ -1,5 +1,18 @@
 import { apiClient } from "@/lib/api-client";
-import { EventHistory, PaginationParams } from "../types";
+import { EventHistory, PaginatedResponse } from "../types";
+
+export interface EventHistoryParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  entityType?: string;
+  action?: string;
+  performedBy?: string;
+  startDate?: string;
+  endDate?: string;
+}
 
 export const getEventHistory = async (
   id: string
@@ -15,24 +28,56 @@ export const getEventHistory = async (
   }
 };
 
-export const getEventHistoryAll = async (
-  params?: PaginationParams
-): Promise<EventHistory[] | null> => {
+export const getEventHistories = async (
+  params?: EventHistoryParams
+): Promise<PaginatedResponse<EventHistory> | null> => {
   try {
     console.log("🔍 Buscando histórico com params:", params);
-    const { data } = await apiClient.get<EventHistory[]>("/event-histories", {
-      params,
-    });
+    
+    // Filtrar parâmetros undefined ou vazios
+    const cleanParams = Object.entries(params || {}).reduce((acc, [key, value]) => {
+      if (value !== undefined && value !== '' && value !== null) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {} as Record<string, any>);
+    
+    const { data } = await apiClient.get<PaginatedResponse<EventHistory>>(
+      "/event-histories", 
+      { params: cleanParams }
+    );
+    
     console.log("📦 Resposta da API (histórico):", data);
-    console.log("📊 Tipo da resposta:", typeof data);
-    console.log("📋 É array?", Array.isArray(data));
-    if (data && typeof data === "object" && "data" in data) {
-      console.log("📦 Dados dentro de data.data:", data.data);
-      return Array.isArray(data.data) ? data.data : [];
-    }
     return data;
   } catch (error) {
     console.error("❌ Erro ao buscar histórico:", error);
-    return null;
+    throw error;
   }
 };
+
+export const getEventHistoryByEntity = async (
+  entityId: string,
+  params?: Omit<EventHistoryParams, 'entityId'>
+): Promise<PaginatedResponse<EventHistory> | null> => {
+  try {
+    const cleanParams = Object.entries(params || {}).reduce((acc, [key, value]) => {
+      if (value !== undefined && value !== '' && value !== null) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {} as Record<string, any>);
+
+    const { data } = await apiClient.get<PaginatedResponse<EventHistory>>(
+      `/event-histories/by-entity/${entityId}`,
+      { params: cleanParams }
+    );
+    
+    return data;
+  } catch (error) {
+    console.error("❌ Erro ao buscar histórico por entidade:", error);
+    throw error;
+  }
+};
+
+// Manter compatibilidade com nome antigo
+export const getEventHistoryAll = getEventHistories;

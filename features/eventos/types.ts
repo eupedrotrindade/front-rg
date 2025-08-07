@@ -27,6 +27,65 @@ export type Event = {
   updatedAt?: string;
 };
 
+export type EventHistory = {
+  id: string;
+  entityType: 
+    | "event" | "participant" | "manager" | "staff" | "wristband" 
+    | "wristband_model" | "vehicle" | "attendance" | "operator" 
+    | "coordinator" | "company" | "credential" | "movement_credential" 
+    | "radio" | "import_request";
+  entityId: string;
+  action: string;
+  performedBy: string;
+  timestamp: string;
+  description: string;
+  additionalData?: {
+    method?: string;
+    path?: string;
+    statusCode?: number;
+    userAgent?: string;
+    ip?: string;
+    requestBody?: any;
+    responseData?: any;
+    timestamp?: string;
+    routeInfo?: {
+      routeKey: string;
+      entityType: string;
+      actionType: string;
+    };
+    headers?: {
+      contentType?: string;
+      contentLength?: string;
+      accept?: string;
+      origin?: string;
+      referer?: string;
+    };
+    query?: any;
+    params?: any;
+    metadata?: {
+      nodeVersion?: string;
+      platform?: string;
+      memoryUsage?: {
+        rss: number;
+        heapTotal: number;
+        heapUsed: number;
+      };
+    };
+  };
+};
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
 export type EventManager = {
   id: string;
   eventId: string;
