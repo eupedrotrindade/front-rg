@@ -32,10 +32,13 @@ import { useCheckIn, useCheckOut, useAttendanceStatus } from "@/features/eventos
 import { useEventAttendanceByEventAndDate } from "@/features/eventos/api/query/use-event-attendance"
 
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
-import ModalTrocaPulseira from "@/components/operador/modalTrocaPulseira"
+import { useLazyModal, preloadModal } from "@/components/ui/lazy-modal"
 import { changeCredentialCode } from "@/features/eventos/actions/movement-credentials"
 import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
 import ExcelColumnFilter from "@/components/ui/excel-column-filter"
+import VirtualTable, { TextCell, BadgeCell, ActionCell } from "@/components/ui/virtual-table"
+import { useOptimizedSearch, useIndexedSearch } from "@/hooks/useOptimizedSearch"
+import { useCancellableRequest, useDebouncedCancellableRequest } from "@/hooks/useCancellableRequest"
 
 export default function Painel() {
 
@@ -121,6 +124,11 @@ export default function Painel() {
     const [lastFilterHash, setLastFilterHash] = useState<string>('');
     const [isDataStale, setIsDataStale] = useState(false);
 
+    // Estados para virtualização e performance
+    const [isVirtualMode, setIsVirtualMode] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+
     // Estados para filtros estilo Excel das colunas
     const [columnFilters, setColumnFilters] = useState<{
         nome: string[];
@@ -152,6 +160,12 @@ export default function Painel() {
         checkOut: string | null;
         status: string;
     }>>(new Map());
+
+    // Estado para controlar se os dados de attendance foram carregados completamente
+    const [attendanceDataLoaded, setAttendanceDataLoaded] = useState<boolean>(false);
+
+    // Estado para controlar o loading durante carregamento de attendance
+    const [isLoadingAttendance, setIsLoadingAttendance] = useState<boolean>(false);
 
     // Estados para permissões de operadores
     const [operatorPermissions, setOperatorPermissions] = useState<{
@@ -194,6 +208,33 @@ export default function Painel() {
         selectedDay ? (selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay).split('/').join('-') : new Date().toLocaleDateString('pt-BR').split('/').join('-')
     );
 
+    // Hooks de otimização de performance
+    const { createCancellableRequest, cancelAllRequests } = useCancellableRequest();
+
+    // Lazy loading do modal de troca de pulseira
+    const {
+        openModal: openWristbandModal,
+        closeModal: closeWristbandModal,
+        ModalComponent: WristbandModalComponent
+    } = useLazyModal(() => import("@/components/operador/modalTrocaPulseira"));
+
+    // Hook de busca otimizada com índices para datasets grandes
+    const [searchResult, performOptimizedSearchFn, clearSearch] = useIndexedSearch({
+        data: participantsData,
+        searchFields: ['name', 'cpf', 'role', 'company'],
+        enableIndexing: participantsData.length > 500,
+        debounceMs: 150,
+        minSearchLength: 2
+    });
+
+    // Versão debounced da função de carregamento de presença
+    const debouncedLoadAttendanceStatus = useDebouncedCancellableRequest(
+        async (participants: EventParticipant[], date: string) => {
+            return carregarStatusPresencaTodos(participants, date);
+        },
+        500
+    );
+
     // TODOS OS useMemo DEPOIS DOS HOOKS DE DADOS
 
     // TODOS OS useCallback DEPOIS DOS useMemo
@@ -213,6 +254,22 @@ export default function Painel() {
 
         setSearchDebounce(timeout);
     }, [searchDebounce]);
+
+    // Handler otimizado de busca para mode virtual
+    const handleOptimizedSearch = useCallback((term: string) => {
+        setSearchTerm(term);
+        setIsSearching(true);
+
+        // Para datasets grandes, usar busca indexada
+        if (participantsData.length > 500) {
+            performOptimizedSearchFn(term);
+        } else {
+            // Para datasets menores, usar busca tradicional
+            debouncedSearch(term);
+        }
+
+        setCurrentPage(1);
+    }, [participantsData.length, performOptimizedSearchFn, debouncedSearch]);
 
     const getPaginatedData = useCallback((data: EventParticipant[], page: number, perPage: number) => {
         const startIndex = (page - 1) * perPage;
@@ -738,6 +795,67 @@ export default function Painel() {
         return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
     };
 
+    // Função utilitária para obter a credencial do participante
+    const getCredencial = (colab: EventParticipant): string => {
+        const credentialSelected = credential.find(w => w.id === colab.credentialId);
+        if (credentialSelected) {
+            return credentialSelected.nome;
+        } else {
+            return 'SEM CREDENCIAL';
+        }
+    };
+
+    // Função para determinar qual botão mostrar
+    const getBotaoAcao = (colaborador: EventParticipant) => {
+        // Extrair apenas a data do selectedDay (remover prefixo se existir)
+        const dataDia = selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay;
+
+        // Verificar se o colaborador trabalha nesta data
+        if (!colaborador.daysWork || !colaborador.daysWork.includes(dataDia)) {
+            return null; // Não trabalha nesta data
+        }
+
+        // Verificar status de presença para esta data
+        const status = participantsAttendanceStatus.get(colaborador.id);
+
+        if (!status) {
+            // Se não tem status, permite checkin
+            return "checkin";
+        }
+
+        if (!status.checkIn) {
+            // Se não tem checkin, permite checkin
+            return "checkin";
+        } else if (!status.checkOut) {
+            // Se tem checkin mas não tem checkout, permite checkout
+            return "checkout";
+        } else {
+            // Se já tem checkout, não mostra botão
+            return null;
+        }
+    };
+
+    const abrirPopup = (colaborador: EventParticipant) => {
+        setSelectedParticipant(colaborador);
+        setModalAberto(true);
+    };
+
+    // Função para abrir popup de check-in
+    const abrirCheckin = (colaborador: EventParticipant) => {
+        console.log("🔍 abrirCheckin chamado com colaborador:", colaborador);
+        setParticipantAction(colaborador);
+        setCodigoPulseira("");
+        setSelectedDateForAction(selectedDay);
+        setPopupCheckin(true);
+    };
+
+    // Função para abrir popup de check-out
+    const abrirCheckout = (colaborador: EventParticipant) => {
+        setParticipantAction(colaborador);
+        setSelectedDateForAction(selectedDay);
+        setPopupCheckout(true);
+    };
+
     // TODOS OS useMemo DEPOIS DOS useCallback
     const filtrarColaboradores = useMemo(() => {
         const filterHash = generateFilterHash(filtro, selectedDay, filtroAvancado) + JSON.stringify(columnFilters);
@@ -874,21 +992,193 @@ export default function Painel() {
     const isHighVolume = paginatedData.total > 1000;
     const showPerformanceIndicator = isHighVolume && !participantsLoading;
 
+    // Detectar automaticamente se deve usar modo virtual
+    useEffect(() => {
+        const shouldUseVirtual = paginatedData.total > 500;
+        setIsVirtualMode(shouldUseVirtual);
+    }, [paginatedData.total]);
+
+    // Usar busca otimizada quando há termo de busca
+    const optimizedData = useMemo(() => {
+        if (searchTerm.trim() && searchTerm.length >= 2) {
+            const searchData = searchResult.items.filter((item: EventParticipant) => {
+                return getColaboradoresPorDia(selectedDay).includes(item);
+            });
+            return { data: searchData, total: searchData.length };
+        }
+        return filtrarColaboradores;
+    }, [searchTerm, searchResult, filtrarColaboradores, selectedDay, getColaboradoresPorDia]);
+
+    // Dados finais para exibição
+    const finalData = useMemo(() => {
+        const sourceData = searchTerm.trim() ? optimizedData : filtrarColaboradores;
+        if (isVirtualMode) {
+            // No modo virtual, retornamos todos os dados filtrados
+            return sourceData;
+        } else {
+            // No modo paginado, aplicamos paginação
+            const paginated = getPaginatedData(sourceData.data, currentPage, itemsPerPage);
+            return { data: paginated, total: sourceData.total };
+        }
+    }, [searchTerm, optimizedData, filtrarColaboradores, isVirtualMode, currentPage, itemsPerPage, getPaginatedData]);
+
     // Valores únicos para filtros das colunas
     const columnUniqueValues = useMemo(() => {
         const currentData = getColaboradoresPorDia(selectedDay);
 
         return {
-            nome: Array.from(new Set(currentData.map(c => c.name).filter(Boolean))),
-            cpf: Array.from(new Set(currentData.map(c => formatCPF(c.cpf?.trim() || '')).filter(Boolean))),
-            funcao: Array.from(new Set(currentData.map(c => c.role).filter(Boolean))),
-            empresa: Array.from(new Set(currentData.map(c => c.company).filter(Boolean))),
+            nome: Array.from(new Set(currentData.map(c => c.name).filter((name): name is string => Boolean(name)))),
+            cpf: Array.from(new Set(currentData.map(c => formatCPF(c.cpf?.trim() || '')).filter((cpf): cpf is string => Boolean(cpf)))),
+            funcao: Array.from(new Set(currentData.map(c => c.role).filter((role): role is string => Boolean(role)))),
+            empresa: Array.from(new Set(currentData.map(c => c.company).filter((company): company is string => Boolean(company)))),
             credencial: Array.from(new Set(currentData.map(c => {
                 const credentialSelected = credential.find(w => w.id === c.credentialId);
                 return credentialSelected?.nome || 'SEM CREDENCIAL';
-            })))
+            }).filter((cred): cred is string => Boolean(cred))))
         };
     }, [getColaboradoresPorDia, selectedDay, credential]);
+
+    // Configuração das colunas para a tabela virtual
+    const virtualTableColumns = useMemo(() => [
+        {
+            key: 'name',
+            header: (
+                <div className="flex items-center justify-between">
+                    <span>Nome</span>
+                    <ExcelColumnFilter
+                        values={columnUniqueValues.nome}
+                        selectedValues={columnFilters.nome}
+                        onSelectionChange={(values) => handleColumnFilterChange('nome', values)}
+                        onSortTable={(direction) => handleColumnSort('name', direction)}
+                        columnTitle="Nome"
+                        isActive={columnFilters.nome.length > 0}
+                    />
+                </div>
+            ),
+            width: 200,
+            cell: (item: EventParticipant) => (
+                <TextCell className="font-semibold text-gray-900">
+                    {item.name}
+                </TextCell>
+            )
+        },
+        {
+            key: 'cpf',
+            header: (
+                <div className="flex items-center justify-between">
+                    <span>CPF</span>
+                    <ExcelColumnFilter
+                        values={columnUniqueValues.cpf}
+                        selectedValues={columnFilters.cpf}
+                        onSelectionChange={(values) => handleColumnFilterChange('cpf', values)}
+                        onSortTable={(direction) => handleColumnSort('cpf', direction)}
+                        columnTitle="CPF"
+                        isActive={columnFilters.cpf.length > 0}
+                    />
+                </div>
+            ),
+            width: 150,
+            cell: (item: EventParticipant) => (
+                <TextCell className="font-mono">
+                    {formatCPF(item.cpf?.trim() || '')}
+                </TextCell>
+            )
+        },
+        {
+            key: 'role',
+            header: (
+                <div className="flex items-center justify-between">
+                    <span>Função</span>
+                    <ExcelColumnFilter
+                        values={columnUniqueValues.funcao}
+                        selectedValues={columnFilters.funcao}
+                        onSelectionChange={(values) => handleColumnFilterChange('funcao', values)}
+                        onSortTable={(direction) => handleColumnSort('role', direction)}
+                        columnTitle="Função"
+                        isActive={columnFilters.funcao.length > 0}
+                    />
+                </div>
+            ),
+            width: 150,
+            cell: (item: EventParticipant) => (
+                <TextCell>{item.role}</TextCell>
+            )
+        },
+        {
+            key: 'company',
+            header: (
+                <div className="flex items-center justify-between">
+                    <span>Empresa</span>
+                    <ExcelColumnFilter
+                        values={columnUniqueValues.empresa}
+                        selectedValues={columnFilters.empresa}
+                        onSelectionChange={(values) => handleColumnFilterChange('empresa', values)}
+                        onSortTable={(direction) => handleColumnSort('company', direction)}
+                        columnTitle="Empresa"
+                        isActive={columnFilters.empresa.length > 0}
+                    />
+                </div>
+            ),
+            width: 150,
+            cell: (item: EventParticipant) => (
+                <BadgeCell variant="blue">{item.company}</BadgeCell>
+            )
+        },
+        {
+            key: 'credential',
+            header: (
+                <div className="flex items-center justify-between">
+                    <span>Tipo de Credencial</span>
+                    <ExcelColumnFilter
+                        values={columnUniqueValues.credencial}
+                        selectedValues={columnFilters.credencial}
+                        onSelectionChange={(values) => handleColumnFilterChange('credencial', values)}
+                        onSortTable={(direction) => handleColumnSort('credentialId', direction)}
+                        columnTitle="Tipo de Credencial"
+                        isActive={columnFilters.credencial.length > 0}
+                    />
+                </div>
+            ),
+            width: 180,
+            cell: (item: EventParticipant) => (
+                <BadgeCell variant="purple">{getCredencial(item)}</BadgeCell>
+            )
+        },
+        {
+            key: 'actions',
+            header: 'Ação',
+            width: 120,
+            cell: (item: EventParticipant) => {
+                const botaoTipo = getBotaoAcao(item);
+                return (
+                    <ActionCell>
+                        {botaoTipo === "checkin" && (
+                            <Button
+                                onClick={() => abrirCheckin(item)}
+                                size="sm"
+                                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                disabled={loading}
+                            >
+                                <Check className="w-4 h-4 mr-1" />
+                                Check-in
+                            </Button>
+                        )}
+                        {botaoTipo === "checkout" && (
+                            <Button
+                                onClick={() => abrirCheckout(item)}
+                                size="sm"
+                                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                disabled={loading}
+                            >
+                                <Clock className="w-4 h-4 mr-1" />
+                                Check-out
+                            </Button>
+                        )}
+                    </ActionCell>
+                );
+            }
+        }
+    ], [columnUniqueValues, columnFilters, handleColumnFilterChange, handleColumnSort, getBotaoAcao, getCredencial, formatCPF, abrirCheckin, abrirCheckout, loading]);
 
     // TODOS OS useEffect POR ÚLTIMO
     useEffect(() => {
@@ -960,20 +1250,66 @@ export default function Painel() {
         }
     }, [filtro, selectedDay, filtroAvancado, ordenacao, currentPage, columnFilters]);
 
-    // Carregar status de presença quando o dia selecionado mudar
+    // Carregar status de presença quando o dia selecionado mudar (debounced)
     useEffect(() => {
-        if (selectedDay && paginatedData.data.length > 0) {
-            carregarStatusPresencaTodos(paginatedData.data, selectedDay);
+        if (selectedDay && finalData.data.length > 0) {
+            setAttendanceDataLoaded(false); // Reset o status ao trocar de dia
+            setIsLoadingAttendance(true); // Iniciar loading
+            debouncedLoadAttendanceStatus(finalData.data, selectedDay);
         }
-    }, [selectedDay, paginatedData.data]);
+    }, [selectedDay, finalData.data, debouncedLoadAttendanceStatus]);
+
+    // Exibir todos os registros após carregar dados de attendance para evitar check-ins duplicados
+    useEffect(() => {
+        if (attendanceDataLoaded && attendanceData && attendanceData.length > 0) {
+            console.log("🔍 Attendance carregado, exibindo todos os registros para evitar duplicados");
+
+            // Limpar filtros de busca
+            setSearchTerm('');
+            setFiltro({ nome: '', cpf: '', pulseira: '', empresa: '', funcao: '' });
+            setFiltroAvancado({});
+
+            // Limpar filtros das colunas
+            setColumnFilters({
+                nome: [],
+                cpf: [],
+                funcao: [],
+                empresa: [],
+                credencial: []
+            });
+
+            // Resetar paginação para primeira página
+            setCurrentPage(1);
+
+            // Usar um número maior de itens por página para mostrar todos os registros
+            if (participantsData.length <= 100) {
+                setItemsPerPage(participantsData.length || 50);
+            } else {
+                setItemsPerPage(100); // Para datasets muito grandes, usar 100 por página
+            }
+
+            // Mostrar notificação visual para o usuário
+            console.log(`📋 Exibindo todos os ${participantsData.length} registros para evitar check-ins duplicados`);
+        }
+    }, [attendanceDataLoaded, attendanceData, participantsData.length]);
+
+    // Preload do modal de troca de pulseira para melhor UX
+    useEffect(() => {
+        // Pre-carregar depois que os dados são carregados
+        if (participantsData.length > 0) {
+            preloadModal(() => import("@/components/operador/modalTrocaPulseira"));
+        }
+    }, [participantsData.length]);
 
     useEffect(() => {
         return () => {
             if (searchDebounce) {
                 clearTimeout(searchDebounce);
             }
+            // Cancelar todas as requisições pendentes na desmontagem
+            cancelAllRequests();
         };
-    }, [searchDebounce]);
+    }, [searchDebounce, cancelAllRequests]);
 
     useEffect(() => {
         if (!eventId) {
@@ -1070,7 +1406,16 @@ export default function Painel() {
 
     // Função otimizada de busca com debounce
     const handleBuscaOtimizada = (valor: string) => {
-        debouncedSearch(valor);
+        // Usar busca otimizada baseada no tamanho do dataset
+        if (participantsData.length > 500) {
+            // Para datasets grandes, usar a busca indexada
+            performOptimizedSearchFn(valor);
+            setSearchTerm(valor);
+            setCurrentPage(1);
+        } else {
+            // Para datasets menores, usar busca tradicional
+            debouncedSearch(valor);
+        }
     };
 
     // Função para mudar página
@@ -1111,6 +1456,11 @@ export default function Painel() {
                     </div>
                     <span className="text-sm text-gray-600">
                         Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, paginatedData.total)} de {paginatedData.total} resultados
+                        {attendanceDataLoaded && (
+                            <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
+                                ✓ Dados de presença carregados - Exibindo todos os registros
+                            </span>
+                        )}
                     </span>
                 </div>
 
@@ -1156,67 +1506,22 @@ export default function Painel() {
         );
     };
 
-    const abrirPopup = (colaborador: EventParticipant) => {
-        setSelectedParticipant(colaborador);
-        setModalAberto(true);
-    };
-
     const fecharPopup = () => {
         setSelectedParticipant(null);
         setModalAberto(false);
     };
 
-    // Função para determinar qual botão mostrar
-    const getBotaoAcao = (colaborador: EventParticipant) => {
-        // Extrair apenas a data do selectedDay (remover prefixo se existir)
-        const dataDia = selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay;
-
-        // Verificar se o colaborador trabalha nesta data
-        if (!colaborador.daysWork || !colaborador.daysWork.includes(dataDia)) {
-            return null; // Não trabalha nesta data
-        }
-
-        // Verificar status de presença para esta data
-        const status = participantsAttendanceStatus.get(colaborador.id);
-
-        if (!status) {
-            // Se não tem status, permite checkin
-            return "checkin";
-        }
-
-        if (!status.checkIn) {
-            // Se não tem checkin, permite checkin
-            return "checkin";
-        } else if (!status.checkOut) {
-            // Se tem checkin mas não tem checkout, permite checkout
-            return "checkout";
-        } else {
-            // Se já tem checkout, não mostra botão
-            return null;
-        }
-    };
-
-    // Função para abrir popup de check-in
-    const abrirCheckin = (colaborador: EventParticipant) => {
-        console.log("🔍 abrirCheckin chamado com colaborador:", colaborador);
-        setParticipantAction(colaborador);
-        setCodigoPulseira("");
-        setSelectedDateForAction(selectedDay);
-        setPopupCheckin(true);
-    };
-
-    // Função para abrir popup de check-out
-    const abrirCheckout = (colaborador: EventParticipant) => {
-        setParticipantAction(colaborador);
-        setSelectedDateForAction(selectedDay);
-        setPopupCheckout(true);
-    };
-
     // Função para verificar status de presença por data
     const verificarPresencaPorData = async (participantId: string, date: string) => {
+        const [signal, request] = createCancellableRequest();
+
         try {
             const formattedDate = date.includes("/") ? date.split("/").join("-") : date;
-            const { data: attendanceData } = await apiClient.get(`/event-attendance?eventId=${params?.id}&participantId=${participantId}&date=${formattedDate}&limit=1`);
+            const { data: attendanceData } = await apiClient.get(`/event-attendance?eventId=${params?.id}&participantId=${participantId}&date=${formattedDate}&limit=1`, {
+                signal
+            });
+
+            if (request.isCancelled()) return null;
 
             if (attendanceData.data && attendanceData.data.length > 0) {
                 const check = attendanceData.data[0];
@@ -1302,8 +1607,14 @@ export default function Painel() {
 
             console.log("🔍 Status map final:", statusMap);
             setParticipantsAttendanceStatus(statusMap);
+            setAttendanceDataLoaded(true);
+            setIsLoadingAttendance(false); // Parar loading
+
+            // Notificar que o processamento foi concluído
+            console.log("🔍 Processamento de attendance concluído, todos os registros disponíveis");
         } catch (error) {
             console.error("Erro ao carregar status de presença:", error);
+            setIsLoadingAttendance(false); // Parar loading mesmo em caso de erro
         }
     };
 
@@ -1759,16 +2070,6 @@ export default function Painel() {
     // Função para gerar iniciais do nome
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
-    // Função utilitária para obter a credencial do participante
-    const getCredencial = (colab: EventParticipant): string => {
-        const credentialSelected = credential.find(w => w.id === colab.credentialId);
-        if (credentialSelected) {
-            return credentialSelected.nome;
-        } else {
-            return 'SEM CREDENCIAL';
-        }
-
-    };
 
 
     return (
@@ -2023,179 +2324,192 @@ export default function Painel() {
                                     </div>
                                 </div>
                             )}
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            <div className="flex items-center justify-between">
-                                                <span>Nome</span>
-                                                <ExcelColumnFilter
-                                                    values={columnUniqueValues.nome}
-                                                    selectedValues={columnFilters.nome}
-                                                    onSelectionChange={(values) => handleColumnFilterChange('nome', values)}
-                                                    onSortTable={(direction) => handleColumnSort('name', direction)}
-                                                    columnTitle="Nome"
-                                                    isActive={columnFilters.nome.length > 0}
-                                                />
-                                            </div>
-                                        </TableHead>
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            <div className="flex items-center justify-between">
-                                                <span>CPF</span>
-                                                <ExcelColumnFilter
-                                                    values={columnUniqueValues.cpf}
-                                                    selectedValues={columnFilters.cpf}
-                                                    onSelectionChange={(values) => handleColumnFilterChange('cpf', values)}
-                                                    onSortTable={(direction) => handleColumnSort('cpf', direction)}
-                                                    columnTitle="CPF"
-                                                    isActive={columnFilters.cpf.length > 0}
-                                                />
-                                            </div>
-                                        </TableHead>
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            <div className="flex items-center justify-between">
-                                                <span>Função</span>
-                                                <ExcelColumnFilter
-                                                    values={columnUniqueValues.funcao.filter((v): v is string => typeof v === 'string')}
-                                                    selectedValues={columnFilters.funcao}
-                                                    onSelectionChange={(values) => handleColumnFilterChange('funcao', values)}
-                                                    onSortTable={(direction) => handleColumnSort('role', direction)}
-                                                    columnTitle="Função"
-                                                    isActive={columnFilters.funcao.length > 0}
-                                                />
-                                            </div>
-                                        </TableHead>
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            <div className="flex items-center justify-between">
-                                                <span>Empresa</span>
-                                                <ExcelColumnFilter
-                                                    values={columnUniqueValues.empresa}
-                                                    selectedValues={columnFilters.empresa}
-                                                    onSelectionChange={(values) => handleColumnFilterChange('empresa', values)}
-                                                    onSortTable={(direction) => handleColumnSort('company', direction)}
-                                                    columnTitle="Empresa"
-                                                    isActive={columnFilters.empresa.length > 0}
-                                                />
-                                            </div>
-                                        </TableHead>
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            <div className="flex items-center justify-between">
-                                                <span>Tipo de Credencial</span>
-                                                <ExcelColumnFilter
-                                                    values={columnUniqueValues.credencial}
-                                                    selectedValues={columnFilters.credencial}
-                                                    onSelectionChange={(values) => handleColumnFilterChange('credencial', values)}
-                                                    onSortTable={(direction) => handleColumnSort('credentialId', direction)}
-                                                    columnTitle="Tipo de Credencial"
-                                                    isActive={columnFilters.credencial.length > 0}
-                                                />
-                                            </div>
-                                        </TableHead>
-
-                                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                            Ação
-                                        </TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody className="bg-white divide-y divide-gray-100 text-gray-600">
-                                    {paginatedData.total === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="px-6 py-16 text-center text-gray-500">
-                                                <div className="flex flex-col items-center">
-                                                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                                                        <User className="w-8 h-8 text-gray-400" />
-                                                    </div>
-                                                    <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                        {selectedDay
-                                                            ? `Nenhum colaborador encontrado para ${selectedDay}`
-                                                            : 'Nenhum colaborador encontrado'
-                                                        }
-                                                    </p>
-                                                    <p className="text-sm text-gray-500">
-                                                        {selectedDay
-                                                            ? 'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
-                                                            : 'Tente ajustar os filtros ou adicionar novos colaboradores'
-                                                        }
-                                                    </p>
+                            {isVirtualMode ? (
+                                // Tabela Virtual para grandes volumes
+                                <VirtualTable
+                                    data={finalData.data}
+                                    columns={virtualTableColumns}
+                                    height={600}
+                                    itemHeight={65}
+                                    onRowClick={abrirPopup}
+                                    getRowClassName={(item) =>
+                                        selectedDay && item.daysWork && item.daysWork.includes(selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay)
+                                            ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
+                                            : ''
+                                    }
+                                />
+                            ) : (
+                                // Tabela Regular com Paginação
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
+                                            <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                                <div className="flex items-center justify-between">
+                                                    <span>Nome</span>
+                                                    <ExcelColumnFilter
+                                                        values={columnUniqueValues.nome}
+                                                        selectedValues={columnFilters.nome}
+                                                        onSelectionChange={(values) => handleColumnFilterChange('nome', values)}
+                                                        onSortTable={(direction) => handleColumnSort('name', direction)}
+                                                        columnTitle="Nome"
+                                                        isActive={columnFilters.nome.length > 0}
+                                                    />
                                                 </div>
-                                            </TableCell>
+                                            </TableHead>
+                                            <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                                <div className="flex items-center justify-between">
+                                                    <span>CPF</span>
+                                                    <ExcelColumnFilter
+                                                        values={columnUniqueValues.cpf}
+                                                        selectedValues={columnFilters.cpf}
+                                                        onSelectionChange={(values) => handleColumnFilterChange('cpf', values)}
+                                                        onSortTable={(direction) => handleColumnSort('cpf', direction)}
+                                                        columnTitle="CPF"
+                                                        isActive={columnFilters.cpf.length > 0}
+                                                    />
+                                                </div>
+                                            </TableHead>
+                                            <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                                <div className="flex items-center justify-between">
+                                                    <span>Função</span>
+                                                    <ExcelColumnFilter
+                                                        values={columnUniqueValues.funcao.filter((v): v is string => typeof v === 'string')}
+                                                        selectedValues={columnFilters.funcao}
+                                                        onSelectionChange={(values) => handleColumnFilterChange('funcao', values)}
+                                                        onSortTable={(direction) => handleColumnSort('role', direction)}
+                                                        columnTitle="Função"
+                                                        isActive={columnFilters.funcao.length > 0}
+                                                    />
+                                                </div>
+                                            </TableHead>
+                                            <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                                <div className="flex items-center justify-between">
+                                                    <span>Empresa</span>
+                                                    <ExcelColumnFilter
+                                                        values={columnUniqueValues.empresa}
+                                                        selectedValues={columnFilters.empresa}
+                                                        onSelectionChange={(values) => handleColumnFilterChange('empresa', values)}
+                                                        onSortTable={(direction) => handleColumnSort('company', direction)}
+                                                        columnTitle="Empresa"
+                                                        isActive={columnFilters.empresa.length > 0}
+                                                    />
+                                                </div>
+                                            </TableHead>
+                                            <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                                <div className="flex items-center justify-between">
+                                                    <span>Tipo de Credencial</span>
+                                                    <ExcelColumnFilter
+                                                        values={columnUniqueValues.credencial}
+                                                        selectedValues={columnFilters.credencial}
+                                                        onSelectionChange={(values) => handleColumnFilterChange('credencial', values)}
+                                                        onSortTable={(direction) => handleColumnSort('credentialId', direction)}
+                                                        columnTitle="Tipo de Credencial"
+                                                        isActive={columnFilters.credencial.length > 0}
+                                                    />
+                                                </div>
+                                            </TableHead>
+                                            <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                                Ação
+                                            </TableHead>
                                         </TableRow>
-                                    ) : (
-                                        paginatedData.data.map((colab: EventParticipant, index: number) => {
-                                            const botaoTipo = getBotaoAcao(colab);
-                                            const credentialSelected = credential.find(w => w.id === colab.credentialId);
+                                    </TableHeader>
+                                    <TableBody className="bg-white divide-y divide-gray-100 text-gray-600">
+                                        {finalData.total === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="px-6 py-16 text-center text-gray-500">
+                                                    <div className="flex flex-col items-center">
+                                                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                                                            <User className="w-8 h-8 text-gray-400" />
+                                                        </div>
+                                                        <p className="text-lg font-semibold text-gray-700 mb-2">
+                                                            {selectedDay
+                                                                ? `Nenhum colaborador encontrado para ${selectedDay}`
+                                                                : 'Nenhum colaborador encontrado'
+                                                            }
+                                                        </p>
+                                                        <p className="text-sm text-gray-500">
+                                                            {selectedDay
+                                                                ? 'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
+                                                                : 'Tente ajustar os filtros ou adicionar novos colaboradores'
+                                                            }
+                                                        </p>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            finalData.data.map((colab: EventParticipant, index: number) => {
+                                                const botaoTipo = getBotaoAcao(colab);
 
-                                            return (
-                                                <TableRow
-                                                    key={index}
-                                                    className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${selectedDay && colab.daysWork && colab.daysWork.includes(selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay)
-                                                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
-                                                        : ''
-                                                        }`}
-                                                    onClick={() => abrirPopup(colab)}
-                                                >
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-gray-600">
-                                                        <div className="flex items-center">
-
-                                                            <div className="ml-4">
-                                                                <div className="text-sm font-semibold text-gray-900">
-                                                                    {colab.name}
+                                                return (
+                                                    <TableRow
+                                                        key={index}
+                                                        className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${selectedDay && colab.daysWork && colab.daysWork.includes(selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay)
+                                                            ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
+                                                            : ''
+                                                            }`}
+                                                        onClick={() => abrirPopup(colab)}
+                                                    >
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-gray-600">
+                                                            <div className="flex items-center">
+                                                                <div className="ml-4">
+                                                                    <div className="text-sm font-semibold text-gray-900">
+                                                                        {colab.name}
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                                                        <p className="text-gray-600">{formatCPF(colab.cpf?.trim() || '')}</p>
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                        <p className="text-gray-600">{colab.role}</p>
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                            {colab.company}
-                                                        </span>
-                                                    </TableCell>
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                                            {getCredencial(colab)}
-                                                        </span>
-                                                    </TableCell>
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
+                                                            <p className="text-gray-600">{formatCPF(colab.cpf?.trim() || '')}</p>
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                            <p className="text-gray-600">{colab.role}</p>
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                                {colab.company}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                                                {getCredencial(colab)}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                            <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
+                                                                {botaoTipo === "checkin" && (
+                                                                    <Button
+                                                                        onClick={() => abrirCheckin(colab)}
+                                                                        size="sm"
+                                                                        className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                                                        disabled={loading}
+                                                                    >
+                                                                        <Check className="w-4 h-4 mr-1" />
+                                                                        Check-in
+                                                                    </Button>
+                                                                )}
+                                                                {botaoTipo === "checkout" && (
+                                                                    <Button
+                                                                        onClick={() => abrirCheckout(colab)}
+                                                                        size="sm"
+                                                                        className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                                                        disabled={loading}
+                                                                    >
+                                                                        <Clock className="w-4 h-4 mr-1" />
+                                                                        Check-out
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            )}
 
-                                                    <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                        <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
-                                                            {botaoTipo === "checkin" && (
-                                                                <Button
-                                                                    onClick={() => abrirCheckin(colab)}
-                                                                    size="sm"
-                                                                    className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                                    disabled={loading}
-                                                                >
-                                                                    <Check className="w-4 h-4 mr-1" />
-                                                                    Check-in
-                                                                </Button>
-                                                            )}
-                                                            {botaoTipo === "checkout" && (
-                                                                <Button
-                                                                    onClick={() => abrirCheckout(colab)}
-                                                                    size="sm"
-                                                                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                                    disabled={loading}
-                                                                >
-                                                                    <Clock className="w-4 h-4 mr-1" />
-                                                                    Check-out
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })
-                                    )}
-                                </TableBody>
-                            </Table>
-
-                            {/* Paginação */}
-                            <PaginationComponent />
+                            {/* Paginação - apenas no modo regular */}
+                            {!isVirtualMode && <PaginationComponent />}
                         </div>
                     </div>
 
@@ -2930,6 +3244,14 @@ export default function Painel() {
                                                         return;
                                                     }
                                                     setSelectedParticipantForPulseira(participant);
+                                                    openWristbandModal({
+                                                        participant,
+                                                        eventId,
+                                                        onSuccess: () => {
+                                                            setSelectedParticipantForPulseira(null);
+                                                            closeWristbandModal();
+                                                        }
+                                                    });
                                                     setPopupTrocaPulseira(false);
                                                 }}
                                                 className={`p-3 border rounded-lg cursor-pointer transition-colors ${hasCheckIn
@@ -2987,19 +3309,16 @@ export default function Painel() {
                         </DialogContent>
                     </Dialog>
 
-                    {/* Modal de Troca de Pulseira para Participante Específico */}
-                    {selectedParticipantForPulseira && (
-                        <ModalTrocaPulseira
-                            isOpen={!!selectedParticipantForPulseira}
-                            onClose={() => setSelectedParticipantForPulseira(null)}
-                            participant={selectedParticipantForPulseira}
-                            eventId={eventId}
-                            onSuccess={() => {
-                                setSelectedParticipantForPulseira(null);
-                                // Recarregar dados se necessário
-                            }}
-                        />
-                    )}
+                    {/* Modal de Troca de Pulseira Lazy-Loaded */}
+                    <WristbandModalComponent
+                        participant={selectedParticipantForPulseira}
+                        eventId={eventId}
+                        onSuccess={() => {
+                            setSelectedParticipantForPulseira(null);
+                            closeWristbandModal();
+                            // Recarregar dados se necessário
+                        }}
+                    />
                 </>
             )}
         </div>

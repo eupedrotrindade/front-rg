@@ -208,7 +208,10 @@ export default function ExcelColumnFilter({
                 id="select-all"
                 checked={allSelected}
                 ref={(el) => {
-                  if (el) el.indeterminate = someSelected
+                  if (el && 'indeterminate' in el) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (el as any).indeterminate = someSelected
+                  }
                 }}
                 onCheckedChange={handleSelectAll}
               />
