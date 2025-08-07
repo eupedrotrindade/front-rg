@@ -23,7 +23,7 @@ export const getMovementCredentials = async (params?: {
   const response = await apiClient.get(
     `/movement-credentials?${queryParams.toString()}`
   );
-  return response.data || [];
+  return response.data;
 };
 
 // Buscar movimentação específica por ID

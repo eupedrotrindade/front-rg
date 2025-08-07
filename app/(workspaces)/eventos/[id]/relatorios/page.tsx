@@ -17,7 +17,7 @@ import EventLayout from "@/components/dashboard/dashboard-layout"
 import type { EventParticipant } from "@/features/eventos/types"
 import { useExportPDF } from "@/features/eventos/api/mutation/use-export-pdf"
 import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
-import { useAllEventAttendance, AttendanceRecord } from "@/features/eventos/api/mutation/use-check-operations"
+import { useAllEventAttendance } from "@/features/eventos/api/mutation/use-check-operations"
 import { useMovementCredential } from "@/features/eventos/api/mutation/use-movement-credential"
 
 interface RelatorioConfig {
@@ -323,14 +323,14 @@ export default function RelatoriosPage() {
                 // Relatório Geral: Lista todos staffs ordenados alfabeticamente
                 participantesProcessados = participantesDoDia
                     .map(p => ({
-                        nome: p.name,
-                        cpf: p.cpf,
-                        empresa: p.company,
-                        funcao: p.role,
+                        nome: p.name?.toUpperCase() || "",
+                        cpf: p.cpf || "",
+                        empresa: p.company?.toUpperCase() || "",
+                        funcao: p.role?.toUpperCase() || "",
                         pulseira: obterCodigoPulseira(p.id),
                         tipoPulseira: obterTipoPulseira(p.credentialId),
-                        checkIn: p.checkIn || "",
-                        checkOut: p.checkOut || ""
+                        checkIn: p.checkIn || "-",
+                        checkOut: p.checkOut || "-"
                     } as RelatorioParticipanteCompleto))
                     .sort((a, b) => a.nome.localeCompare(b.nome))
                 break
@@ -339,14 +339,14 @@ export default function RelatoriosPage() {
                 // Filtro por Empresa: Similar ao geral mas com filtro adicional
                 participantesProcessados = participantesDoDia
                     .map(p => ({
-                        nome: p.name,
-                        cpf: p.cpf,
-                        empresa: p.company,
-                        funcao: p.role,
+                        nome: p.name?.toUpperCase() || "",
+                        cpf: p.cpf || "",
+                        empresa: p.company?.toUpperCase() || "",
+                        funcao: p.role?.toUpperCase() || "",
                         pulseira: obterCodigoPulseira(p.id),
                         tipoPulseira: obterTipoPulseira(p.credentialId),
-                        checkIn: p.checkIn || "",
-                        checkOut: p.checkOut || ""
+                        checkIn: p.checkIn || "-",
+                        checkOut: p.checkOut || "-"
                     } as RelatorioParticipanteCompleto))
                     .sort((a, b) => a.nome.localeCompare(b.nome))
                 break
@@ -825,13 +825,85 @@ export default function RelatoriosPage() {
                                         onClick={() => {
                                             const dadosTeste = [
                                                 {
-                                                    nome: "João Silva",
-                                                    cpf: "123.456.789-00",
-                                                    empresa: "RG Produções",
-                                                    funcao: "Operador",
-                                                    pulseira: "P001",
-                                                    checkIn: "08:00",
-                                                    checkOut: "17:00"
+                                                    nome: "MARCELA MASTINI GOMES ALMEIDA",
+                                                    cpf: "415.742.169-0",
+                                                    empresa: "2M PRODUÇÕES",
+                                                    funcao: "MÍDIA",
+                                                    pulseira: "-",
+                                                    checkIn: "-",
+                                                    checkOut: "-"
+                                                },
+                                                {
+                                                    nome: "KAIQUE JARDIM DE LIMA",
+                                                    cpf: "413.265.785-0",
+                                                    empresa: "2M PRODUÇÕES", 
+                                                    funcao: "MÍDIA",
+                                                    pulseira: "-",
+                                                    checkIn: "-",
+                                                    checkOut: "-"
+                                                },
+                                                {
+                                                    nome: "SILVIA CRISTINA COLMENERO",
+                                                    cpf: "845.995.866-0",
+                                                    empresa: "2M PRODUÇÕES",
+                                                    funcao: "IMPRENSA",
+                                                    pulseira: "-",
+                                                    checkIn: "-",
+                                                    checkOut: "-"
+                                                },
+                                                {
+                                                    nome: "LUCAS AGOSTINHO COELHO SALES",
+                                                    cpf: "135.433.606-20",
+                                                    empresa: "7 FEST",
+                                                    funcao: "FOTÓGRAFO",
+                                                    pulseira: "4003",
+                                                    checkIn: "02/08/2025, 14:55:06",
+                                                    checkOut: "-"
+                                                },
+                                                {
+                                                    nome: "HERBERT RICHARD MARTINS LEITE",
+                                                    cpf: "114.249.996-00",
+                                                    empresa: "7 FEST",
+                                                    funcao: "FOTÓGRAFO", 
+                                                    pulseira: "4004",
+                                                    checkIn: "02/08/2025, 14:55:05",
+                                                    checkOut: "-"
+                                                },
+                                                {
+                                                    nome: "PEDRO HENRIQUE ALVIM VILELA",
+                                                    cpf: "045.749.936-20",
+                                                    empresa: "AGÊNCIA I7",
+                                                    funcao: "FOTÓGRAFO",
+                                                    pulseira: "214",
+                                                    checkIn: "02/08/2025, 21:27:05",
+                                                    checkOut: "-"
+                                                },
+                                                {
+                                                    nome: "CARLOS EMILIO PEREIRA DA SILVA",
+                                                    cpf: "33.396.562-0",
+                                                    empresa: "ALL ACCESS",
+                                                    funcao: "STAFF",
+                                                    pulseira: "835",
+                                                    checkIn: "02/08/2025, 06:14:33",
+                                                    checkOut: "-"
+                                                },
+                                                {
+                                                    nome: "CAIO CESAR FERREIRA DE ARAUJO",
+                                                    cpf: "29.177.465.806-0",
+                                                    empresa: "ALL ACCESS",
+                                                    funcao: "STAFF",
+                                                    pulseira: "1030",
+                                                    checkIn: "02/08/2025, 10:17:41",
+                                                    checkOut: "-"
+                                                },
+                                                {
+                                                    nome: "PABLO CEZAR MENDES DE MATTOS",
+                                                    cpf: "133.884.217.06-0",
+                                                    empresa: "ALL ACCESS",
+                                                    funcao: "STAFF",
+                                                    pulseira: "1049",
+                                                    checkIn: "02/08/2025, 10:17:10",
+                                                    checkOut: "-"
                                                 }
                                             ]
 
