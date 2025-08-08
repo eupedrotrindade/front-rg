@@ -14,6 +14,8 @@ interface VirtualTableColumn<T> {
   className?: string
   priority?: number // 1 = alta prioridade (sempre visível), 6 = baixa prioridade
   hiddenOnMobile?: boolean // Ocultar em mobile
+  sticky?: 'left' | 'right' // Coluna fixada
+  stickyOffset?: number // Offset para posicionamento sticky
 }
 
 interface VirtualTableProps<T> {
@@ -42,10 +44,10 @@ export default function VirtualTable<T>({
   const parentRef = useRef<HTMLDivElement>(null)
   const [isMobile, setIsMobile] = useState(false)
 
-  // Detectar se é mobile
+  // Detectar se é mobile (telas menores que 700px)
   useEffect(() => {
     const checkIsMobile = () => {
-      setIsMobile(window.innerWidth < 768) // md breakpoint do Tailwind
+      setIsMobile(window.innerWidth < 700) // Breakpoint customizado de 700px
     }
     
     checkIsMobile()
@@ -54,17 +56,38 @@ export default function VirtualTable<T>({
     return () => window.removeEventListener('resize', checkIsMobile)
   }, [])
 
-  // Filtrar colunas baseado na responsividade
-  const visibleColumns = useMemo(() => {
-    if (!isMobile) {
-      return columns
+  // Separar colunas sticky das normais e filtrar por responsividade
+  const { stickyColumns, regularColumns } = useMemo(() => {
+    let allColumns = columns
+
+    if (isMobile) {
+      // Para telas menores que 700px, mostrar apenas colunas com prioridade 1 ou 2 (Nome e Ação)
+      allColumns = columns.filter(col => col.priority && col.priority <= 2)
     }
 
-    // No mobile, mostrar apenas colunas com prioridade alta ou que não são hiddenOnMobile
-    return columns
-      .filter(col => !col.hiddenOnMobile || (col.priority && col.priority <= 2))
-      .sort((a, b) => (a.priority || 999) - (b.priority || 999))
+    const sticky = allColumns.filter(col => col.sticky)
+    const regular = allColumns.filter(col => !col.sticky)
+
+    return {
+      stickyColumns: sticky.sort((a, b) => (a.priority || 999) - (b.priority || 999)),
+      regularColumns: regular.sort((a, b) => (a.priority || 999) - (b.priority || 999))
+    }
   }, [columns, isMobile])
+
+  const visibleColumns = [...regularColumns, ...stickyColumns]
+
+  // Calcular larguras disponíveis para evitar overflow
+  const availableWidth = useMemo(() => {
+    if (typeof window === 'undefined') return 1000
+    return Math.min(window.innerWidth - 32, 1200) // 32px = padding lateral
+  }, [])
+
+  const stickyWidth = useMemo(() => {
+    return stickyColumns.reduce((sum, col) => 
+      sum + (isMobile ? (col.minWidth || 100) : (col.width || 150)), 0)
+  }, [stickyColumns, isMobile])
+
+  const regularWidth = availableWidth - stickyWidth
 
   // Configurar o virtualizador
   const virtualizer = useVirtualizer({
@@ -74,43 +97,66 @@ export default function VirtualTable<T>({
     overscan: 5, // Renderizar 5 itens extras para suavizar o scroll
   })
 
-  // Calcular larguras das colunas
-  const totalWidth = useMemo(() => {
-    return visibleColumns.reduce((sum, col) => sum + (col.width || 150), 0)
-  }, [visibleColumns])
-
   const items = virtualizer.getVirtualItems()
 
   return (
-    <div className={cn("border border-gray-200 rounded-lg overflow-hidden bg-white", className)}>
-      {/* Header fixo */}
-      <Table>
-        <TableHeader>
-          <TableRow className={cn("bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600", headerClassName)}>
-            {visibleColumns.map((column, index) => (
-              <TableHead
+    <div className={cn("border border-gray-200 rounded-lg bg-white relative", className)}>
+      {/* Header responsivo sem overflow */}
+      <div className="sticky top-0 z-10 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+        <div className="flex w-full overflow-hidden">
+          {/* Colunas regulares */}
+          <div 
+            className="flex flex-1 min-w-0"
+            style={{ maxWidth: isMobile ? `${regularWidth}px` : 'none' }}
+          >
+            {regularColumns.map((column, index) => (
+              <div
                 key={String(column.key) + index}
                 className={cn(
-                  "px-3 sm:px-6 py-2 sm:py-4 text-left text-xs font-semibold uppercase tracking-wider",
-                  isMobile ? "text-xs" : "text-xs"
+                  "text-left text-xs font-semibold uppercase tracking-wider text-gray-600 border-r border-gray-200 last:border-r-0",
+                  "flex-shrink-0",
+                  isMobile ? "px-2 py-2" : "px-4 py-3"
                 )}
                 style={{
-                  width: isMobile ? 'auto' : (column.width || 150),
-                  minWidth: isMobile ? (column.minWidth || 80) : (column.minWidth || column.width || 150),
-                  flex: isMobile ? '1 1 0%' : undefined
+                  width: isMobile 
+                    ? `${regularWidth / Math.max(regularColumns.length, 1)}px`
+                    : `${column.width || 150}px`,
+                  minWidth: isMobile ? '80px' : `${column.minWidth || column.width || 150}px`
                 }}
               >
                 {column.header}
-              </TableHead>
+              </div>
             ))}
-          </TableRow>
-        </TableHeader>
-      </Table>
+          </div>
+          
+          {/* Colunas sticky à direita */}
+          {stickyColumns.map((column, index) => (
+            <div
+              key={`sticky-${String(column.key)}-${index}`}
+              className={cn(
+                "text-left text-xs font-semibold uppercase tracking-wider text-gray-600",
+                "bg-white border-l border-gray-200 flex-shrink-0",
+                isMobile ? "px-2 py-2" : "px-4 py-3"
+              )}
+              style={{
+                position: 'sticky',
+                right: stickyColumns.length > 1 ? 
+                  `${stickyColumns.slice(index + 1).reduce((sum, col) => 
+                    sum + (isMobile ? (col.minWidth || 100) : (col.width || 150)), 0)}px` : '0px',
+                width: isMobile ? `${column.minWidth || 100}px` : `${column.width || 150}px`,
+                zIndex: 5
+              }}
+            >
+              {column.header}
+            </div>
+          ))}
+        </div>
+      </div>
 
-      {/* Corpo virtualizado */}
+      {/* Corpo virtualizado sem overflow horizontal */}
       <div
         ref={parentRef}
-        className="overflow-auto"
+        className="overflow-y-auto overflow-x-hidden"
         style={{ height }}
       >
         <div
@@ -137,22 +183,50 @@ export default function VirtualTable<T>({
                 }}
                 onClick={() => onRowClick?.(item, virtualRow.index)}
               >
-                <div className={cn(
-                  "flex w-full h-full items-center",
-                  isMobile ? "gap-1" : "gap-0"
-                )}>
-                  {visibleColumns.map((column, colIndex) => (
+                <div className="flex w-full h-full items-center overflow-hidden">
+                  {/* Colunas regulares */}
+                  <div 
+                    className="flex flex-1 min-w-0"
+                    style={{ maxWidth: isMobile ? `${regularWidth}px` : 'none' }}
+                  >
+                    {regularColumns.map((column, colIndex) => (
+                      <div
+                        key={String(column.key) + colIndex}
+                        className={cn(
+                          "flex-shrink-0 border-r border-gray-100 last:border-r-0",
+                          "text-sm overflow-hidden",
+                          isMobile ? "py-2 px-2" : "py-3 px-4"
+                        )}
+                        style={{
+                          width: isMobile 
+                            ? `${regularWidth / Math.max(regularColumns.length, 1)}px`
+                            : `${column.width || 150}px`,
+                          minWidth: isMobile ? '80px' : `${column.minWidth || column.width || 150}px`
+                        }}
+                      >
+                        {column.cell(item, virtualRow.index)}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Colunas sticky à direita */}
+                  {stickyColumns.map((column, colIndex) => (
                     <div
-                      key={String(column.key) + colIndex}
+                      key={`sticky-cell-${String(column.key)}-${colIndex}`}
                       className={cn(
-                        "py-2 sm:py-4 flex-shrink-0",
-                        isMobile ? "px-2 text-sm" : "px-6"
+                        "flex-shrink-0 bg-white border-l border-gray-100",
+                        "text-sm",
+                        isMobile ? "py-2 px-2" : "py-3 px-4"
                       )}
                       style={{
-                        width: isMobile ? 'auto' : (column.width || 150),
-                        minWidth: isMobile ? (column.minWidth || 80) : (column.minWidth || column.width || 150),
-                        flex: isMobile ? '1 1 0%' : undefined
+                        position: 'sticky',
+                        right: stickyColumns.length > 1 ? 
+                          `${stickyColumns.slice(colIndex + 1).reduce((sum, col) => 
+                            sum + (isMobile ? (col.minWidth || 100) : (col.width || 150)), 0)}px` : '0px',
+                        width: isMobile ? `${column.minWidth || 100}px` : `${column.width || 150}px`,
+                        zIndex: 2
                       }}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {column.cell(item, virtualRow.index)}
                     </div>

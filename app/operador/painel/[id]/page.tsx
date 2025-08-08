@@ -193,6 +193,7 @@ export default function Painel() {
   const [isVirtualMode, setIsVirtualMode] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [isSearching, setIsSearching] = useState(false)
+  const [isMobileTable, setIsMobileTable] = useState(false)
 
   // Estados para filtros estilo Excel das colunas
   const [columnFilters, setColumnFilters] = useState<{
@@ -285,8 +286,8 @@ export default function Painel() {
       params?.id as string,
       selectedDay
         ? (selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay)
-            .split('/')
-            .join('-')
+          .split('/')
+          .join('-')
         : new Date().toLocaleDateString('pt-BR').split('/').join('-'),
     )
 
@@ -939,7 +940,7 @@ export default function Painel() {
           const operador = JSON.parse(operadorRaw)
           const cadastradoPor = `${operador.nome}-${operador.cpf}-${operador.id}`
           setNovoStaff(prev => ({ ...prev, cadastrado_por: cadastradoPor }))
-        } catch {}
+        } catch { }
       }
     }
   }, [operadorInfo])
@@ -1216,18 +1217,18 @@ export default function Painel() {
             aVal =
               typeof aVal === 'string'
                 ? aVal
-                    .normalize('NFD')
-                    .replace(/\p{Diacritic}/gu, '')
-                    .toLowerCase()
-                    .trim()
+                  .normalize('NFD')
+                  .replace(/\p{Diacritic}/gu, '')
+                  .toLowerCase()
+                  .trim()
                 : ''
             bVal =
               typeof bVal === 'string'
                 ? bVal
-                    .normalize('NFD')
-                    .replace(/\p{Diacritic}/gu, '')
-                    .toLowerCase()
-                    .trim()
+                  .normalize('NFD')
+                  .replace(/\p{Diacritic}/gu, '')
+                  .toLowerCase()
+                  .trim()
                 : ''
             break
           case 'credentialId':
@@ -1278,11 +1279,22 @@ export default function Painel() {
   const isHighVolume = paginatedData.total > 1000
   const showPerformanceIndicator = isHighVolume && !participantsLoading
 
-  // Detectar automaticamente se deve usar modo virtual
+  // Sempre usar modo virtual para consistência responsiva
   useEffect(() => {
-    const shouldUseVirtual = paginatedData.total > 500
-    setIsVirtualMode(shouldUseVirtual)
-  }, [paginatedData.total])
+    setIsVirtualMode(true) // Sempre true para garantir responsividade
+  }, [])
+
+  // Detectar se é mobile para tabela regular
+  useEffect(() => {
+    const checkIsMobileTable = () => {
+      setIsMobileTable(window.innerWidth < 700)
+    }
+
+    checkIsMobileTable()
+    window.addEventListener('resize', checkIsMobileTable)
+
+    return () => window.removeEventListener('resize', checkIsMobileTable)
+  }, [])
 
   // Usar busca otimizada quando há termo de busca
   const optimizedData = useMemo(() => {
@@ -1395,8 +1407,8 @@ export default function Painel() {
           </div>
         ),
         width: 200,
-        minWidth: 150,
-        priority: 1, // Alta prioridade para mobile
+        minWidth: 120,
+        priority: 2, // Alta prioridade para mobile (depois de Ação)
         cell: (item: EventParticipant) => (
           <TextCell className="font-semibold text-gray-900">
             {item.name}
@@ -1510,8 +1522,9 @@ export default function Painel() {
         key: 'actions',
         header: 'Ação',
         width: 120,
-        minWidth: 100,
-        priority: 2, // Alta prioridade para mobile - sempre visível
+        minWidth: 90,
+        priority: 1, // Máxima prioridade - sempre visível e fixo
+        sticky: 'right', // Fixado à direita
         cell: (item: EventParticipant) => {
           const botaoTipo = getBotaoAcao(item)
           return (
@@ -1520,24 +1533,22 @@ export default function Painel() {
                 <Button
                   onClick={() => abrirCheckin(item)}
                   size="sm"
-                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-xs sm:text-sm px-2 sm:px-3"
+                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-xs px-1.5 py-1"
                   disabled={loading}
                 >
-                  <Check className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                  <span className="hidden xs:inline">Check-in</span>
-                  <span className="xs:hidden">In</span>
+                  <Check className="w-3 h-3 mr-0.5" />
+                  <span>In</span>
                 </Button>
               )}
               {botaoTipo === 'checkout' && (
                 <Button
                   onClick={() => abrirCheckout(item)}
                   size="sm"
-                  className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-xs sm:text-sm px-2 sm:px-3"
+                  className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-xs px-1.5 py-1"
                   disabled={loading}
                 >
-                  <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                  <span className="hidden xs:inline">Check-out</span>
-                  <span className="xs:hidden">Out</span>
+                  <Clock className="w-3 h-3 mr-0.5" />
+                  <span>Out</span>
                 </Button>
               )}
             </ActionCell>
@@ -1791,7 +1802,7 @@ export default function Painel() {
   const handleBuscaOtimizada = (valor: string) => {
     // Atualizar o filtro imediatamente para manter a responsividade do input
     setFiltro(prev => ({ ...prev, nome: valor }))
-    
+
     // Usar busca otimizada baseada no tamanho do dataset
     if (participantsData.length > 500) {
       // Para datasets grandes, usar a busca indexada
@@ -2144,9 +2155,9 @@ export default function Painel() {
       setOperadorInfo(prev =>
         prev
           ? {
-              ...prev,
-              acoes: updatedActions,
-            }
+            ...prev,
+            acoes: updatedActions,
+          }
           : null,
       )
     } catch (error) {
@@ -2323,9 +2334,8 @@ export default function Painel() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = `colaboradores-barrados-${
-      new Date().toISOString().split('T')[0]
-    }.csv`
+    link.download = `colaboradores-barrados-${new Date().toISOString().split('T')[0]
+      }.csv`
     link.click()
   }
 
@@ -2759,14 +2769,13 @@ export default function Painel() {
                       <button
                         key={day.id}
                         onClick={() => setSelectedDay(day.id)}
-                        className={`border-b-2 py-3 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${
-                          isActive
-                            ? getTabColor(day.type, true)
-                            : `border-transparent text-gray-500 ${getTabColor(
-                                day.type,
-                                false,
-                              )}`
-                        }`}
+                        className={`border-b-2 py-3 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
+                          ? getTabColor(day.type, true)
+                          : `border-transparent text-gray-500 ${getTabColor(
+                            day.type,
+                            false,
+                          )}`
+                          }`}
                       >
                         {day.label} ({colaboradoresNoDia})
                       </button>
@@ -2808,32 +2817,14 @@ export default function Painel() {
                   </div>
                 </div>
               )}
-              {isVirtualMode ? (
-                // Tabela Virtual para grandes volumes
-                <VirtualTable
-                  data={finalData.data}
-                  columns={virtualTableColumns}
-                  height={600}
-                  itemHeight={65}
-                  onRowClick={abrirPopup}
-                  getRowClassName={item =>
-                    selectedDay &&
-                    item.daysWork &&
-                    item.daysWork.includes(
-                      selectedDay.includes('_')
-                        ? selectedDay.split('_')[1]
-                        : selectedDay,
-                    )
-                      ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
-                      : ''
-                  }
-                />
-              ) : (
-                // Tabela Regular com Paginação
+
+
+              <div className="overflow-x-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
-                      <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                      {/* Nome - sempre visível */}
+                      <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`}>
                         <div className="flex items-center justify-between">
                           <span>Nome</span>
                           <ExcelColumnFilter
@@ -2850,77 +2841,95 @@ export default function Painel() {
                           />
                         </div>
                       </TableHead>
-                      <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                        <div className="flex items-center justify-between">
-                          <span>CPF</span>
-                          <ExcelColumnFilter
-                            values={columnUniqueValues.cpf}
-                            selectedValues={columnFilters.cpf}
-                            onSelectionChange={values =>
-                              handleColumnFilterChange('cpf', values)
-                            }
-                            onSortTable={direction =>
-                              handleColumnSort('cpf', direction)
-                            }
-                            columnTitle="CPF"
-                            isActive={columnFilters.cpf.length > 0}
-                          />
-                        </div>
-                      </TableHead>
-                      <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                        <div className="flex items-center justify-between">
-                          <span>Função</span>
-                          <ExcelColumnFilter
-                            values={columnUniqueValues.funcao.filter(
-                              (v): v is string => typeof v === 'string',
-                            )}
-                            selectedValues={columnFilters.funcao}
-                            onSelectionChange={values =>
-                              handleColumnFilterChange('funcao', values)
-                            }
-                            onSortTable={direction =>
-                              handleColumnSort('role', direction)
-                            }
-                            columnTitle="Função"
-                            isActive={columnFilters.funcao.length > 0}
-                          />
-                        </div>
-                      </TableHead>
-                      <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                        <div className="flex items-center justify-between">
-                          <span>Empresa</span>
-                          <ExcelColumnFilter
-                            values={columnUniqueValues.empresa}
-                            selectedValues={columnFilters.empresa}
-                            onSelectionChange={values =>
-                              handleColumnFilterChange('empresa', values)
-                            }
-                            onSortTable={direction =>
-                              handleColumnSort('company', direction)
-                            }
-                            columnTitle="Empresa"
-                            isActive={columnFilters.empresa.length > 0}
-                          />
-                        </div>
-                      </TableHead>
-                      <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                        <div className="flex items-center justify-between">
-                          <span>Tipo de Credencial</span>
-                          <ExcelColumnFilter
-                            values={columnUniqueValues.credencial}
-                            selectedValues={columnFilters.credencial}
-                            onSelectionChange={values =>
-                              handleColumnFilterChange('credencial', values)
-                            }
-                            onSortTable={direction =>
-                              handleColumnSort('credentialId', direction)
-                            }
-                            columnTitle="Tipo de Credencial"
-                            isActive={columnFilters.credencial.length > 0}
-                          />
-                        </div>
-                      </TableHead>
-                      <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                      
+                      {/* CPF - esconder em mobile */}
+                      {!isMobileTable && (
+                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                          <div className="flex items-center justify-between">
+                            <span>CPF</span>
+                            <ExcelColumnFilter
+                              values={columnUniqueValues.cpf}
+                              selectedValues={columnFilters.cpf}
+                              onSelectionChange={values =>
+                                handleColumnFilterChange('cpf', values)
+                              }
+                              onSortTable={direction =>
+                                handleColumnSort('cpf', direction)
+                              }
+                              columnTitle="CPF"
+                              isActive={columnFilters.cpf.length > 0}
+                            />
+                          </div>
+                        </TableHead>
+                      )}
+                      
+                      {/* Função - esconder em mobile */}
+                      {!isMobileTable && (
+                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                          <div className="flex items-center justify-between">
+                            <span>Função</span>
+                            <ExcelColumnFilter
+                              values={columnUniqueValues.funcao.filter(
+                                (v): v is string => typeof v === 'string',
+                              )}
+                              selectedValues={columnFilters.funcao}
+                              onSelectionChange={values =>
+                                handleColumnFilterChange('funcao', values)
+                              }
+                              onSortTable={direction =>
+                                handleColumnSort('role', direction)
+                              }
+                              columnTitle="Função"
+                              isActive={columnFilters.funcao.length > 0}
+                            />
+                          </div>
+                        </TableHead>
+                      )}
+                      
+                      {/* Empresa - esconder em mobile */}
+                      {!isMobileTable && (
+                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                          <div className="flex items-center justify-between">
+                            <span>Empresa</span>
+                            <ExcelColumnFilter
+                              values={columnUniqueValues.empresa}
+                              selectedValues={columnFilters.empresa}
+                              onSelectionChange={values =>
+                                handleColumnFilterChange('empresa', values)
+                              }
+                              onSortTable={direction =>
+                                handleColumnSort('company', direction)
+                              }
+                              columnTitle="Empresa"
+                              isActive={columnFilters.empresa.length > 0}
+                            />
+                          </div>
+                        </TableHead>
+                      )}
+                      
+                      {/* Credencial - esconder em mobile */}
+                      {!isMobileTable && (
+                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                          <div className="flex items-center justify-between">
+                            <span>Tipo de Credencial</span>
+                            <ExcelColumnFilter
+                              values={columnUniqueValues.credencial}
+                              selectedValues={columnFilters.credencial}
+                              onSelectionChange={values =>
+                                handleColumnFilterChange('credencial', values)
+                              }
+                              onSortTable={direction =>
+                                handleColumnSort('credentialId', direction)
+                              }
+                              columnTitle="Tipo de Credencial"
+                              isActive={columnFilters.credencial.length > 0}
+                            />
+                          </div>
+                        </TableHead>
+                      )}
+                      
+                      {/* Ação - sempre visível e sticky à direita */}
+                      <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
                         Ação
                       </TableHead>
                     </TableRow>
@@ -2929,7 +2938,7 @@ export default function Painel() {
                     {finalData.total === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={6}
+                          colSpan={isMobileTable ? 2 : 6}
                           className="px-6 py-16 text-center text-gray-500"
                         >
                           <div className="flex flex-col items-center">
@@ -2957,47 +2966,65 @@ export default function Painel() {
                           return (
                             <TableRow
                               key={index}
-                              className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${
-                                selectedDay &&
+                              className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${selectedDay &&
                                 colab.daysWork &&
                                 colab.daysWork.includes(
                                   selectedDay.includes('_')
                                     ? selectedDay.split('_')[1]
                                     : selectedDay,
                                 )
-                                  ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
-                                  : ''
-                              }`}
+                                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
+                                : ''
+                                }`}
                               onClick={() => abrirPopup(colab)}
                             >
-                              <TableCell className="px-6 py-4 whitespace-nowrap text-gray-600">
+                              {/* Nome - sempre visível */}
+                              <TableCell className={`whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
                                 <div className="flex items-center">
-                                  <div className="ml-4">
+                                  <div className={isMobileTable ? '' : 'ml-4'}>
                                     <div className="text-sm font-semibold text-gray-900">
                                       {colab.name}
                                     </div>
                                   </div>
                                 </div>
                               </TableCell>
-                              <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                                <p className="text-gray-600">
-                                  {formatCPF(colab.cpf?.trim() || '')}
-                                </p>
-                              </TableCell>
-                              <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                <p className="text-gray-600">{colab.role}</p>
-                              </TableCell>
-                              <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                  {colab.company}
-                                </span>
-                              </TableCell>
-                              <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                  {getCredencial(colab)}
-                                </span>
-                              </TableCell>
-                              <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              
+                              {/* CPF - esconder em mobile */}
+                              {!isMobileTable && (
+                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
+                                  <p className="text-gray-600">
+                                    {formatCPF(colab.cpf?.trim() || '')}
+                                  </p>
+                                </TableCell>
+                              )}
+                              
+                              {/* Função - esconder em mobile */}
+                              {!isMobileTable && (
+                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  <p className="text-gray-600">{colab.role}</p>
+                                </TableCell>
+                              )}
+                              
+                              {/* Empresa - esconder em mobile */}
+                              {!isMobileTable && (
+                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    {colab.company}
+                                  </span>
+                                </TableCell>
+                              )}
+                              
+                              {/* Credencial - esconder em mobile */}
+                              {!isMobileTable && (
+                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                    {getCredencial(colab)}
+                                  </span>
+                                </TableCell>
+                              )}
+                              
+                              {/* Ação - sempre visível e sticky à direita */}
+                              <TableCell className={`whitespace-nowrap text-sm font-medium sticky right-0 bg-white border-l border-gray-100 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 5 }}>
                                 <div
                                   className="flex space-x-2"
                                   onClick={e => e.stopPropagation()}
@@ -3006,22 +3033,26 @@ export default function Painel() {
                                     <Button
                                       onClick={() => abrirCheckin(colab)}
                                       size="sm"
-                                      className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                      className={`bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${
+                                        isMobileTable ? 'text-xs px-1.5 py-1' : ''
+                                      }`}
                                       disabled={loading}
                                     >
-                                      <Check className="w-4 h-4 mr-1" />
-                                      Check-in
+                                      <Check className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
+                                      {isMobileTable ? 'In' : 'Check-in'}
                                     </Button>
                                   )}
                                   {botaoTipo === 'checkout' && (
                                     <Button
                                       onClick={() => abrirCheckout(colab)}
                                       size="sm"
-                                      className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                      className={`bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${
+                                        isMobileTable ? 'text-xs px-1.5 py-1' : ''
+                                      }`}
                                       disabled={loading}
                                     >
-                                      <Clock className="w-4 h-4 mr-1" />
-                                      Check-out
+                                      <Clock className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
+                                      {isMobileTable ? 'Out' : 'Check-out'}
                                     </Button>
                                   )}
                                 </div>
@@ -3033,10 +3064,10 @@ export default function Painel() {
                     )}
                   </TableBody>
                 </Table>
-              )}
+              </div>
 
-              {/* Paginação - apenas no modo regular */}
-              {!isVirtualMode && <PaginationComponent />}
+
+
             </div>
           </div>
 
@@ -3156,8 +3187,8 @@ export default function Painel() {
                       {getBotaoAcao(selectedParticipant) === 'checkin'
                         ? 'Check-in'
                         : getBotaoAcao(selectedParticipant) === 'checkout'
-                        ? 'Check-out'
-                        : 'Sem ação'}
+                          ? 'Check-out'
+                          : 'Sem ação'}
                     </Button>
                     <Button
                       onClick={() => setModalAberto(false)}
@@ -3506,11 +3537,10 @@ export default function Painel() {
                                 size="sm"
                                 onClick={() => toggleDateSelection(date)}
                                 disabled={loading || !operadorLogado}
-                                className={`text-xs transition-all duration-200 ${
-                                  novoStaff.daysWork.includes(date)
-                                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
-                                }`}
+                                className={`text-xs transition-all duration-200 ${novoStaff.daysWork.includes(date)
+                                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
+                                  }`}
                               >
                                 {date}
                               </Button>
@@ -3535,11 +3565,10 @@ export default function Painel() {
                                 size="sm"
                                 onClick={() => toggleDateSelection(date)}
                                 disabled={loading || !operadorLogado}
-                                className={`text-xs transition-all duration-200 ${
-                                  novoStaff.daysWork.includes(date)
-                                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
-                                }`}
+                                className={`text-xs transition-all duration-200 ${novoStaff.daysWork.includes(date)
+                                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
+                                  }`}
                               >
                                 {date}
                               </Button>
@@ -3564,11 +3593,10 @@ export default function Painel() {
                                 size="sm"
                                 onClick={() => toggleDateSelection(date)}
                                 disabled={loading || !operadorLogado}
-                                className={`text-xs transition-all duration-200 ${
-                                  novoStaff.daysWork.includes(date)
-                                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
-                                }`}
+                                className={`text-xs transition-all duration-200 ${novoStaff.daysWork.includes(date)
+                                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
+                                  }`}
                               >
                                 {date}
                               </Button>
@@ -3958,19 +3986,17 @@ export default function Painel() {
                           })
                           setPopupTrocaPulseira(false)
                         }}
-                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                          hasCheckIn
-                            ? 'border-gray-200 hover:bg-gray-50'
-                            : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
-                        }`}
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${hasCheckIn
+                          ? 'border-gray-200 hover:bg-gray-50'
+                          : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+                          }`}
                       >
                         <div className="flex items-center gap-3">
                           <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              hasCheckIn
-                                ? 'bg-gradient-to-br from-blue-500 to-blue-600'
-                                : 'bg-gray-300'
-                            }`}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center ${hasCheckIn
+                              ? 'bg-gradient-to-br from-blue-500 to-blue-600'
+                              : 'bg-gray-300'
+                              }`}
                           >
                             <span className="text-sm font-bold text-white">
                               {getInitials(participant.name)}
