@@ -2629,22 +2629,22 @@ export default function Painel() {
                     </Button>
                   )}
 
-
+                  <Button
+                    onClick={() => {
+                      if (operadorLogado) {
+                        setPopupNovoStaff(true)
+                        atualizarCadastradoPor()
+                      }
+                    }}
+                    className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                    disabled={loading || !operadorLogado}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Adicionar Staff
+                  </Button>
                 </div>
 
-                <Button
-                  onClick={() => {
-                    if (operadorLogado) {
-                      setPopupNovoStaff(true)
-                      atualizarCadastradoPor()
-                    }
-                  }}
-                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                  disabled={loading || !operadorLogado}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Adicionar Staff
-                </Button>
+
 
                 <Button
                   onClick={() => {
@@ -2771,7 +2771,7 @@ export default function Painel() {
                       <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`}>
                         <div className="flex items-center justify-between">
                           <span>Nome</span>
-                          <ExcelColumnFilter
+                          {/* <ExcelColumnFilter
                             values={columnUniqueValues.nome}
                             selectedValues={columnFilters.nome}
                             onSelectionChange={values =>
@@ -2782,7 +2782,7 @@ export default function Painel() {
                             }
                             columnTitle="Nome"
                             isActive={columnFilters.nome.length > 0}
-                          />
+                          /> */}
                         </div>
                       </TableHead>
 
@@ -2791,7 +2791,7 @@ export default function Painel() {
                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                           <div className="flex items-center justify-between">
                             <span>CPF</span>
-                            <ExcelColumnFilter
+                            {/* <ExcelColumnFilter
                               values={columnUniqueValues.cpf}
                               selectedValues={columnFilters.cpf}
                               onSelectionChange={values =>
@@ -2802,7 +2802,7 @@ export default function Painel() {
                               }
                               columnTitle="CPF"
                               isActive={columnFilters.cpf.length > 0}
-                            />
+                            /> */}
                           </div>
                         </TableHead>
                       )}
