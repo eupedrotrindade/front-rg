@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { useEventos } from "@/features/eventos/api/query/use-eventos";
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event";
 import { useCredentials } from "@/features/eventos/api/query";
+import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas";
 import { Credential } from "@/features/eventos/types";
 import { formatCpf, formatPhone } from "@/lib/utils";
 import { Calendar } from "lucide-react";
@@ -50,9 +51,10 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
 
     const { data: participants } = useEventParticipantsByEvent(selectedEventId || "");
     const { data: credentials = [] } = useCredentials({ eventId: selectedEventId || "" });
-
+    const { data: empresas = [] } = useEmpresasByEvent(selectedEventId || "");
 
     const participantsArray = Array.isArray(participants) ? participants : [];
+    const empresasArray = Array.isArray(empresas) ? empresas : [];
 
 
 
@@ -519,9 +521,32 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel>Empresa *</FormLabel>
-                            <FormControl>
-                                <Input {...field} disabled={loading} placeholder="Nome da empresa" />
-                            </FormControl>
+                            {empresasArray.length === 0 ? (
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                    <p className="text-sm text-yellow-800">
+                                        <strong>Atenção:</strong> Nenhuma empresa disponível para este evento.
+                                        {selectedEventId ? " Crie empresas primeiro na seção de empresas." : " Selecione um evento primeiro."}
+                                    </p>
+                                    <FormControl>
+                                        <Input {...field} disabled={loading} placeholder="Digite o nome da empresa" className="mt-2" />
+                                    </FormControl>
+                                </div>
+                            ) : (
+                                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={loading || !selectedEventId}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder={selectedEventId ? "Selecione uma empresa" : "Selecione um evento primeiro"} />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        {empresasArray.map((empresa) => (
+                                            <SelectItem key={empresa.id} value={empresa.nome}>
+                                                {empresa.nome}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
                             <FormMessage />
                         </FormItem>
                     )}

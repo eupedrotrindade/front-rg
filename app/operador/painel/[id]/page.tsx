@@ -76,6 +76,7 @@ import {
   useDebouncedCancellableRequest,
 } from '@/hooks/useCancellableRequest'
 import { useIndexedSearch } from '@/hooks/useOptimizedSearch'
+import ModalAdicionarStaff from '@/components/operador/modalAdicionarStaff'
 
 export default function Painel() {
   // TODOS OS useState PRIMEIRO
@@ -2841,7 +2842,7 @@ export default function Painel() {
                           />
                         </div>
                       </TableHead>
-                      
+
                       {/* CPF - esconder em mobile */}
                       {!isMobileTable && (
                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
@@ -2862,7 +2863,7 @@ export default function Painel() {
                           </div>
                         </TableHead>
                       )}
-                      
+
                       {/* Função - esconder em mobile */}
                       {!isMobileTable && (
                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
@@ -2885,7 +2886,7 @@ export default function Painel() {
                           </div>
                         </TableHead>
                       )}
-                      
+
                       {/* Empresa - esconder em mobile */}
                       {!isMobileTable && (
                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
@@ -2906,7 +2907,7 @@ export default function Painel() {
                           </div>
                         </TableHead>
                       )}
-                      
+
                       {/* Credencial - esconder em mobile */}
                       {!isMobileTable && (
                         <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
@@ -2927,7 +2928,7 @@ export default function Painel() {
                           </div>
                         </TableHead>
                       )}
-                      
+
                       {/* Ação - sempre visível e sticky à direita */}
                       <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
                         Ação
@@ -2988,7 +2989,7 @@ export default function Painel() {
                                   </div>
                                 </div>
                               </TableCell>
-                              
+
                               {/* CPF - esconder em mobile */}
                               {!isMobileTable && (
                                 <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
@@ -2997,14 +2998,14 @@ export default function Painel() {
                                   </p>
                                 </TableCell>
                               )}
-                              
+
                               {/* Função - esconder em mobile */}
                               {!isMobileTable && (
                                 <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                   <p className="text-gray-600">{colab.role}</p>
                                 </TableCell>
                               )}
-                              
+
                               {/* Empresa - esconder em mobile */}
                               {!isMobileTable && (
                                 <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -3013,7 +3014,7 @@ export default function Painel() {
                                   </span>
                                 </TableCell>
                               )}
-                              
+
                               {/* Credencial - esconder em mobile */}
                               {!isMobileTable && (
                                 <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -3022,7 +3023,7 @@ export default function Painel() {
                                   </span>
                                 </TableCell>
                               )}
-                              
+
                               {/* Ação - sempre visível e sticky à direita */}
                               <TableCell className={`whitespace-nowrap text-sm font-medium sticky right-0 bg-white border-l border-gray-100 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 5 }}>
                                 <div
@@ -3033,9 +3034,8 @@ export default function Painel() {
                                     <Button
                                       onClick={() => abrirCheckin(colab)}
                                       size="sm"
-                                      className={`bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${
-                                        isMobileTable ? 'text-xs px-1.5 py-1' : ''
-                                      }`}
+                                      className={`bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${isMobileTable ? 'text-xs px-1.5 py-1' : ''
+                                        }`}
                                       disabled={loading}
                                     >
                                       <Check className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
@@ -3046,9 +3046,8 @@ export default function Painel() {
                                     <Button
                                       onClick={() => abrirCheckout(colab)}
                                       size="sm"
-                                      className={`bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${
-                                        isMobileTable ? 'text-xs px-1.5 py-1' : ''
-                                      }`}
+                                      className={`bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${isMobileTable ? 'text-xs px-1.5 py-1' : ''
+                                        }`}
                                       disabled={loading}
                                     >
                                       <Clock className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
@@ -3379,326 +3378,6 @@ export default function Painel() {
             </DialogContent>
           </Dialog>
 
-          {/* MODAL ADICIONAR NOVO STAFF */}
-          <Dialog open={popupNovoStaff} onOpenChange={setPopupNovoStaff}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-gradient-to-br from-white to-purple-50 border-0 shadow-2xl">
-              <DialogHeader className="pb-6">
-                <DialogTitle className="flex items-center gap-3 text-xl font-bold text-gray-900">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <Plus className="w-5 h-5 text-white" />
-                  </div>
-                  Adicionar Novo Staff
-                </DialogTitle>
-                <DialogDescription className="text-gray-600">
-                  Preencha os dados do novo Staff
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-gray-600">
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-gray-600">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Nome completo *
-                    </label>
-                    <Input
-                      type="text"
-                      value={novoStaff.name}
-                      onChange={e =>
-                        setNovoStaff({
-                          ...novoStaff,
-                          name: capitalizeWords(e.target.value),
-                        })
-                      }
-                      placeholder="Digite o nome completo"
-                      disabled={loading || !operadorLogado}
-                      className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
-
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-gray-600">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      CPF *
-                    </label>
-                    <Input
-                      type="text"
-                      value={novoStaff.cpf}
-                      onChange={e =>
-                        setNovoStaff({
-                          ...novoStaff,
-                          cpf: formatCPF(e.target.value),
-                        })
-                      }
-                      placeholder="000.000.000-00"
-                      disabled={loading || !operadorLogado}
-                      className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
-
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Função *
-                    </label>
-                    <Input
-                      type="text"
-                      value={novoStaff.funcao}
-                      onChange={e =>
-                        setNovoStaff({
-                          ...novoStaff,
-                          funcao: capitalizeWords(e.target.value),
-                        })
-                      }
-                      placeholder="Digite a função"
-                      disabled={loading || !operadorLogado}
-                      className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
-
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Empresa *
-                    </label>
-                    <Input
-                      type="text"
-                      value={novoStaff.empresa}
-                      onChange={e =>
-                        setNovoStaff({
-                          ...novoStaff,
-                          empresa: capitalizeWords(e.target.value),
-                        })
-                      }
-                      placeholder="Digite a empresa"
-                      disabled={loading || !operadorLogado}
-                      className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Tipo de Credencial *
-                  </label>
-                  <Select
-                    value={novoStaff.tipo_credencial || ''}
-                    onValueChange={value =>
-                      setNovoStaff({
-                        ...novoStaff,
-                        tipo_credencial: value.toUpperCase(),
-                      })
-                    }
-                    disabled={
-                      tiposCredencialUnicosFiltrados.length === 0 ||
-                      loading ||
-                      !operadorLogado
-                    }
-                  >
-                    <SelectTrigger className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500">
-                      <SelectValue placeholder="Selecione o tipo de credencial" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tiposCredencialUnicosFiltrados.map((tipo, idx) => {
-                        return (
-                          <SelectItem key={idx} value={tipo}>
-                            {tipo}
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
-                  <label className="block text-sm font-semibold text-gray-700 mb-4">
-                    <Calendar className="w-4 h-4 inline mr-2" />
-                    Dias de Trabalho
-                  </label>
-                  {hasDefinedPeriods() ? (
-                    <div className="space-y-4">
-                      <p className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-gray-200">
-                        <strong>
-                          Selecione as datas disponíveis para o evento:
-                        </strong>
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Evento */}
-                        <div>
-                          <p className="text-xs font-semibold text-blue-700 mb-2">
-                            Evento
-                          </p>
-                          <div className="flex flex-col gap-2">
-                            {getAvailableDates('preparacao').map(date => (
-                              <Button
-                                key={date}
-                                type="button"
-                                variant={
-                                  novoStaff.daysWork.includes(date)
-                                    ? 'default'
-                                    : 'outline'
-                                }
-                                size="sm"
-                                onClick={() => toggleDateSelection(date)}
-                                disabled={loading || !operadorLogado}
-                                className={`text-xs transition-all duration-200 ${novoStaff.daysWork.includes(date)
-                                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
-                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
-                                  }`}
-                              >
-                                {date}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                        {/* Montagem */}
-                        <div>
-                          <p className="text-xs font-semibold text-green-700 mb-2">
-                            Montagem
-                          </p>
-                          <div className="flex flex-col gap-2">
-                            {getAvailableDates('montagem').map(date => (
-                              <Button
-                                key={date}
-                                type="button"
-                                variant={
-                                  novoStaff.daysWork.includes(date)
-                                    ? 'default'
-                                    : 'outline'
-                                }
-                                size="sm"
-                                onClick={() => toggleDateSelection(date)}
-                                disabled={loading || !operadorLogado}
-                                className={`text-xs transition-all duration-200 ${novoStaff.daysWork.includes(date)
-                                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
-                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
-                                  }`}
-                              >
-                                {date}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                        {/* Finalização */}
-                        <div>
-                          <p className="text-xs font-semibold text-purple-700 mb-2">
-                            Finalização
-                          </p>
-                          <div className="flex flex-col gap-2">
-                            {getAvailableDates('finalizacao').map(date => (
-                              <Button
-                                key={date}
-                                type="button"
-                                variant={
-                                  novoStaff.daysWork.includes(date)
-                                    ? 'default'
-                                    : 'outline'
-                                }
-                                size="sm"
-                                onClick={() => toggleDateSelection(date)}
-                                disabled={loading || !operadorLogado}
-                                className={`text-xs transition-all duration-200 ${novoStaff.daysWork.includes(date)
-                                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md'
-                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300 shadow-sm'
-                                  }`}
-                              >
-                                {date}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      {novoStaff.daysWork.length > 0 && (
-                        <div className="bg-gradient-to-r from-purple-100 to-purple-200 border border-purple-300 rounded-lg p-4">
-                          <p className="text-sm text-purple-800 font-medium">
-                            <strong>Datas selecionadas:</strong>{' '}
-                            {novoStaff.daysWork.join(', ')}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <Input
-                        type="text"
-                        value={novoStaff.daysWork.join(', ')}
-                        onChange={e =>
-                          setNovoStaff({
-                            ...novoStaff,
-                            daysWork: validateAndProcessDaysWork(
-                              e.target.value,
-                            ),
-                          })
-                        }
-                        placeholder="Datas de trabalho (formato: DD/MM/AAAA, separadas por vírgula)"
-                        disabled={loading || !operadorLogado}
-                        className="bg-white border-blue-300 focus:border-purple-500 focus:ring-purple-500"
-                      />
-                      <p className="text-sm text-gray-600 bg-white p-3 rounded-lg border border-gray-200">
-                        <strong>Períodos permitidos:</strong>{' '}
-                        {getPermittedDatesInfo()}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-gray-100 p-4 rounded-lg border border-gray-200">
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Cadastrado por
-                  </label>
-                  <Input
-                    type="text"
-                    value={novoStaff.cadastrado_por}
-                    readOnly
-                    className="bg-gray-200 text-gray-600 cursor-not-allowed border-gray-300"
-                    disabled
-                  />
-                </div>
-
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4">
-                  <p className="text-sm text-amber-800 font-medium">
-                    <strong>Atenção:</strong> Todos os campos marcados com * são
-                    obrigatórios
-                  </p>
-                </div>
-
-                <div className="flex gap-4 pt-6">
-                  <Button
-                    onClick={() => {
-                      setPopupNovoStaff(false)
-                      setNovoStaff({
-                        name: '',
-                        cpf: '',
-                        funcao: '',
-                        empresa: '',
-                        tipo_credencial: '',
-                        cadastrado_por: '',
-                        daysWork: [],
-                      })
-                    }}
-                    variant="outline"
-                    className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
-                    disabled={loading}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    onClick={adicionarNovoStaff}
-                    className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                    disabled={loading || !operadorLogado}
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Salvando...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Adicionar Staff
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
 
           {/* DIALOG FILTRO AVANÇADO */}
           <Dialog
@@ -4062,6 +3741,12 @@ export default function Painel() {
           />
         </>
       )}
+      <ModalAdicionarStaff isOpen={popupNovoStaff} eventId={eventId} onClose={() => setPopupNovoStaff(false)}
+        evento={evento}
+        onSuccess={() => {
+          // Recarregar dados se necessário
+          console.log("Staff adicionado com sucesso!");
+        }} />
     </div>
   )
 }

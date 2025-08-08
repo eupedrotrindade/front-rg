@@ -8,6 +8,7 @@ import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
 import { useCredentials } from "@/features/eventos/api/query";
+import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas";
 import { Credential } from "@/features/eventos/types";
 
 interface ModalAdicionarStaffProps {
@@ -32,6 +33,10 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
 
   // Hooks para dados
   const { data: credentials = [] } = useCredentials({ eventId: eventId });
+  const { data: empresas = [] } = useEmpresasByEvent(eventId);
+
+  // Array de empresas disponíveis
+  const empresasArray = Array.isArray(empresas) ? empresas : [];
 
   // Função para formatar CPF
   const formatCPF = (cpf: string): string => {
@@ -323,14 +328,41 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
               <label className="block text-sm font-semibold text-gray-700 mb-3">
                 Empresa *
               </label>
-              <Input
-                type="text"
-                value={novoStaff.empresa}
-                onChange={(e) => setNovoStaff({ ...novoStaff, empresa: capitalizeWords(e.target.value) })}
-                placeholder="Digite a empresa"
-                disabled={loading}
-                className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-              />
+              {empresasArray.length === 0 ? (
+                <div className="space-y-3">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Atenção:</strong> Nenhuma empresa disponível para este evento.
+                      Crie empresas primeiro na seção de empresas.
+                    </p>
+                  </div>
+                  <Input
+                    type="text"
+                    value={novoStaff.empresa}
+                    onChange={(e) => setNovoStaff({ ...novoStaff, empresa: capitalizeWords(e.target.value) })}
+                    placeholder="Digite o nome da empresa"
+                    disabled={loading}
+                    className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
+                  />
+                </div>
+              ) : (
+                <Select
+                  value={novoStaff.empresa}
+                  onValueChange={(value) => setNovoStaff({ ...novoStaff, empresa: value })}
+                  disabled={loading}
+                >
+                  <SelectTrigger className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500">
+                    <SelectValue placeholder="Selecione uma empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {empresasArray.map((empresa) => (
+                      <SelectItem key={empresa.id} value={empresa.nome}>
+                        {empresa.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 
