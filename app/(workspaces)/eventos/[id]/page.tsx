@@ -778,7 +778,7 @@ export default function EventoDetalhesPage() {
 
                 {/* Table */}
                 <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-                    <Table>
+                    <Table className='uppercase'>
                         <TableHeader>
                             <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
                                 <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
