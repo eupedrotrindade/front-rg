@@ -2287,58 +2287,10 @@ export default function Painel() {
     }, 500)
   }
 
-  // Função para exportar para Excel
-  const exportarParaExcel = () => {
-    const { data } = filtrarColaboradores
-    const ws = XLSX.utils.json_to_sheet(data)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Colaboradores')
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-    saveAs(
-      new Blob([wbout], { type: 'application/octet-stream' }),
-      `colaboradores_${nomeEvento}.xlsx`,
-    )
-  }
 
-  // Função para baixar modelo Excel
-  const baixarModeloExcel = () => {
-    const ids = participantsData
-      .map(c => Number(c.id) || 0)
-      .filter(n => !isNaN(n))
-    const maxId = ids.length > 0 ? Math.max(...ids) : 0
-    const proximoId = maxId + 1
 
-    const modelo = [
-      { name: '', cpf: '', role: '', company: '', wristbandId: '' },
-    ]
-    const ws = XLSX.utils.json_to_sheet(modelo)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Modelo')
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-    saveAs(
-      new Blob([wbout], { type: 'application/octet-stream' }),
-      `modelo_colaboradores.xlsx`,
-    )
-  }
 
-  // Função para exportar barrados para CSV
-  const exportarBarradosCSV = () => {
-    const headers = ['Nome', 'CPF', 'Função', 'Empresa', 'Tipo de Credencial']
-    const csvContent = [
-      headers.join(','),
-      ...resumoImportacao.barrados.map(item =>
-        [item.name, item.cpf, item.role, item.company, item.wristbandId || '']
-          .map(f => `"${f}"`)
-          .join(','),
-      ),
-    ].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `colaboradores-barrados-${new Date().toISOString().split('T')[0]
-      }.csv`
-    link.click()
-  }
+
 
   const handleOpenImportDialog = () => setImportDialogOpen(true)
   const handleProceedImport = () => {
@@ -2677,16 +2629,7 @@ export default function Painel() {
                     </Button>
                   )}
 
-                  <Button
-                    onClick={exportarParaExcel}
-                    variant="outline"
-                    size="sm"
-                    className="btn-brand-green"
-                    disabled={loading}
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+
                 </div>
 
                 <Button
