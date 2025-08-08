@@ -1395,6 +1395,8 @@ export default function Painel() {
           </div>
         ),
         width: 200,
+        minWidth: 150,
+        priority: 1, // Alta prioridade para mobile
         cell: (item: EventParticipant) => (
           <TextCell className="font-semibold text-gray-900">
             {item.name}
@@ -1419,6 +1421,9 @@ export default function Painel() {
           </div>
         ),
         width: 150,
+        minWidth: 120,
+        priority: 3, // Baixa prioridade para mobile
+        hiddenOnMobile: true,
         cell: (item: EventParticipant) => (
           <TextCell className="font-mono">
             {formatCPF(item.cpf?.trim() || '')}
@@ -1443,6 +1448,9 @@ export default function Painel() {
           </div>
         ),
         width: 150,
+        minWidth: 100,
+        priority: 4, // Baixa prioridade para mobile
+        hiddenOnMobile: true,
         cell: (item: EventParticipant) => <TextCell>{item.role}</TextCell>,
       },
       {
@@ -1463,6 +1471,9 @@ export default function Painel() {
           </div>
         ),
         width: 150,
+        minWidth: 100,
+        priority: 5, // Baixa prioridade para mobile
+        hiddenOnMobile: true,
         cell: (item: EventParticipant) => (
           <BadgeCell variant="blue">{item.company}</BadgeCell>
         ),
@@ -1471,7 +1482,8 @@ export default function Painel() {
         key: 'credential',
         header: (
           <div className="flex items-center justify-between">
-            <span>Tipo de Credencial</span>
+            <span className="hidden sm:inline">Tipo de Credencial</span>
+            <span className="sm:hidden">Credencial</span>
             <ExcelColumnFilter
               values={columnUniqueValues.credencial}
               selectedValues={columnFilters.credencial}
@@ -1487,6 +1499,9 @@ export default function Painel() {
           </div>
         ),
         width: 180,
+        minWidth: 120,
+        priority: 6, // Baixa prioridade para mobile
+        hiddenOnMobile: true,
         cell: (item: EventParticipant) => (
           <BadgeCell variant="purple">{getCredencial(item)}</BadgeCell>
         ),
@@ -1495,6 +1510,8 @@ export default function Painel() {
         key: 'actions',
         header: 'Ação',
         width: 120,
+        minWidth: 100,
+        priority: 2, // Alta prioridade para mobile - sempre visível
         cell: (item: EventParticipant) => {
           const botaoTipo = getBotaoAcao(item)
           return (
@@ -1503,22 +1520,24 @@ export default function Painel() {
                 <Button
                   onClick={() => abrirCheckin(item)}
                   size="sm"
-                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-xs sm:text-sm px-2 sm:px-3"
                   disabled={loading}
                 >
-                  <Check className="w-4 h-4 mr-1" />
-                  Check-in
+                  <Check className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span className="hidden xs:inline">Check-in</span>
+                  <span className="xs:hidden">In</span>
                 </Button>
               )}
               {botaoTipo === 'checkout' && (
                 <Button
                   onClick={() => abrirCheckout(item)}
                   size="sm"
-                  className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                  className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-xs sm:text-sm px-2 sm:px-3"
                   disabled={loading}
                 >
-                  <Clock className="w-4 h-4 mr-1" />
-                  Check-out
+                  <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span className="hidden xs:inline">Check-out</span>
+                  <span className="xs:hidden">Out</span>
                 </Button>
               )}
             </ActionCell>

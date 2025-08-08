@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useRef } from "react"
+import React, { useMemo, useRef, useState, useEffect } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
@@ -12,6 +12,8 @@ interface VirtualTableColumn<T> {
   minWidth?: number
   cell: (item: T, index: number) => React.ReactNode
   className?: string
+  priority?: number // 1 = alta prioridade (sempre visível), 6 = baixa prioridade
+  hiddenOnMobile?: boolean // Ocultar em mobile
 }
 
 interface VirtualTableProps<T> {
@@ -38,6 +40,31 @@ export default function VirtualTable<T>({
   bodyClassName
 }: VirtualTableProps<T>) {
   const parentRef = useRef<HTMLDivElement>(null)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Detectar se é mobile
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth < 768) // md breakpoint do Tailwind
+    }
+    
+    checkIsMobile()
+    window.addEventListener('resize', checkIsMobile)
+    
+    return () => window.removeEventListener('resize', checkIsMobile)
+  }, [])
+
+  // Filtrar colunas baseado na responsividade
+  const visibleColumns = useMemo(() => {
+    if (!isMobile) {
+      return columns
+    }
+
+    // No mobile, mostrar apenas colunas com prioridade alta ou que não são hiddenOnMobile
+    return columns
+      .filter(col => !col.hiddenOnMobile || (col.priority && col.priority <= 2))
+      .sort((a, b) => (a.priority || 999) - (b.priority || 999))
+  }, [columns, isMobile])
 
   // Configurar o virtualizador
   const virtualizer = useVirtualizer({
@@ -49,8 +76,8 @@ export default function VirtualTable<T>({
 
   // Calcular larguras das colunas
   const totalWidth = useMemo(() => {
-    return columns.reduce((sum, col) => sum + (col.width || 150), 0)
-  }, [columns])
+    return visibleColumns.reduce((sum, col) => sum + (col.width || 150), 0)
+  }, [visibleColumns])
 
   const items = virtualizer.getVirtualItems()
 
@@ -60,13 +87,17 @@ export default function VirtualTable<T>({
       <Table>
         <TableHeader>
           <TableRow className={cn("bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600", headerClassName)}>
-            {columns.map((column, index) => (
+            {visibleColumns.map((column, index) => (
               <TableHead
                 key={String(column.key) + index}
-                className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider"
+                className={cn(
+                  "px-3 sm:px-6 py-2 sm:py-4 text-left text-xs font-semibold uppercase tracking-wider",
+                  isMobile ? "text-xs" : "text-xs"
+                )}
                 style={{
-                  width: column.width || 150,
-                  minWidth: column.minWidth || column.width || 150
+                  width: isMobile ? 'auto' : (column.width || 150),
+                  minWidth: isMobile ? (column.minWidth || 80) : (column.minWidth || column.width || 150),
+                  flex: isMobile ? '1 1 0%' : undefined
                 }}
               >
                 {column.header}
@@ -106,14 +137,21 @@ export default function VirtualTable<T>({
                 }}
                 onClick={() => onRowClick?.(item, virtualRow.index)}
               >
-                <div className="flex w-full h-full items-center">
-                  {columns.map((column, colIndex) => (
+                <div className={cn(
+                  "flex w-full h-full items-center",
+                  isMobile ? "gap-1" : "gap-0"
+                )}>
+                  {visibleColumns.map((column, colIndex) => (
                     <div
                       key={String(column.key) + colIndex}
-                      className="px-6 py-4 flex-shrink-0"
+                      className={cn(
+                        "py-2 sm:py-4 flex-shrink-0",
+                        isMobile ? "px-2 text-sm" : "px-6"
+                      )}
                       style={{
-                        width: column.width || 150,
-                        minWidth: column.minWidth || column.width || 150
+                        width: isMobile ? 'auto' : (column.width || 150),
+                        minWidth: isMobile ? (column.minWidth || 80) : (column.minWidth || column.width || 150),
+                        flex: isMobile ? '1 1 0%' : undefined
                       }}
                     >
                       {column.cell(item, virtualRow.index)}
