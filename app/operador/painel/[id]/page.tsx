@@ -593,8 +593,8 @@ export default function Painel() {
       const endDateStr = evento.setupEndDate
 
       // Criar datas no timezone local
-      const startDate = new Date(startDateStr + 'T00:00:00')
-      const endDate = new Date(endDateStr + 'T00:00:00')
+      const startDate = new Date(startDateStr)
+      const endDate = new Date(endDateStr)
 
       console.log('🔍 Montagem - startDate original:', startDateStr)
       console.log('🔍 Montagem - endDate original:', endDateStr)
@@ -627,8 +627,8 @@ export default function Painel() {
       const endDateStr = evento.preparationEndDate
 
       // Criar datas no timezone local
-      const startDate = new Date(startDateStr + 'T00:00:00')
-      const endDate = new Date(endDateStr + 'T00:00:00')
+      const startDate = new Date(startDateStr)
+      const endDate = new Date(endDateStr)
 
       console.log('🔍 Preparação/Evento - startDate original:', startDateStr)
       console.log('🔍 Preparação/Evento - endDate original:', endDateStr)
@@ -664,8 +664,8 @@ export default function Painel() {
       const endDateStr = evento.finalizationEndDate
 
       // Criar datas no timezone local
-      const startDate = new Date(startDateStr + 'T00:00:00')
-      const endDate = new Date(endDateStr + 'T00:00:00')
+      const startDate = new Date(startDateStr)
+      const endDate = new Date(endDateStr)
 
       console.log('🔍 Finalização - startDate original:', startDateStr)
       console.log('🔍 Finalização - endDate original:', endDateStr)
