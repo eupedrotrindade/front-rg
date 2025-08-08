@@ -497,7 +497,7 @@ const DetailsDialog = ({ isOpen, onClose, data, type, eventData }: DetailsDialog
                                 <span>{event.address}</span>
                             </div>
                         )}
-                        {1000 && (
+                        {event.capacity && (
                             <div className="flex items-center justify-between">
                                 <span className="font-medium">Capacidade:</span>
                                 <span>{1000} pessoas</span>
