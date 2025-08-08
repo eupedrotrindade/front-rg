@@ -2878,7 +2878,7 @@ export default function Painel() {
                       </TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody className="bg-white divide-y divide-gray-100 text-gray-600">
+                  <TableBody className="bg-white divide-y divide-gray-100 text-gray-600 uppercase">
                     {finalData.total === 0 ? (
                       <TableRow>
                         <TableCell
