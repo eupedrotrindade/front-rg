@@ -250,7 +250,7 @@ const AgendaDashboard = () => {
                                                     <div><span className="font-medium">Status:</span> {selectedEvent.status}</div>
                                                     <div><span className="font-medium">Visibilidade:</span> {selectedEvent.visibility}</div>
                                                     <div><span className="font-medium">Categorias:</span> {selectedEvent.categories && selectedEvent.categories.length > 0 ? selectedEvent.categories.join(', ') : '-'}</div>
-                                                    <div><span className="font-medium">Capacidade:</span> {selectedEvent.capacity}</div>
+                                                    <div><span className="font-medium">Capacidade:</span> {selected1000}</div>
                                                     <div><span className="font-medium">Link de Inscrição:</span> <a href={selectedEvent.registrationLink} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">{selectedEvent.registrationLink}</a></div>
                                                     <div><span className="font-medium">Template QR Code:</span> {selectedEvent.qrCodeTemplate}</div>
                                                     <div><span className="font-medium">Ativo:</span> {selectedEvent.isActive ? 'Sim' : 'Não'}</div>

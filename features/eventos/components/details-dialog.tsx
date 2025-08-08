@@ -497,10 +497,10 @@ const DetailsDialog = ({ isOpen, onClose, data, type, eventData }: DetailsDialog
                                 <span>{event.address}</span>
                             </div>
                         )}
-                        {event.capacity && (
+                        {1000 && (
                             <div className="flex items-center justify-between">
                                 <span className="font-medium">Capacidade:</span>
-                                <span>{event.capacity} pessoas</span>
+                                <span>{1000} pessoas</span>
                             </div>
                         )}
                     </CardContent>

@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import apiClient from "@/lib/api-client"
-import { formatCpf, isValidCpf, formatCpfInput, unformatCpf } from "@/lib/utils"
+import { formatCpf, isValidCpf, formatCpfInput } from "@/lib/utils"
 import { toast } from "sonner"
 import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw, Activity } from "lucide-react"
 import { useParams } from "next/navigation"
@@ -273,10 +273,7 @@ export default function OperadoresPage() {
             return
         }
 
-        if (!isValidCpf(unformatCpf(editForm.cpf))) {
-            toast.error("CPF inválido")
-            return
-        }
+
 
         if (editSelectedEventDates.length === 0) {
             toast.error("Selecione pelo menos um dia do evento")
@@ -290,7 +287,7 @@ export default function OperadoresPage() {
 
             await apiClient.put(`/operadores/${operatorToEdit.id}`, {
                 nome: editForm.nome,
-                cpf: unformatCpf(editForm.cpf),
+                cpf: editForm.cpf,
                 senha: editForm.senha,
                 id_events: eventAssignments
             })
@@ -339,10 +336,7 @@ export default function OperadoresPage() {
             return
         }
 
-        if (!isValidCpf(unformatCpf(createForm.cpf))) {
-            toast.error("CPF inválido")
-            return
-        }
+
 
         setLoading(true)
         try {
@@ -351,7 +345,7 @@ export default function OperadoresPage() {
 
             await apiClient.post("/operadores", {
                 nome: createForm.nome,
-                cpf: unformatCpf(createForm.cpf),
+                cpf: createForm.cpf,
                 senha: createForm.senha,
                 id_events: eventAssignment
             })
@@ -536,7 +530,7 @@ export default function OperadoresPage() {
                     continue
                 }
 
-                if (!isValidCpf(unformatCpf(row.cpf))) {
+                if (!isValidCpf(row.cpf)) {
                     falhados.push({
                         item: { id: "", nome: row.nome, cpf: row.cpf, senha: row.senha, id_events: eventId, acoes: [] },
                         motivo: "CPF inválido"
@@ -550,7 +544,7 @@ export default function OperadoresPage() {
                 operadoresImportados.push({
                     id: "",
                     nome: row.nome,
-                    cpf: unformatCpf(row.cpf),
+                    cpf: row.cpf,
                     senha: row.senha,
                     id_events: eventAssignments,
                     acoes: []
@@ -726,17 +720,17 @@ export default function OperadoresPage() {
 
     // Função para verificar se CPF já existe
     const checkCpfExists = async (cpf: string) => {
-        if (!cpf || !isValidCpf(unformatCpf(cpf))) {
+        if (!cpf || !isValidCpf(cpf)) {
             setCpfExists(false)
             return
         }
 
         try {
             const { data } = await apiClient.get("/operadores", {
-                params: { search: unformatCpf(cpf), limit: 1 }
+                params: { search: cpf, limit: 1 }
             })
 
-            const exists = data.data && data.data.length > 0 && data.data[0].cpf === unformatCpf(cpf)
+            const exists = data.data && data.data.length > 0 && data.data[0].cpf === cpf
             setCpfExists(exists)
         } catch (error) {
             setCpfExists(false)
