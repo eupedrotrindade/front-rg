@@ -14,6 +14,9 @@ export const useDeleteEmpresa = () => {
       toast.success("Empresa removida com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["empresas"] });
       queryClient.invalidateQueries({ queryKey: ["all-empresas"] });
+      
+      // Invalidar todas as empresas por evento
+      queryClient.invalidateQueries({ queryKey: ["empresas-by-event"] });
     },
     onError: (error: any) => {
       console.error("Erro ao remover empresa:", error);

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
-import { useEmpresas } from "@/features/eventos/api/query/use-empresas"
+import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas"
 import { useCreateEmpresa, useDeleteEmpresa, useUpdateEmpresa } from "@/features/eventos/api/mutation"
 import { useEventos } from "@/features/eventos/api/query"
 import type { CreateEmpresaRequest, Empresa, Event } from "@/features/eventos/types"
@@ -31,13 +31,13 @@ export default function EmpresasPage() {
     })
 
     // Hooks
-    const { data: empresas = [] } = useEmpresas()
+    const eventId = useParams().id as string
+    const { data: empresas = [] } = useEmpresasByEvent(eventId)
     const { data: eventos = [] } = useEventos()
     const createEmpresaMutation = useCreateEmpresa()
     const updateEmpresaMutation = useUpdateEmpresa()
     const deleteEmpresaMutation = useDeleteEmpresa()
 
-    const eventId = useParams().id as string
     const { data: event } = useEventos({ id: eventId })
 
     // Função para calcular os dias do evento com período
@@ -81,18 +81,12 @@ export default function EmpresasPage() {
         return days
     }
 
-    // Dias disponíveis baseado no evento selecionado
+    // Dias disponíveis baseado no evento atual
     const availableDays = useMemo(() => {
-        if (!formData.id_evento) return []
+        if (!event || Array.isArray(event)) return []
 
-        const selectedEvent = Array.isArray(eventos)
-            ? eventos.find((e: any) => e.id === formData.id_evento)
-            : null
-
-        if (!selectedEvent) return []
-
-        return getEventDays(selectedEvent)
-    }, [formData.id_evento, eventos])
+        return getEventDays(event)
+    }, [event])
 
     // Organizar empresas por data
     const empresasByDate = useMemo(() => {
@@ -180,7 +174,13 @@ export default function EmpresasPage() {
     const handleCreateEmpresa = async (e: React.FormEvent) => {
         e.preventDefault()
         try {
-            await createEmpresaMutation.mutateAsync(formData)
+            // Garantir que sempre inclui o eventId atual
+            const empresaData = {
+                ...formData,
+                id_evento: eventId
+            }
+            console.log('🏢 Criando empresa:', empresaData)
+            await createEmpresaMutation.mutateAsync(empresaData)
             setIsCreateDialogOpen(false)
             resetForm()
             toast.success("Empresa criada com sucesso!")
@@ -610,7 +610,14 @@ export default function EmpresasPage() {
                                 />
                             </div>
 
-
+                            <div className="bg-blue-50 p-3 rounded-lg">
+                                <p className="text-sm text-blue-800">
+                                    <strong>Evento:</strong> {eventName || 'Carregando...'}
+                                </p>
+                                <p className="text-xs text-blue-600 mt-1">
+                                    A empresa será criada para este evento automaticamente
+                                </p>
+                            </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">

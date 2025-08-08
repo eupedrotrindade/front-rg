@@ -38,11 +38,9 @@ import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-ev
 import { useCreateEventParticipant } from "@/features/eventos/api/mutation/use-create-event-participant"
 import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
 import { useCreateCredential } from "@/features/eventos/api/mutation/use-credential-mutations"
-import { useEmpresas } from "@/features/eventos/api/query/use-empresas"
+import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas"
 import { useCreateEmpresa } from "@/features/eventos/api/mutation"
-import { useCreateImportRequest } from "@/features/eventos/api/mutation/use-create-import-request"
-import { useImportRequestsByEvent } from "@/features/eventos/api/query/use-import-requests"
-import type { EventParticipant, CreateCredentialRequest, CreateEmpresaRequest, CreateImportRequestRequest } from "@/features/eventos/types"
+import type { EventParticipant, CreateCredentialRequest, CreateEmpresaRequest } from "@/features/eventos/types"
 import type { EventParticipantSchema } from "@/features/eventos/schemas"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
@@ -94,12 +92,12 @@ interface CreationProgress {
     failed: string[]
 }
 
-type ImportStep = "date" | "upload" | "preview" | "validation" | "creation" | "import" | "complete"
+type ImportStep = "date" | "upload" | "preview" | "validation" | "creation" | "verification" | "import" | "complete"
 
 export default function ImportExportPage() {
     const params = useParams()
     const eventId = params.id as string
-    const [activeTab, setActiveTab] = useState<"import" | "export" | "requests">("import")
+    const [activeTab, setActiveTab] = useState<"import" | "export">("import")
 
     // Import States
     const [currentStep, setCurrentStep] = useState<ImportStep>("date")
@@ -154,14 +152,11 @@ export default function ImportExportPage() {
     const { mutate: createParticipant } = useCreateEventParticipant()
     const { data: credentials = [], refetch: refetchCredentials } = useCredentialsByEvent(eventId)
     const { mutate: createCredential } = useCreateCredential()
-    const { data: empresas = [] } = useEmpresas()
+    const { data: empresas = [], refetch: refetchEmpresas } = useEmpresasByEvent(eventId)
     const { mutate: createEmpresa } = useCreateEmpresa()
     const { data: eventos = [] } = useEventos()
     const evento = Array.isArray(eventos) ? eventos.find((e) => e.id === eventId) : null
 
-    // Import Request hooks
-    const { mutate: createImportRequest } = useCreateImportRequest()
-    const { data: importRequests = [] } = useImportRequestsByEvent(eventId)
 
     // Keyboard shortcuts
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -269,8 +264,8 @@ export default function ImportExportPage() {
         })
     }
 
-    // Creation functions
-    const createCredentialFunction = async (name: string, color: string): Promise<string | null> => {
+    // Creation functions with verification
+    const createCredentialFunction = async (name: string, color: string): Promise<{ success: boolean; id: string | null }> => {
         return new Promise((resolve) => {
             const normalizedName = normalizeCredentialName(name)
             const daysWorks =
@@ -287,35 +282,102 @@ export default function ImportExportPage() {
 
             createCredential(credentialData, {
                 onSuccess: (data) => {
-                    resolve(data.id)
+                    // Verify creation by checking if credential exists
+                    setTimeout(async () => {
+                        await refetchCredentials()
+                        const verifyCreation = findCredentialByName(normalizedName)
+                        resolve({
+                            success: !!verifyCreation,
+                            id: verifyCreation ? verifyCreation.id : data.id
+                        })
+                    }, 1000)
                 },
                 onError: (error) => {
                     console.error(`Erro ao criar credencial ${normalizedName}:`, error)
-                    resolve(null)
+                    toast.error(`Erro ao criar credencial ${normalizedName}`)
+                    resolve({ success: false, id: null })
                 },
             })
         })
     }
 
-    const createCompanyFunction = async (name: string): Promise<string | null> => {
+    const createCompanyFunction = async (name: string): Promise<{ success: boolean; id: string | null }> => {
         return new Promise((resolve) => {
             const normalizedName = normalizeCompanyName(name)
-            const days =
-                selectedEventDates.length > 0 ? selectedEventDates.map((date) => new Date(date).toISOString().slice(0, 10)) : []
+            // Convert selected dates to ISO format properly
+            const days = selectedEventDates.length > 0
+                ? selectedEventDates.map((date) => date) // Already in YYYY-MM-DD format
+                : [new Date().toISOString().slice(0, 10)]
+
+            console.log('🏢 Criando empresa:', { normalizedName, days, eventId })
 
             const companyData: CreateEmpresaRequest = {
                 nome: normalizedName,
-                id_evento: eventId,
+                id_evento: eventId, // Sempre incluir o evento para vinculação automática
                 days: days,
             }
 
             createEmpresa(companyData, {
-                onSuccess: (data) => {
-                    resolve(data.id)
+                onSuccess: async (data) => {
+                    console.log('🏢 Empresa criada com sucesso:', data)
+
+                    // Se recebemos dados da criação, consideramos sucesso
+                    if (data && data.id) {
+                        console.log('✅ Empresa criada e retornada:', data)
+                        resolve({ success: true, id: data.id })
+
+                        // Refresh em background para atualizar a cache
+                        setTimeout(async () => {
+                            try {
+                                await refetchEmpresas()
+                            } catch (error) {
+                                console.warn('⚠️ Erro ao atualizar cache de empresas:', error)
+                            }
+                        }, 1000)
+
+                        return
+                    }
+
+                    // Fallback para verificação por refetch se não temos dados
+                    setTimeout(async () => {
+                        try {
+                            console.log('🔍 Verificando criação da empresa via refetch...')
+                            await refetchEmpresas()
+                            // Wait a bit more for the refetch to complete
+                            await new Promise(r => setTimeout(r, 1500))
+
+                            // Buscar por diferentes formas do nome
+                            let verifyCreation = findCompanyByName(normalizedName)
+
+                            // Se não encontrou com nome normalizado, tentar buscar com nome original
+                            if (!verifyCreation) {
+                                verifyCreation = (empresas || []).find((empresa) => {
+                                    const empresaNome = empresa.nome.toString().trim()
+                                    return empresaNome.toLowerCase() === name.toLowerCase() ||
+                                        empresaNome.toUpperCase() === normalizedName ||
+                                        empresaNome === name
+                                })
+                            }
+
+                            if (verifyCreation) {
+                                console.log('✅ Empresa verificada:', verifyCreation)
+                                resolve({ success: true, id: verifyCreation.id })
+                            } else {
+                                console.error('❌ Empresa não encontrada após criação:', { normalizedName, name, totalEmpresas: empresas?.length })
+                                // Mesmo que não encontramos, consideramos sucesso se chegou até aqui
+                                // porque o onSuccess foi chamado, indicando que o backend criou
+                                resolve({ success: true, id: null })
+                            }
+                        } catch (error) {
+                            console.error('❌ Erro na verificação da empresa:', error)
+                            // Consideramos sucesso mesmo com erro na verificação
+                            resolve({ success: true, id: null })
+                        }
+                    }, 2500)
                 },
                 onError: (error) => {
-                    console.error(`Erro ao criar empresa ${normalizedName}:`, error)
-                    resolve(null)
+                    console.error(`❌ Erro ao criar empresa ${normalizedName}:`, error)
+                    resolve({ success: false, id: null })
                 },
             })
         })
@@ -341,9 +403,8 @@ export default function ImportExportPage() {
         setIsCreationDialogOpen(false)
 
         if (!shouldCancelCreation) {
-            // Reprocess data after creation
-            await reprocessDataAfterCreation()
-            setCurrentStep("import")
+            // Go to verification step after creation
+            setCurrentStep("verification")
         }
     }
 
@@ -372,17 +433,23 @@ export default function ImportExportPage() {
                 currentItem: credential.name,
             }))
 
-            const credentialId = await createCredentialFunction(credential.name, color)
+            const result = await createCredentialFunction(credential.name, color)
 
             setCreationProgress((prev) => ({
                 ...prev,
-                completed: credentialId ? [...prev.completed, credential.name] : prev.completed,
-                failed: !credentialId ? [...prev.failed, credential.name] : prev.failed,
+                completed: result.success ? [...prev.completed, credential.name] : prev.completed,
+                failed: !result.success ? [...prev.failed, credential.name] : prev.failed,
             }))
+
+            if (!result.success) {
+                toast.error(`Falha ao criar credencial: ${credential.name}`)
+            } else {
+                toast.success(`Credencial criada: ${credential.name}`)
+            }
 
             // Pause between creations
             if (i < processedData.missingCredentials.length - 1) {
-                await new Promise((resolve) => setTimeout(resolve, 1000))
+                await new Promise((resolve) => setTimeout(resolve, 2000))
             }
         }
     }
@@ -411,13 +478,21 @@ export default function ImportExportPage() {
                 currentItem: company.name,
             }))
 
-            const companyId = await createCompanyFunction(company.name)
+            const result = await createCompanyFunction(company.name)
 
             setCreationProgress((prev) => ({
                 ...prev,
-                completed: companyId ? [...prev.completed, company.name] : prev.completed,
-                failed: !companyId ? [...prev.failed, company.name] : prev.failed,
+                completed: result.success ? [...prev.completed, company.name] : prev.completed,
+                failed: !result.success ? [...prev.failed, company.name] : prev.failed,
             }))
+
+            if (!result.success) {
+                toast.error(`❌ Falha ao criar empresa: ${company.name}`)
+                console.error(`❌ Empresa não foi criada: ${company.name}`)
+            } else {
+                toast.success(`✅ Empresa criada: ${company.name}`)
+                console.log(`✅ Empresa criada com sucesso: ${company.name}`)
+            }
 
             // Pause between creations
             if (i < processedData.missingCompanies.length - 1) {
@@ -426,27 +501,61 @@ export default function ImportExportPage() {
         }
     }
 
-    const reprocessDataAfterCreation = async () => {
+    const handleVerificationStep = async () => {
         if (!uploadedFile) return
 
         try {
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-            await refetchCredentials()
+            console.log('🔍 Iniciando verificação...')
+
+            // Wait longer to ensure all creations are processed
+            await new Promise((resolve) => setTimeout(resolve, 3000))
+
+            // Refetch both credentials and companies
+            await Promise.all([
+                refetchCredentials(),
+                refetchEmpresas()
+            ])
+
+            // Wait a bit more for the refetch to complete
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+
+            // Reprocess the file to check if all items now exist
             const newProcessedData = await processExcelFile(uploadedFile)
             setProcessedData(newProcessedData)
 
             const successCount = creationProgress.completed.length
-            if (successCount > 0) {
-                toast.success(`${successCount} itens criados com sucesso!`)
+            const failedCount = creationProgress.failed.length
+
+            // Verify that creation was actually successful
+            const stillMissingCredentials = newProcessedData.missingCredentials.length
+            const stillMissingCompanies = newProcessedData.missingCompanies.length
+
+            console.log('🔍 Verificação final:', {
+                successCount,
+                failedCount,
+                stillMissingCredentials,
+                stillMissingCompanies,
+                totalCredentials: credentials.length,
+                totalEmpresas: empresas?.length
+            })
+
+            if (stillMissingCredentials === 0 && stillMissingCompanies === 0) {
+                toast.success("✅ Todas as credenciais e empresas foram criadas com sucesso! Pronto para importar.")
+            } else {
+                if (stillMissingCredentials > 0) {
+                    toast.error(`❌ Ainda faltam ${stillMissingCredentials} credenciais`)
+                }
+                if (stillMissingCompanies > 0) {
+                    toast.error(`❌ Ainda faltam ${stillMissingCompanies} empresas`)
+                }
             }
 
-            const failedCount = creationProgress.failed.length
             if (failedCount > 0) {
-                toast.error(`${failedCount} itens falharam ao serem criados`)
+                toast.error(`❌ ${failedCount} itens falharam ao serem criados`)
             }
         } catch (error) {
-            console.error("Erro ao reprocessar dados:", error)
-            toast.error("Erro ao atualizar dados após criação")
+            console.error("Erro ao verificar dados:", error)
+            toast.error("Erro ao verificar dados após criação")
         }
     }
 
@@ -741,18 +850,22 @@ export default function ImportExportPage() {
                 setCurrentStep("import")
             }
         } else if (currentStep === "creation") {
+            setCurrentStep("verification")
+        } else if (currentStep === "verification") {
             setCurrentStep("import")
         }
     }
 
     const handlePrevStep = () => {
-        if (currentStep === "creation") {
+        if (currentStep === "verification") {
+            setCurrentStep("creation")
+        } else if (currentStep === "creation") {
             setCurrentStep("validation")
         } else if (currentStep === "validation") {
             setCurrentStep("preview")
         } else if (currentStep === "import") {
             if (processedData?.missingCredentials?.length || processedData?.missingCompanies?.length) {
-                setCurrentStep("creation")
+                setCurrentStep("verification")
             } else {
                 setCurrentStep("validation")
             }
@@ -766,34 +879,6 @@ export default function ImportExportPage() {
         }
     }
 
-    const handleCreateImportRequest = async () => {
-        if (!processedData || selectedEventDates.length === 0) return
-
-        try {
-            const importRequestData: CreateImportRequestRequest = {
-                eventId,
-                empresaId: "empresa-id", // Será obtido do contexto da empresa
-                fileName: processedData.fileName,
-                totalRows: processedData.totalRows,
-                validRows: processedData.validRows,
-                invalidRows: processedData.invalidRows,
-                duplicateRows: processedData.duplicateRows,
-                data: processedData.data,
-                errors: processedData.errors,
-                duplicates: processedData.duplicates,
-                missingCredentials: processedData.missingCredentials,
-                missingCompanies: processedData.missingCompanies,
-                requestedBy: "user-id" // Será obtido do contexto do usuário
-            }
-
-            createImportRequest(importRequestData)
-            setCurrentStep("complete")
-            toast.success("Solicitação de importação criada com sucesso! Aguarde a aprovação do administrador.")
-        } catch (error) {
-            toast.error("Erro ao criar solicitação de importação")
-            console.error(error)
-        }
-    }
 
     const handleStartImport = async () => {
         if (!processedData || selectedEventDates.length === 0) return
@@ -808,6 +893,7 @@ export default function ImportExportPage() {
                 cpf: item.cpf,
                 company: item.empresa,
                 credentialId: item.credencial,
+                daysWork: selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR")),
             })))
             setImportResult({
                 success: processedData.data.map((item) => ({
@@ -816,6 +902,7 @@ export default function ImportExportPage() {
                     cpf: item.cpf,
                     company: item.empresa,
                     credentialId: item.credencial,
+                    daysWork: selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR")),
                 })),
                 errors: processedData.errors,
                 duplicates: processedData.duplicates,
@@ -975,6 +1062,7 @@ export default function ImportExportPage() {
             { key: "preview", label: "Prévia", icon: FileText },
             { key: "validation", label: "Validação", icon: AlertTriangle },
             { key: "creation", label: "Criação", icon: Settings },
+            { key: "verification", label: "Verificação", icon: CheckCircle },
             { key: "import", label: "Importação", icon: Clock },
             { key: "complete", label: "Concluído", icon: Check },
         ]
@@ -989,7 +1077,7 @@ export default function ImportExportPage() {
                     const isActive = index === currentIndex
                     const isCompleted = index < currentIndex
                     const isSkipped =
-                        step.key === "creation" &&
+                        (step.key === "creation" || step.key === "verification") &&
                         !processedData?.missingCredentials?.length &&
                         !processedData?.missingCompanies?.length &&
                         currentIndex > 4
@@ -1032,13 +1120,28 @@ export default function ImportExportPage() {
         )
     }
 
-    // Check if can proceed with import
+    // Check if can proceed with import - must verify all creations were successful
     const canProceedWithImport = () => {
         if (!processedData) return false
+
         const hasMissingCredentials = processedData.missingCredentials && processedData.missingCredentials.length > 0
         const hasMissingCompanies = processedData.missingCompanies && processedData.missingCompanies.length > 0
         const hasValidRows = processedData.validRows > 0
-        return !hasMissingCredentials && !hasMissingCompanies && hasValidRows
+
+        // Most important: check if there are still missing items after processing
+        const stillHasMissing = hasMissingCredentials || hasMissingCompanies
+
+        console.log('🔍 CanProceed check:', {
+            hasValidRows,
+            hasMissingCredentials,
+            hasMissingCompanies,
+            stillHasMissing,
+            credentialsCount: credentials.length,
+            empresasCount: empresas?.length
+        })
+
+        // Only proceed if we have valid rows AND no missing items
+        return hasValidRows && !stillHasMissing
     }
 
     return (
@@ -1066,16 +1169,10 @@ export default function ImportExportPage() {
                                 <Download className="w-4 h-4 mr-2" />
                                 Exportar
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => setActiveTab("requests")}>
-                                <FileText className="w-4 h-4 mr-2" />
-                                Solicitações
-                            </Button>
                             <div className="text-xs text-gray-500 flex items-center gap-1">
                                 <span>Ctrl+I</span>
                                 <span>•</span>
                                 <span>Ctrl+E</span>
-                                <span>•</span>
-                                <span>Ctrl+R</span>
                             </div>
                         </div>
                     </div>
@@ -1101,14 +1198,6 @@ export default function ImportExportPage() {
                     >
                         <Download className="w-4 h-4 mr-2 inline" />
                         Exportar
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("requests")}
-                        className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === "requests" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                            }`}
-                    >
-                        <FileText className="w-4 h-4 mr-2 inline" />
-                        Solicitações
                     </button>
                 </div>
 
@@ -1691,7 +1780,161 @@ export default function ImportExportPage() {
                             </div>
                         )}
 
-                        {/* Step 6: Import Progress */}
+                        {/* Step 6: Verification */}
+                        {currentStep === "verification" && processedData && (
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-semibold">Verificação Pós-Criação</h3>
+                                    <Badge variant="secondary">
+                                        Validando criações
+                                    </Badge>
+                                </div>
+
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center gap-2">
+                                            <CheckCircle className="h-5 w-5 text-blue-600" />
+                                            Status da Verificação
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="space-y-4">
+                                            {/* Verification summary */}
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                                                    <FileText className="w-8 h-8 mx-auto text-blue-600 mb-2" />
+                                                    <div className="text-2xl font-bold text-blue-600">
+                                                        {credentials.length}
+                                                    </div>
+                                                    <div className="text-sm text-gray-600">Credenciais Disponíveis</div>
+                                                </div>
+                                                <div className="text-center p-4 bg-green-50 rounded-lg">
+                                                    <Building className="w-8 h-8 mx-auto text-green-600 mb-2" />
+                                                    <div className="text-2xl font-bold text-green-600">
+                                                        {empresas?.length || 0}
+                                                    </div>
+                                                    <div className="text-sm text-gray-600">Empresas Disponíveis</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Missing items after creation */}
+                                            {(processedData.missingCredentials.length > 0 || processedData.missingCompanies.length > 0) && (
+                                                <Alert>
+                                                    <AlertTriangle className="h-4 w-4" />
+                                                    <AlertDescription>
+                                                        <div className="space-y-2">
+                                                            {processedData.missingCredentials.length > 0 && (
+                                                                <div className="text-red-600">
+                                                                    ⚠️ Ainda faltam {processedData.missingCredentials.length} credenciais:
+                                                                    <ul className="list-disc list-inside mt-1 ml-4">
+                                                                        {processedData.missingCredentials.map(cred => (
+                                                                            <li key={cred.name} className="text-sm">{cred.name}</li>
+                                                                        ))}
+                                                                    </ul>
+                                                                </div>
+                                                            )}
+                                                            {processedData.missingCompanies.length > 0 && (
+                                                                <div className="text-red-600">
+                                                                    ⚠️ Ainda faltam {processedData.missingCompanies.length} empresas:
+                                                                    <ul className="list-disc list-inside mt-1 ml-4">
+                                                                        {processedData.missingCompanies.map(comp => (
+                                                                            <li key={comp.name} className="text-sm">{comp.name}</li>
+                                                                        ))}
+                                                                    </ul>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </AlertDescription>
+                                                </Alert>
+                                            )}
+
+                                            {/* Success message */}
+                                            {processedData.missingCredentials.length === 0 && processedData.missingCompanies.length === 0 && (
+                                                <Alert className="border-green-200 bg-green-50">
+                                                    <CheckCircle className="h-4 w-4 text-green-600" />
+                                                    <AlertDescription className="text-green-800">
+                                                        ✅ Todas as credenciais e empresas foram criadas com sucesso!
+                                                        O sistema está pronto para importar os participantes.
+                                                    </AlertDescription>
+                                                </Alert>
+                                            )}
+
+                                            {/* Creation results */}
+                                            <div className="space-y-3">
+                                                <h4 className="font-medium text-gray-700">Resultados da Criação:</h4>
+                                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                                    <div className="p-3 bg-green-50 rounded">
+                                                        <div className="text-green-600 font-semibold">✅ Criados com Sucesso</div>
+                                                        <div className="text-gray-600">{creationProgress.completed.length} itens</div>
+                                                        {creationProgress.completed.length > 0 && (
+                                                            <ul className="list-disc list-inside mt-1 text-xs text-green-700">
+                                                                {creationProgress.completed.slice(0, 5).map(item => (
+                                                                    <li key={item}>{item}</li>
+                                                                ))}
+                                                                {creationProgress.completed.length > 5 && (
+                                                                    <li>... e mais {creationProgress.completed.length - 5}</li>
+                                                                )}
+                                                            </ul>
+                                                        )}
+                                                    </div>
+                                                    <div className="p-3 bg-red-50 rounded">
+                                                        <div className="text-red-600 font-semibold">❌ Falharam</div>
+                                                        <div className="text-gray-600">{creationProgress.failed.length} itens</div>
+                                                        {creationProgress.failed.length > 0 && (
+                                                            <ul className="list-disc list-inside mt-1 text-xs text-red-700">
+                                                                {creationProgress.failed.slice(0, 5).map(item => (
+                                                                    <li key={item}>{item}</li>
+                                                                ))}
+                                                                {creationProgress.failed.length > 5 && (
+                                                                    <li>... e mais {creationProgress.failed.length - 5}</li>
+                                                                )}
+                                                            </ul>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Verification action */}
+                                            <div className="mt-6">
+                                                <Button
+                                                    onClick={handleVerificationStep}
+                                                    className="w-full bg-blue-600 hover:bg-blue-700"
+                                                >
+                                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                                    Atualizar e Verificar Dados
+                                                </Button>
+                                                <p className="text-xs text-gray-500 text-center mt-2">
+                                                    Refaz o fetch das empresas e credenciais e reprocessa o arquivo
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                <div className="flex justify-between">
+                                    <Button onClick={handlePrevStep} variant="outline">
+                                        <ArrowLeft className="w-4 h-4 mr-2" />
+                                        Voltar para Criação
+                                    </Button>
+                                    <Button
+                                        onClick={handleNextStep}
+                                        disabled={!canProceedWithImport()}
+                                        className="bg-green-600 hover:bg-green-700"
+                                    >
+                                        {!canProceedWithImport() ? (
+                                            "Resolva os itens faltantes primeiro"
+                                        ) : (
+                                            <>
+                                                Prosseguir para Importação
+                                                <ArrowRight className="w-4 h-4 ml-2" />
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 7: Import Progress */}
                         {currentStep === "import" && (
                             <div className="space-y-6">
                                 <Card>
@@ -1754,32 +1997,27 @@ export default function ImportExportPage() {
                                 {!isImporting && (
                                     <div className="text-center space-y-4">
                                         <Button
-                                            onClick={handleCreateImportRequest}
-                                            className="bg-purple-600 hover:bg-purple-700"
-                                            disabled={!processedData || processedData.validRows === 0}
-                                        >
-                                            <FileText className="w-4 h-4 mr-2" />
-                                            Criar Solicitação de Importação ({processedData?.validRows || 0} participantes)
-                                        </Button>
-                                        <div className="text-sm text-gray-600">
-                                            A solicitação será enviada para aprovação do administrador
-                                        </div>
-                                        <Separator />
-                                        <Button
                                             onClick={handleStartImport}
-                                            variant="outline"
-                                            className="bg-transparent"
-                                            disabled={!processedData || processedData.validRows === 0}
+                                            className="bg-green-600 hover:bg-green-700"
+                                            disabled={!canProceedWithImport()}
                                         >
                                             <Upload className="w-4 h-4 mr-2" />
-                                            Importar Diretamente ({processedData?.validRows || 0} participantes)
+                                            {canProceedWithImport()
+                                                ? `Iniciar Importação (${processedData?.validRows || 0} participantes)`
+                                                : "Conclua a criação de credenciais/empresas primeiro"
+                                            }
                                         </Button>
+                                        {!canProceedWithImport() && (
+                                            <div className="text-sm text-red-600">
+                                                Todas as credenciais e empresas devem ser criadas com sucesso antes de prosseguir
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
                         )}
 
-                        {/* Step 7: Complete */}
+                        {/* Step 8: Complete */}
                         {currentStep === "complete" && importResult && (
                             <div className="space-y-6">
                                 <Alert>
@@ -1892,96 +2130,10 @@ export default function ImportExportPage() {
                     </div>
                 )}
 
-                {/* Requests Tab */}
-                {activeTab === "requests" && (
-                    <div className="space-y-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center space-x-2">
-                                    <FileText className="h-5 w-5" />
-                                    <span>Solicitações de Importação</span>
-                                    <Badge variant="outline" className="ml-2">
-                                        {importRequests.length} solicitações
-                                    </Badge>
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                {importRequests.length > 0 ? (
-                                    <div className="space-y-4">
-                                        {importRequests.map((request) => (
-                                            <div
-                                                key={request.id}
-                                                className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                                            >
-                                                <div className="flex items-center space-x-4">
-                                                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                                                        <FileText className="h-5 w-5 text-white" />
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="font-medium text-gray-900">
-                                                            {request.fileName}
-                                                        </h3>
-                                                        <p className="text-sm text-gray-600">
-                                                            {request.empresa?.nome} - {request.event?.name}
-                                                        </p>
-                                                        <div className="flex items-center space-x-4 mt-1">
-                                                            <span className="text-xs text-gray-500">
-                                                                {request.validRows} válidos, {request.invalidRows} inválidos
-                                                            </span>
-                                                            <span className="text-xs text-gray-500">
-                                                                {request.duplicateRows} duplicatas
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center space-x-4">
-                                                    <Badge
-                                                        variant={
-                                                            request.status === 'pending' ? 'secondary' :
-                                                                request.status === 'approved' ? 'default' :
-                                                                    request.status === 'rejected' ? 'destructive' :
-                                                                        'outline'
-                                                        }
-                                                        className={
-                                                            request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                                request.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                                                    request.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                                                        'bg-gray-100 text-gray-800'
-                                                        }
-                                                    >
-                                                        {request.status === 'pending' ? 'Pendente' :
-                                                            request.status === 'approved' ? 'Aprovada' :
-                                                                request.status === 'rejected' ? 'Rejeitada' :
-                                                                    'Concluída'}
-                                                    </Badge>
-
-                                                    <div className="text-xs text-gray-500">
-                                                        {new Date(request.createdAt).toLocaleDateString('pt-BR')}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                        <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                            Nenhuma solicitação encontrada
-                                        </h3>
-                                        <p className="text-gray-600">
-                                            As solicitações de importação aparecerão aqui.
-                                        </p>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </div>
-                )}
 
                 {/* Creation Progress Dialog */}
                 <Dialog open={isCreationDialogOpen}>
-                    <DialogContent className="max-w-md">
+                    <DialogContent className="max-w-md bg-white text-gray-800">
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2">
                                 {creationProgress.type === "credential" ? (

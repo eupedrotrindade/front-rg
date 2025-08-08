@@ -11,10 +11,15 @@ export const useCreateEmpresa = () => {
       const response = await apiClient.post<Empresa>("/empresas", data);
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       toast.success("Empresa criada com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["empresas"] });
       queryClient.invalidateQueries({ queryKey: ["all-empresas"] });
+      
+      // Invalidar cache específica para empresas por evento
+      if (variables.id_evento) {
+        queryClient.invalidateQueries({ queryKey: ["empresas-by-event", variables.id_evento] });
+      }
     },
     onError: (error: any) => {
       console.error("Erro ao criar empresa:", error);
