@@ -2667,7 +2667,7 @@ export default function Painel() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <Input
                   type="text"
-                  placeholder="Procure pelo colaborador, pessoa gestora ou cpf"
+                  placeholder="Procure pelo nome, cpf ou código da pulseira"
                   value={filtro.nome}
                   onChange={e => handleBuscaOtimizada(e.target.value)}
                   className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
