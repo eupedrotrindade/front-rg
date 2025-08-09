@@ -105,7 +105,7 @@ const EventSidebar = ({
         },
         {
             name: 'Relatórios',
-            href: `/eventos/${eventId}/relatorios`,
+            href: `/eventos/${eventId}/relatorio2`,
             icon: BarChart3,
             description: 'Relatórios e análises'
         },
