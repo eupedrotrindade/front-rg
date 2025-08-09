@@ -126,3 +126,25 @@ export const getEventAttendanceByEvent = async (
     throw error;
   }
 };
+
+// POST /event-attendance - Criar registro de presença
+export const createEventAttendance = async (attendanceData: {
+  eventId: string;
+  participantId: string;
+  date: string;
+  performedBy: string;
+  notes?: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+}): Promise<EventAttendance> => {
+  try {
+    const { data } = await apiClient.post<EventAttendance>(
+      "/event-attendance",
+      attendanceData
+    );
+    return data;
+  } catch (error) {
+    console.error("Erro ao criar event_attendance:", error);
+    throw error;
+  }
+};

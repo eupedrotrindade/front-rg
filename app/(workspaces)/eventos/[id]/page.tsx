@@ -16,16 +16,18 @@ import { changeCredentialCode } from '@/features/eventos/actions/movement-creden
 import { updateParticipantCredential } from '@/features/eventos/actions/update-participant-credential'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2, RotateCcw, MoreVertical, TrendingUp } from 'lucide-react'
+import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2, RotateCcw, MoreVertical, TrendingUp, ChevronDown, CheckIcon } from 'lucide-react'
 import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { EventParticipant } from '@/features/eventos/types'
@@ -34,6 +36,10 @@ import EventParticipantEditDialog from '@/features/eventos/components/event-part
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import ModalAdicionarStaff from '@/components/operador/modalAdicionarStaff'
 import { useCredentials } from '@/features/eventos/api/query'
+import VirtualizedParticipantsTable from '@/components/virtualized-table/VirtualizedParticipantsTable'
+import OptimizedFilters from '@/components/optimized-filters/OptimizedFilters'
+import { useOptimizedFilters } from '@/hooks/use-optimized-filters'
+import '@/styles/virtualized-table.css'
 
 export default function EventoDetalhesPage() {
     const params = useParams()
@@ -61,7 +67,6 @@ export default function EventoDetalhesPage() {
     const deleteAttendanceMutation = useDeleteEventAttendance()
 
     const [deletingParticipant, setDeletingParticipant] = useState<EventParticipant | null>(null)
-    const [searchTerm, setSearchTerm] = useState('')
     const [selectedDay, setSelectedDay] = useState<string>('')
     const [replicatingStaff, setReplicatingStaff] = useState<string | null>(null)
     const [showReplicateDialog, setShowReplicateDialog] = useState(false)
@@ -308,50 +313,69 @@ export default function EventoDetalhesPage() {
         });
     }, [attendanceData, normalizeDate]);
 
+    // Auto-selecionar primeiro dia se nenhum dia foi selecionado
+    const eventDays = getEventDays()
+    const currentSelectedDay = selectedDay || (eventDays.length > 0 ? eventDays[0].id : '')
+
+    // Sincronizar selectedDay com o primeiro dia disponível se não houver seleção
+    React.useEffect(() => {
+        if (!selectedDay && eventDays.length > 0) {
+            setSelectedDay(eventDays[0].id)
+        }
+    }, [selectedDay, eventDays])
+
+    // Participantes do dia atual
+    const participantesDoDia = getParticipantesPorDia(currentSelectedDay)
+
+    // Credentials array
+    const credentialsArray = Array.isArray(credentials) ? credentials : [];
+
+    // Hook otimizado para filtros
+    const {
+        filters,
+        popoverStates,
+        dayStats,
+        uniqueEmpresas,
+        uniqueFuncoes,
+        filteredParticipants,
+        hasActiveFilters,
+        updateFilter,
+        clearFilters,
+        setPopoverState,
+        isFilteringInProgress
+    } = useOptimizedFilters({
+        participants: participantesDoDia,
+        currentSelectedDay,
+        hasCheckIn,
+        hasCheckOut,
+        credentialsArray
+    })
+
     // KPIs baseados no dia selecionado
-    const participantesDoDia = getParticipantesPorDia(selectedDay)
     const totalParticipants = participantesDoDia.length
     const participantsWithWristbands = participantesDoDia.filter(p => p.wristbandId).length
     const participantsWithoutWristbands = totalParticipants - participantsWithWristbands
 
-    // Calcular check-ins e check-outs baseado nos dados reais de attendance
-    const checkedInParticipants = participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length
-    const checkedOutParticipants = participantesDoDia.filter(p => hasCheckOut(p.id, selectedDay)).length
+    // Calcular check-ins e check-outs baseado nos dados reais de attendance (otimizado)
+    const checkedInParticipants = dayStats.statusCounts.checkedIn
+    const checkedOutParticipants = dayStats.statusCounts.checkedOut
     const activeParticipants = checkedInParticipants - checkedOutParticipants
 
-    const credentialsArray = Array.isArray(credentials) ? credentials : [];
-
-    // Calcular estatísticas por credencial
+    // Calcular estatísticas por credencial (otimizado)
     const getCredentialStats = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; credentialName: string; color: string }> = {}
 
-        credentialsArray.forEach(credential => {
-            const participantsWithCredential = participantesDoDia.filter(p => p.credentialId === credential.id)
-            const checkedInWithCredential = participantsWithCredential.filter(p => hasCheckIn(p.id, selectedDay))
-
-            stats[credential.id] = {
-                total: participantsWithCredential.length,
-                checkedIn: checkedInWithCredential.length,
-                credentialName: credential.nome,
-                color: credential.cor
+        dayStats.credentialsStats.forEach((credentialData, credentialId) => {
+            stats[credentialId] = {
+                total: credentialData.total,
+                checkedIn: credentialData.checkedIn,
+                credentialName: credentialData.name,
+                color: credentialData.color
             }
         })
 
-        // Adicionar participantes sem credencial
-        const participantsWithoutCredential = participantesDoDia.filter(p => !p.credentialId)
-        const checkedInWithoutCredential = participantsWithoutCredential.filter(p => hasCheckIn(p.id, selectedDay))
-
-        if (participantsWithoutCredential.length > 0) {
-            stats['no-credential'] = {
-                total: participantsWithoutCredential.length,
-                checkedIn: checkedInWithoutCredential.length,
-                credentialName: 'SEM CREDENCIAL',
-                color: '#6B7280'
-            }
-        }
-
         return stats
-    }, [participantesDoDia, credentialsArray, hasCheckIn, selectedDay])
+    }, [dayStats.credentialsStats])
 
     // Função para detectar participantes duplicados
     const findDuplicates = useCallback(() => {
@@ -388,23 +412,6 @@ export default function EventoDetalhesPage() {
     }, [participantsArray])
 
     const duplicates = findDuplicates()
-
-    // Filtrar participantes
-    const filteredParticipants = useMemo(() => {
-        let filtered = participantesDoDia
-
-        // Filtrar por termo de busca
-        if (searchTerm) {
-            filtered = filtered.filter(p =>
-                p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.cpf?.includes(searchTerm) ||
-                p.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.role?.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-        }
-
-        return filtered
-    }, [participantesDoDia, searchTerm])
 
     if (!evento) {
         return (
@@ -801,7 +808,7 @@ export default function EventoDetalhesPage() {
         }
 
         // Normalizar o dia selecionado
-        const normalizedSelectedDay = normalizeDate(selectedDay);
+        const normalizedSelectedDay = normalizeDate(currentSelectedDay);
 
         // Verificar se algum dos dias de trabalho do participante corresponde ao dia selecionado
         const hasDay = participant.daysWork.some(workDay => {
@@ -814,8 +821,8 @@ export default function EventoDetalhesPage() {
         }
 
         // Verificar status de presença baseado nos dados reais de attendance
-        const hasCheckInToday = hasCheckIn(participant.id, selectedDay);
-        const hasCheckOutToday = hasCheckOut(participant.id, selectedDay);
+        const hasCheckInToday = hasCheckIn(participant.id, currentSelectedDay);
+        const hasCheckOutToday = hasCheckOut(participant.id, currentSelectedDay);
 
 
         if (!hasCheckInToday) {
@@ -998,19 +1005,23 @@ export default function EventoDetalhesPage() {
 
 
 
-                {/* Search Bar */}
-                <div className="mb-8">
-                    <div className="relative max-w-md">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                        <Input
-                            type="text"
-                            placeholder="Procure pelo nome, cpf ou código da pulseira"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
-                        />
-                    </div>
-                </div>
+                {/* Filtros Otimizados */}
+                {currentSelectedDay && (
+                    <OptimizedFilters
+                        filters={filters}
+                        popoverStates={popoverStates}
+                        dayStats={dayStats}
+                        uniqueEmpresas={uniqueEmpresas}
+                        uniqueFuncoes={uniqueFuncoes}
+                        participantesDoDia={participantesDoDia}
+                        filteredParticipants={filteredParticipants}
+                        hasActiveFilters={hasActiveFilters}
+                        isFilteringInProgress={isFilteringInProgress}
+                        onUpdateFilter={updateFilter}
+                        onClearFilters={clearFilters}
+                        onSetPopoverState={setPopoverState}
+                    />
+                )}
 
                 {/* Estatísticas por Credencial */}
                 {selectedDay && (
@@ -1148,219 +1159,22 @@ export default function EventoDetalhesPage() {
                     </div>
                 )}
 
-                {/* Table */}
-                <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-                    <Table className='uppercase'>
-                        <TableHeader>
-                            <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
-                                <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider w-12">
-                                    <Checkbox
-                                        checked={selectedParticipants.size === filteredParticipants.length && filteredParticipants.length > 0}
-                                        onCheckedChange={selectAllParticipants}
-                                    />
-                                </TableHead>
-                                <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                    Participante
-                                </TableHead>
-                                <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider hidden md:table-cell">
-                                    Empresa
-                                </TableHead>
-                                <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider hidden md:table-cell">
-                                    Validado Por
-                                </TableHead>
-                                <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                    CPF
-                                </TableHead>
-                                <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                    Ações
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody className="bg-white divide-y divide-gray-100 text-gray-600">
-                            {isLoading && (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="px-6 py-16 text-center text-gray-500">
-                                        <div className="flex flex-col items-center">
-                                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                                                <User className="w-8 h-8 text-gray-400" />
-                                            </div>
-                                            <p className="text-lg font-semibold text-gray-700 mb-2">Carregando...</p>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {filteredParticipants.length === 0 && !isLoading && (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="px-6 py-16 text-center text-gray-500">
-                                        <div className="flex flex-col items-center">
-                                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                                                <User className="w-8 h-8 text-gray-400" />
-                                            </div>
-                                            <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                Nenhum participante encontrado para {selectedDay}
-                                            </p>
-                                            <p className="text-sm text-gray-500">
-                                                Adicione participantes com dias de trabalho definidos ou ajuste os filtros
-                                            </p>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {filteredParticipants.map((participant: EventParticipant, index: number) => {
-                                const botaoTipo = getBotaoAcao(participant)
-
-                                return (
-                                    <TableRow
-                                        key={index}
-                                        className="hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200"
-                                    >
-                                        <TableCell className="px-6 py-4 whitespace-nowrap w-12">
-                                            <Checkbox
-                                                checked={selectedParticipants.has(participant.id)}
-                                                onCheckedChange={() => toggleParticipantSelection(participant.id)}
-                                                onClick={(e) => e.stopPropagation()}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-gray-600">
-                                            <div className="flex items-center">
-
-                                                <div className="ml-4">
-                                                    <div className="text-sm font-semibold text-gray-900">
-                                                        {participant.name}
-                                                    </div>
-                                                    <div className="text-sm text-gray-600">
-                                                        {participant.role}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 hidden md:table-cell">
-                                            <div className="space-y-1">
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                    {participant.company}
-                                                </span>
-                                                {participant.daysWork && participant.daysWork.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {participant.daysWork.slice(0, 2).map((day, idx) => (
-                                                            <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                                {day}
-                                                            </span>
-                                                        ))}
-                                                        {participant.daysWork.length > 2 && (
-                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                                                +{participant.daysWork.length - 2}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 hidden md:table-cell">
-                                            <div className="space-y-1">
-                                                <p className="text-gray-600">{participant.validatedBy || '-'}</p>
-                                                {/* Indicadores de status de check-in/check-out */}
-                                                <div className="flex gap-1">
-                                                    {hasCheckIn(participant.id, selectedDay) && (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                            <Check className="w-3 h-3 mr-1" />
-                                                            Check-in
-                                                        </span>
-                                                    )}
-                                                    {hasCheckOut(participant.id, selectedDay) && (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                                                            <Clock className="w-3 h-3 mr-1" />
-                                                            Check-out
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                                            <p className="text-gray-600">{participant.cpf}</p>
-                                        </TableCell>
-                                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
-                                                {/* Botão principal de ação */}
-                                                {botaoTipo === "checkin" && (
-                                                    <Button
-                                                        size="sm"
-                                                        className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                        disabled={loading}
-                                                        onClick={() => abrirCheckin(participant)}
-                                                    >
-                                                        <Check className="w-4 h-4 mr-1" />
-                                                        Check-in
-                                                    </Button>
-                                                )}
-                                                {botaoTipo === "checkout" && (
-                                                    <Button
-                                                        size="sm"
-                                                        className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                        disabled={loading}
-                                                        onClick={() => abrirCheckout(participant)}
-                                                    >
-                                                        <Clock className="w-4 h-4 mr-1" />
-                                                        Check-out
-                                                    </Button>
-                                                )}
-                                                {botaoTipo === "reset" && (
-                                                    <Button
-                                                        size="sm"
-                                                        className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                        disabled={loading}
-                                                        onClick={() => abrirResetCheckin(participant)}
-                                                    >
-                                                        <RotateCcw className="w-4 h-4 mr-1" />
-                                                        Reset
-                                                    </Button>
-                                                )}
-
-                                                {/* Dropdown com ações secundárias */}
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="h-8 w-8 p-0 border-gray-200 hover:bg-gray-50"
-                                                        >
-                                                            <MoreVertical className="h-4 w-4 text-gray-500" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="w-48 bg-white">
-                                                        {/* Botão de reset quando está em checkout */}
-                                                        {botaoTipo === "checkout" && (
-                                                            <DropdownMenuItem
-                                                                onClick={() => abrirResetCheckin(participant)}
-                                                                className="text-yellow-600 focus:text-yellow-700"
-                                                            >
-                                                                <RotateCcw className="w-4 h-4 mr-2" />
-                                                                Resetar Check-in
-                                                            </DropdownMenuItem>
-                                                        )}
-
-                                                        {/* Editar participante */}
-                                                        <DropdownMenuItem asChild>
-                                                            <EventParticipantEditDialog participant={participant} />
-                                                        </DropdownMenuItem>
-
-                                                        {/* Excluir participante */}
-                                                        <DropdownMenuItem
-                                                            onClick={() => handleDeleteParticipant(participant)}
-                                                            className="text-red-600 focus:text-red-700 focus:bg-red-50"
-                                                        >
-                                                            <Trash2 className="w-4 h-4 mr-2" />
-                                                            Excluir Participante
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
-                </div>
+                {/* Tabela Virtualizada */}
+                <VirtualizedParticipantsTable
+                    participants={filteredParticipants}
+                    selectedParticipants={selectedParticipants}
+                    currentSelectedDay={currentSelectedDay}
+                    hasCheckIn={hasCheckIn}
+                    hasCheckOut={hasCheckOut}
+                    onToggleParticipant={toggleParticipantSelection}
+                    onSelectAll={selectAllParticipants}
+                    onCheckIn={abrirCheckin}
+                    onCheckOut={abrirCheckout}
+                    onReset={abrirResetCheckin}
+                    onDelete={handleDeleteParticipant}
+                    isLoading={isLoading}
+                    loading={loading}
+                />
             </div>
 
             {/* Dialog de Confirmação de Exclusão de Participante */}

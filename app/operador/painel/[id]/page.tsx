@@ -65,6 +65,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Upload,
   User,
   X,
 } from 'lucide-react'
@@ -2420,6 +2421,20 @@ export default function Painel() {
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Adicionar Staff
+                  </Button>
+
+                  {/* 📊 BOTÃO IMPORTAR PRESENÇAS */}
+                  <Button
+                    onClick={() => {
+                      if (operadorLogado) {
+                        window.open(`/operador/importacao-presencas/${eventId}`, '_blank')
+                      }
+                    }}
+                    className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                    disabled={loading || !operadorLogado}
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Importar Presenças
                   </Button>
                 </div>
 
