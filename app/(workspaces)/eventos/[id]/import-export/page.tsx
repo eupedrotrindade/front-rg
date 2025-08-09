@@ -78,6 +78,7 @@ interface ProcessedData {
     data: dataType[]
     errors: Array<{ item: any; error: string; row: number }>
     duplicates: Array<{ item: any; existing: EventParticipant; row: number }>
+    warnings: Array<{ item: any; warning: string; row: number }>
     missingCredentials: Array<{ name: string; count: number }>
     missingCompanies: Array<{ name: string; count: number }>
 }
@@ -104,6 +105,7 @@ export default function ImportExportPage() {
     const [uploadedFile, setUploadedFile] = useState<File | null>(null)
     const [processedData, setProcessedData] = useState<ProcessedData | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
+    const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0, percentage: 0 })
     const [isImporting, setIsImporting] = useState(false)
     const [progress, setProgress] = useState<ImportProgress>({
         total: 0,
@@ -131,8 +133,8 @@ export default function ImportExportPage() {
     // Batch configuration
     const [batchConfig, setBatchConfig] = useState({
         batchSize: 25,
-        pauseBetweenBatches: 2000,
-        pauseBetweenItems: 100,
+        pauseBetweenBatches: 10000, // 10 seconds between batches
+        pauseBetweenItems: 500, // 500ms per participant
     })
 
     // UI States
@@ -214,8 +216,9 @@ export default function ImportExportPage() {
         return false
     }
 
-    const validateParticipant = (data: any): { isValid: boolean; errors: string[] } => {
+    const validateParticipant = (data: any): { isValid: boolean; errors: string[]; warnings: string[] } => {
         const errors: string[] = []
+        const warnings: string[] = []
 
         if (!data.nome || data.nome.toString().trim().length < 2) {
             errors.push("Nome é obrigatório e deve ter pelo menos 2 caracteres")
@@ -232,13 +235,15 @@ export default function ImportExportPage() {
         const hasCPF = data.cpf && data.cpf.toString().trim() !== ""
         const hasRG = data.rg && data.rg.toString().trim() !== ""
 
+        // Allow participants without CPF/RG but show warning
         if (!hasCPF && !hasRG) {
-            errors.push("CPF ou RG é obrigatório (pelo menos um)")
+            warnings.push("Participante sem CPF ou RG - será processado mesmo assim")
         }
 
         return {
-            isValid: errors.length === 0,
+            isValid: errors.length === 0, // Only block on actual errors, not missing CPF/RG
             errors,
+            warnings,
         }
     }
 
@@ -563,7 +568,7 @@ export default function ImportExportPage() {
     const processExcelFile = async (file: File): Promise<ProcessedData> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader()
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
                 try {
                     const data = new Uint8Array(e.target?.result as ArrayBuffer)
                     const workbook = XLSX.read(data, { type: "array" })
@@ -579,28 +584,56 @@ export default function ImportExportPage() {
                         data: [],
                         errors: [],
                         duplicates: [],
+                        warnings: [],
                         missingCredentials: [],
                         missingCompanies: [],
                     }
+
+                    // Initialize processing progress
+                    setProcessingProgress({ current: 0, total: jsonData.length, percentage: 0 })
 
                     const existingCPFs = new Set(participants.map((p) => p.cpf.replace(/\D/g, "")))
                     const processedCPFs = new Set<string>()
                     const credentialCounts: { [key: string]: number } = {}
                     const companyCounts: { [key: string]: number } = {}
 
-                    jsonData.forEach((row, index) => {
-                        const rowNumber = index + 2
-                        const validation = validateParticipant(row)
+                    // Process data in chunks to prevent UI freezing (100 rows per chunk)
+                    console.log(`🚀 Processing ${jsonData.length} rows in chunks of 100 for better performance`)
+                    
+                    for (let i = 0; i < jsonData.length; i += 100) {
+                        const chunk = jsonData.slice(i, Math.min(i + 100, jsonData.length))
+                        
+                        // Update processing progress for better UX
+                        const processed = Math.min(i + 100, jsonData.length)
+                        const percentage = Math.round((processed / jsonData.length) * 100)
+                        setProcessingProgress({ current: processed, total: jsonData.length, percentage })
+                        
+                        // Process chunk
+                        chunk.forEach((row, chunkIndex) => {
+                            const index = i + chunkIndex
+                            const rowNumber = index + 2
+                            const validation = validateParticipant(row)
 
-                        if (!validation.isValid) {
-                            result.errors.push({
-                                item: row,
-                                error: validation.errors.join(", "),
-                                row: rowNumber,
-                            })
-                            result.invalidRows++
-                            return
-                        }
+                            if (!validation.isValid) {
+                                result.errors.push({
+                                    item: row,
+                                    error: validation.errors.join(", "),
+                                    row: rowNumber,
+                                })
+                                result.invalidRows++
+                                return
+                            }
+
+                            // Handle warnings for participants without CPF/RG
+                            if (validation.warnings.length > 0) {
+                                validation.warnings.forEach(warning => {
+                                    result.warnings.push({
+                                        item: row,
+                                        warning: warning,
+                                        row: rowNumber,
+                                    })
+                                })
+                            }
 
                         const cleanedCPF = row.cpf ? row.cpf.toString().replace(/\D/g, "") : ""
                         const cleanedRG = row.rg ? row.rg.toString().replace(/\D/g, "") : ""
@@ -707,7 +740,13 @@ export default function ImportExportPage() {
                             credencial: participantData.credentialId || "",
                         })
                         result.validRows++
-                    })
+                        })
+                        
+                        // Yield to browser after each chunk to prevent UI freezing
+                        if (i + 100 < jsonData.length) {
+                            await new Promise((resolve) => setTimeout(resolve, 0))
+                        }
+                    }
 
                     // Process missing credentials and companies
                     result.missingCredentials = Object.entries(credentialCounts).map(([name, count]) => ({
@@ -728,6 +767,9 @@ export default function ImportExportPage() {
                     })
                     setCredentialColors(colors)
 
+                    // Reset processing progress
+                    setProcessingProgress({ current: 0, total: 0, percentage: 0 })
+
                     resolve(result)
                 } catch (error) {
                     reject(new Error("Erro ao processar arquivo Excel"))
@@ -738,12 +780,15 @@ export default function ImportExportPage() {
         })
     }
 
-    // Import participants
+    // Import participants with optimized batch processing
     const importParticipants = async (participants: EventParticipantSchema[]) => {
         const { batchSize, pauseBetweenBatches, pauseBetweenItems } = batchConfig
         const totalBatches = Math.ceil(participants.length / batchSize)
         let success = 0
         let errors = 0
+
+        console.log(`🚀 Starting import of ${participants.length} participants in ${totalBatches} batches`)
+        console.log(`📊 Batch config: ${batchSize} per batch, ${pauseBetweenBatches}ms between batches, ${pauseBetweenItems}ms per item`)
 
         setProgress({
             total: participants.length,
@@ -766,6 +811,9 @@ export default function ImportExportPage() {
                 currentItem: `Processando lote ${batchIndex + 1} de ${totalBatches} (${batch.length} participantes)`,
             }))
 
+            // Give browser time to update UI before processing batch (prevents UI freezing)
+            await new Promise((resolve) => setTimeout(resolve, 0))
+
             for (let i = 0; i < batch.length; i++) {
                 const participant = batch[i]
                 const globalIndex = startIndex + i
@@ -775,6 +823,11 @@ export default function ImportExportPage() {
                     processed: globalIndex + 1,
                     currentItem: `Lote ${batchIndex + 1}/${totalBatches} - ${participant.name} (${i + 1}/${batch.length})`,
                 }))
+
+                // Yield to browser every 5 participants to keep UI responsive
+                if (i % 5 === 0 && i > 0) {
+                    await new Promise((resolve) => setTimeout(resolve, 0))
+                }
 
                 try {
                     await new Promise<void>((resolve) => {
@@ -814,6 +867,7 @@ export default function ImportExportPage() {
             }
         }
 
+        console.log(`✅ Import completed: ${success} successful, ${errors} errors out of ${participants.length} participants`)
         return { success, errors }
     }
 
@@ -1341,7 +1395,10 @@ export default function ImportExportPage() {
                                         {isProcessing ? (
                                             <>
                                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                Processando...
+                                                {processingProgress.percentage > 0 ? 
+                                                    `Processando... ${processingProgress.percentage}%` : 
+                                                    'Processando...'
+                                                }
                                             </>
                                         ) : (
                                             <>
@@ -1358,6 +1415,16 @@ export default function ImportExportPage() {
                                         className="hidden"
                                     />
                                 </div>
+
+                                {/* Processing Progress Bar */}
+                                {isProcessing && processingProgress.total > 0 && (
+                                    <div className="w-full space-y-2">
+                                        <Progress value={processingProgress.percentage} className="w-full" />
+                                        <p className="text-sm text-center text-gray-600">
+                                            Processando {processingProgress.current} de {processingProgress.total} linhas
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Instructions */}
                                 <Card>
@@ -1412,7 +1479,7 @@ export default function ImportExportPage() {
                                     <h3 className="text-lg font-semibold">Prévia dos Dados</h3>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                     <Card>
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
@@ -1449,6 +1516,19 @@ export default function ImportExportPage() {
                                         <CardContent>
                                             <div className="text-2xl font-bold text-yellow-600">{processedData.duplicateRows}</div>
                                             <p className="text-sm text-gray-600">participantes duplicados</p>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <AlertTriangle className="h-5 w-5 text-orange-600" />
+                                                Avisos
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-2xl font-bold text-orange-600">{processedData.warnings.length}</div>
+                                            <p className="text-sm text-gray-600">participantes sem CPF/RG</p>
                                         </CardContent>
                                     </Card>
                                 </div>
@@ -1551,7 +1631,7 @@ export default function ImportExportPage() {
                                         <CardTitle>Resumo da Validação</CardTitle>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="grid grid-cols-3 gap-4 mb-6">
+                                        <div className="grid grid-cols-4 gap-4 mb-6">
                                             <div className="text-center p-4 bg-green-50 rounded-lg">
                                                 <CheckCircle className="w-8 h-8 mx-auto text-green-600 mb-2" />
                                                 <div className="text-2xl font-bold text-green-600">{processedData.validRows}</div>
@@ -1567,7 +1647,23 @@ export default function ImportExportPage() {
                                                 <div className="text-2xl font-bold text-yellow-600">{processedData.duplicateRows}</div>
                                                 <div className="text-sm text-gray-600">Duplicatas</div>
                                             </div>
+                                            <div className="text-center p-4 bg-orange-50 rounded-lg">
+                                                <AlertTriangle className="w-8 h-8 mx-auto text-orange-600 mb-2" />
+                                                <div className="text-2xl font-bold text-orange-600">{processedData.warnings.length}</div>
+                                                <div className="text-sm text-gray-600">Avisos</div>
+                                            </div>
                                         </div>
+
+                                        {/* Warnings summary */}
+                                        {processedData.warnings.length > 0 && (
+                                            <Alert className="mb-4 border-orange-200 bg-orange-50">
+                                                <AlertTriangle className="h-4 w-4 text-orange-600" />
+                                                <AlertDescription className="text-orange-800">
+                                                    <strong>Avisos encontrados:</strong> {processedData.warnings.length} participante(s) sem CPF ou RG. 
+                                                    Estes participantes serão processados mesmo assim, mas é recomendado revisar os dados.
+                                                </AlertDescription>
+                                            </Alert>
+                                        )}
 
                                         {/* Missing items summary */}
                                         {(processedData.missingCredentials.length > 0 || processedData.missingCompanies.length > 0) && (

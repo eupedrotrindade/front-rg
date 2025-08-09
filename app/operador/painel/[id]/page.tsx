@@ -178,7 +178,6 @@ export default function Painel() {
   // Estados para paginação e otimização
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(50)
-  const [totalItems, setTotalItems] = useState(0)
   const [isLoadingPage, setIsLoadingPage] = useState(false)
   const [virtualizedData, setVirtualizedData] = useState<EventParticipant[]>([])
   const [searchDebounce, setSearchDebounce] = useState<NodeJS.Timeout | null>(
@@ -193,7 +192,7 @@ export default function Painel() {
   const [isDataStale, setIsDataStale] = useState(false)
 
   // Estados para virtualização e performance
-  const [isVirtualMode, setIsVirtualMode] = useState(false)
+  const [isVirtualMode, setIsVirtualMode] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [isMobileTable, setIsMobileTable] = useState(false)
@@ -586,9 +585,6 @@ export default function Painel() {
     const hasFinalization =
       evento.finalizationStartDate && evento.finalizationEndDate
 
-    console.log('🔍 Debug getEventDays:')
-    console.log('🔍 preparationStartDate:', evento.preparationStartDate)
-    console.log('🔍 preparationEndDate:', evento.preparationEndDate)
 
     // Removido a aba "TODOS" - não adiciona mais o 'all'
 
@@ -601,10 +597,6 @@ export default function Painel() {
       const startDate = new Date(startDateStr)
       const endDate = new Date(endDateStr)
 
-      console.log('🔍 Montagem - startDate original:', startDateStr)
-      console.log('🔍 Montagem - endDate original:', endDateStr)
-      console.log('🔍 Montagem - startDate local:', startDate)
-      console.log('🔍 Montagem - endDate local:', endDate)
 
       for (
         let date = new Date(startDate);
@@ -612,7 +604,6 @@ export default function Painel() {
         date.setDate(date.getDate() + 1)
       ) {
         const dateStr = date.toLocaleDateString('pt-BR')
-        console.log('🔍 Adicionando dia de montagem:', dateStr)
         days.push({
           id: `${dateStr}`,
           label: `${dateStr} (MONTAGEM)`,
@@ -635,10 +626,6 @@ export default function Painel() {
       const startDate = new Date(startDateStr)
       const endDate = new Date(endDateStr)
 
-      console.log('🔍 Preparação/Evento - startDate original:', startDateStr)
-      console.log('🔍 Preparação/Evento - endDate original:', endDateStr)
-      console.log('🔍 Preparação/Evento - startDate local:', startDate)
-      console.log('🔍 Preparação/Evento - endDate local:', endDate)
 
       for (
         let date = new Date(startDate);
@@ -647,7 +634,6 @@ export default function Painel() {
       ) {
         const dateStr = date.toLocaleDateString('pt-BR')
         const isOnlyEventDay = !hasSetup && !hasFinalization
-        console.log('🔍 Adicionando dia de preparação/evento:', dateStr)
         days.push({
           id: `${dateStr}`,
           label: isOnlyEventDay
@@ -672,10 +658,6 @@ export default function Painel() {
       const startDate = new Date(startDateStr)
       const endDate = new Date(endDateStr)
 
-      console.log('🔍 Finalização - startDate original:', startDateStr)
-      console.log('🔍 Finalização - endDate original:', endDateStr)
-      console.log('🔍 Finalização - startDate local:', startDate)
-      console.log('🔍 Finalização - endDate local:', endDate)
 
       for (
         let date = new Date(startDate);
@@ -683,7 +665,6 @@ export default function Painel() {
         date.setDate(date.getDate() + 1)
       ) {
         const dateStr = date.toLocaleDateString('pt-BR')
-        console.log('🔍 Adicionando dia de finalização:', dateStr)
         days.push({
           id: `${dateStr}`,
           label: `${dateStr} (DESMONTAGEM)`,
@@ -693,7 +674,6 @@ export default function Painel() {
       }
     }
 
-    console.log('🔍 Dias finais gerados:', days)
     return days
   }, [evento])
 
@@ -1086,14 +1066,12 @@ export default function Painel() {
         setSelectedParticipantWristband(null)
       }
     } catch (error) {
-      console.error('Erro ao buscar código da pulseira:', error)
       setSelectedParticipantWristband(null)
     }
   }
 
   // Função para abrir popup de check-in
   const abrirCheckin = (colaborador: EventParticipant) => {
-    console.log('🔍 abrirCheckin chamado com colaborador:', colaborador)
     setParticipantAction(colaborador)
     setCodigoPulseira('')
     setSelectedDateForAction(selectedDay)
@@ -1291,10 +1269,6 @@ export default function Painel() {
   const isHighVolume = paginatedData.total > 1000
   const showPerformanceIndicator = isHighVolume && !participantsLoading
 
-  // Sempre usar modo virtual para consistência responsiva
-  useEffect(() => {
-    setIsVirtualMode(true) // Sempre true para garantir responsividade
-  }, [])
 
   // Detectar se é mobile para tabela regular
   useEffect(() => {
@@ -1408,25 +1382,15 @@ export default function Painel() {
       if (operadorRaw) {
         try {
           const operador = JSON.parse(operadorRaw)
-          console.log('🔍 Operador do localStorage:', operador)
-          console.log('🔍 Operador ID:', operador.id)
-          console.log('🔍 Operador acao:', operador.acao)
-          console.log('🔍 Tipo do ID:', typeof operador.id)
 
           // Se não tem ID, buscar pelo CPF
           if (!operador.id && operador.cpf) {
-            console.log('🔍 Buscando operador pelo CPF:', operador.cpf)
             try {
               const response = await apiClient.get(
                 `/operadores?cpf=eq.${operador.cpf}`,
               )
-              console.log('🔍 Resposta da busca:', response)
               if (response.data && response.data.length > 0) {
                 const operadorCompleto = response.data[0]
-                console.log(
-                  '🔍 Operador completo encontrado:',
-                  operadorCompleto,
-                )
                 setOperadorInfo({
                   nome: operador.nome,
                   cpf: operador.cpf,
@@ -1435,10 +1399,8 @@ export default function Painel() {
                 })
                 return
               } else {
-                console.log('❌ Operador não encontrado na base de dados')
               }
             } catch (error) {
-              console.error('❌ Erro ao buscar operador:', error)
             }
           }
 
@@ -1449,7 +1411,6 @@ export default function Painel() {
             acoes: operador.acoes,
           })
         } catch (error) {
-          console.error('❌ Erro ao parsear operador do localStorage:', error)
           setOperadorInfo(null)
         }
       } else {
@@ -1469,15 +1430,13 @@ export default function Painel() {
     }
   }, [participantsData])
 
+  // useEffect para resetar página quando filtros mudam
   useEffect(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1)
-    }
+    setCurrentPage(1)
   }, [
     filtro,
     selectedDay,
     ordenacao,
-    currentPage,
     columnFilters,
   ])
 
@@ -1490,16 +1449,6 @@ export default function Painel() {
     }
   }, [selectedDay, finalData.data, debouncedLoadAttendanceStatus])
 
-  // Registrar carregamento de dados de attendance
-  useEffect(() => {
-    if (attendanceDataLoaded && attendanceData && attendanceData.length > 0) {
-      console.log(
-        '🔍 Dados de attendance carregados para',
-        attendanceData.length,
-        'registros',
-      )
-    }
-  }, [attendanceDataLoaded, attendanceData])
 
   // Preload do modal de troca de pulseira para melhor UX
   useEffect(() => {
@@ -1553,10 +1502,6 @@ export default function Painel() {
     generateFilterHash,
   ])
 
-  // useEffect para atualizar totalItems
-  useEffect(() => {
-    setTotalItems(paginatedData.total)
-  }, [paginatedData.total])
 
   // useEffect para definir o primeiro dia disponível como selecionado
   useEffect(() => {
@@ -1620,7 +1565,6 @@ export default function Painel() {
     )
   }
 
-  console.log('evento', evento)
 
   const handleBusca = (valor: string) => {
     setFiltro({ ...filtro, nome: valor })
@@ -1793,7 +1737,6 @@ export default function Painel() {
       await refetchParticipants()
       await refetchAttendance()
     } catch (error) {
-      console.error('Erro ao atualizar pulseira:', error)
       toast.error('Erro ao atualizar pulseira')
     }
     setLoading(false)
@@ -1849,7 +1792,6 @@ export default function Painel() {
       }
       return null
     } catch (error) {
-      console.error('Erro ao verificar presença:', error)
       return null
     }
   }
@@ -1860,19 +1802,11 @@ export default function Painel() {
     date: string,
   ) => {
     try {
-      console.log(
-        '🔍 Carregando status de presença para',
-        participants.length,
-        'participantes na data',
-        date,
-      )
 
       if (!attendanceData || !Array.isArray(attendanceData)) {
-        console.log('🔍 Nenhum dado de presença disponível')
         return
       }
 
-      console.log('🔍 Dados de presença recebidos:', attendanceData)
 
       const statusMap = new Map<
         string,
@@ -1918,17 +1852,12 @@ export default function Painel() {
         }
       }
 
-      console.log('🔍 Status map final:', statusMap)
       setParticipantsAttendanceStatus(statusMap)
       setAttendanceDataLoaded(true)
       setIsLoadingAttendance(false) // Parar loading
 
       // Notificar que o processamento foi concluído
-      console.log(
-        '🔍 Processamento de attendance concluído, todos os registros disponíveis',
-      )
     } catch (error) {
-      console.error('Erro ao carregar status de presença:', error)
       setIsLoadingAttendance(false) // Parar loading mesmo em caso de erro
     }
   }
@@ -1950,7 +1879,6 @@ export default function Painel() {
 
   //         });
   //     } catch (error) {
-  //         console.error("Erro ao registrar ação:", error);
   //     }
   // };
 
@@ -1962,12 +1890,8 @@ export default function Painel() {
     pulseira?: string
     credencial?: string
   }) => {
-    console.log('🔍 registerOperatorActionInColumn chamado com:', actionData)
-    console.log('🔍 operadorInfo:', operadorInfo)
 
     if (!operadorInfo?.id) {
-      console.log('❌ operadorInfo.id não existe, saindo...')
-      console.log('🔍 Tentando buscar operador pelo CPF...')
 
       // Tentar buscar o operador pelo CPF se não temos ID
       if (operadorInfo?.cpf) {
@@ -1975,11 +1899,9 @@ export default function Painel() {
           const response = await apiClient.get(
             `/operadores?cpf=eq.${operadorInfo.cpf}`,
           )
-          console.log('🔍 Resposta da busca por CPF:', response)
 
           if (response.data && response.data.length > 0) {
             const operadorCompleto = response.data[0]
-            console.log('🔍 Operador encontrado:', operadorCompleto)
 
             // Atualizar operadorInfo com os dados completos
             setOperadorInfo({
@@ -1990,24 +1912,19 @@ export default function Painel() {
             })
 
             // Continuar com o registro da ação
-            console.log('🔍 Continuando com o registro da ação...')
           } else {
-            console.log('❌ Operador não encontrado na base de dados')
             return
           }
         } catch (error) {
-          console.error('❌ Erro ao buscar operador por CPF:', error)
           return
         }
       } else {
-        console.log('❌ Nem ID nem CPF disponíveis')
         return
       }
     }
 
     // Verificar se agora temos o ID
     if (!operadorInfo?.id) {
-      console.log('❌ Ainda não temos operadorInfo.id, saindo...')
       return
     }
 
@@ -2017,7 +1934,6 @@ export default function Painel() {
           ? operadorInfo.acoes
           : []
         : []
-      console.log('🔍 currentActions:', currentActions)
 
       const newAction = {
         type: actionData.type,
@@ -2029,19 +1945,13 @@ export default function Painel() {
         timestamp: new Date().toISOString(),
         credencial: actionData.credencial || '',
       }
-      console.log('🔍 newAction:', newAction)
 
       const updatedActions = [...currentActions, newAction]
-      console.log('🔍 updatedActions:', updatedActions)
 
-      console.log('🔍 Fazendo PUT para /operadores/${operadorInfo.id}')
-      console.log('🔍 ID do operador sendo usado:', operadorInfo.id)
-      console.log('🔍 Tipo do ID:', typeof operadorInfo.id)
 
       const response = await apiClient.put(`/operadores/${operadorInfo.id}`, {
         acoes: updatedActions,
       })
-      console.log('✅ PUT realizado com sucesso:', response)
 
       // Atualizar o operadorInfo local com as novas ações
       setOperadorInfo(prev =>
@@ -2053,8 +1963,6 @@ export default function Painel() {
           : null,
       )
     } catch (error) {
-      console.error('❌ Erro ao registrar ação na coluna do operador:', error)
-      console.error('❌ Detalhes do erro:', error)
     }
   }
 
@@ -2209,18 +2117,12 @@ export default function Painel() {
 
   // Função para confirmar check-in
   const confirmarCheckin = async () => {
-    console.log('🔍 confirmarCheckin chamado')
-    console.log('🔍 participantAction:', participantAction)
-    console.log('🔍 codigoPulseira:', codigoPulseira)
-    console.log('🔍 operadorInfo:', operadorInfo)
 
     if (!participantAction) {
-      console.log('❌ Dados insuficientes para realizar check-in')
       toast.error('Dados insuficientes para realizar check-in')
       return
     }
     if (!operadorInfo?.nome) {
-      console.log('❌ Informações do operador não encontradas')
       toast.error('Informações do operador não encontradas')
       return
     }
@@ -2236,13 +2138,6 @@ export default function Painel() {
         ? selectedDateForAction
         : todayFormatted
 
-      console.log('🔍 Enviando check-in com dados:', {
-        participantId: participantAction.id,
-        date: dateToUse,
-        validatedBy: operadorInfo.nome,
-        performedBy: operadorInfo.nome,
-        notes: `Check-in realizado via painel do operador - Pulseira: ${codigoPulseira.trim()}`,
-      })
 
       await checkInMutation.mutateAsync({
         participantId: participantAction.id,
@@ -2259,9 +2154,7 @@ export default function Painel() {
           participantAction.id,
           codigoPulseira.trim(),
         )
-        console.log('✅ Pulseira salva no sistema de movement_credentials')
       } catch (error) {
-        console.error('⚠️ Erro ao salvar pulseira no sistema:', error)
         // Não falha o check-in se der erro ao salvar a pulseira
       }
 
@@ -2301,7 +2194,6 @@ export default function Painel() {
       setCodigoPulseira('')
       setSelectedDateForAction('')
     } catch (error) {
-      console.error('❌ Erro ao realizar check-in:', error)
       const errorMessage =
         error instanceof Error ? error.message : 'Erro desconhecido'
       toast.error(`Erro ao realizar check-in: ${errorMessage}`)
@@ -2376,7 +2268,6 @@ export default function Painel() {
       setParticipantAction(null)
       setSelectedDateForAction('')
     } catch (error) {
-      console.error('❌ Erro ao realizar check-out:', error)
       const errorMessage =
         error instanceof Error ? error.message : 'Erro desconhecido'
       toast.error(`Erro ao realizar check-out: ${errorMessage}`)
@@ -3495,7 +3386,6 @@ export default function Painel() {
                                   return newMap
                                 })
                               } catch (error) {
-                                console.error('Erro ao buscar código da pulseira:', error)
                                 setNewWristbandCode('')
                               }
 
@@ -3681,7 +3571,6 @@ export default function Painel() {
         evento={evento}
         onSuccess={async () => {
           // Recarregar dados se necessário
-          console.log("Staff adicionado com sucesso!");
           await refetchParticipants();
           await refetchAttendance();
         }} />

@@ -106,10 +106,10 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
       await createEventParticipant({
         eventId,
         credentialId: tipo_credencial,
-        name,
+        name: name.toUpperCase(),
         cpf,
-        role: funcao,
-        company: empresa,
+        role: funcao.toUpperCase(),
+        company: empresa.toUpperCase(),
         validatedBy: "Sistema",
         daysWork: novoStaff.daysWork,
       });
@@ -119,7 +119,6 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
       onClose();
       onSuccess?.();
     } catch (error) {
-      console.error("Erro ao adicionar staff:", error);
       toast.error("Erro ao adicionar staff. Tente novamente.");
     }
     setLoading(false);
@@ -155,9 +154,10 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
               <label className="block text-sm font-medium mb-2">Nome completo *</label>
               <Input
                 value={novoStaff.name}
-                onChange={(e) => setNovoStaff({ ...novoStaff, name: e.target.value })}
+                onChange={(e) => setNovoStaff({ ...novoStaff, name: e.target.value.toUpperCase() })}
                 placeholder="Digite o nome completo"
                 disabled={loading}
+                style={{ textTransform: 'uppercase' }}
               />
             </div>
 
@@ -175,9 +175,10 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
               <label className="block text-sm font-medium mb-2">Função *</label>
               <Input
                 value={novoStaff.funcao}
-                onChange={(e) => setNovoStaff({ ...novoStaff, funcao: e.target.value })}
+                onChange={(e) => setNovoStaff({ ...novoStaff, funcao: e.target.value.toUpperCase() })}
                 placeholder="Digite a função"
                 disabled={loading}
+                style={{ textTransform: 'uppercase' }}
               />
             </div>
 
@@ -188,7 +189,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
                   <Select
                     value={novoStaff.empresa}
                     onValueChange={(value) => {
-                      setNovoStaff({ ...novoStaff, empresa: value });
+                      setNovoStaff({ ...novoStaff, empresa: value.toUpperCase() });
                       setEmpresaSearch("");
                       setIsEmpresaSelectOpen(false);
                     }}
@@ -207,9 +208,10 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
                           <Input
                             placeholder="Pesquisar empresa..."
                             value={empresaSearch}
-                            onChange={(e) => setEmpresaSearch(e.target.value)}
+                            onChange={(e) => setEmpresaSearch(e.target.value.toUpperCase())}
                             className="pl-8 h-8"
                             onClick={(e) => e.stopPropagation()}
+                            style={{ textTransform: 'uppercase' }}
                           />
                           {empresaSearch && (
                             <Button
@@ -231,8 +233,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
                       <div className="max-h-[150px] overflow-y-auto">
                         {filteredEmpresas.length > 0 ? (
                           filteredEmpresas.map((empresa) => (
-                            <SelectItem key={empresa.id} value={empresa.nome}>
-                              {empresa.nome}
+                            <SelectItem key={empresa.id} value={empresa.nome.toUpperCase()}>
+                              {empresa.nome.toUpperCase()}
                             </SelectItem>
                           ))
                         ) : (
@@ -247,9 +249,10 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
               ) : (
                 <Input
                   value={novoStaff.empresa}
-                  onChange={(e) => setNovoStaff({ ...novoStaff, empresa: e.target.value })}
+                  onChange={(e) => setNovoStaff({ ...novoStaff, empresa: e.target.value.toUpperCase() })}
                   placeholder="Digite o nome da empresa"
                   disabled={loading}
+                  style={{ textTransform: 'uppercase' }}
                 />
               )}
             </div>
