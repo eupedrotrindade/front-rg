@@ -72,6 +72,7 @@ import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 
 import ExcelColumnFilter from '@/components/ui/excel-column-filter'
@@ -194,9 +195,7 @@ export default function Painel() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [isMobileTable, setIsMobileTable] = useState(false)
-  
-  // ⚡ THROTTLE para evitar chamadas excessivas
-  const [lastUpdateTime, setLastUpdateTime] = useState(0)
+
 
   // Estados para filtros estilo Excel das colunas
   const [columnFilters, setColumnFilters] = useState<{
@@ -272,6 +271,7 @@ export default function Painel() {
   // TODOS OS useRef DEPOIS DOS useState
   const fileInputRef = useRef<HTMLInputElement>(null)
   const tabsContainerRef = useRef<HTMLDivElement>(null)
+  const tableContainerRef = useRef<HTMLDivElement>(null)
 
   // TODOS OS HOOKS DE NAVEGAÇÃO E DADOS
   const params = useParams()
@@ -308,13 +308,13 @@ export default function Painel() {
     useCancellableRequest()
 
 
-  // Hook de busca otimizada com índices para datasets grandes
+  // Hook de busca otimizada com índices APENAS para datasets muito grandes (>1000)
   const [searchResult, performOptimizedSearchFn, clearSearch] =
     useIndexedSearch({
       data: participantsData,
       searchFields: ['name', 'cpf', 'role', 'company'],
-      enableIndexing: participantsData.length > 500,
-      debounceMs: 150,
+      enableIndexing: participantsData.length > 1000, // Aumentado threshold
+      debounceMs: 0, // Sem debounce no hook (controlamos na função)
       minSearchLength: 2,
     })
 
@@ -1084,25 +1084,25 @@ export default function Painel() {
     filtrados = filtrados.filter((colab: EventParticipant) => {
       // ⚡ BUSCA OTIMIZADA - SEM TRAVAMENTO
       const searchTerm = filtro.nome?.toLowerCase()?.trim() || ''
-      
+
       // Busca rápida e eficiente (sem loops complexos)
       const quickMatch = (text: string, search: string): boolean => {
         if (!search || !text) return !search
-        
+
         const textLower = text.toLowerCase()
         const searchLower = search.toLowerCase()
-        
+
         // 1. Busca direta (mais rápida)
         if (textLower.includes(searchLower)) return true
-        
+
         // 2. Busca sem acentos (eficiente)
         const textNorm = textLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         const searchNorm = searchLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         if (textNorm.includes(searchNorm)) return true
-        
+
         // 3. Só busca avançada se termo > 2 chars (evita loops desnecessários)
         if (searchNorm.length <= 2) return false
-        
+
         // 4. Busca por iniciais (otimizada)
         if (searchNorm.length === 2) {
           const words = textLower.split(/[\s]+/)
@@ -1111,28 +1111,28 @@ export default function Painel() {
             if (initials === searchNorm) return true
           }
         }
-        
+
         return false
       }
-      
+
       // ⚡ BUSCA RÁPIDA - SEM LOOPS PESADOS
       const nomeMatch = quickMatch(colab.name || '', searchTerm)
-      
+
       // CPF (otimizado)
       const cpfLimpo = (colab.cpf || '').replace(/\D/g, '')
       const buscaCpfLimpa = searchTerm.replace(/\D/g, '')
       const cpfMatch = buscaCpfLimpa ? cpfLimpo.includes(buscaCpfLimpa) : false
-      
+
       // Empresa (rápida)
       const empresaMatch_search = quickMatch(colab.company || '', searchTerm)
-      
+
       // Função (rápida)
       const funcaoMatch_search = quickMatch(colab.role || '', searchTerm)
-      
+
       // Credencial (eficiente)
       const credencialNome = getCredencial(colab)
       const credencialMatch_search = quickMatch(credencialNome || '', searchTerm)
-      
+
       // Pulseira (simples)
       const wristbandCode = participantWristbands.get(colab.id) || ''
       const wristbandMatch = wristbandCode.toLowerCase().includes(searchTerm)
@@ -1144,7 +1144,7 @@ export default function Painel() {
 
       // Match geral para busca de texto (MELHORADO - inclui pulseira)
       const searchMatch = !filtro.nome.trim() ||
-        nomeMatch || cpfMatch || empresaMatch_search || funcaoMatch_search || 
+        nomeMatch || cpfMatch || empresaMatch_search || funcaoMatch_search ||
         credencialMatch_search || wristbandMatch
 
       let match = searchMatch && empresaFilter && funcaoFilter && credencialFilter
@@ -1270,9 +1270,11 @@ export default function Painel() {
     filtro.nome,
     filtro.empresa,
     filtro.funcao,
+    filtro.credencial,
     selectedDay,
+    columnFilters,
     participantsData.length // APENAS length, não array completo
-  ]) // ⚡ ULTRA-OTIMIZADO: dependências mínimas
+  ]) // ⚡ FIXED: Incluindo filtro.credencial e columnFilters nas dependências
 
   // Detectar se é mobile para tabela regular
   useEffect(() => {
@@ -1315,13 +1317,21 @@ export default function Painel() {
   // Para compatibilidade com componentes que usam paginatedData
   const paginatedData = finalData
 
+  // 🚀 VIRTUAL TABLE CONFIGURATION
+  const virtualizer = useVirtualizer({
+    count: finalData.data.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => (isMobileTable ? 72 : 84), // Altura estimada das linhas
+    overscan: 5,
+  })
+
   const isHighVolume = unifiedData.total > 1000
   const showPerformanceIndicator = isHighVolume && !participantsLoading
 
   // ⚡ VALORES ÚNICOS CORRIGIDOS - FUNCIONANDO
   const columnUniqueValues = useMemo(() => {
     const currentData = getColaboradoresPorDia(selectedDay)
-    
+
     if (!currentData || currentData.length === 0) {
       return {
         nome: [],
@@ -1331,7 +1341,7 @@ export default function Painel() {
         credencial: []
       }
     }
-    
+
     return {
       nome: [...new Set(currentData.map(c => c.name).filter(Boolean))].sort(),
       cpf: [...new Set(currentData.map(c => formatCPF(c.cpf?.trim() || '')).filter(Boolean))].sort(),
@@ -1524,49 +1534,34 @@ export default function Painel() {
     setFiltro({ ...filtro, nome: valor })
   }
 
-  // Função otimizada de busca unificada com debounce
+  // 🚀 BUSCA COM ZERO LAG - Debounce real otimizado
   const handleBuscaOtimizada = (valor: string) => {
-    const now = Date.now()
+    // 1. ATUALIZAÇÃO IMEDIATA DO VALOR VISUAL (zero lag)
+    setFiltro(prev => ({ ...prev, nome: valor }))
     
-    // ⚡ THROTTLE - evitar chamadas muito frequentes
-    if (now - lastUpdateTime < 16) { // ~60fps
-      return
-    }
-    setLastUpdateTime(now)
-    
-    // Limpar timeout pendente
+    // 2. LIMPAR TIMEOUT ANTERIOR
     if (searchDebounce) {
       clearTimeout(searchDebounce)
-      setSearchDebounce(null)
     }
-    
-    // ⚡ ATUALIZAÇÃO NÃO-BLOQUEANTE
-    requestAnimationFrame(() => {
-      setFiltro(prev => ({ ...prev, nome: valor }))
-      setCurrentPage(1)
-    })
 
-    // Busca vazia
+    // 3. BUSCA VAZIA - execução imediata
     if (!valor.trim()) {
       setSearchTerm('')
       setIsSearching(false)
+      setCurrentPage(1)
+      setSearchDebounce(null)
       return
     }
 
-    // Atualizar termo
-    setSearchTerm(valor)
-    
-    // Sem debounce para datasets pequenos
-    if (participantsData.length <= 150) {
-      setIsSearching(false)
-      return
-    }
-
-    // Mínimo debounce necessário
+    // 4. INDICAR QUE ESTÁ BUSCANDO
     setIsSearching(true)
+
+    // 5. DEBOUNCE REAL - só executa filtro após parar de digitar
     const timeout = setTimeout(() => {
+      setSearchTerm(valor)
+      setCurrentPage(1)
       setIsSearching(false)
-    }, 30) // MÍNIMO
+    }, 300) // 300ms após parar de digitar
 
     setSearchDebounce(timeout)
   }
@@ -2451,7 +2446,7 @@ export default function Painel() {
                 {/* Search Bar */}
                 <div className="relative flex-1 max-w-md">
                   <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 transition-colors duration-200 ${isSearching ? 'text-orange-500 animate-pulse' :
-                      (searchTerm.trim() || filtro.nome.trim()) ? 'text-blue-500' : 'text-gray-400'
+                    (searchTerm.trim() || filtro.nome.trim()) ? 'text-blue-500' : 'text-gray-400'
                     }`} />
                   <Input
                     type="text"
@@ -2459,8 +2454,8 @@ export default function Painel() {
                     value={filtro.nome}
                     onChange={e => handleBuscaOtimizada(e.target.value)}
                     className={`pl-10 pr-10 text-gray-600 bg-white shadow-sm transition-all duration-200 ${isSearching ? 'border-orange-300 ring-2 ring-orange-100' :
-                        (searchTerm.trim() || filtro.nome.trim()) ? 'border-blue-300 ring-2 ring-blue-100' :
-                          'border-gray-200 focus:border-purple-500 focus:ring-purple-500'
+                      (searchTerm.trim() || filtro.nome.trim()) ? 'border-blue-300 ring-2 ring-blue-100' :
+                        'border-gray-200 focus:border-purple-500 focus:ring-purple-500'
                       }`}
                   />
                   {(searchTerm.trim() || filtro.nome.trim()) && (
@@ -2749,16 +2744,17 @@ export default function Painel() {
                 </div>
               )}
 
-
-              <div className="overflow-x-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
-                      {/* Nome - sempre visível */}
-                      <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`}>
-                        <div className="flex items-center justify-between">
-                          <span>Nome</span>
-                          {/* <ExcelColumnFilter
+              {/* 🚀 VIRTUALIZED TABLE CONTAINER */}
+              <div className="overflow-x-auto">
+                <div className="min-w-full">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
+                        {/* Nome - sempre visível */}
+                        <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`}>
+                          <div className="flex items-center justify-between">
+                            <span>Nome</span>
+                            {/* <ExcelColumnFilter
                             values={columnUniqueValues.nome}
                             selectedValues={columnFilters.nome}
                             onSelectionChange={values =>
@@ -2770,15 +2766,15 @@ export default function Painel() {
                             columnTitle="Nome"
                             isActive={columnFilters.nome.length > 0}
                           /> */}
-                        </div>
-                      </TableHead>
+                          </div>
+                        </TableHead>
 
-                      {/* CPF - esconder em mobile */}
-                      {!isMobileTable && (
-                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                          <div className="flex items-center justify-between">
-                            <span>CPF</span>
-                            {/* <ExcelColumnFilter
+                        {/* CPF - esconder em mobile */}
+                        {!isMobileTable && (
+                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                            <div className="flex items-center justify-between">
+                              <span>CPF</span>
+                              {/* <ExcelColumnFilter
                               values={columnUniqueValues.cpf}
                               selectedValues={columnFilters.cpf}
                               onSelectionChange={values =>
@@ -2790,151 +2786,170 @@ export default function Painel() {
                               columnTitle="CPF"
                               isActive={columnFilters.cpf.length > 0}
                             /> */}
-                          </div>
-                        </TableHead>
-                      )}
-
-                      {/* Função - esconder em mobile */}
-                      {!isMobileTable && (
-                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                          <div className="flex items-center justify-between">
-                            <span>Função</span>
-                            <ExcelColumnFilter
-                              values={columnUniqueValues.funcao.filter(
-                                (v): v is string => typeof v === 'string',
-                              )}
-                              selectedValues={columnFilters.funcao}
-                              onSelectionChange={values =>
-                                handleColumnFilterChange('funcao', values)
-                              }
-                              onSortTable={direction =>
-                                handleColumnSort('role', direction)
-                              }
-                              columnTitle="Função"
-                              isActive={columnFilters.funcao.length > 0}
-                            />
-                          </div>
-                        </TableHead>
-                      )}
-
-                      {/* Empresa - esconder em mobile */}
-                      {!isMobileTable && (
-                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                          <div className="flex items-center justify-between">
-                            <span>Empresa</span>
-                            <ExcelColumnFilter
-                              values={columnUniqueValues.empresa}
-                              selectedValues={columnFilters.empresa}
-                              onSelectionChange={values =>
-                                handleColumnFilterChange('empresa', values)
-                              }
-                              onSortTable={direction =>
-                                handleColumnSort('company', direction)
-                              }
-                              columnTitle="Empresa"
-                              isActive={columnFilters.empresa.length > 0}
-                            />
-                          </div>
-                        </TableHead>
-                      )}
-
-                      {/* Credencial - esconder em mobile */}
-                      {!isMobileTable && (
-                        <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                          <div className="flex items-center justify-between">
-                            <span>Tipo de Credencial</span>
-                            <ExcelColumnFilter
-                              values={columnUniqueValues.credencial}
-                              selectedValues={columnFilters.credencial}
-                              onSelectionChange={values =>
-                                handleColumnFilterChange('credencial', values)
-                              }
-                              onSortTable={direction =>
-                                handleColumnSort('credentialId', direction)
-                              }
-                              columnTitle="Tipo de Credencial"
-                              isActive={columnFilters.credencial.length > 0}
-                            />
-                          </div>
-                        </TableHead>
-                      )}
-
-                      {/* Ação - sempre visível e sticky à direita */}
-                      <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
-                        Ação
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody className="bg-white divide-y divide-gray-100 text-gray-600 uppercase">
-                    {finalData.total === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={isMobileTable ? 2 : 6}
-                          className="px-6 py-16 text-center text-gray-500"
-                        >
-                          <div className="flex flex-col items-center">
-                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                              {(searchTerm.trim() || filtro.nome.trim()) ? (
-                                <Search className="w-8 h-8 text-gray-400" />
-                              ) : (
-                                <User className="w-8 h-8 text-gray-400" />
-                              )}
                             </div>
-                            <p className="text-lg font-semibold text-gray-700 mb-2">
-                              {(searchTerm.trim() || filtro.nome.trim()) ? (
-                                'Nenhum resultado encontrado'
-                              ) : selectedDay ? (
-                                `Nenhum colaborador encontrado para ${selectedDay}`
-                              ) : (
-                                'Nenhum colaborador encontrado'
-                              )}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {(searchTerm.trim() || filtro.nome.trim()) ? (
-                                <>Tente termos diferentes ou <button
-                                  onClick={() => {
-                                    setFiltro(prev => ({ ...prev, nome: '' }))
-                                    setSearchTerm('')
-                                    setIsSearching(false)
-                                    if (searchDebounce) {
-                                      clearTimeout(searchDebounce)
-                                      setSearchDebounce(null)
-                                    }
-                                    clearSearch()
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800 underline"
-                                >limpe a busca</button></>
-                              ) : selectedDay ? (
-                                'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
-                              ) : (
-                                'Tente ajustar os filtros ou adicionar novos colaboradores'
-                              )}
-                            </p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      finalData.data.map(
-                        (colab: EventParticipant, index: number) => {
-                          const botaoTipo = getBotaoAcao(colab)
+                          </TableHead>
+                        )}
 
-                          return (
-                            <TableRow
-                              key={index}
-                              className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${selectedDay &&
-                                colab.daysWork &&
-                                colab.daysWork.includes(
-                                  selectedDay.includes('_')
-                                    ? selectedDay.split('_')[1]
-                                    : selectedDay,
-                                )
-                                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
-                                : ''
-                                }`}
-                              onClick={() => abrirPopup(colab)}
-                            >
+                        {/* Função - esconder em mobile */}
+                        {!isMobileTable && (
+                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                            <div className="flex items-center justify-between">
+                              <span>Função</span>
+                              <ExcelColumnFilter
+                                values={columnUniqueValues.funcao.filter(
+                                  (v): v is string => typeof v === 'string',
+                                )}
+                                selectedValues={columnFilters.funcao}
+                                onSelectionChange={values =>
+                                  handleColumnFilterChange('funcao', values)
+                                }
+                                onSortTable={direction =>
+                                  handleColumnSort('role', direction)
+                                }
+                                columnTitle="Função"
+                                isActive={columnFilters.funcao.length > 0}
+                              />
+                            </div>
+                          </TableHead>
+                        )}
+
+                        {/* Empresa - esconder em mobile */}
+                        {!isMobileTable && (
+                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                            <div className="flex items-center justify-between">
+                              <span>Empresa</span>
+                              <ExcelColumnFilter
+                                values={columnUniqueValues.empresa}
+                                selectedValues={columnFilters.empresa}
+                                onSelectionChange={values =>
+                                  handleColumnFilterChange('empresa', values)
+                                }
+                                onSortTable={direction =>
+                                  handleColumnSort('company', direction)
+                                }
+                                columnTitle="Empresa"
+                                isActive={columnFilters.empresa.length > 0}
+                              />
+                            </div>
+                          </TableHead>
+                        )}
+
+                        {/* Credencial - esconder em mobile */}
+                        {!isMobileTable && (
+                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                            <div className="flex items-center justify-between">
+                              <span>Tipo de Credencial</span>
+                              <ExcelColumnFilter
+                                values={columnUniqueValues.credencial}
+                                selectedValues={columnFilters.credencial}
+                                onSelectionChange={values =>
+                                  handleColumnFilterChange('credencial', values)
+                                }
+                                onSortTable={direction =>
+                                  handleColumnSort('credentialId', direction)
+                                }
+                                columnTitle="Tipo de Credencial"
+                                isActive={columnFilters.credencial.length > 0}
+                              />
+                            </div>
+                          </TableHead>
+                        )}
+
+                        {/* Ação - sempre visível e sticky à direita */}
+                        <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
+                          Ação
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                  </Table>
+                </div>
+
+                {/* 🚀 VIRTUALIZED TABLE BODY */}
+                <div
+                  ref={tableContainerRef}
+                  className="overflow-auto"
+                  style={{ height: 'calc(100vh - 600px)', minHeight: '400px', maxHeight: '600px' }} // Responsive height for virtualization
+                >
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: '100%',
+                      position: 'relative',
+                    }}
+                  >
+                    {finalData.total === 0 ? (
+                      <div className="flex items-center justify-center py-16">
+                        <div className="text-center text-gray-500">
+                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 mx-auto">
+                            {(searchTerm.trim() || filtro.nome.trim()) ? (
+                              <Search className="w-8 h-8 text-gray-400" />
+                            ) : (
+                              <User className="w-8 h-8 text-gray-400" />
+                            )}
+                          </div>
+                          <p className="text-lg font-semibold text-gray-700 mb-2">
+                            {(searchTerm.trim() || filtro.nome.trim()) ? (
+                              'Nenhum resultado encontrado'
+                            ) : selectedDay ? (
+                              `Nenhum colaborador encontrado para ${selectedDay}`
+                            ) : (
+                              'Nenhum colaborador encontrado'
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {(searchTerm.trim() || filtro.nome.trim()) ? (
+                              <>Tente termos diferentes ou <button
+                                onClick={() => {
+                                  setFiltro(prev => ({ ...prev, nome: '' }))
+                                  setSearchTerm('')
+                                  setIsSearching(false)
+                                  if (searchDebounce) {
+                                    clearTimeout(searchDebounce)
+                                    setSearchDebounce(null)
+                                  }
+                                  clearSearch()
+                                }}
+                                className="text-blue-600 hover:text-blue-800 underline"
+                              >limpe a busca</button></>
+                            ) : selectedDay ? (
+                              'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
+                            ) : (
+                              'Tente ajustar os filtros ou adicionar novos colaboradores'
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      virtualizer.getVirtualItems().map((virtualRow) => {
+                        const colab = finalData.data[virtualRow.index]
+                        const botaoTipo = getBotaoAcao(colab)
+
+                        return (
+                          <div
+                            key={virtualRow.index}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: `${virtualRow.size}px`,
+                              transform: `translateY(${virtualRow.start}px)`,
+                            }}
+                            className={`border-b border-gray-100 hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${selectedDay &&
+                              colab.daysWork &&
+                              colab.daysWork.includes(
+                                selectedDay.includes('_')
+                                  ? selectedDay.split('_')[1]
+                                  : selectedDay,
+                              )
+                              ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
+                              : 'bg-white'
+                              }`}
+                            onClick={() => abrirPopup(colab)}
+                          >
+                            <div className="flex items-center min-h-full">
                               {/* Nome - sempre visível */}
-                              <TableCell className={`whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+                              <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
                                 <div className="flex items-center">
                                   <div className={isMobileTable ? '' : 'ml-4'}>
                                     <div className="text-sm font-semibold text-gray-900">
@@ -2942,44 +2957,44 @@ export default function Painel() {
                                     </div>
                                   </div>
                                 </div>
-                              </TableCell>
+                              </div>
 
                               {/* CPF - esconder em mobile */}
                               {!isMobileTable && (
-                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                                  <p className="text-gray-600">
+                                <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+                                  <p className="text-sm text-gray-900 font-mono">
                                     {formatCPF(colab.cpf?.trim() || '')}
                                   </p>
-                                </TableCell>
+                                </div>
                               )}
 
                               {/* Função - esconder em mobile */}
                               {!isMobileTable && (
-                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                  <p className="text-gray-600">{colab.role}</p>
-                                </TableCell>
+                                <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+                                  <p className="text-sm text-gray-600">{colab.role}</p>
+                                </div>
                               )}
 
                               {/* Empresa - esconder em mobile */}
                               {!isMobileTable && (
-                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                     {colab.company}
                                   </span>
-                                </TableCell>
+                                </div>
                               )}
 
                               {/* Credencial - esconder em mobile */}
                               {!isMobileTable && (
-                                <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                     {getCredencial(colab)}
                                   </span>
-                                </TableCell>
+                                </div>
                               )}
 
                               {/* Ação - sempre visível e sticky à direita */}
-                              <TableCell className={`whitespace-nowrap text-sm font-medium sticky right-0 bg-white border-l border-gray-100 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 5 }}>
+                              <div className={`flex-none whitespace-nowrap text-sm font-medium sticky right-0 bg-white border-l border-gray-100 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
                                 <div
                                   className="flex space-x-2"
                                   onClick={e => e.stopPropagation()}
@@ -3009,688 +3024,716 @@ export default function Painel() {
                                     </Button>
                                   )}
                                 </div>
-                              </TableCell>
-                            </TableRow>
-                          )
-                        },
-                      )
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-
-
-            </div>
-          </div>
-
-          {/* MODAL DETALHES DO COLABORADOR */}
-          <Dialog open={modalAberto} onOpenChange={setModalAberto}>
-            <DialogContent className="max-w-md bg-white border-0 shadow-xl">
-              <DialogHeader className="pb-4">
-                <DialogTitle className="flex items-center gap-3 text-lg font-bold text-gray-900">
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <User className="w-4 h-4 text-white" />
-                  </div>
-                  Detalhes do Participante
-                </DialogTitle>
-              </DialogHeader>
-
-              {selectedParticipant && (
-                <div className="space-y-4">
-                  {/* Informações principais - Layout compacto */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
-                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
-                        <span className="text-sm font-bold text-white">
-                          {getInitials(selectedParticipant.name)}
-                        </span>
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">
-                          {selectedParticipant.name}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {selectedParticipant.role}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Informações essenciais */}
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <p className="text-xs font-medium text-gray-500 uppercase">
-                          CPF
-                        </p>
-                        <p className="font-mono text-gray-900">
-                          {formatCPF(selectedParticipant.cpf?.trim() || '')}
-                        </p>
-                      </div>
-                      <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <p className="text-xs font-medium text-gray-500 uppercase">
-                          Empresa
-                        </p>
-                        <p className="text-gray-900">
-                          {selectedParticipant.company}
-                        </p>
-                      </div>
-                      <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <p className="text-xs font-medium text-gray-500 uppercase">
-                          Credencial
-                        </p>
-                        <p className="text-gray-900">
-                          {getCredencial(selectedParticipant)}
-                        </p>
-                      </div>
-                      <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <p className="text-xs font-medium text-gray-500 uppercase">
-                          Código Pulseira
-                        </p>
-                        <p className="font-mono text-gray-900">
-                          {selectedParticipantWristband || 'Não informado'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Detalhes de Check-in/Check-out */}
-                    <div className="p-3 bg-white rounded-lg border border-gray-200">
-                      <p className="text-xs font-medium text-gray-700 uppercase mb-3">
-                        Detalhes de Presença - {selectedDay ? (selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay) : 'Hoje'}
-                      </p>
-                      {(() => {
-                        const status = participantsAttendanceStatus.get(
-                          selectedParticipant.id,
-                        )
-                        if (!status) {
-                          return (
-                            <div className="text-center py-2">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                Não verificado
-                              </span>
-                            </div>
-                          )
-                        }
-
-                        return (
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                <span className="text-sm font-medium text-gray-700">Check-in:</span>
-                              </div>
-                              <div className="text-right">
-                                {status.checkIn ? (
-                                  <>
-                                    <div className="text-sm text-gray-900">
-                                      {new Date(status.checkIn).toLocaleDateString('pt-BR')}
-                                    </div>
-                                    <div className="text-xs text-gray-600">
-                                      {new Date(status.checkIn).toLocaleTimeString('pt-BR', {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <span className="text-sm text-gray-500">Não realizado</span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${status.checkOut ? 'bg-red-500' : 'bg-gray-300'}`}></div>
-                                <span className="text-sm font-medium text-red-700">Check-out:</span>
-                              </div>
-                              <div className="text-right">
-                                {status.checkOut ? (
-                                  <>
-                                    <div className="text-sm text-gray-900">
-                                      {new Date(status.checkOut).toLocaleDateString('pt-BR')}
-                                    </div>
-                                    <div className="text-xs text-gray-600">
-                                      {new Date(status.checkOut).toLocaleTimeString('pt-BR', {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <span className="text-sm text-gray-500">Não realizado</span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="pt-2 border-t border-gray-100">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-gray-700">Status:</span>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.checkIn && status.checkOut
-                                  ? 'bg-gray-100 text-gray-800'
-                                  : status.checkIn
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-orange-100 text-orange-800'
-                                  }`}>
-                                  {status.checkIn && status.checkOut
-                                    ? '✓ Finalizado'
-                                    : status.checkIn
-                                      ? '✓ Presente'
-                                      : 'Pendente'}
-                                </span>
                               </div>
                             </div>
                           </div>
                         )
-                      })()}
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 🚀 PAGINATION - Preserved and working with virtualization */}
+                {finalData.total > 0 && (
+                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                    <div className="text-sm text-gray-700">
+                      Mostrando <span className="font-medium">{Math.min(finalData.data.length, finalData.total)}</span> de{' '}
+                      <span className="font-medium">{finalData.total}</span> resultados
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                        disabled={currentPage <= 1}
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-sm text-gray-600">
+                        Página {currentPage} de {Math.ceil(finalData.total / itemsPerPage)}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(Math.min(Math.ceil(finalData.total / itemsPerPage), currentPage + 1))}
+                        disabled={currentPage >= Math.ceil(finalData.total / itemsPerPage)}
+                      >
+                        Próxima
+                      </Button>
                     </div>
                   </div>
+                )}
+              </div>
+            </div>
 
-                  {/* Botões de ação */}
-                  <div className="flex gap-2 pt-2">
+            {/* MODAL DETALHES DO COLABORADOR */}
+            <Dialog open={modalAberto} onOpenChange={setModalAberto}>
+              <DialogContent className="max-w-md bg-white border-0 shadow-xl">
+                <DialogHeader className="pb-4">
+                  <DialogTitle className="flex items-center gap-3 text-lg font-bold text-gray-900">
+                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
+                      <User className="w-4 h-4 text-white" />
+                    </div>
+                    Detalhes do Participante
+                  </DialogTitle>
+                </DialogHeader>
+
+                {selectedParticipant && (
+                  <div className="space-y-4">
+                    {/* Informações principais - Layout compacto */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                          <span className="text-sm font-bold text-white">
+                            {getInitials(selectedParticipant.name)}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-gray-900">
+                            {selectedParticipant.name}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {selectedParticipant.role}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Informações essenciais */}
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="p-3 bg-white rounded-lg border border-gray-200">
+                          <p className="text-xs font-medium text-gray-500 uppercase">
+                            CPF
+                          </p>
+                          <p className="font-mono text-gray-900">
+                            {formatCPF(selectedParticipant.cpf?.trim() || '')}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border border-gray-200">
+                          <p className="text-xs font-medium text-gray-500 uppercase">
+                            Empresa
+                          </p>
+                          <p className="text-gray-900">
+                            {selectedParticipant.company}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border border-gray-200">
+                          <p className="text-xs font-medium text-gray-500 uppercase">
+                            Credencial
+                          </p>
+                          <p className="text-gray-900">
+                            {getCredencial(selectedParticipant)}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border border-gray-200">
+                          <p className="text-xs font-medium text-gray-500 uppercase">
+                            Código Pulseira
+                          </p>
+                          <p className="font-mono text-gray-900">
+                            {selectedParticipantWristband || 'Não informado'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Detalhes de Check-in/Check-out */}
+                      <div className="p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-xs font-medium text-gray-700 uppercase mb-3">
+                          Detalhes de Presença - {selectedDay ? (selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay) : 'Hoje'}
+                        </p>
+                        {(() => {
+                          const status = participantsAttendanceStatus.get(
+                            selectedParticipant.id,
+                          )
+                          if (!status) {
+                            return (
+                              <div className="text-center py-2">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  Não verificado
+                                </span>
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                  <span className="text-sm font-medium text-gray-700">Check-in:</span>
+                                </div>
+                                <div className="text-right">
+                                  {status.checkIn ? (
+                                    <>
+                                      <div className="text-sm text-gray-900">
+                                        {new Date(status.checkIn).toLocaleDateString('pt-BR')}
+                                      </div>
+                                      <div className="text-xs text-gray-600">
+                                        {new Date(status.checkIn).toLocaleTimeString('pt-BR', {
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <span className="text-sm text-gray-500">Não realizado</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-2 h-2 rounded-full ${status.checkOut ? 'bg-red-500' : 'bg-gray-300'}`}></div>
+                                  <span className="text-sm font-medium text-red-700">Check-out:</span>
+                                </div>
+                                <div className="text-right">
+                                  {status.checkOut ? (
+                                    <>
+                                      <div className="text-sm text-gray-900">
+                                        {new Date(status.checkOut).toLocaleDateString('pt-BR')}
+                                      </div>
+                                      <div className="text-xs text-gray-600">
+                                        {new Date(status.checkOut).toLocaleTimeString('pt-BR', {
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <span className="text-sm text-gray-500">Não realizado</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="pt-2 border-t border-gray-100">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-gray-700">Status:</span>
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.checkIn && status.checkOut
+                                    ? 'bg-gray-100 text-gray-800'
+                                    : status.checkIn
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-orange-100 text-orange-800'
+                                    }`}>
+                                    {status.checkIn && status.checkOut
+                                      ? '✓ Finalizado'
+                                      : status.checkIn
+                                        ? '✓ Presente'
+                                        : 'Pendente'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Botões de ação */}
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        onClick={() => {
+                          if (selectedParticipant) {
+                            const botaoAcao = getBotaoAcao(selectedParticipant)
+                            if (botaoAcao === 'checkin') {
+                              abrirCheckin(selectedParticipant)
+                            } else if (botaoAcao === 'checkout') {
+                              abrirCheckout(selectedParticipant)
+                            }
+                            setModalAberto(false)
+                          }
+                        }}
+                        className={`flex-1 text-white ${getBotaoAcao(selectedParticipant) === 'checkout'
+                          ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'
+                          : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+                          }`}
+                        disabled={!getBotaoAcao(selectedParticipant)}
+                      >
+                        {getBotaoAcao(selectedParticipant) === 'checkin'
+                          ? 'Check-in'
+                          : getBotaoAcao(selectedParticipant) === 'checkout'
+                            ? 'Check-out'
+                            : 'Sem ação'}
+                      </Button>
+                      <Button
+                        onClick={() => setModalAberto(false)}
+                        variant="outline"
+                        className="px-4"
+                      >
+                        Fechar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            {/* MODAL CHECK-IN */}
+            <Dialog open={popupCheckin} onOpenChange={setPopupCheckin}>
+              <DialogContent className="max-w-md bg-gradient-to-br from-white to-green-50 border-0 shadow-2xl">
+                <DialogHeader className="pb-6">
+                  <DialogTitle className="text-center text-xl font-bold text-gray-900 flex items-center justify-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
+                      <Check className="w-5 h-5 text-white" />
+                    </div>
+                    Check-in
+                  </DialogTitle>
+                  <DialogDescription className="text-center text-gray-600">
+                    Digite o código da pulseira para confirmar o check-in
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-6 text-gray-600">
+                  {participantAction && (
+                    <div className="text-center p-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg">
+                      <p className="font-bold text-gray-900 text-lg">
+                        {participantAction.name}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {formatCPF(participantAction.cpf?.trim() || '')}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {participantAction.role}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Tipo de Credencial: {getCredencial(participantAction)}
+                      </p>
+                      {selectedDateForAction &&
+                        selectedDateForAction !== 'all' && (
+                          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-sm font-semibold text-blue-800">
+                              Data selecionada:
+                            </p>
+                            <p className="text-lg font-bold text-blue-900">
+                              {selectedDateForAction}
+                            </p>
+                          </div>
+                        )}
+                    </div>
+                  )}
+
+                  <Input
+                    type="text"
+                    value={codigoPulseira}
+                    onChange={e => setCodigoPulseira(e.target.value)}
+                    placeholder="Código da pulseira (opcional)"
+                    className="text-center text-lg bg-white border-green-300 focus:border-green-500 focus:ring-green-500 shadow-sm text-gray-600"
+                    autoFocus
+                    disabled={loading}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        confirmarCheckin()
+                      }
+                    }}
+                  />
+
+                  <div className="flex gap-4">
                     <Button
                       onClick={() => {
-                        if (selectedParticipant) {
-                          const botaoAcao = getBotaoAcao(selectedParticipant)
-                          if (botaoAcao === 'checkin') {
-                            abrirCheckin(selectedParticipant)
-                          } else if (botaoAcao === 'checkout') {
-                            abrirCheckout(selectedParticipant)
-                          }
-                          setModalAberto(false)
-                        }
+                        setPopupCheckin(false)
+                        setParticipantAction(null)
+                        setCodigoPulseira('')
                       }}
-                      className={`flex-1 text-white ${getBotaoAcao(selectedParticipant) === 'checkout'
-                        ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'
-                        : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
-                        }`}
-                      disabled={!getBotaoAcao(selectedParticipant)}
+                      variant="outline"
+                      className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
+                      disabled={loading}
                     >
-                      {getBotaoAcao(selectedParticipant) === 'checkin'
-                        ? 'Check-in'
-                        : getBotaoAcao(selectedParticipant) === 'checkout'
-                          ? 'Check-out'
-                          : 'Sem ação'}
+                      Cancelar
                     </Button>
                     <Button
-                      onClick={() => setModalAberto(false)}
-                      variant="outline"
-                      className="px-4"
+                      onClick={confirmarCheckin}
+                      className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                      disabled={loading}
                     >
-                      Fechar
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Processando...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          Confirmar Check-in
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
-              )}
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
 
-          {/* MODAL CHECK-IN */}
-          <Dialog open={popupCheckin} onOpenChange={setPopupCheckin}>
-            <DialogContent className="max-w-md bg-gradient-to-br from-white to-green-50 border-0 shadow-2xl">
-              <DialogHeader className="pb-6">
-                <DialogTitle className="text-center text-xl font-bold text-gray-900 flex items-center justify-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
-                    <Check className="w-5 h-5 text-white" />
-                  </div>
-                  Check-in
-                </DialogTitle>
-                <DialogDescription className="text-center text-gray-600">
-                  Digite o código da pulseira para confirmar o check-in
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-6 text-gray-600">
-                {participantAction && (
-                  <div className="text-center p-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg">
-                    <p className="font-bold text-gray-900 text-lg">
-                      {participantAction.name}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {formatCPF(participantAction.cpf?.trim() || '')}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {participantAction.role}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Tipo de Credencial: {getCredencial(participantAction)}
-                    </p>
-                    {selectedDateForAction &&
-                      selectedDateForAction !== 'all' && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                          <p className="text-sm font-semibold text-blue-800">
-                            Data selecionada:
-                          </p>
-                          <p className="text-lg font-bold text-blue-900">
-                            {selectedDateForAction}
-                          </p>
-                        </div>
-                      )}
-                  </div>
-                )}
-
-                <Input
-                  type="text"
-                  value={codigoPulseira}
-                  onChange={e => setCodigoPulseira(e.target.value)}
-                  placeholder="Código da pulseira (opcional)"
-                  className="text-center text-lg bg-white border-green-300 focus:border-green-500 focus:ring-green-500 shadow-sm text-gray-600"
-                  autoFocus
-                  disabled={loading}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      confirmarCheckin()
-                    }
-                  }}
-                />
-
-                <div className="flex gap-4">
-                  <Button
-                    onClick={() => {
-                      setPopupCheckin(false)
-                      setParticipantAction(null)
-                      setCodigoPulseira('')
-                    }}
-                    variant="outline"
-                    className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
-                    disabled={loading}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    onClick={confirmarCheckin}
-                    className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processando...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4 mr-2" />
-                        Confirmar Check-in
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* MODAL CHECK-OUT */}
-          <Dialog open={popupCheckout} onOpenChange={setPopupCheckout}>
-            <DialogContent className="max-w-md bg-gradient-to-br from-white to-red-50 border-0 shadow-2xl">
-              <DialogHeader className="pb-6">
-                <DialogTitle className="text-center text-xl font-bold text-gray-900 flex items-center justify-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-white" />
-                  </div>
-                  Check-out
-                </DialogTitle>
-                <DialogDescription className="text-center text-gray-600">
-                  Confirme o check-out do colaborador
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-6">
-                {participantAction && (
-                  <div className="text-center p-6 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-lg">
-                    <p className="font-bold text-gray-900 text-lg">
-                      {participantAction.name}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {formatCPF(participantAction.cpf?.trim() || '')}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {participantAction.role}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Tipo de Credencial: {getCredencial(participantAction)}
-                    </p>
-                    {selectedDateForAction &&
-                      selectedDateForAction !== 'all' && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                          <p className="text-sm font-semibold text-blue-800">
-                            Data selecionada:
-                          </p>
-                          <p className="text-lg font-bold text-blue-900">
-                            {selectedDateForAction}
-                          </p>
-                        </div>
-                      )}
-                    <p className="text-xs text-red-600 mt-3 font-medium">
-                      Deseja realmente fazer o check-out?
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex gap-4">
-                  <Button
-                    onClick={() => {
-                      setPopupCheckout(false)
-                      setParticipantAction(null)
-                    }}
-                    variant="outline"
-                    className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
-                    disabled={loading}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    onClick={confirmarCheckout}
-                    className="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processando...
-                      </>
-                    ) : (
-                      <>
-                        <Clock className="w-4 h-4 mr-2" />
-                        Confirmar Check-out
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-
-
-          {/* Modal de Troca de Pulseira */}
-          <Dialog
-            open={popupTrocaPulseira}
-            onOpenChange={setPopupTrocaPulseira}
-          >
-            <DialogContent className="sm:max-w-md bg-white text-gray-900">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-3">
-                  <CreditCard className="w-5 h-5 text-blue-600" />
-                  {editingWristbandId ? 'Alterar Credencial e Pulseira' : 'Trocar Credencial'}
-                </DialogTitle>
-                <DialogDescription>
-                  {editingWristbandId ? 'Altere o tipo de credencial e/ou código da pulseira' : 'Busque e selecione um participante para trocar a credencial'}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                {!editingWristbandId ? (
-                  <>
-                    {/* Campo de busca */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        type="text"
-                        placeholder="🔍 Busca inteligente: nome, iniciais, CPF..."
-                        value={filtro.nome}
-                        onChange={e => handleBuscaOtimizada(e.target.value)}
-                        className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 shadow-sm transition-all duration-200"
-                      />
+            {/* MODAL CHECK-OUT */}
+            <Dialog open={popupCheckout} onOpenChange={setPopupCheckout}>
+              <DialogContent className="max-w-md bg-gradient-to-br from-white to-red-50 border-0 shadow-2xl">
+                <DialogHeader className="pb-6">
+                  <DialogTitle className="text-center text-xl font-bold text-gray-900 flex items-center justify-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-white" />
                     </div>
+                    Check-out
+                  </DialogTitle>
+                  <DialogDescription className="text-center text-gray-600">
+                    Confirme o check-out do colaborador
+                  </DialogDescription>
+                </DialogHeader>
 
-                    {/* Lista de participantes */}
-                    <div className="max-h-60 overflow-y-auto space-y-2">
-                      {paginatedData.data.map(participant => {
-                        const attendanceStatus = participantsAttendanceStatus.get(
-                          participant.id,
-                        )
-                        const hasCheckIn = attendanceStatus?.checkIn
-
-                        return (
-                          <div
-                            key={participant.id}
-                            onClick={async () => {
-                              if (!hasCheckIn) {
-                                toast.error(
-                                  'Participante precisa ter check-in para trocar pulseira',
-                                )
-                                return
-                              }
-
-                              // Buscar código atual da pulseira
-                              try {
-                                const movementCredential = await getMovementCredentialByParticipant(eventId, participant.id)
-                                const currentCode = movementCredential?.data?.code || ''
-                                setNewWristbandCode(currentCode)
-
-                                // Atualizar o mapa de pulseiras
-                                setParticipantWristbands(prev => {
-                                  const newMap = new Map(prev)
-                                  newMap.set(participant.id, currentCode)
-                                  return newMap
-                                })
-                              } catch (error) {
-                                setNewWristbandCode('')
-                              }
-
-                              // Inicializar com a credencial atual
-                              setNewCredentialType(participant.credentialId || "")
-                              setEditingWristbandId(participant.id)
-                            }}
-                            className={`p-3 border rounded-lg transition-colors ${hasCheckIn
-                              ? 'border-gray-200 hover:bg-gray-50 cursor-pointer'
-                              : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
-                              }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center ${hasCheckIn
-                                  ? 'bg-gradient-to-br from-blue-500 to-blue-600'
-                                  : 'bg-gray-300'
-                                  }`}
-                              >
-                                <span className="text-sm font-bold text-white">
-                                  {getInitials(participant.name)}
-                                </span>
-                              </div>
-                              <div className="flex-1">
-                                <p className="font-medium text-gray-900">
-                                  {participant.name}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  {participant.role} • {participant.company}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  {formatCPF(participant.cpf?.trim() || '')}
-                                </p>
-                              </div>
-                              <div className="flex flex-col items-end">
-                                {hasCheckIn ? (
-                                  <div className="flex items-center gap-1 text-green-600">
-                                    <Check className="w-3 h-3" />
-                                    <span className="text-xs">Check-in</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-1 text-gray-400">
-                                    <Clock className="w-3 h-3" />
-                                    <span className="text-xs">Sem check-in</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                <div className="space-y-6">
+                  {participantAction && (
+                    <div className="text-center p-6 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-lg">
+                      <p className="font-bold text-gray-900 text-lg">
+                        {participantAction.name}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {formatCPF(participantAction.cpf?.trim() || '')}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {participantAction.role}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Tipo de Credencial: {getCredencial(participantAction)}
+                      </p>
+                      {selectedDateForAction &&
+                        selectedDateForAction !== 'all' && (
+                          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-sm font-semibold text-blue-800">
+                              Data selecionada:
+                            </p>
+                            <p className="text-lg font-bold text-blue-900">
+                              {selectedDateForAction}
+                            </p>
                           </div>
-                        )
-                      })}
-                    </div>
-
-                    {paginatedData.data.length === 0 && (
-                      <div className="text-center py-8 text-gray-500">
-                        <User className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                        <p>Nenhum participante encontrado</p>
-                      </div>
-                    )}
-
-                    {/* Informação sobre check-in */}
-                    <div className="bg-blue-50 p-3 rounded-lg">
-                      <p className="text-sm text-blue-800">
-                        <strong>Nota:</strong> Apenas participantes com check-in podem ter suas pulseiras trocadas.
+                        )}
+                      <p className="text-xs text-red-600 mt-3 font-medium">
+                        Deseja realmente fazer o check-out?
                       </p>
                     </div>
-                  </>
-                ) : (
-                  /* Detalhes do participante selecionado para edição */
-                  (() => {
-                    const selectedParticipant = paginatedData.data.find(p => p.id === editingWristbandId)
-                    if (!selectedParticipant) return null
+                  )}
 
-                    const attendanceStatus = participantsAttendanceStatus.get(selectedParticipant.id)
-                    const currentWristband = participantWristbands.get(selectedParticipant.id) || 'Não informado'
+                  <div className="flex gap-4">
+                    <Button
+                      onClick={() => {
+                        setPopupCheckout(false)
+                        setParticipantAction(null)
+                      }}
+                      variant="outline"
+                      className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
+                      disabled={loading}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={confirmarCheckout}
+                      className="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Processando...
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="w-4 h-4 mr-2" />
+                          Confirmar Check-out
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
 
-                    return (
-                      <div className="space-y-4">
-                        {/* Detalhes do participante */}
-                        <div className="p-4 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
-                              <span className="text-white font-bold">
-                                {getInitials(selectedParticipant.name)}
-                              </span>
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-gray-900">{selectedParticipant.name}</h3>
-                              <p className="text-sm text-gray-600">{selectedParticipant.role}</p>
-                            </div>
-                          </div>
 
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <span className="text-gray-500">CPF:</span>
-                              <p className="font-mono text-gray-900">{formatCPF(selectedParticipant.cpf?.trim() || '')}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Empresa:</span>
-                              <p className="text-gray-900">{selectedParticipant.company}</p>
-                            </div>
-                            <div className="col-span-2">
-                              <span className="text-gray-500">Credencial atual:</span>
-                              <p className="text-gray-900 font-semibold">{getCredencial(selectedParticipant)}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Status:</span>
-                              <div className="flex items-center gap-1 text-green-600">
-                                <Check className="w-3 h-3" />
-                                <span className="text-xs">Check-in realizado</span>
+
+            {/* Modal de Troca de Pulseira */}
+            <Dialog
+              open={popupTrocaPulseira}
+              onOpenChange={setPopupTrocaPulseira}
+            >
+              <DialogContent className="sm:max-w-md bg-white text-gray-900">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-3">
+                    <CreditCard className="w-5 h-5 text-blue-600" />
+                    {editingWristbandId ? 'Alterar Credencial e Pulseira' : 'Trocar Credencial'}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {editingWristbandId ? 'Altere o tipo de credencial e/ou código da pulseira' : 'Busque e selecione um participante para trocar a credencial'}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {!editingWristbandId ? (
+                    <>
+                      {/* Campo de busca */}
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <Input
+                          type="text"
+                          placeholder="🔍 Busca inteligente: nome, iniciais, CPF..."
+                          value={filtro.nome}
+                          onChange={e => handleBuscaOtimizada(e.target.value)}
+                          className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 shadow-sm transition-all duration-200"
+                        />
+                      </div>
+
+                      {/* Lista de participantes */}
+                      <div className="max-h-60 overflow-y-auto space-y-2">
+                        {paginatedData.data.map(participant => {
+                          const attendanceStatus = participantsAttendanceStatus.get(
+                            participant.id,
+                          )
+                          const hasCheckIn = attendanceStatus?.checkIn
+
+                          return (
+                            <div
+                              key={participant.id}
+                              onClick={async () => {
+                                if (!hasCheckIn) {
+                                  toast.error(
+                                    'Participante precisa ter check-in para trocar pulseira',
+                                  )
+                                  return
+                                }
+
+                                // Buscar código atual da pulseira
+                                try {
+                                  const movementCredential = await getMovementCredentialByParticipant(eventId, participant.id)
+                                  const currentCode = movementCredential?.data?.code || ''
+                                  setNewWristbandCode(currentCode)
+
+                                  // Atualizar o mapa de pulseiras
+                                  setParticipantWristbands(prev => {
+                                    const newMap = new Map(prev)
+                                    newMap.set(participant.id, currentCode)
+                                    return newMap
+                                  })
+                                } catch (error) {
+                                  setNewWristbandCode('')
+                                }
+
+                                // Inicializar com a credencial atual
+                                setNewCredentialType(participant.credentialId || "")
+                                setEditingWristbandId(participant.id)
+                              }}
+                              className={`p-3 border rounded-lg transition-colors ${hasCheckIn
+                                ? 'border-gray-200 hover:bg-gray-50 cursor-pointer'
+                                : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+                                }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className={`w-8 h-8 rounded-full flex items-center justify-center ${hasCheckIn
+                                    ? 'bg-gradient-to-br from-blue-500 to-blue-600'
+                                    : 'bg-gray-300'
+                                    }`}
+                                >
+                                  <span className="text-sm font-bold text-white">
+                                    {getInitials(participant.name)}
+                                  </span>
+                                </div>
+                                <div className="flex-1">
+                                  <p className="font-medium text-gray-900">
+                                    {participant.name}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    {participant.role} • {participant.company}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {formatCPF(participant.cpf?.trim() || '')}
+                                  </p>
+                                </div>
+                                <div className="flex flex-col items-end">
+                                  {hasCheckIn ? (
+                                    <div className="flex items-center gap-1 text-green-600">
+                                      <Check className="w-3 h-3" />
+                                      <span className="text-xs">Check-in</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1 text-gray-400">
+                                      <Clock className="w-3 h-3" />
+                                      <span className="text-xs">Sem check-in</span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-
-                          <div className="mt-3 pt-3 border-t border-blue-200">
-                            <span className="text-gray-500 text-sm">Pulseira atual:</span>
-                            <p className="font-mono text-lg text-blue-900 font-semibold">{currentWristband}</p>
-                          </div>
-                        </div>
-
-                        {/* Campos para nova credencial e pulseira */}
-                        <div className="space-y-4">
-                          {/* Seleção de nova credencial */}
-                          <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">
-                              Tipo de credencial:
-                            </label>
-                            <Select value={newCredentialType} onValueChange={setNewCredentialType}>
-                              <SelectTrigger className="w-full bg-white border-blue-300 focus:border-blue-500 focus:ring-blue-500">
-                                <SelectValue placeholder="Selecione o tipo de credencial" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {credential.filter(c => c.isActive !== false).map(credencial => (
-                                  <SelectItem key={credencial.id} value={credencial.id}>
-                                    <div className="flex items-center gap-2">
-                                      <div
-                                        className="w-3 h-3 rounded-full"
-                                        style={{ backgroundColor: credencial.cor }}
-                                      />
-                                      {credencial.nome}
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            {newCredentialType !== selectedParticipant.credentialId && (
-                              <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-                                ⚠️ <strong>Atenção:</strong> O tipo de credencial será alterado de &quot;{getCredencial(selectedParticipant)}&quot; para &quot;{credential.find(c => c.id === newCredentialType)?.nome}&quot;
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Campo do código da pulseira */}
-                          <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">
-                              Código da pulseira:
-                            </label>
-                            <Input
-                              type="text"
-                              value={newWristbandCode}
-                              onChange={e => setNewWristbandCode(e.target.value)}
-                              placeholder="Digite o código da pulseira"
-                              className="text-center text-lg font-mono bg-white border-blue-300 focus:border-blue-500 focus:ring-blue-500"
-                              autoFocus
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  salvarNovaPulseiraInline(selectedParticipant.id)
-                                } else if (e.key === 'Escape') {
-                                  e.preventDefault()
-                                  cancelarEdicaoPulseira()
-                                }
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Botões de ação */}
-                        <div className="flex gap-3 pt-2">
-                          <Button
-                            onClick={() => salvarNovaPulseiraInline(selectedParticipant.id)}
-                            disabled={loading || !newWristbandCode.trim() || !newCredentialType}
-                            className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
-                          >
-                            {loading ? (
-                              <>
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Salvando...
-                              </>
-                            ) : (
-                              <>
-                                <Check className="w-4 h-4 mr-2" />
-                                {newCredentialType !== selectedParticipant.credentialId ? 'Salvar Credencial e Pulseira' : 'Salvar Pulseira'}
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={cancelarEdicaoPulseira}
-                            disabled={loading}
-                            className="px-6"
-                          >
-                            Voltar
-                          </Button>
-                        </div>
+                          )
+                        })}
                       </div>
-                    )
-                  })()
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
+
+                      {paginatedData.data.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                          <User className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                          <p>Nenhum participante encontrado</p>
+                        </div>
+                      )}
+
+                      {/* Informação sobre check-in */}
+                      <div className="bg-blue-50 p-3 rounded-lg">
+                        <p className="text-sm text-blue-800">
+                          <strong>Nota:</strong> Apenas participantes com check-in podem ter suas pulseiras trocadas.
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    /* Detalhes do participante selecionado para edição */
+                    (() => {
+                      const selectedParticipant = paginatedData.data.find(p => p.id === editingWristbandId)
+                      if (!selectedParticipant) return null
+
+                      const attendanceStatus = participantsAttendanceStatus.get(selectedParticipant.id)
+                      const currentWristband = participantWristbands.get(selectedParticipant.id) || 'Não informado'
+
+                      return (
+                        <div className="space-y-4">
+                          {/* Detalhes do participante */}
+                          <div className="p-4 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                                <span className="text-white font-bold">
+                                  {getInitials(selectedParticipant.name)}
+                                </span>
+                              </div>
+                              <div>
+                                <h3 className="font-semibold text-gray-900">{selectedParticipant.name}</h3>
+                                <p className="text-sm text-gray-600">{selectedParticipant.role}</p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <span className="text-gray-500">CPF:</span>
+                                <p className="font-mono text-gray-900">{formatCPF(selectedParticipant.cpf?.trim() || '')}</p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Empresa:</span>
+                                <p className="text-gray-900">{selectedParticipant.company}</p>
+                              </div>
+                              <div className="col-span-2">
+                                <span className="text-gray-500">Credencial atual:</span>
+                                <p className="text-gray-900 font-semibold">{getCredencial(selectedParticipant)}</p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Status:</span>
+                                <div className="flex items-center gap-1 text-green-600">
+                                  <Check className="w-3 h-3" />
+                                  <span className="text-xs">Check-in realizado</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 pt-3 border-t border-blue-200">
+                              <span className="text-gray-500 text-sm">Pulseira atual:</span>
+                              <p className="font-mono text-lg text-blue-900 font-semibold">{currentWristband}</p>
+                            </div>
+                          </div>
+
+                          {/* Campos para nova credencial e pulseira */}
+                          <div className="space-y-4">
+                            {/* Seleção de nova credencial */}
+                            <div className="space-y-2">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Tipo de credencial:
+                              </label>
+                              <Select value={newCredentialType} onValueChange={setNewCredentialType}>
+                                <SelectTrigger className="w-full bg-white border-blue-300 focus:border-blue-500 focus:ring-blue-500">
+                                  <SelectValue placeholder="Selecione o tipo de credencial" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {credential.filter(c => c.isActive !== false).map(credencial => (
+                                    <SelectItem key={credencial.id} value={credencial.id}>
+                                      <div className="flex items-center gap-2">
+                                        <div
+                                          className="w-3 h-3 rounded-full"
+                                          style={{ backgroundColor: credencial.cor }}
+                                        />
+                                        {credencial.nome}
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {newCredentialType !== selectedParticipant.credentialId && (
+                                <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                                  ⚠️ <strong>Atenção:</strong> O tipo de credencial será alterado de &quot;{getCredencial(selectedParticipant)}&quot; para &quot;{credential.find(c => c.id === newCredentialType)?.nome}&quot;
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Campo do código da pulseira */}
+                            <div className="space-y-2">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Código da pulseira:
+                              </label>
+                              <Input
+                                type="text"
+                                value={newWristbandCode}
+                                onChange={e => setNewWristbandCode(e.target.value)}
+                                placeholder="Digite o código da pulseira"
+                                className="text-center text-lg font-mono bg-white border-blue-300 focus:border-blue-500 focus:ring-blue-500"
+                                autoFocus
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    salvarNovaPulseiraInline(selectedParticipant.id)
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    cancelarEdicaoPulseira()
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Botões de ação */}
+                          <div className="flex gap-3 pt-2">
+                            <Button
+                              onClick={() => salvarNovaPulseiraInline(selectedParticipant.id)}
+                              disabled={loading || !newWristbandCode.trim() || !newCredentialType}
+                              className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+                            >
+                              {loading ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Salvando...
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-4 h-4 mr-2" />
+                                  {newCredentialType !== selectedParticipant.credentialId ? 'Salvar Credencial e Pulseira' : 'Salvar Pulseira'}
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={cancelarEdicaoPulseira}
+                              disabled={loading}
+                              className="px-6"
+                            >
+                              Voltar
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })()
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
 
 
+            <ModalAdicionarStaff
+              isOpen={popupNovoStaff}
+              eventId={eventId}
+              selectedDay={selectedDay}
+              onClose={() => setPopupNovoStaff(false)}
+              evento={evento}
+              onSuccess={async () => {
+                // Recarregar dados se necessário
+                await refetchParticipants();
+                await refetchAttendance();
+              }} />
+          </div>
         </>
       )}
-      <ModalAdicionarStaff 
-        isOpen={popupNovoStaff} 
-        eventId={eventId} 
-        selectedDay={selectedDay}
-        onClose={() => setPopupNovoStaff(false)}
-        evento={evento}
-        onSuccess={async () => {
-          // Recarregar dados se necessário
-          await refetchParticipants();
-          await refetchAttendance();
-        }} />
     </div>
   )
 }
