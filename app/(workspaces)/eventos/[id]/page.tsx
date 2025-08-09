@@ -22,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2, RotateCcw, MoreVertical } from 'lucide-react'
+import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2, RotateCcw, MoreVertical, TrendingUp } from 'lucide-react'
 import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
@@ -955,23 +955,22 @@ export default function EventoDetalhesPage() {
                                 variant="outline"
                                 size="sm"
                                 className="btn-brand-green"
-
                                 onClick={() => window.open(`/eventos/${params.id}/import-export`, '_blank')}
                             >
                                 <Download className="w-4 h-4 mr-2" />
                                 Importar/Exportar
                             </Button>
 
-
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="text-gray-600 border-gray-200 hover:bg-gray-50 text-gray-600 hover:border-gray-300 bg-white shadow-sm transition-all duration-200"
-                                disabled={isLoading}
+                                className="text-purple-600 border-purple-200 hover:bg-purple-50 hover:border-purple-300 bg-white shadow-sm transition-all duration-200"
+                                onClick={() => router.push(`/eventos/${params.id}/dashboard`)}
                             >
-                                <Filter className="w-4 h-4 mr-2" />
-                                Filtros
+                                <TrendingUp className="w-4 h-4 mr-2" />
+                                Análises
                             </Button>
+
 
                             {/* {duplicates.length > 0 && (
                                 <Button
