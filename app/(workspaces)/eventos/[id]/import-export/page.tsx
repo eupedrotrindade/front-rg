@@ -1,3 +1,4 @@
+/* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
@@ -185,35 +186,25 @@ export default function ImportExportPage() {
         return () => document.removeEventListener("keydown", handleKeyDown)
     }, [handleKeyDown])
 
-    // Validation functions
-    const isValidCPF = (cpf: string): boolean => {
-        if (!cpf || cpf.trim() === "") return true
-        const cleaned = cpf.replace(/\D/g, "")
-        if (cleaned.length >= 8 && cleaned.length <= 14) {
-            return true
-        }
-        if (cpf.includes(".") || cpf.includes("-")) {
-            const cleanedWithFormat = cpf.replace(/[.-]/g, "")
-            if (cleanedWithFormat.length >= 8 && cleanedWithFormat.length <= 14) {
-                return true
-            }
-        }
-        return false
+    // Document handling functions
+    const unformatDocument = (document: string): string => {
+        if (!document) return ""
+        return document.toString().replace(/[^\d]/g, "")
     }
 
-    const isValidRG = (rg: string): boolean => {
-        if (!rg || rg.trim() === "") return true
-        const cleaned = rg.replace(/\D/g, "")
-        if (cleaned.length >= 8 && cleaned.length <= 12) {
-            return true
+    const formatDocumentForStorage = (document: string): string => {
+        if (!document) return "00000000000"
+        
+        const cleaned = unformatDocument(document)
+        if (cleaned.length === 0) return "00000000000"
+        
+        if (cleaned.length === 11) {
+            // Se tem 11 dígitos, é CPF - manter como está
+            return cleaned
+        } else {
+            // Qualquer outro tamanho, pad para 11 dígitos para compatibilidade com o sistema
+            return cleaned.padStart(11, "0")
         }
-        if (rg.includes(".") || rg.includes("-")) {
-            const cleanedWithFormat = rg.replace(/[.-]/g, "")
-            if (cleanedWithFormat.length >= 8 && cleanedWithFormat.length <= 12) {
-                return true
-            }
-        }
-        return false
     }
 
     const validateParticipant = (data: any): { isValid: boolean; errors: string[]; warnings: string[] } => {
@@ -232,16 +223,26 @@ export default function ImportExportPage() {
             errors.push("Função é obrigatória e deve ter pelo menos 2 caracteres")
         }
 
-        const hasCPF = data.cpf && data.cpf.toString().trim() !== ""
-        const hasRG = data.rg && data.rg.toString().trim() !== ""
+        // Simplified document validation - accept any document in CPF or RG column
+        let hasDocument = false
 
-        // Allow participants without CPF/RG but show warning
-        if (!hasCPF && !hasRG) {
-            warnings.push("Participante sem CPF ou RG - será processado mesmo assim")
+        // Check CPF column - accept any value
+        if (data.cpf && data.cpf.toString().trim() !== "") {
+            hasDocument = true
+        }
+
+        // Check RG column - accept any value
+        if (data.rg && data.rg.toString().trim() !== "") {
+            hasDocument = true
+        }
+
+        // Allow participants without any document but show warning
+        if (!hasDocument) {
+            warnings.push("Participante sem documento - será processado mesmo assim")
         }
 
         return {
-            isValid: errors.length === 0, // Only block on actual errors, not missing CPF/RG
+            isValid: errors.length === 0, // Only block on actual errors, not missing documents
             errors,
             warnings,
         }
@@ -599,15 +600,15 @@ export default function ImportExportPage() {
 
                     // Process data in chunks to prevent UI freezing (100 rows per chunk)
                     console.log(`🚀 Processing ${jsonData.length} rows in chunks of 100 for better performance`)
-                    
+
                     for (let i = 0; i < jsonData.length; i += 100) {
                         const chunk = jsonData.slice(i, Math.min(i + 100, jsonData.length))
-                        
+
                         // Update processing progress for better UX
                         const processed = Math.min(i + 100, jsonData.length)
                         const percentage = Math.round((processed / jsonData.length) * 100)
                         setProcessingProgress({ current: processed, total: jsonData.length, percentage })
-                        
+
                         // Process chunk
                         chunk.forEach((row, chunkIndex) => {
                             const index = i + chunkIndex
@@ -635,113 +636,108 @@ export default function ImportExportPage() {
                                 })
                             }
 
-                        const cleanedCPF = row.cpf ? row.cpf.toString().replace(/\D/g, "") : ""
-                        const cleanedRG = row.rg ? row.rg.toString().replace(/\D/g, "") : ""
+                            const cleanedCPF = row.cpf ? row.cpf.toString().replace(/\D/g, "") : ""
+                            const cleanedRG = row.rg ? row.rg.toString().replace(/\D/g, "") : ""
 
-                        // Check for duplicates
-                        const isDuplicate = existingCPFs.has(cleanedCPF) || (cleanedRG && existingCPFs.has(cleanedRG))
+                            // Check for duplicates in existing participants
+                            const isDuplicateExisting = existingCPFs.has(cleanedCPF) || (cleanedRG && existingCPFs.has(cleanedRG))
 
-                        if (isDuplicate) {
-                            const existing = participants.find(
-                                (p) => p.cpf.replace(/\D/g, "") === cleanedCPF || (cleanedRG && p.cpf.replace(/\D/g, "") === cleanedRG),
-                            )
-                            if (existing) {
+                            if (isDuplicateExisting) {
+                                const existing = participants.find(
+                                    (p) => p.cpf.replace(/\D/g, "") === cleanedCPF || (cleanedRG && p.cpf.replace(/\D/g, "") === cleanedRG),
+                                )
+                                if (existing) {
+                                    result.duplicates.push({
+                                        item: row,
+                                        existing,
+                                        row: rowNumber,
+                                    })
+                                    result.duplicateRows++
+                                    return // Skip this duplicate
+                                }
+                            }
+
+                            // Check for duplicates within the file (only upload first occurrence)
+                            const hasDuplicateInFile =
+                                (cleanedCPF && processedCPFs.has(cleanedCPF)) || (cleanedRG && processedCPFs.has(cleanedRG))
+
+                            if (hasDuplicateInFile) {
                                 result.duplicates.push({
                                     item: row,
-                                    existing,
+                                    existing: {} as EventParticipant,
                                     row: rowNumber,
                                 })
                                 result.duplicateRows++
-                                return
+                                return // Skip this duplicate - first occurrence already processed
                             }
-                        }
 
-                        // Check for duplicates within the file
-                        const hasDuplicateInFile =
-                            (cleanedCPF && processedCPFs.has(cleanedCPF)) || (cleanedRG && processedCPFs.has(cleanedRG))
+                            if (cleanedCPF) processedCPFs.add(cleanedCPF)
+                            if (cleanedRG) processedCPFs.add(cleanedRG)
 
-                        if (hasDuplicateInFile) {
-                            result.duplicates.push({
-                                item: row,
-                                existing: {} as EventParticipant,
-                                row: rowNumber,
+                            // Process credential
+                            let credentialId: string | undefined = undefined
+                            if (row.credencial) {
+                                const credentialName = normalizeCredentialName(row.credencial)
+                                const existingCredential = findCredentialByName(credentialName)
+                                if (existingCredential) {
+                                    credentialId = existingCredential.id
+                                } else {
+                                    credentialCounts[credentialName] = (credentialCounts[credentialName] || 0) + 1
+                                }
+                            }
+
+                            // Process company
+                            if (row.empresa) {
+                                const companyName = normalizeCompanyName(row.empresa)
+                                const existingCompany = findCompanyByName(companyName)
+                                if (!existingCompany) {
+                                    companyCounts[companyName] = (companyCounts[companyName] || 0) + 1
+                                }
+                            }
+
+                            const participantData: EventParticipantSchema = {
+                                eventId: eventId,
+                                credentialId: credentialId,
+                                wristbandId: undefined,
+                                staffId: row.staffId || undefined,
+                                name: row.nome.toString().trim(),
+                                cpf: (() => {
+                                    // Priorizar coluna CPF, depois RG
+                                    if (row.cpf && row.cpf.toString().trim() !== "") {
+                                        return formatDocumentForStorage(row.cpf.toString())
+                                    }
+                                    if (row.rg && row.rg.toString().trim() !== "") {
+                                        return formatDocumentForStorage(row.rg.toString())
+                                    }
+                                    return "00000000000"
+                                })(),
+                                email: row.email?.toString().trim() || undefined,
+                                phone: row.phone?.toString().trim() || undefined,
+                                role: row.funcao.toString().trim(),
+                                company: row.empresa.toString().trim(),
+                                checkIn: row.checkIn || undefined,
+                                checkOut: row.checkOut || undefined,
+                                presenceConfirmed: row.presenceConfirmed || undefined,
+                                certificateIssued: row.certificateIssued || undefined,
+                                notes: row.notes?.toString().trim() || undefined,
+                                photo: row.photo || undefined,
+                                documentPhoto: row.documentPhoto || undefined,
+                                validatedBy: row.validatedBy || undefined,
+                                daysWork: selectedEventDates
+                                    ? selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR"))
+                                    : undefined,
+                            }
+
+                            result.data.push({
+                                cpf: participantData.cpf,
+                                nome: participantData.name,
+                                funcao: participantData.role || "",
+                                empresa: participantData.company || "",
+                                credencial: participantData.credentialId || "",
                             })
-                            result.duplicateRows++
-                            return
-                        }
-
-                        if (cleanedCPF) processedCPFs.add(cleanedCPF)
-                        if (cleanedRG) processedCPFs.add(cleanedRG)
-
-                        // Process credential
-                        let credentialId: string | undefined = undefined
-                        if (row.credencial) {
-                            const credentialName = normalizeCredentialName(row.credencial)
-                            const existingCredential = findCredentialByName(credentialName)
-                            if (existingCredential) {
-                                credentialId = existingCredential.id
-                            } else {
-                                credentialCounts[credentialName] = (credentialCounts[credentialName] || 0) + 1
-                            }
-                        }
-
-                        // Process company
-                        if (row.empresa) {
-                            const companyName = normalizeCompanyName(row.empresa)
-                            const existingCompany = findCompanyByName(companyName)
-                            if (!existingCompany) {
-                                companyCounts[companyName] = (companyCounts[companyName] || 0) + 1
-                            }
-                        }
-
-                        const participantData: EventParticipantSchema = {
-                            eventId: eventId,
-                            credentialId: credentialId,
-                            wristbandId: undefined,
-                            staffId: row.staffId || undefined,
-                            name: row.nome.toString().trim(),
-                            cpf: (() => {
-                                if (row.cpf) {
-                                    const cpfStr = row.cpf.toString().replace(/\D/g, "")
-                                    if (cpfStr.length > 0) {
-                                        return cpfStr.padStart(11, "0")
-                                    }
-                                }
-                                if (row.rg) {
-                                    const rgStr = row.rg.toString().replace(/\D/g, "")
-                                    if (rgStr.length > 0) {
-                                        return rgStr.padStart(11, "0")
-                                    }
-                                }
-                                return "00000000000"
-                            })(),
-                            email: row.email?.toString().trim() || undefined,
-                            phone: row.phone?.toString().trim() || undefined,
-                            role: row.funcao.toString().trim(),
-                            company: row.empresa.toString().trim(),
-                            checkIn: row.checkIn || undefined,
-                            checkOut: row.checkOut || undefined,
-                            presenceConfirmed: row.presenceConfirmed || undefined,
-                            certificateIssued: row.certificateIssued || undefined,
-                            notes: row.notes?.toString().trim() || undefined,
-                            photo: row.photo || undefined,
-                            documentPhoto: row.documentPhoto || undefined,
-                            validatedBy: row.validatedBy || undefined,
-                            daysWork: selectedEventDates
-                                ? selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR"))
-                                : undefined,
-                        }
-
-                        result.data.push({
-                            cpf: participantData.cpf,
-                            nome: participantData.name,
-                            funcao: participantData.role || "",
-                            empresa: participantData.company || "",
-                            credencial: participantData.credentialId || "",
+                            result.validRows++
                         })
-                        result.validRows++
-                        })
-                        
+
                         // Yield to browser after each chunk to prevent UI freezing
                         if (i + 100 < jsonData.length) {
                             await new Promise((resolve) => setTimeout(resolve, 0))
@@ -1395,8 +1391,8 @@ export default function ImportExportPage() {
                                         {isProcessing ? (
                                             <>
                                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                {processingProgress.percentage > 0 ? 
-                                                    `Processando... ${processingProgress.percentage}%` : 
+                                                {processingProgress.percentage > 0 ?
+                                                    `Processando... ${processingProgress.percentage}%` :
                                                     'Processando...'
                                                 }
                                             </>
@@ -1440,16 +1436,13 @@ export default function ImportExportPage() {
                                                 <strong>Colunas obrigatórias:</strong> nome, empresa, funcao
                                             </p>
                                             <p>
-                                                <strong>Identificação:</strong> cpf OU rg (pelo menos um é obrigatório)
+                                                <strong>Identificação:</strong> cpf OU rg (opcional, mas recomendado)
                                             </p>
                                             <p>
                                                 <strong>Coluna opcional:</strong> credencial
                                             </p>
                                             <p>
-                                                <strong>Formato CPF:</strong> aceita qualquer formato, será formatado automaticamente
-                                            </p>
-                                            <p>
-                                                <strong>Formato RG:</strong> aceita qualquer formato, será formatado automaticamente
+                                                <strong>Formato documento:</strong> aceita qualquer formato - se tiver 11 dígitos será tratado como CPF, outros tamanhos são aceitos normalmente
                                             </p>
                                             <p>
                                                 <strong>Formato credencial:</strong> será convertida para maiúsculo automaticamente
@@ -1458,7 +1451,7 @@ export default function ImportExportPage() {
                                                 <strong>Data do evento:</strong> será selecionada antes da importação
                                             </p>
                                             <p>
-                                                <strong>Limite:</strong> até 5000 participantes por importação
+                                                <strong>Limite:</strong> até 50000 participantes por importação
                                             </p>
                                         </div>
                                         <div className="mt-4">
@@ -1528,7 +1521,7 @@ export default function ImportExportPage() {
                                         </CardHeader>
                                         <CardContent>
                                             <div className="text-2xl font-bold text-orange-600">{processedData.warnings.length}</div>
-                                            <p className="text-sm text-gray-600">participantes sem CPF/RG</p>
+                                            <p className="text-sm text-gray-600">participantes sem documento</p>
                                         </CardContent>
                                     </Card>
                                 </div>
@@ -1659,7 +1652,7 @@ export default function ImportExportPage() {
                                             <Alert className="mb-4 border-orange-200 bg-orange-50">
                                                 <AlertTriangle className="h-4 w-4 text-orange-600" />
                                                 <AlertDescription className="text-orange-800">
-                                                    <strong>Avisos encontrados:</strong> {processedData.warnings.length} participante(s) sem CPF ou RG. 
+                                                    <strong>Avisos encontrados:</strong> {processedData.warnings.length} participante(s) sem CPF ou RG.
                                                     Estes participantes serão processados mesmo assim, mas é recomendado revisar os dados.
                                                 </AlertDescription>
                                             </Alert>
