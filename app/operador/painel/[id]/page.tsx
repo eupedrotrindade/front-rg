@@ -3419,7 +3419,7 @@ export default function Painel() {
                               }
 
                               // Inicializar com a credencial atual
-                              setNewCredentialType(participant.credentialId)
+                              setNewCredentialType(participant.credentialId || "")
                               setEditingWristbandId(participant.id)
                             }}
                             className={`p-3 border rounded-lg transition-colors ${hasCheckIn

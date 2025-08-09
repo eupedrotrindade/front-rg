@@ -76,7 +76,11 @@ export const useCheckIn = () => {
       return data;
     },
     onSuccess: (data, variables) => {
-      // Invalidar queries relacionadas
+      // Invalidar queries relacionadas - usar formatação compatível
+      const formattedDate = variables.date.includes("/") 
+        ? variables.date.split("/").reverse().join("-") 
+        : variables.date;
+
       queryClient.invalidateQueries({
         queryKey: ["event-attendance"],
       });
@@ -87,7 +91,12 @@ export const useCheckIn = () => {
         queryKey: [
           "event-attendance-by-event-date",
           data.eventId,
-          variables.date,
+          formattedDate,
+        ],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [
+          "event-attendance-by-event-date",
         ],
       });
       queryClient.invalidateQueries({
@@ -135,7 +144,11 @@ export const useCheckOut = () => {
       return data;
     },
     onSuccess: (data, variables) => {
-      // Invalidar queries relacionadas
+      // Invalidar queries relacionadas - usar formatação compatível
+      const formattedDate = variables.date.includes("/") 
+        ? variables.date.split("/").reverse().join("-") 
+        : variables.date;
+
       queryClient.invalidateQueries({
         queryKey: ["event-attendance"],
       });
@@ -146,7 +159,12 @@ export const useCheckOut = () => {
         queryKey: [
           "event-attendance-by-event-date",
           data.eventId,
-          variables.date,
+          formattedDate,
+        ],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [
+          "event-attendance-by-event-date",
         ],
       });
       queryClient.invalidateQueries({

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import { useParams } from 'next/navigation'
@@ -9,20 +10,25 @@ import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { useUpdateEventParticipant } from '@/features/eventos/api/mutation/use-update-event-participant'
 import { useCheckIn, useCheckOut } from '@/features/eventos/api/mutation/use-check-operations'
+import { useDeleteEventAttendance } from '@/features/eventos/api/mutation/use-delete-event-attendance'
 import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/use-event-attendance'
 import { changeCredentialCode } from '@/features/eventos/actions/movement-credentials'
+import { updateParticipantCredential } from '@/features/eventos/actions/update-participant-credential'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2 } from 'lucide-react'
+import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2, RotateCcw } from 'lucide-react'
 import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { EventParticipant } from '@/features/eventos/types'
-import EventParticipantCreateDialog from '@/features/eventos/components/event-participant-create-dialog'
+
 import EventParticipantEditDialog from '@/features/eventos/components/event-participant-edit-dialog'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import ModalAdicionarStaff from '@/components/operador/modalAdicionarStaff'
@@ -31,6 +37,7 @@ import { useCredentials } from '@/features/eventos/api/query'
 export default function EventoDetalhesPage() {
     const params = useParams()
     const router = useRouter()
+    const queryClient = useQueryClient()
     const { data: eventos } = useEventos()
     const {
         data: participantsData = [],
@@ -50,6 +57,7 @@ export default function EventoDetalhesPage() {
     const { mutate: updateParticipant, isPending: isUpdatingParticipant } = useUpdateEventParticipant()
     const checkInMutation = useCheckIn()
     const checkOutMutation = useCheckOut()
+    const deleteAttendanceMutation = useDeleteEventAttendance()
 
     const [deletingParticipant, setDeletingParticipant] = useState<EventParticipant | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
@@ -79,7 +87,18 @@ export default function EventoDetalhesPage() {
     const [selectedDateForAction, setSelectedDateForAction] = useState<string>('')
     const [popupCheckin, setPopupCheckin] = useState(false)
     const [popupCheckout, setPopupCheckout] = useState(false)
+    const [popupResetCheckin, setPopupResetCheckin] = useState(false)
     const [loading, setLoading] = useState(false)
+
+    // Estados para seleção múltipla e edição em massa
+    const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set())
+    const [showBulkEditModal, setShowBulkEditModal] = useState(false)
+    const [bulkEditData, setBulkEditData] = useState({
+        credentialId: 'no-change',
+        role: '',
+        company: 'no-change'
+    })
+    const [bulkEditLoading, setBulkEditLoading] = useState(false)
 
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
@@ -385,6 +404,12 @@ export default function EventoDetalhesPage() {
         setPopupCheckout(true);
     };
 
+    // Função para abrir popup de reset check-in
+    const abrirResetCheckin = (participant: EventParticipant) => {
+        setParticipantAction(participant);
+        setPopupResetCheckin(true);
+    };
+
     // Função para confirmar check-in
     const confirmarCheckin = async () => {
         if (!participantAction || !codigoPulseira.trim()) {
@@ -412,7 +437,7 @@ export default function EventoDetalhesPage() {
             const todayFormatted = `${day}-${month}-${year}`
 
             const dateToUse = selectedDateForAction
-                ? selectedDateForAction
+                ? formatDateForAPI(selectedDateForAction)
                 : todayFormatted;
 
             await checkInMutation.mutateAsync({
@@ -435,6 +460,12 @@ export default function EventoDetalhesPage() {
             }
 
             toast.success("Check-in realizado com sucesso!");
+            
+            // Forçar atualização dos dados de attendance
+            await queryClient.invalidateQueries({
+                queryKey: ["event-attendance-by-event-date", String(params.id), formatDateForAPI(selectedDay)]
+            });
+            
             setPopupCheckin(false);
             setParticipantAction(null);
             setCodigoPulseira("");
@@ -482,7 +513,7 @@ export default function EventoDetalhesPage() {
             const todayFormatted = `${day}-${month}-${year}`
 
             const dateToUse = selectedDateForAction
-                ? selectedDateForAction
+                ? formatDateForAPI(selectedDateForAction)
                 : todayFormatted;
 
             await checkOutMutation.mutateAsync({
@@ -494,6 +525,12 @@ export default function EventoDetalhesPage() {
             });
 
             toast.success("Check-out realizado com sucesso!");
+            
+            // Forçar atualização dos dados de attendance
+            await queryClient.invalidateQueries({
+                queryKey: ["event-attendance-by-event-date", String(params.id), formatDateForAPI(selectedDay)]
+            });
+            
             setPopupCheckout(false);
             setParticipantAction(null);
             setSelectedDateForAction("");
@@ -504,6 +541,114 @@ export default function EventoDetalhesPage() {
         }
         setLoading(false);
     };
+
+    // Funções para seleção múltipla
+    const toggleParticipantSelection = (participantId: string) => {
+        setSelectedParticipants(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(participantId)) {
+                newSet.delete(participantId)
+            } else {
+                newSet.add(participantId)
+            }
+            return newSet
+        })
+    }
+
+    const selectAllParticipants = () => {
+        if (selectedParticipants.size === filteredParticipants.length) {
+            setSelectedParticipants(new Set())
+        } else {
+            setSelectedParticipants(new Set(filteredParticipants.map(p => p.id)))
+        }
+    }
+
+    const clearSelection = () => {
+        setSelectedParticipants(new Set())
+    }
+
+    // Função para edição em massa
+    const handleBulkEdit = async () => {
+        if (selectedParticipants.size === 0) {
+            toast.error('Nenhum participante selecionado')
+            return
+        }
+
+        setBulkEditLoading(true)
+        let successCount = 0
+        let errorCount = 0
+
+        try {
+            for (const participantId of Array.from(selectedParticipants)) {
+                try {
+                    const updateData: any = {}
+
+                    if (bulkEditData.credentialId && bulkEditData.credentialId !== 'no-change') {
+                        await updateParticipantCredential(participantId, bulkEditData.credentialId)
+                        successCount++
+                    }
+
+                    if (bulkEditData.role) {
+                        updateData.role = bulkEditData.role
+                    }
+
+                    if (bulkEditData.company && bulkEditData.company !== 'no-change') {
+                        updateData.company = bulkEditData.company
+                    }
+
+                    if (Object.keys(updateData).length > 0) {
+                        await updateParticipant(
+                            { id: participantId, ...updateData },
+                            {
+                                onSuccess: () => successCount++,
+                                onError: () => errorCount++
+                            }
+                        )
+                    }
+
+                } catch (error) {
+                    console.error(`Erro ao atualizar participante ${participantId}:`, error)
+                    errorCount++
+                }
+            }
+
+            toast.success(`Atualização concluída: ${successCount} sucessos, ${errorCount} erros`)
+            setShowBulkEditModal(false)
+            setBulkEditData({ credentialId: 'no-change', role: '', company: 'no-change' })
+            clearSelection()
+
+        } catch (error) {
+            toast.error('Erro na edição em massa')
+        }
+
+        setBulkEditLoading(false)
+    }
+
+    // Função para resetar check-in - deleta todos os registros de attendance
+    const handleResetCheckin = async () => {
+        if (!participantAction) return
+
+        setLoading(true)
+        try {
+            await deleteAttendanceMutation.mutateAsync({
+                participantId: participantAction.id
+            })
+
+            toast.success("Check-in resetado com sucesso!");
+            
+            // Forçar atualização dos dados de attendance
+            await queryClient.invalidateQueries({
+                queryKey: ["event-attendance-by-event-date", String(params.id), formatDateForAPI(selectedDay)]
+            });
+            
+            setPopupResetCheckin(false)
+            setParticipantAction(null)
+        } catch (error) {
+            console.error('Erro ao resetar check-in:', error)
+            toast.error("Erro ao resetar check-in");
+        }
+        setLoading(false)
+    }
 
     const credentialsArray = Array.isArray(credentials) ? credentials : [];
 
@@ -539,12 +684,15 @@ export default function EventoDetalhesPage() {
         const hasCheckInToday = hasCheckIn(participant.id, selectedDay);
         const hasCheckOutToday = hasCheckOut(participant.id, selectedDay);
 
+
         if (!hasCheckInToday) {
             return "checkin";
         } else if (hasCheckInToday && !hasCheckOutToday) {
             return "checkout";
+        } else if (hasCheckInToday && hasCheckOutToday) {
+            return "reset"; // Permitir resetar quando já fez check-in e check-out
         } else {
-            return null; // Já fez check-in e check-out
+            return null;
         }
     }
 
@@ -776,11 +924,49 @@ export default function EventoDetalhesPage() {
                     </div>
                 </div>
 
+                {/* Barra de ações em massa */}
+                {selectedParticipants.size > 0 && (
+                    <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <span className="text-sm font-medium text-blue-900">
+                                    {selectedParticipants.size} participante(s) selecionado(s)
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={clearSelection}
+                                    className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                                >
+                                    <X className="w-4 h-4 mr-1" />
+                                    Limpar seleção
+                                </Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    size="sm"
+                                    onClick={() => setShowBulkEditModal(true)}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                    <UserCog className="w-4 h-4 mr-2" />
+                                    Editar em massa
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Table */}
                 <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
                     <Table className='uppercase'>
                         <TableHeader>
                             <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
+                                <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider w-12">
+                                    <Checkbox
+                                        checked={selectedParticipants.size === filteredParticipants.length && filteredParticipants.length > 0}
+                                        onCheckedChange={selectAllParticipants}
+                                    />
+                                </TableHead>
                                 <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                                     Participante
                                 </TableHead>
@@ -801,7 +987,7 @@ export default function EventoDetalhesPage() {
                         <TableBody className="bg-white divide-y divide-gray-100 text-gray-600">
                             {isLoading && (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="px-6 py-16 text-center text-gray-500">
+                                    <TableCell colSpan={6} className="px-6 py-16 text-center text-gray-500">
                                         <div className="flex flex-col items-center">
                                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                                                 <User className="w-8 h-8 text-gray-400" />
@@ -813,7 +999,7 @@ export default function EventoDetalhesPage() {
                             )}
                             {filteredParticipants.length === 0 && !isLoading && (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="px-6 py-16 text-center text-gray-500">
+                                    <TableCell colSpan={6} className="px-6 py-16 text-center text-gray-500">
                                         <div className="flex flex-col items-center">
                                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                                                 <User className="w-8 h-8 text-gray-400" />
@@ -836,6 +1022,13 @@ export default function EventoDetalhesPage() {
                                         key={index}
                                         className="hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200"
                                     >
+                                        <TableCell className="px-6 py-4 whitespace-nowrap w-12">
+                                            <Checkbox
+                                                checked={selectedParticipants.has(participant.id)}
+                                                onCheckedChange={() => toggleParticipantSelection(participant.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                        </TableCell>
                                         <TableCell className="px-6 py-4 whitespace-nowrap text-gray-600">
                                             <div className="flex items-center">
 
@@ -907,14 +1100,36 @@ export default function EventoDetalhesPage() {
                                                     </Button>
                                                 )}
                                                 {botaoTipo === "checkout" && (
+                                                    <>
+                                                        <Button
+                                                            size="sm"
+                                                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                                            disabled={loading}
+                                                            onClick={() => abrirCheckout(participant)}
+                                                        >
+                                                            <Clock className="w-4 h-4 mr-1" />
+                                                            Check-out
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                                            disabled={loading}
+                                                            onClick={() => abrirResetCheckin(participant)}
+                                                        >
+                                                            <RotateCcw className="w-4 h-4 mr-1" />
+                                                            Reset
+                                                        </Button>
+                                                    </>
+                                                )}
+                                                {botaoTipo === "reset" && (
                                                     <Button
                                                         size="sm"
-                                                        className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                                        className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
                                                         disabled={loading}
-                                                        onClick={() => abrirCheckout(participant)}
+                                                        onClick={() => abrirResetCheckin(participant)}
                                                     >
-                                                        <Clock className="w-4 h-4 mr-1" />
-                                                        Check-out
+                                                        <RotateCcw className="w-4 h-4 mr-1" />
+                                                        Reset
                                                     </Button>
                                                 )}
                                                 <EventParticipantEditDialog participant={participant} />
@@ -1177,6 +1392,61 @@ export default function EventoDetalhesPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
+            {/* Dialog de Reset Check-in */}
+            <AlertDialog open={popupResetCheckin} onOpenChange={setPopupResetCheckin}>
+                <AlertDialogContent className="bg-white text-black max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <RotateCcw className="h-5 w-5 text-yellow-600" />
+                            Resetar Check-in
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Esta ação irá remover o registro de check-in do participante.
+                            Você tem certeza que deseja continuar?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        {participantAction && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2">
+                                    <User className="h-4 w-4 text-yellow-600" />
+                                    <span className="text-sm font-medium text-yellow-800">
+                                        {participantAction.name}
+                                    </span>
+                                </div>
+                                <div className="text-xs text-yellow-700 mt-1">
+                                    CPF: {participantAction.cpf}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                                <X className="h-4 w-4 text-red-600" />
+                                <span className="text-sm font-medium text-red-800">Atenção</span>
+                            </div>
+                            <div className="text-xs text-red-700">
+                                • O registro de check-in será removido permanentemente<br />
+                                • O participante ficará como &quot;não presente&quot; no dia selecionado<br />
+                                • Esta ação ficará registrada no histórico
+                            </div>
+                        </div>
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleResetCheckin}
+                            disabled={loading}
+                            className="bg-yellow-600 hover:bg-yellow-700"
+                        >
+                            {loading ? "Processando..." : "Resetar Check-in"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             {/* Modal de Adicionar Staff */}
             <ModalAdicionarStaff
                 isOpen={showAdicionarStaffModal}
@@ -1188,6 +1458,128 @@ export default function EventoDetalhesPage() {
                     console.log("Staff adicionado com sucesso!");
                 }}
             />
+
+            {/* Modal de Edição em Massa */}
+            <AlertDialog open={showBulkEditModal} onOpenChange={setShowBulkEditModal}>
+                <AlertDialogContent className="bg-white text-black max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <UserCog className="h-5 w-5 text-blue-600" />
+                            Editar em Massa
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Edite {selectedParticipants.size} participante(s) selecionado(s).
+                            Apenas os campos preenchidos serão atualizados.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        {/* Seleção de Credencial */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Tipo de Credencial
+                            </label>
+                            <Select
+                                value={bulkEditData.credentialId}
+                                onValueChange={(value) => setBulkEditData(prev => ({ ...prev, credentialId: value }))}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Selecione uma credencial (opcional)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="no-change">Não alterar</SelectItem>
+                                    {credentialsArray.filter(c => c.isActive !== false).map((credential) => (
+                                        <SelectItem key={credential.id} value={credential.id}>
+                                            <div className="flex items-center gap-2">
+                                                <div
+                                                    className="w-3 h-3 rounded-full"
+                                                    style={{ backgroundColor: credential.cor }}
+                                                />
+                                                {credential.nome}
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Campo Função */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Função
+                            </label>
+                            <Input
+                                type="text"
+                                value={bulkEditData.role}
+                                onChange={(e) => setBulkEditData(prev => ({ ...prev, role: e.target.value }))}
+                                placeholder="Nova função (opcional)"
+                                className="w-full"
+                            />
+                        </div>
+
+                        {/* Campo Empresa */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Empresa
+                            </label>
+                            <Select
+                                value={bulkEditData.company}
+                                onValueChange={(value) => setBulkEditData(prev => ({ ...prev, company: value }))}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Selecione uma empresa (opcional)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="no-change">Não alterar</SelectItem>
+                                    {empresas?.map((empresa) => (
+                                        <SelectItem key={empresa.id} value={empresa.nome}>
+                                            {empresa.nome}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Aviso */}
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                                <UserCog className="h-4 w-4 text-yellow-600" />
+                                <span className="text-sm font-medium text-yellow-800">Atenção</span>
+                            </div>
+                            <div className="text-xs text-yellow-700">
+                                Esta ação irá alterar os dados de {selectedParticipants.size} participante(s).
+                                Apenas os campos preenchidos serão atualizados.
+                            </div>
+                        </div>
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => {
+                            setBulkEditData({ credentialId: 'no-change', role: '', company: 'no-change' })
+                        }}>
+                            Cancelar
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleBulkEdit}
+                            disabled={bulkEditLoading || (
+                                (!bulkEditData.credentialId || bulkEditData.credentialId === 'no-change') &&
+                                !bulkEditData.role &&
+                                (!bulkEditData.company || bulkEditData.company === 'no-change')
+                            )}
+                            className="bg-blue-600 hover:bg-blue-700"
+                        >
+                            {bulkEditLoading ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Processando...
+                                </>
+                            ) : (
+                                'Atualizar Participantes'
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </EventLayout>
     )
 }
