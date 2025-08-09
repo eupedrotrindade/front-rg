@@ -397,7 +397,7 @@ export default function EventDashboardPage() {
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <TrendingUp className="w-5 h-5 text-blue-600" />
-                                    Resumo por Credenciais - {selectedDay}
+                                    Todas as Credenciais - Progresso em {selectedDay}
                                 </h2>
                                 {/* <Button
                                     variant="outline"
@@ -421,7 +421,7 @@ export default function EventDashboardPage() {
                                 </Card>
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {Object.entries(credentialStats).slice(0, 6).map(([credentialId, stats]) => (
+                                    {Object.entries(credentialStats).map(([credentialId, stats]) => (
                                         <Card key={credentialId} className="border-l-4" style={{ borderLeftColor: stats.color }}>
                                             <CardContent className="p-4">
                                                 <div className="flex items-center justify-between mb-2">
@@ -466,7 +466,7 @@ export default function EventDashboardPage() {
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <Building className="w-5 h-5 text-green-600" />
-                                    Resumo por Empresas - {selectedDay}
+                                    Todas as Empresas - Progresso em {selectedDay}
                                 </h2>
                             </div>
 
@@ -483,7 +483,6 @@ export default function EventDashboardPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {Object.entries(companySummary)
                                         .sort(([, a], [, b]) => b.total - a.total)
-                                        .slice(0, 6)
                                         .map(([companyName, stats]) => {
                                             // Gerar cor baseada no nome da empresa
                                             const getCompanyColor = (name: string) => {
