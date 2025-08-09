@@ -490,22 +490,79 @@ export default function OperadoresPage() {
     }
 
     const baixarModeloExcel = () => {
-        const ws = XLSX.utils.json_to_sheet([
-            { nome: "", cpf: "", senha: "", id_events: eventId }
-        ])
+        const dadosModelo = [
+            {
+                nome: "João Silva",
+                cpf: "123.456.789-01",
+                senha: "123456"
+            },
+            {
+                nome: "Maria Santos",
+                cpf: "987.654.321-09",
+                senha: "senha123"
+            },
+            {
+                nome: "",
+                cpf: "",
+                senha: ""
+            }
+        ]
+
+        const ws = XLSX.utils.json_to_sheet(dadosModelo)
+
+        // Adicionar cabeçalhos personalizados
+        const headers = [
+            'Nome Completo do Operador',
+            'CPF (formato: 000.000.000-00)',
+            'Senha de Acesso'
+        ]
+
+        XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A1' })
+
+        // Ajustar largura das colunas
+        ws['!cols'] = [
+            { width: 25 },
+            { width: 20 },
+            { width: 15 }
+        ]
+
         const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, "Modelo")
+        XLSX.utils.book_append_sheet(wb, ws, "Modelo-Operadores")
         XLSX.writeFile(wb, `modelo-operadores-${nomeEvento}-${new Date().toISOString().split('T')[0]}.xlsx`)
+
+        toast.success("Modelo Excel baixado com sucesso!")
     }
 
     const importarDoExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        console.log("🔍 Iniciando importação do Excel...")
         const file = e.target.files?.[0]
-        if (!file) return
+
+        if (!file) {
+            console.log("❌ Nenhum arquivo selecionado")
+            return
+        }
+
+        console.log("📁 Arquivo selecionado:", file.name, "Tipo:", file.type)
+
+        // Verificar se é um arquivo Excel válido
+        const validTypes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel',
+            'text/csv'
+        ]
+
+        if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+            toast.error("Formato de arquivo inválido. Use arquivos Excel (.xlsx, .xls) ou CSV.")
+            return
+        }
 
         // Armazenar o arquivo para processamento posterior
         setFileToImport(file)
+        console.log("✅ Arquivo armazenado, abrindo diálogo...")
+
         // Abrir dialog de Retirada que agora inclui seleção de datas
         setAssignDialogOpen(true)
+        console.log("✅ Diálogo deveria estar aberto agora")
     }
 
     const handleConfirmImport = async () => {
@@ -569,41 +626,95 @@ export default function OperadoresPage() {
 
     const confirmarImportacao = async () => {
         setLoading(true)
+        let operadoresCriados = 0
+        let operadoresAtribuidos = 0
+        const falhados: { item: Operator; motivo: string }[] = []
+
         try {
             for (const operador of registrosUnicos) {
                 try {
-                    await apiClient.post("/operadores", {
-                        nome: operador.nome,
-                        cpf: operador.cpf,
-                        senha: operador.senha,
-                        id_events: operador.id_events
-                    })
-                } catch (error: any) {
-                    // Se for erro de CPF duplicado, adicionar à lista de falhados
-                    if (error?.response?.data?.error?.includes("Já existe um operador cadastrado com o CPF")) {
-                        const falhados = resumoImportacao.falhados || []
-                        falhados.push({
-                            item: operador,
-                            motivo: "CPF já cadastrado no sistema"
-                        })
-                        setResumoImportacao(prev => ({ ...prev, falhados }))
-                    } else {
-                        throw error // Re-throw outros erros
+                    // Primeiro, verificar se o operador já existe pelo CPF
+                    let operadorExistente: Operator | null = null
+                    try {
+                        const response = await apiClient.get(`/operadores/cpf/${operador.cpf.replace(/\D/g, '')}`)
+                        operadorExistente = response.data
+                    } catch (error: any) {
+                        // Se der 404, o operador não existe - isso é normal
+                        if (error?.response?.status !== 404) {
+                            throw error // Re-throw outros erros
+                        }
                     }
+
+                    if (operadorExistente) {
+                        // Operador já existe - apenas atribuir ao evento
+                        console.log(`🔍 Operador ${operador.nome} já existe (ID: ${operadorExistente.id}). Atribuindo ao evento...`)
+
+                        // Combinar eventos existentes com novos eventos
+                        const eventosAtuais = operadorExistente.id_events ? operadorExistente.id_events.split(',') : []
+                        const novosEventos = operador.id_events.split(',')
+                        const eventosUnicos = [...new Set([...eventosAtuais, ...novosEventos])]
+
+                        // Atualizar o operador existente com os novos eventos
+                        await apiClient.put(`/operadores/${operadorExistente.id}`, {
+                            id_events: eventosUnicos.join(',')
+                        })
+
+                        operadoresAtribuidos++
+                        console.log(`✅ Operador ${operador.nome} atribuído ao evento com sucesso`)
+                    } else {
+                        // Operador não existe - criar novo
+                        console.log(`➕ Criando novo operador: ${operador.nome}`)
+
+                        await apiClient.post("/operadores", {
+                            nome: operador.nome,
+                            cpf: operador.cpf,
+                            senha: operador.senha,
+                            id_events: operador.id_events
+                        })
+
+                        operadoresCriados++
+                        console.log(`✅ Novo operador ${operador.nome} criado com sucesso`)
+                    }
+                } catch (error: any) {
+                    console.error(`❌ Erro ao processar operador ${operador.nome}:`, error)
+                    falhados.push({
+                        item: operador,
+                        motivo: error?.response?.data?.error || "Erro desconhecido ao processar operador"
+                    })
                 }
             }
 
-            const importadosComSucesso = registrosUnicos.length - (resumoImportacao.falhados?.length || 0)
-            if (importadosComSucesso > 0) {
-                toast.success(`${importadosComSucesso} operadores importados com sucesso!`)
+            // Atualizar resumo com falhas
+            setResumoImportacao(prev => ({ ...prev, falhados }))
+
+            // Exibir resumo do sucesso
+            const totalSucesso = operadoresCriados + operadoresAtribuidos
+            if (totalSucesso > 0) {
+                let mensagem = ""
+                if (operadoresCriados > 0 && operadoresAtribuidos > 0) {
+                    mensagem = `${operadoresCriados} operadores criados e ${operadoresAtribuidos} operadores atribuídos ao evento!`
+                } else if (operadoresCriados > 0) {
+                    mensagem = `${operadoresCriados} novos operadores criados com sucesso!`
+                } else if (operadoresAtribuidos > 0) {
+                    mensagem = `${operadoresAtribuidos} operadores existentes atribuídos ao evento!`
+                }
+                toast.success(mensagem)
             }
 
-            if (resumoImportacao.falhados && resumoImportacao.falhados.length > 0) {
-                toast.error(`${resumoImportacao.falhados.length} operadores falharam na importação`)
+            if (falhados.length > 0) {
+                toast.error(`${falhados.length} operadores falharam na importação`)
             }
 
             // Forçar atualização dos dados após importação
             await forceRefreshData()
+
+            // Fechar diálogo de resumo após alguns segundos se não houver falhas
+            if (falhados.length === 0) {
+                setTimeout(() => {
+                    setResumoDialogOpen(false)
+                    setSelectedEventDates([])
+                }, 2000)
+            }
         } catch (error: any) {
             toast.error("Erro ao importar operadores")
         } finally {
@@ -1656,7 +1767,10 @@ export default function OperadoresPage() {
                 <Dialog open={resumoDialogOpen} onOpenChange={setResumoDialogOpen}>
                     <DialogContent className="max-w-2xl">
                         <DialogHeader>
-                            <DialogTitle>Resumo da Importação</DialogTitle>
+                            <DialogTitle>Resumo da Importação de Operadores</DialogTitle>
+                            <DialogDescription>
+                                O sistema verificará se cada operador já existe por CPF. Se existir, será apenas atribuído ao evento. Se não existir, será criado um novo operador.
+                            </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
