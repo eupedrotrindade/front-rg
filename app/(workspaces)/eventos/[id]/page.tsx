@@ -100,6 +100,10 @@ export default function EventoDetalhesPage() {
     })
     const [bulkEditLoading, setBulkEditLoading] = useState(false)
 
+    // Estados para remoção de duplicados
+    const [showDuplicatesModal, setShowDuplicatesModal] = useState(false)
+    const [duplicatesLoading, setDuplicatesLoading] = useState(false)
+
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
         // Se já está no formato dd-mm-yyyy, retorna como está
@@ -313,6 +317,76 @@ export default function EventoDetalhesPage() {
     const checkedInParticipants = participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length
     const checkedOutParticipants = participantesDoDia.filter(p => hasCheckOut(p.id, selectedDay)).length
     const activeParticipants = checkedInParticipants - checkedOutParticipants
+
+    const credentialsArray = Array.isArray(credentials) ? credentials : [];
+
+    // Calcular estatísticas por credencial
+    const getCredentialStats = useCallback(() => {
+        const stats: Record<string, { total: number; checkedIn: number; credentialName: string; color: string }> = {}
+        
+        credentialsArray.forEach(credential => {
+            const participantsWithCredential = participantesDoDia.filter(p => p.credentialId === credential.id)
+            const checkedInWithCredential = participantsWithCredential.filter(p => hasCheckIn(p.id, selectedDay))
+            
+            stats[credential.id] = {
+                total: participantsWithCredential.length,
+                checkedIn: checkedInWithCredential.length,
+                credentialName: credential.nome,
+                color: credential.cor
+            }
+        })
+        
+        // Adicionar participantes sem credencial
+        const participantsWithoutCredential = participantesDoDia.filter(p => !p.credentialId)
+        const checkedInWithoutCredential = participantsWithoutCredential.filter(p => hasCheckIn(p.id, selectedDay))
+        
+        if (participantsWithoutCredential.length > 0) {
+            stats['no-credential'] = {
+                total: participantsWithoutCredential.length,
+                checkedIn: checkedInWithoutCredential.length,
+                credentialName: 'SEM CREDENCIAL',
+                color: '#6B7280'
+            }
+        }
+        
+        return stats
+    }, [participantesDoDia, credentialsArray, hasCheckIn, selectedDay])
+
+    // Função para detectar participantes duplicados
+    const findDuplicates = useCallback(() => {
+        const duplicates: Array<{
+            cpf: string;
+            participants: EventParticipant[];
+            reason: string;
+        }> = []
+
+        // Agrupar por CPF
+        const participantsByCpf = participantsArray.reduce((acc, participant) => {
+            if (participant.cpf) {
+                const cpf = participant.cpf.replace(/\D/g, '') // Remove formatação
+                if (!acc[cpf]) {
+                    acc[cpf] = []
+                }
+                acc[cpf].push(participant)
+            }
+            return acc
+        }, {} as Record<string, EventParticipant[]>)
+
+        // Encontrar duplicados por CPF
+        Object.entries(participantsByCpf).forEach(([cpf, participants]) => {
+            if (participants.length > 1) {
+                duplicates.push({
+                    cpf,
+                    participants,
+                    reason: 'CPF duplicado'
+                })
+            }
+        })
+
+        return duplicates
+    }, [participantsArray])
+
+    const duplicates = findDuplicates()
 
     // Filtrar participantes
     const filteredParticipants = useMemo(() => {
@@ -624,6 +698,66 @@ export default function EventoDetalhesPage() {
         setBulkEditLoading(false)
     }
 
+    // Função para remover duplicados
+    const handleRemoveDuplicates = async () => {
+        setDuplicatesLoading(true)
+        let removedCount = 0
+        let errorCount = 0
+
+        try {
+            for (const duplicate of duplicates) {
+                // Para cada grupo de duplicados, manter apenas o primeiro e remover os demais
+                const participantsToRemove = duplicate.participants.slice(1) // Remove o primeiro, mantém os outros
+                
+                for (const participant of participantsToRemove) {
+                    try {
+                        await new Promise((resolve, reject) => {
+                            deleteParticipant(
+                                {
+                                    id: participant.id,
+                                    performedBy: "sistema-remocao-duplicados"
+                                },
+                                {
+                                    onSuccess: () => {
+                                        removedCount++
+                                        resolve(true)
+                                    },
+                                    onError: (error) => {
+                                        console.error(`Erro ao remover duplicado ${participant.id}:`, error)
+                                        errorCount++
+                                        reject(error)
+                                    }
+                                }
+                            )
+                        })
+                        
+                        // Delay pequeno entre remoções para evitar sobrecarga
+                        await new Promise(resolve => setTimeout(resolve, 200))
+                        
+                    } catch (error) {
+                        console.error(`Erro ao processar duplicado ${participant.id}:`, error)
+                        errorCount++
+                    }
+                }
+            }
+
+            if (removedCount > 0) {
+                toast.success(`${removedCount} participantes duplicados removidos com sucesso!`)
+            }
+            if (errorCount > 0) {
+                toast.error(`${errorCount} erros durante a remoção`)
+            }
+
+            setShowDuplicatesModal(false)
+
+        } catch (error) {
+            console.error('Erro geral na remoção de duplicados:', error)
+            toast.error('Erro ao remover duplicados')
+        }
+
+        setDuplicatesLoading(false)
+    }
+
     // Função para resetar check-in - deleta todos os registros de attendance
     const handleResetCheckin = async () => {
         if (!participantAction) return
@@ -649,8 +783,6 @@ export default function EventoDetalhesPage() {
         }
         setLoading(false)
     }
-
-    const credentialsArray = Array.isArray(credentials) ? credentials : [];
 
     const getCredencial = (participant: EventParticipant): string => {
         const credential = credentialsArray.find((c: { id: string }) => c.id === participant.credentialId);
@@ -839,6 +971,19 @@ export default function EventoDetalhesPage() {
                                 <Filter className="w-4 h-4 mr-2" />
                                 Filtros
                             </Button>
+
+                            {duplicates.length > 0 && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 bg-white shadow-sm transition-all duration-200"
+                                    onClick={() => setShowDuplicatesModal(true)}
+                                    disabled={isLoading}
+                                >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Remover Duplicados ({duplicates.length})
+                                </Button>
+                            )}
                         </div>
 
                         <Button
@@ -866,6 +1011,53 @@ export default function EventoDetalhesPage() {
                         />
                     </div>
                 </div>
+
+                {/* Estatísticas por Credencial */}
+                {selectedDay && (
+                    <div className="mb-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {Object.entries(getCredentialStats()).map(([credentialId, stats]) => (
+                                <Card key={credentialId} className="bg-white shadow-lg border-l-4" style={{ borderLeftColor: stats.color }}>
+                                    <CardContent className="p-4">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div 
+                                                    className="w-3 h-3 rounded-full" 
+                                                    style={{ backgroundColor: stats.color }}
+                                                />
+                                                <span className="text-sm font-medium text-gray-900 uppercase">
+                                                    {stats.credentialName}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="text-2xl font-bold text-gray-900">
+                                                {stats.checkedIn}/{stats.total}
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-xs text-gray-500">Check-ins</div>
+                                                <div className="text-xs text-gray-600">
+                                                    {stats.total > 0 ? Math.round((stats.checkedIn / stats.total) * 100) : 0}%
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-2">
+                                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                                <div
+                                                    className="h-2 rounded-full transition-all duration-300"
+                                                    style={{
+                                                        backgroundColor: stats.color,
+                                                        width: stats.total > 0 ? `${(stats.checkedIn / stats.total) * 100}%` : '0%'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Tabs dos dias do evento com carrossel */}
                 <div className="mb-8">
@@ -1575,6 +1767,101 @@ export default function EventoDetalhesPage() {
                                 </>
                             ) : (
                                 'Atualizar Participantes'
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Modal de Remoção de Duplicados */}
+            <AlertDialog open={showDuplicatesModal} onOpenChange={setShowDuplicatesModal}>
+                <AlertDialogContent className="bg-white text-black max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <Trash2 className="h-5 w-5 text-red-600" />
+                            Remover Participantes Duplicados
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Foram encontrados {duplicates.length} grupos de participantes duplicados. 
+                            O primeiro de cada grupo será mantido, os demais serão removidos.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        {duplicates.map((duplicate, index) => (
+                            <div key={index} className="border border-red-200 rounded-lg p-4 bg-red-50">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Users className="h-4 w-4 text-red-600" />
+                                    <span className="text-sm font-medium text-red-800">
+                                        CPF: {duplicate.cpf} ({duplicate.reason})
+                                    </span>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {duplicate.participants.map((participant, participantIndex) => (
+                                        <div 
+                                            key={participant.id} 
+                                            className={`p-3 rounded border ${
+                                                participantIndex === 0 
+                                                    ? 'bg-green-50 border-green-200' 
+                                                    : 'bg-red-100 border-red-300'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-sm font-medium">
+                                                    {participant.name}
+                                                </span>
+                                                <span className={`text-xs px-2 py-1 rounded ${
+                                                    participantIndex === 0 
+                                                        ? 'bg-green-200 text-green-800' 
+                                                        : 'bg-red-200 text-red-800'
+                                                }`}>
+                                                    {participantIndex === 0 ? 'MANTER' : 'REMOVER'}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-600 space-y-1">
+                                                <div>Função: {participant.role}</div>
+                                                <div>Empresa: {participant.company}</div>
+                                                {participant.daysWork && (
+                                                    <div>Dias: {participant.daysWork.join(', ')}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <User className="h-4 w-4 text-yellow-600" />
+                                <span className="text-sm font-medium text-yellow-800">Atenção</span>
+                            </div>
+                            <div className="text-xs text-yellow-700">
+                                • Esta ação não pode ser desfeita<br />
+                                • Serão removidos {duplicates.reduce((acc, d) => acc + (d.participants.length - 1), 0)} participantes duplicados<br />
+                                • Os dados de check-in/check-out dos participantes removidos serão perdidos
+                            </div>
+                        </div>
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleRemoveDuplicates}
+                            disabled={duplicatesLoading}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            {duplicatesLoading ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Removendo...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Remover {duplicates.reduce((acc, d) => acc + (d.participants.length - 1), 0)} Duplicados
+                                </>
                             )}
                         </AlertDialogAction>
                     </AlertDialogFooter>
