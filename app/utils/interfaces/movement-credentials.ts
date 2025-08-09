@@ -30,6 +30,7 @@ export interface CreateMovementCredentialRequest {
 
 export interface UpdateMovementCredentialRequest {
     code: string;
+    history_code?: string;
     credentialsId?: string;
 }
 

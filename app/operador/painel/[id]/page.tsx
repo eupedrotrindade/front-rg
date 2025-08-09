@@ -78,6 +78,7 @@ import ExcelColumnFilter from '@/components/ui/excel-column-filter'
 import { preloadModal, useLazyModal } from '@/components/ui/lazy-modal'
 
 import { changeCredentialCode, getMovementCredentialByParticipant } from '@/features/eventos/actions/movement-credentials'
+import { updateParticipantCredential } from '@/features/eventos/actions/update-participant-credential'
 import { useCredentialsByEvent } from '@/features/eventos/api/query/use-credentials-by-event'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import {
@@ -129,6 +130,7 @@ export default function Painel() {
   const [popupTrocaPulseira, setPopupTrocaPulseira] = useState(false)
   const [selectedParticipantForPulseira, setSelectedParticipantForPulseira] =
     useState<EventParticipant | null>(null)
+  const [newCredentialType, setNewCredentialType] = useState('')
 
   const [operadorLogado, setOperadorLogado] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
@@ -1701,25 +1703,42 @@ export default function Painel() {
         return
       }
 
+      const currentCredential = getCredencial(participant)
+      const newCredential = newCredentialType ?
+        credential.find(c => c.id === newCredentialType)?.nome || currentCredential :
+        currentCredential
+
+      // Verificar se houve mudança de tipo de credencial
+      const changedCredentialType = newCredentialType && newCredentialType !== participant.credentialId
+
       // Salvar no sistema de movement_credentials
       await changeCredentialCode(
         eventId,
         participantId,
-        newWristbandCode.trim()
+        newWristbandCode.trim(),
+        newCredentialType || participant.credentialId
       )
 
-      // Atualizar participante
-      await updateEventParticipant(participantId, {
-        wristbandId: newWristbandCode.trim(),
-      })
+      // Atualizar participante com nova credencial se necessário
+      if (changedCredentialType) {
+        await updateParticipantCredential(
+          participantId,
+          newCredentialType,
+          operadorInfo?.nome || 'system'
+        )
+      }
 
-      // Registrar ação do operador
+      // Registrar ação do operador com informação detalhada
+      const actionType = changedCredentialType ? 'change_credential_and_wristband' : 'update_wristband'
+
       await registerOperatorActionInColumn({
-        type: 'update_wristband',
+        type: actionType,
         staffId: String(participantId),
         staffName: participant.name,
         pulseira: newWristbandCode.trim(),
-        credencial: getCredencial(participant),
+        credencial: newCredential,
+        credencialAnterior: currentCredential,
+        trocouTipoCredencial: changedCredentialType || false,
       })
 
       // Atualizar o estado local
@@ -1729,10 +1748,15 @@ export default function Painel() {
         return newMap
       })
 
-      toast.success('Pulseira atualizada com sucesso!')
+      const message = changedCredentialType ?
+        `Pulseira e credencial atualizadas! ${currentCredential} → ${newCredential}` :
+        'Pulseira atualizada com sucesso!'
+
+      toast.success(message)
       setEditingWristbandId(null)
       setNewWristbandCode('')
-      
+      setNewCredentialType('')
+
       // Atualizar dados automaticamente
       await refetchParticipants()
       await refetchAttendance()
@@ -1746,6 +1770,7 @@ export default function Painel() {
   const cancelarEdicaoPulseira = () => {
     setEditingWristbandId(null)
     setNewWristbandCode('')
+    setNewCredentialType('')
   }
 
   // Função para verificar status de presença por data
@@ -1889,6 +1914,8 @@ export default function Painel() {
     staffName?: string
     pulseira?: string
     credencial?: string
+    credencialAnterior?: string
+    trocouTipoCredencial?: boolean
   }) => {
 
     if (!operadorInfo?.id) {
@@ -1944,6 +1971,8 @@ export default function Painel() {
         staffName: actionData.staffName || '',
         timestamp: new Date().toISOString(),
         credencial: actionData.credencial || '',
+        credencialAnterior: actionData.credencialAnterior || '',
+        trocouTipoCredencial: actionData.trocouTipoCredencial || false,
       }
 
       const updatedActions = [...currentActions, newAction]
@@ -3332,10 +3361,10 @@ export default function Painel() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-3">
                   <CreditCard className="w-5 h-5 text-blue-600" />
-                  {editingWristbandId ? 'Alterar Pulseira' : 'Trocar Credencial'}
+                  {editingWristbandId ? 'Alterar Credencial e Pulseira' : 'Trocar Credencial'}
                 </DialogTitle>
                 <DialogDescription>
-                  {editingWristbandId ? 'Insira o novo código da pulseira' : 'Busque e selecione um participante para trocar a credencial'}
+                  {editingWristbandId ? 'Altere o tipo de credencial e/ou código da pulseira' : 'Busque e selecione um participante para trocar a credencial'}
                 </DialogDescription>
               </DialogHeader>
 
@@ -3389,6 +3418,8 @@ export default function Painel() {
                                 setNewWristbandCode('')
                               }
 
+                              // Inicializar com a credencial atual
+                              setNewCredentialType(participant.credentialId)
                               setEditingWristbandId(participant.id)
                             }}
                             className={`p-3 border rounded-lg transition-colors ${hasCheckIn
@@ -3485,9 +3516,9 @@ export default function Painel() {
                               <span className="text-gray-500">Empresa:</span>
                               <p className="text-gray-900">{selectedParticipant.company}</p>
                             </div>
-                            <div>
-                              <span className="text-gray-500">Credencial:</span>
-                              <p className="text-gray-900">{getCredencial(selectedParticipant)}</p>
+                            <div className="col-span-2">
+                              <span className="text-gray-500">Credencial atual:</span>
+                              <p className="text-gray-900 font-semibold">{getCredencial(selectedParticipant)}</p>
                             </div>
                             <div>
                               <span className="text-gray-500">Status:</span>
@@ -3504,35 +3535,68 @@ export default function Painel() {
                           </div>
                         </div>
 
-                        {/* Campo para nova pulseira */}
-                        <div className="space-y-3">
-                          <label className="block text-sm font-medium text-gray-700">
-                            Nova pulseira:
-                          </label>
-                          <Input
-                            type="text"
-                            value={newWristbandCode}
-                            onChange={e => setNewWristbandCode(e.target.value)}
-                            placeholder="Digite o código da nova pulseira"
-                            className="text-center text-lg font-mono bg-white border-blue-300 focus:border-blue-500 focus:ring-blue-500"
-                            autoFocus
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                salvarNovaPulseiraInline(selectedParticipant.id)
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                cancelarEdicaoPulseira()
-                              }
-                            }}
-                          />
+                        {/* Campos para nova credencial e pulseira */}
+                        <div className="space-y-4">
+                          {/* Seleção de nova credencial */}
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                              Tipo de credencial:
+                            </label>
+                            <Select value={newCredentialType} onValueChange={setNewCredentialType}>
+                              <SelectTrigger className="w-full bg-white border-blue-300 focus:border-blue-500 focus:ring-blue-500">
+                                <SelectValue placeholder="Selecione o tipo de credencial" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {credential.filter(c => c.isActive !== false).map(credencial => (
+                                  <SelectItem key={credencial.id} value={credencial.id}>
+                                    <div className="flex items-center gap-2">
+                                      <div
+                                        className="w-3 h-3 rounded-full"
+                                        style={{ backgroundColor: credencial.cor }}
+                                      />
+                                      {credencial.nome}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {newCredentialType !== selectedParticipant.credentialId && (
+                              <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                                ⚠️ <strong>Atenção:</strong> O tipo de credencial será alterado de &quot;{getCredencial(selectedParticipant)}&quot; para &quot;{credential.find(c => c.id === newCredentialType)?.nome}&quot;
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Campo do código da pulseira */}
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                              Código da pulseira:
+                            </label>
+                            <Input
+                              type="text"
+                              value={newWristbandCode}
+                              onChange={e => setNewWristbandCode(e.target.value)}
+                              placeholder="Digite o código da pulseira"
+                              className="text-center text-lg font-mono bg-white border-blue-300 focus:border-blue-500 focus:ring-blue-500"
+                              autoFocus
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  salvarNovaPulseiraInline(selectedParticipant.id)
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  cancelarEdicaoPulseira()
+                                }
+                              }}
+                            />
+                          </div>
                         </div>
 
                         {/* Botões de ação */}
                         <div className="flex gap-3 pt-2">
                           <Button
                             onClick={() => salvarNovaPulseiraInline(selectedParticipant.id)}
-                            disabled={loading || !newWristbandCode.trim()}
+                            disabled={loading || !newWristbandCode.trim() || !newCredentialType}
                             className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
                           >
                             {loading ? (
@@ -3543,7 +3607,7 @@ export default function Painel() {
                             ) : (
                               <>
                                 <Check className="w-4 h-4 mr-2" />
-                                Salvar Pulseira
+                                {newCredentialType !== selectedParticipant.credentialId ? 'Salvar Credencial e Pulseira' : 'Salvar Pulseira'}
                               </>
                             )}
                           </Button>

@@ -80,10 +80,36 @@ export const changeCredentialCode = async (
   newCode: string,
   credentialsId?: string
 ): Promise<MovementCredentialResponse> => {
-  return await createMovementCredential({
-    eventId,
-    participantId,
-    code: newCode,
-    credentialsId,
-  });
+  try {
+    // Buscar registro existente de movement_credential para o participante
+    const existingMovement = await getMovementCredentialByParticipant(eventId, participantId);
+
+    if (existingMovement?.data) {
+      // Se já existe um registro, atualizar movendo o código antigo para history_code
+      const updateData: UpdateMovementCredentialRequest = {
+        code: newCode,
+        history_code: existingMovement.data.code, // Salvar código antigo no histórico
+        credentialsId,
+      };
+      
+      return await updateMovementCredential(existingMovement.data.id, updateData);
+    } else {
+      // Se não existe registro, criar um novo
+      return await createMovementCredential({
+        eventId,
+        participantId,
+        code: newCode,
+        credentialsId,
+      });
+    }
+  } catch (error) {
+    console.error("Erro ao trocar código de pulseira:", error);
+    // Fallback: tentar criar um novo registro
+    return await createMovementCredential({
+      eventId,
+      participantId,
+      code: newCode,
+      credentialsId,
+    });
+  }
 };
