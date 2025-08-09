@@ -23,6 +23,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from '@/components/ui/command'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
   Table,
   TableBody,
   TableCell,
@@ -40,10 +52,11 @@ import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/u
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
 import type { EventParticipant } from '@/features/eventos/types'
 import apiClient from '@/lib/api-client'
-import { saveAs } from 'file-saver'
+
 import {
   Calendar,
   Check,
+  ChevronDown,
   Clock,
   CreditCard,
   Download,
@@ -59,16 +72,12 @@ import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
+
 
 import ExcelColumnFilter from '@/components/ui/excel-column-filter'
 import { preloadModal, useLazyModal } from '@/components/ui/lazy-modal'
-import VirtualTable, {
-  ActionCell,
-  BadgeCell,
-  TextCell,
-} from '@/components/ui/virtual-table'
-import { changeCredentialCode } from '@/features/eventos/actions/movement-credentials'
+
+import { changeCredentialCode, getMovementCredentialByParticipant } from '@/features/eventos/actions/movement-credentials'
 import { useCredentialsByEvent } from '@/features/eventos/api/query/use-credentials-by-event'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import {
@@ -86,6 +95,7 @@ export default function Painel() {
     pulseira: '',
     empresa: '',
     funcao: '',
+    credencial: '',
   })
 
   const [selectedParticipant, setSelectedParticipant] =
@@ -129,13 +139,10 @@ export default function Painel() {
     acoes?: any[]
   } | null>(null)
 
-  // Estados para os filtros pesquisáveis
-  const [filteredEmpresas, setFilteredEmpresas] = useState<string[]>([])
-  const [filteredFuncoes, setFilteredFuncoes] = useState<string[]>([])
+  // Estados para selects pesquisáveis
   const [empresaSelectOpen, setEmpresaSelectOpen] = useState(false)
-  const [empresaSearch, setEmpresaSearch] = useState('')
   const [funcaoSelectOpen, setFuncaoSelectOpen] = useState(false)
-  const [funcaoSearch, setFuncaoSearch] = useState('')
+  const [credencialSelectOpen, setCredencialSelectOpen] = useState(false)
 
   const [importDialogOpen, setImportDialogOpen] = useState(false)
 
@@ -153,11 +160,6 @@ export default function Painel() {
     falhados?: { item: EventParticipant; motivo: string }[]
   }>({ importados: [], barrados: [], falhados: [] })
 
-  // Estado para filtro avançado e ordenação
-  const [filtroAvancadoOpen, setFiltroAvancadoOpen] = useState(false)
-  const [filtroAvancado, setFiltroAvancado] = useState<
-    Partial<EventParticipant>
-  >({})
   const [ordenacao, setOrdenacao] = useState<{
     campo: string
     direcao: 'asc' | 'desc'
@@ -259,6 +261,14 @@ export default function Painel() {
       nome: string
     } | null>(null)
 
+  // Estado para código da pulseira do participante selecionado
+  const [selectedParticipantWristband, setSelectedParticipantWristband] = useState<string | null>(null)
+
+  // Estados para edição inline de pulseira
+  const [editingWristbandId, setEditingWristbandId] = useState<string | null>(null)
+  const [newWristbandCode, setNewWristbandCode] = useState('')
+  const [participantWristbands, setParticipantWristbands] = useState<Map<string, string>>(new Map())
+
   // TODOS OS useRef DEPOIS DOS useState
   const fileInputRef = useRef<HTMLInputElement>(null)
   const tabsContainerRef = useRef<HTMLDivElement>(null)
@@ -275,6 +285,7 @@ export default function Painel() {
     isLoading: participantsLoading,
     isError: participantsError,
     error: participantsErrorObj,
+    refetch: refetchParticipants,
   } = useEventParticipantsByEvent({ eventId })
   const { data: credential = [] } = useCredentialsByEvent(eventId)
   // Hooks para operações de check-in/check-out
@@ -296,12 +307,6 @@ export default function Painel() {
   const { createCancellableRequest, cancelAllRequests } =
     useCancellableRequest()
 
-  // Lazy loading do modal de troca de pulseira
-  const {
-    openModal: openWristbandModal,
-    closeModal: closeWristbandModal,
-    ModalComponent: WristbandModalComponent,
-  } = useLazyModal(() => import('@/components/operador/modalTrocaPulseira'))
 
   // Hook de busca otimizada com índices para datasets grandes
   const [searchResult, performOptimizedSearchFn, clearSearch] =
@@ -325,8 +330,8 @@ export default function Painel() {
 
   // TODOS OS useCallback DEPOIS DOS useMemo
   const generateFilterHash = useCallback(
-    (filtro: any, selectedDay: string, filtroAvancado: any) => {
-      return JSON.stringify({ filtro, selectedDay, filtroAvancado })
+    (filtro: any, selectedDay: string) => {
+      return JSON.stringify({ filtro, selectedDay })
     },
     [],
   )
@@ -1068,9 +1073,22 @@ export default function Painel() {
     }
   }
 
-  const abrirPopup = (colaborador: EventParticipant) => {
+  const abrirPopup = async (colaborador: EventParticipant) => {
     setSelectedParticipant(colaborador)
     setModalAberto(true)
+
+    // Buscar código da pulseira do participante
+    try {
+      const movementCredential = await getMovementCredentialByParticipant(eventId, colaborador.id)
+      if (movementCredential?.data?.code) {
+        setSelectedParticipantWristband(movementCredential.data.code)
+      } else {
+        setSelectedParticipantWristband(null)
+      }
+    } catch (error) {
+      console.error('Erro ao buscar código da pulseira:', error)
+      setSelectedParticipantWristband(null)
+    }
   }
 
   // Função para abrir popup de check-in
@@ -1092,7 +1110,7 @@ export default function Painel() {
   // TODOS OS useMemo DEPOIS DOS useCallback
   const filtrarColaboradores = useMemo(() => {
     const filterHash =
-      generateFilterHash(filtro, selectedDay, filtroAvancado) +
+      generateFilterHash(filtro, selectedDay) +
       JSON.stringify(columnFilters)
 
     if (filteredDataCache.has(filterHash) && !isDataStale) {
@@ -1123,23 +1141,17 @@ export default function Painel() {
         : true
       const funcaoMatch = filtro.funcao ? colab.role === filtro.funcao : true
 
+      // Filtro por credencial
+      const credencialMatch = filtro.credencial
+        ? getCredencial(colab) === filtro.credencial
+        : true
+
       let match =
         (nomeMatch || cpfMatch || credentialMatch) &&
         empresaMatch &&
-        funcaoMatch
+        funcaoMatch &&
+        credencialMatch
 
-      // Aplicar filtros avançados
-      Object.entries(filtroAvancado).forEach(([campo, valor]) => {
-        const colabValue = (colab as any)[campo]
-        if (valor && String(valor).trim() !== '') {
-          if (
-            colabValue === undefined ||
-            String(colabValue).toLowerCase() !== String(valor).toLowerCase()
-          ) {
-            match = false
-          }
-        }
-      })
 
       // Aplicar filtros das colunas
       if (match && hasActiveColumnFilters) {
@@ -1260,7 +1272,6 @@ export default function Painel() {
   }, [
     filtro,
     selectedDay,
-    filtroAvancado,
     ordenacao,
     getColaboradoresPorDia,
     generateFilterHash,
@@ -1387,189 +1398,7 @@ export default function Painel() {
     }
   }, [getColaboradoresPorDia, selectedDay, credential])
 
-  // Configuração das colunas para a tabela virtual
-  const virtualTableColumns = useMemo(
-    () => [
-      {
-        key: 'name',
-        header: (
-          <div className="flex items-center justify-between">
-            <span>Nome</span>
-            <ExcelColumnFilter
-              values={columnUniqueValues.nome}
-              selectedValues={columnFilters.nome}
-              onSelectionChange={values =>
-                handleColumnFilterChange('nome', values)
-              }
-              onSortTable={direction => handleColumnSort('name', direction)}
-              columnTitle="Nome"
-              isActive={columnFilters.nome.length > 0}
-            />
-          </div>
-        ),
-        width: 200,
-        minWidth: 120,
-        priority: 2, // Alta prioridade para mobile (depois de Ação)
-        cell: (item: EventParticipant) => (
-          <TextCell className="font-semibold text-gray-900">
-            {item.name}
-          </TextCell>
-        ),
-      },
-      {
-        key: 'cpf',
-        header: (
-          <div className="flex items-center justify-between">
-            <span>CPF</span>
-            <ExcelColumnFilter
-              values={columnUniqueValues.cpf}
-              selectedValues={columnFilters.cpf}
-              onSelectionChange={values =>
-                handleColumnFilterChange('cpf', values)
-              }
-              onSortTable={direction => handleColumnSort('cpf', direction)}
-              columnTitle="CPF"
-              isActive={columnFilters.cpf.length > 0}
-            />
-          </div>
-        ),
-        width: 150,
-        minWidth: 120,
-        priority: 3, // Baixa prioridade para mobile
-        hiddenOnMobile: true,
-        cell: (item: EventParticipant) => (
-          <TextCell className="font-mono">
-            {formatCPF(item.cpf?.trim() || '')}
-          </TextCell>
-        ),
-      },
-      {
-        key: 'role',
-        header: (
-          <div className="flex items-center justify-between">
-            <span>Função</span>
-            <ExcelColumnFilter
-              values={columnUniqueValues.funcao}
-              selectedValues={columnFilters.funcao}
-              onSelectionChange={values =>
-                handleColumnFilterChange('funcao', values)
-              }
-              onSortTable={direction => handleColumnSort('role', direction)}
-              columnTitle="Função"
-              isActive={columnFilters.funcao.length > 0}
-            />
-          </div>
-        ),
-        width: 150,
-        minWidth: 100,
-        priority: 4, // Baixa prioridade para mobile
-        hiddenOnMobile: true,
-        cell: (item: EventParticipant) => <TextCell>{item.role}</TextCell>,
-      },
-      {
-        key: 'company',
-        header: (
-          <div className="flex items-center justify-between">
-            <span>Empresa</span>
-            <ExcelColumnFilter
-              values={columnUniqueValues.empresa}
-              selectedValues={columnFilters.empresa}
-              onSelectionChange={values =>
-                handleColumnFilterChange('empresa', values)
-              }
-              onSortTable={direction => handleColumnSort('company', direction)}
-              columnTitle="Empresa"
-              isActive={columnFilters.empresa.length > 0}
-            />
-          </div>
-        ),
-        width: 150,
-        minWidth: 100,
-        priority: 5, // Baixa prioridade para mobile
-        hiddenOnMobile: true,
-        cell: (item: EventParticipant) => (
-          <BadgeCell variant="blue">{item.company}</BadgeCell>
-        ),
-      },
-      {
-        key: 'credential',
-        header: (
-          <div className="flex items-center justify-between">
-            <span className="hidden sm:inline">Tipo de Credencial</span>
-            <span className="sm:hidden">Credencial</span>
-            <ExcelColumnFilter
-              values={columnUniqueValues.credencial}
-              selectedValues={columnFilters.credencial}
-              onSelectionChange={values =>
-                handleColumnFilterChange('credencial', values)
-              }
-              onSortTable={direction =>
-                handleColumnSort('credentialId', direction)
-              }
-              columnTitle="Tipo de Credencial"
-              isActive={columnFilters.credencial.length > 0}
-            />
-          </div>
-        ),
-        width: 180,
-        minWidth: 120,
-        priority: 6, // Baixa prioridade para mobile
-        hiddenOnMobile: true,
-        cell: (item: EventParticipant) => (
-          <BadgeCell variant="purple">{getCredencial(item)}</BadgeCell>
-        ),
-      },
-      {
-        key: 'actions',
-        header: 'Ação',
-        width: 120,
-        minWidth: 90,
-        priority: 1, // Máxima prioridade - sempre visível e fixo
-        sticky: 'right', // Fixado à direita
-        cell: (item: EventParticipant) => {
-          const botaoTipo = getBotaoAcao(item)
-          return (
-            <ActionCell>
-              {botaoTipo === 'checkin' && (
-                <Button
-                  onClick={() => abrirCheckin(item)}
-                  size="sm"
-                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-xs px-1.5 py-1"
-                  disabled={loading}
-                >
-                  <Check className="w-3 h-3 mr-0.5" />
-                  <span>In</span>
-                </Button>
-              )}
-              {botaoTipo === 'checkout' && (
-                <Button
-                  onClick={() => abrirCheckout(item)}
-                  size="sm"
-                  className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-xs px-1.5 py-1"
-                  disabled={loading}
-                >
-                  <Clock className="w-3 h-3 mr-0.5" />
-                  <span>Out</span>
-                </Button>
-              )}
-            </ActionCell>
-          )
-        },
-      },
-    ],
-    [
-      columnUniqueValues,
-      columnFilters,
-      handleColumnFilterChange,
-      handleColumnSort,
-      getBotaoAcao,
-      getCredencial,
-      formatCPF,
-      abrirCheckin,
-      abrirCheckout,
-      loading,
-    ],
-  )
+
 
   // TODOS OS useEffect POR ÚLTIMO
   useEffect(() => {
@@ -1647,7 +1476,6 @@ export default function Painel() {
   }, [
     filtro,
     selectedDay,
-    filtroAvancado,
     ordenacao,
     currentPage,
     columnFilters,
@@ -1706,7 +1534,7 @@ export default function Painel() {
 
   // useEffect para gerenciar cache
   useEffect(() => {
-    const filterHash = generateFilterHash(filtro, selectedDay, filtroAvancado)
+    const filterHash = generateFilterHash(filtro, selectedDay)
     const { data: filtrados } = filtrarColaboradores
 
     if (!filteredDataCache.has(filterHash) || isDataStale) {
@@ -1721,7 +1549,6 @@ export default function Painel() {
     isDataStale,
     filtro,
     selectedDay,
-    filtroAvancado,
     filteredDataCache,
     generateFilterHash,
   ])
@@ -1911,7 +1738,71 @@ export default function Painel() {
 
   const fecharPopup = () => {
     setSelectedParticipant(null)
+    setSelectedParticipantWristband(null)
     setModalAberto(false)
+  }
+
+  // Função para salvar nova pulseira inline
+  const salvarNovaPulseiraInline = async (participantId: string) => {
+    if (!newWristbandCode.trim()) {
+      toast.error('Digite o código da pulseira')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const participant = paginatedData.data.find(p => p.id === participantId)
+      if (!participant) {
+        toast.error('Participante não encontrado')
+        return
+      }
+
+      // Salvar no sistema de movement_credentials
+      await changeCredentialCode(
+        eventId,
+        participantId,
+        newWristbandCode.trim()
+      )
+
+      // Atualizar participante
+      await updateEventParticipant(participantId, {
+        wristbandId: newWristbandCode.trim(),
+      })
+
+      // Registrar ação do operador
+      await registerOperatorActionInColumn({
+        type: 'update_wristband',
+        staffId: String(participantId),
+        staffName: participant.name,
+        pulseira: newWristbandCode.trim(),
+        credencial: getCredencial(participant),
+      })
+
+      // Atualizar o estado local
+      setParticipantWristbands(prev => {
+        const newMap = new Map(prev)
+        newMap.set(participantId, newWristbandCode.trim())
+        return newMap
+      })
+
+      toast.success('Pulseira atualizada com sucesso!')
+      setEditingWristbandId(null)
+      setNewWristbandCode('')
+      
+      // Atualizar dados automaticamente
+      await refetchParticipants()
+      await refetchAttendance()
+    } catch (error) {
+      console.error('Erro ao atualizar pulseira:', error)
+      toast.error('Erro ao atualizar pulseira')
+    }
+    setLoading(false)
+  }
+
+  // Função para cancelar edição
+  const cancelarEdicaoPulseira = () => {
+    setEditingWristbandId(null)
+    setNewWristbandCode('')
   }
 
   // Função para verificar status de presença por data
@@ -2199,6 +2090,10 @@ export default function Painel() {
           return credentialSelected?.nome || ''
         })(),
       })
+
+      // Atualizar dados automaticamente
+      await refetchParticipants()
+      await refetchAttendance()
     } catch (error) {
       toast.error('Erro ao atualizar pulseira.')
     }
@@ -2303,9 +2198,7 @@ export default function Painel() {
     if (filtro.nome) count++
     if (filtro.empresa) count++
     if (filtro.funcao) count++
-    Object.values(filtroAvancado).forEach(val => {
-      if (val && String(val).trim() !== '') count++
-    })
+    if (filtro.credencial) count++
     if (ordenacao.campo && ordenacao.campo !== '') count++
     // Contar filtros das colunas
     Object.values(columnFilters).forEach(filters => {
@@ -2398,6 +2291,10 @@ export default function Painel() {
         pulseira: codigoPulseira.trim(),
         credencial: getCredencial(participantAction),
       })
+
+      // Atualizar dados de presença automaticamente
+      await refetchAttendance()
+
       toast.success('Check-in realizado com sucesso!')
       setPopupCheckin(false)
       setParticipantAction(null)
@@ -2470,6 +2367,10 @@ export default function Painel() {
         staffName: participantAction.name,
         credencial: getCredencial(participantAction),
       })
+
+      // Atualizar dados de presença automaticamente
+      await refetchAttendance()
+
       toast.success('Check-out realizado com sucesso!')
       setPopupCheckout(false)
       setParticipantAction(null)
@@ -2594,40 +2495,6 @@ export default function Painel() {
             <div className="mb-8">
               <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                 <div className="flex flex-wrap gap-3">
-                  <Button
-                    onClick={() => setFiltroAvancadoOpen(true)}
-                    variant="outline"
-                    size="sm"
-                    className="text-gray-600 border-gray-200 hover:bg-gray-50  hover:border-gray-300 bg-white shadow-sm transition-all duration-200"
-                    disabled={loading}
-                  >
-                    <Filter className="w-4 h-4 mr-2" />
-                    Filtros
-                    {countFiltrosAtivos() > 0 && (
-                      <span className="ml-2 bg-purple-100 text-purple-800 text-xs rounded-full px-2 py-0.5 font-medium">
-                        {countFiltrosAtivos()}
-                      </span>
-                    )}
-                  </Button>
-
-                  {countFiltrosAtivos() > 0 && (
-                    <Button
-                      onClick={() => {
-                        setFiltroAvancado({})
-                        setOrdenacao({ campo: '', direcao: 'asc' })
-                      }}
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 bg-white shadow-sm transition-all duration-200"
-                      disabled={loading}
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Limpar Filtros
-                      <span className="ml-2 bg-red-100 text-red-800 text-xs rounded-full px-2 py-0.5 font-medium">
-                        {countFiltrosAtivos()}
-                      </span>
-                    </Button>
-                  )}
 
                   <Button
                     onClick={() => {
@@ -2661,17 +2528,192 @@ export default function Painel() {
               </div>
             </div>
 
-            {/* Search Bar */}
+            {/* Search and Filters */}
             <div className="mb-8">
-              <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  type="text"
-                  placeholder="Procure pelo nome, cpf ou código da pulseira"
-                  value={filtro.nome}
-                  onChange={e => handleBuscaOtimizada(e.target.value)}
-                  className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
-                />
+              <div className="flex flex-col lg:flex-row gap-4">
+                {/* Search Bar */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    type="text"
+                    placeholder="Procure pelo nome, cpf ou código da pulseira"
+                    value={filtro.nome}
+                    onChange={e => handleBuscaOtimizada(e.target.value)}
+                    className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
+                  />
+                </div>
+
+                {/* Filter Selects */}
+                <div className="flex flex-wrap gap-3">
+                  {/* Empresa Filter */}
+                  <Popover open={empresaSelectOpen} onOpenChange={setEmpresaSelectOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={empresaSelectOpen}
+                        className="w-[180px] justify-between bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm hover:bg-gray-50"
+                      >
+                        {filtro.empresa ? filtro.empresa : "Empresa"}
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[180px] p-0">
+                      <Command>
+                        <CommandInput className='bg-white' placeholder="Buscar empresa..." />
+                        <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
+                        <CommandGroup className="max-h-60 overflow-y-auto bg-white">
+                          <CommandItem
+                            value="__all__"
+                            onSelect={() => {
+                              setFiltro({ ...filtro, empresa: '' })
+                              setEmpresaSelectOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${!filtro.empresa ? "opacity-100" : "opacity-0"
+                                }`}
+                            />
+                            Todas as empresas
+                          </CommandItem>
+                          {empresasUnicasFiltradas.map((empresa) => (
+                            <CommandItem
+                              key={empresa}
+                              value={empresa}
+                              onSelect={(value) => {
+                                setFiltro({ ...filtro, empresa: value === filtro.empresa ? '' : value })
+                                setEmpresaSelectOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={`mr-2 h-4 w-4 ${empresa === filtro.empresa ? "opacity-100" : "opacity-0"
+                                  }`}
+                              />
+                              {empresa}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Função Filter */}
+                  <Popover open={funcaoSelectOpen} onOpenChange={setFuncaoSelectOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={funcaoSelectOpen}
+                        className="w-[160px] justify-between bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm hover:bg-gray-50"
+                      >
+                        {filtro.funcao ? filtro.funcao : "Função"}
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[160px] p-0">
+                      <Command>
+                        <CommandInput className='bg-white' placeholder="Buscar função..." />
+                        <CommandEmpty>Nenhuma função encontrada.</CommandEmpty>
+                        <CommandGroup className="max-h-60 overflow-y-auto bg-white">
+                          <CommandItem
+                            value="__all__"
+                            onSelect={() => {
+                              setFiltro({ ...filtro, funcao: '' })
+                              setFuncaoSelectOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${!filtro.funcao ? "opacity-100" : "opacity-0"
+                                }`}
+                            />
+                            Todas as funções
+                          </CommandItem>
+                          {funcoesUnicasFiltradas.map((funcao) => (
+                            <CommandItem
+                              key={funcao}
+                              value={funcao}
+                              onSelect={(value) => {
+                                setFiltro({ ...filtro, funcao: value === filtro.funcao ? '' : value })
+                                setFuncaoSelectOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={`mr-2 h-4 w-4 ${funcao === filtro.funcao ? "opacity-100" : "opacity-0"
+                                  }`}
+                              />
+                              {funcao}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Credencial Filter */}
+                  <Popover open={credencialSelectOpen} onOpenChange={setCredencialSelectOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={credencialSelectOpen}
+                        className="w-[170px] justify-between bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm hover:bg-gray-50"
+                      >
+                        {filtro.credencial ? filtro.credencial : "Credencial"}
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[170px] p-0">
+                      <Command>
+                        <CommandInput className='bg-white' placeholder="Buscar credencial..." />
+                        <CommandEmpty>Nenhuma credencial encontrada.</CommandEmpty>
+                        <CommandGroup className="max-h-60 overflow-y-auto bg-white">
+                          <CommandItem
+                            value="__all__"
+                            onSelect={() => {
+                              setFiltro({ ...filtro, credencial: '' })
+                              setCredencialSelectOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${!filtro.credencial ? "opacity-100" : "opacity-0"
+                                }`}
+                            />
+                            Todas as credenciais
+                          </CommandItem>
+                          {tiposCredencialUnicosFiltrados.map((credencial) => (
+                            <CommandItem
+                              key={credencial}
+                              value={credencial}
+                              onSelect={(value) => {
+                                setFiltro({ ...filtro, credencial: value === filtro.credencial ? '' : value })
+                                setCredencialSelectOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={`mr-2 h-4 w-4 ${credencial === filtro.credencial ? "opacity-100" : "opacity-0"
+                                  }`}
+                              />
+                              {credencial}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Clear Filters Button */}
+                  {(filtro.empresa || filtro.funcao || filtro.credencial) && (
+                    <Button
+                      onClick={() => setFiltro({ ...filtro, empresa: '', funcao: '', credencial: '' })}
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 bg-white shadow-sm transition-all duration-200"
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Limpar
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -3021,7 +3063,7 @@ export default function Painel() {
                   <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
                     <User className="w-4 h-4 text-white" />
                   </div>
-                  Detalhes do Staff
+                  Detalhes do Participante
                 </DialogTitle>
               </DialogHeader>
 
@@ -3046,7 +3088,7 @@ export default function Painel() {
                     </div>
 
                     {/* Informações essenciais */}
-                    <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div className="grid grid-cols-2 gap-3 text-sm">
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
                         <p className="text-xs font-medium text-gray-500 uppercase">
                           CPF
@@ -3071,12 +3113,20 @@ export default function Painel() {
                           {getCredencial(selectedParticipant)}
                         </p>
                       </div>
+                      <div className="p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-xs font-medium text-gray-500 uppercase">
+                          Código Pulseira
+                        </p>
+                        <p className="font-mono text-gray-900">
+                          {selectedParticipantWristband || 'Não informado'}
+                        </p>
+                      </div>
                     </div>
 
-                    {/* Status de presença atual */}
+                    {/* Detalhes de Check-in/Check-out */}
                     <div className="p-3 bg-white rounded-lg border border-gray-200">
-                      <p className="text-xs font-medium text-gray-700 uppercase mb-2">
-                        Status Hoje
+                      <p className="text-xs font-medium text-gray-700 uppercase mb-3">
+                        Detalhes de Presença - {selectedDay ? (selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay) : 'Hoje'}
                       </p>
                       {(() => {
                         const status = participantsAttendanceStatus.get(
@@ -3084,27 +3134,83 @@ export default function Painel() {
                         )
                         if (!status) {
                           return (
-                            <span className="text-blue-600">
-                              Não verificado
-                            </span>
-                          )
-                        } else if (status.checkIn && !status.checkOut) {
-                          return (
-                            <span className="text-green-600">
-                              ✓ Check-in realizado
-                            </span>
-                          )
-                        } else if (status.checkIn && status.checkOut) {
-                          return (
-                            <span className="text-gray-600">
-                              ✓ Check-out realizado
-                            </span>
-                          )
-                        } else {
-                          return (
-                            <span className="text-orange-600">Pendente</span>
+                            <div className="text-center py-2">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                Não verificado
+                              </span>
+                            </div>
                           )
                         }
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                <span className="text-sm font-medium text-gray-700">Check-in:</span>
+                              </div>
+                              <div className="text-right">
+                                {status.checkIn ? (
+                                  <>
+                                    <div className="text-sm text-gray-900">
+                                      {new Date(status.checkIn).toLocaleDateString('pt-BR')}
+                                    </div>
+                                    <div className="text-xs text-gray-600">
+                                      {new Date(status.checkIn).toLocaleTimeString('pt-BR', {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <span className="text-sm text-gray-500">Não realizado</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${status.checkOut ? 'bg-red-500' : 'bg-gray-300'}`}></div>
+                                <span className="text-sm font-medium text-red-700">Check-out:</span>
+                              </div>
+                              <div className="text-right">
+                                {status.checkOut ? (
+                                  <>
+                                    <div className="text-sm text-gray-900">
+                                      {new Date(status.checkOut).toLocaleDateString('pt-BR')}
+                                    </div>
+                                    <div className="text-xs text-gray-600">
+                                      {new Date(status.checkOut).toLocaleTimeString('pt-BR', {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <span className="text-sm text-gray-500">Não realizado</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-100">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-gray-700">Status:</span>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.checkIn && status.checkOut
+                                  ? 'bg-gray-100 text-gray-800'
+                                  : status.checkIn
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-orange-100 text-orange-800'
+                                  }`}>
+                                  {status.checkIn && status.checkOut
+                                    ? '✓ Finalizado'
+                                    : status.checkIn
+                                      ? '✓ Presente'
+                                      : 'Pendente'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )
                       })()}
                     </div>
                   </div>
@@ -3123,7 +3229,10 @@ export default function Painel() {
                           setModalAberto(false)
                         }
                       }}
-                      className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
+                      className={`flex-1 text-white ${getBotaoAcao(selectedParticipant) === 'checkout'
+                        ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'
+                        : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+                        }`}
                       disabled={!getBotaoAcao(selectedParticipant)}
                     >
                       {getBotaoAcao(selectedParticipant) === 'checkin'
@@ -3322,373 +3431,259 @@ export default function Painel() {
           </Dialog>
 
 
-          {/* DIALOG FILTRO AVANÇADO */}
-          <Dialog
-            open={filtroAvancadoOpen}
-            onOpenChange={setFiltroAvancadoOpen}
-          >
-            <DialogContent className="max-w-lg bg-gradient-to-br from-white to-purple-50 border-0 shadow-2xl">
-              <DialogHeader className="pb-6">
-                <DialogTitle className="flex items-center gap-3 text-xl font-bold text-gray-900">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <Filter className="w-5 h-5 text-white" />
-                  </div>
-                  Filtros Avançados
-                </DialogTitle>
-                <DialogDescription className="text-gray-600">
-                  Configure filtros personalizados para a busca
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Nome
-                    </label>
-                    <Input
-                      placeholder="Filtrar por nome"
-                      value={filtroAvancado.name || ''}
-                      onChange={e =>
-                        setFiltroAvancado({
-                          ...filtroAvancado,
-                          name: e.target.value,
-                        })
-                      }
-                      className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
-
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      CPF
-                    </label>
-                    <Input
-                      placeholder="Filtrar por CPF"
-                      value={filtroAvancado.cpf || ''}
-                      onChange={e =>
-                        setFiltroAvancado({
-                          ...filtroAvancado,
-                          cpf: e.target.value,
-                        })
-                      }
-                      className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
-
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Função
-                    </label>
-                    <Input
-                      placeholder="Filtrar por função"
-                      value={filtroAvancado.role || ''}
-                      onChange={e =>
-                        setFiltroAvancado({
-                          ...filtroAvancado,
-                          role: e.target.value,
-                        })
-                      }
-                      list="funcoes"
-                      className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                    <datalist id="funcoes">
-                      {funcoesUnicasFiltradas.map(funcao => (
-                        <option key={funcao} value={funcao} />
-                      ))}
-                    </datalist>
-                  </div>
-
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Empresa
-                    </label>
-                    <Input
-                      placeholder="Filtrar por empresa"
-                      value={filtroAvancado.company || ''}
-                      onChange={e =>
-                        setFiltroAvancado({
-                          ...filtroAvancado,
-                          company: e.target.value,
-                        })
-                      }
-                      list="empresas"
-                      className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                    <datalist id="empresas">
-                      {empresasUnicasFiltradas.map(empresa => (
-                        <option key={empresa} value={empresa} />
-                      ))}
-                    </datalist>
-                  </div>
-                </div>
-
-                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Tipo de Credencial
-                  </label>
-                  <Input
-                    placeholder="Filtrar por tipo de credencial"
-                    value={filtroAvancado.wristbandId || ''}
-                    onChange={e =>
-                      setFiltroAvancado({
-                        ...filtroAvancado,
-                        wristbandId: e.target.value,
-                      })
-                    }
-                    className="bg-gray-50 text-gray-600 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                </div>
-
-                {/* Ordenação */}
-                <div className="bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Ordenação
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="ordenacao-ativa"
-                        checked={ordenacao.campo !== ''}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            setOrdenacao({ campo: 'name', direcao: 'asc' })
-                          } else {
-                            setOrdenacao({ campo: '', direcao: 'asc' })
-                          }
-                        }}
-                        className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
-                      />
-                      <label
-                        htmlFor="ordenacao-ativa"
-                        className="text-sm font-medium text-gray-700"
-                      >
-                        Ativar ordenação
-                      </label>
-                    </div>
-                  </div>
-
-                  {ordenacao.campo !== '' && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Campo
-                        </label>
-                        <Select
-                          value={ordenacao.campo}
-                          onValueChange={campo =>
-                            setOrdenacao({ ...ordenacao, campo })
-                          }
-                        >
-                          <SelectTrigger className="bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500">
-                            <SelectValue placeholder="Campo" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="name">Nome</SelectItem>
-                            <SelectItem value="cpf">CPF</SelectItem>
-                            <SelectItem value="role">Função</SelectItem>
-                            <SelectItem value="company">Empresa</SelectItem>
-                            <SelectItem value="wristbandId">
-                              Credencial
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Direção
-                        </label>
-                        <Select
-                          value={ordenacao.direcao}
-                          onValueChange={direcao =>
-                            setOrdenacao({
-                              ...ordenacao,
-                              direcao: direcao as 'asc' | 'desc',
-                            })
-                          }
-                        >
-                          <SelectTrigger className="bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500">
-                            <SelectValue placeholder="Direção" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="asc">A-Z</SelectItem>
-                            <SelectItem value="desc">Z-A</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-4 pt-6">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setFiltroAvancado({})
-                      setOrdenacao({ campo: '', direcao: 'asc' })
-                      clearColumnFilters()
-                    }}
-                    className="flex-1 bg-white border-gray-300 hover:bg-gray-50 text-gray-600 hover:border-gray-400 shadow-sm"
-                  >
-                    Limpar Filtros
-                    {countFiltrosAtivos() > 0 && (
-                      <span className="ml-2 bg-red-100 text-red-800 text-xs rounded-full px-2 py-0.5 font-medium">
-                        {countFiltrosAtivos()}
-                      </span>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={() => setFiltroAvancadoOpen(false)}
-                    className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                  >
-                    Aplicar Filtros
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
 
           {/* Modal de Troca de Pulseira */}
           <Dialog
             open={popupTrocaPulseira}
             onOpenChange={setPopupTrocaPulseira}
           >
-            <DialogContent className="sm:max-w-lg bg-white text-gray-900">
+            <DialogContent className="sm:max-w-md bg-white text-gray-900">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-3">
                   <CreditCard className="w-5 h-5 text-blue-600" />
-                  Trocar Credencial
+                  {editingWristbandId ? 'Alterar Pulseira' : 'Trocar Credencial'}
                 </DialogTitle>
                 <DialogDescription>
-                  Busque e selecione um participante para trocar a credencial
+                  {editingWristbandId ? 'Insira o novo código da pulseira' : 'Busque e selecione um participante para trocar a credencial'}
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4">
-                {/* Campo de busca */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    type="text"
-                    placeholder="Busque por nome ou CPF..."
-                    value={filtro.nome}
-                    onChange={e => handleBuscaOtimizada(e.target.value)}
-                    className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 shadow-sm transition-all duration-200"
-                  />
-                </div>
+                {!editingWristbandId ? (
+                  <>
+                    {/* Campo de busca */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        type="text"
+                        placeholder="Busque por nome ou CPF..."
+                        value={filtro.nome}
+                        onChange={e => handleBuscaOtimizada(e.target.value)}
+                        className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 shadow-sm transition-all duration-200"
+                      />
+                    </div>
 
-                {/* Lista de participantes */}
-                <div className="max-h-60 overflow-y-auto space-y-2">
-                  {paginatedData.data.map(participant => {
-                    const attendanceStatus = participantsAttendanceStatus.get(
-                      participant.id,
-                    )
-                    const hasCheckIn = attendanceStatus?.checkIn
+                    {/* Lista de participantes */}
+                    <div className="max-h-60 overflow-y-auto space-y-2">
+                      {paginatedData.data.map(participant => {
+                        const attendanceStatus = participantsAttendanceStatus.get(
+                          participant.id,
+                        )
+                        const hasCheckIn = attendanceStatus?.checkIn
 
-                    return (
-                      <div
-                        key={participant.id}
-                        onClick={() => {
-                          if (!hasCheckIn) {
-                            toast.error(
-                              'Participante precisa ter check-in para trocar pulseira',
-                            )
-                            return
-                          }
-                          setSelectedParticipantForPulseira(participant)
-                          openWristbandModal({
-                            participant,
-                            eventId,
-                            onSuccess: () => {
-                              setSelectedParticipantForPulseira(null)
-                              closeWristbandModal()
-                            },
-                          })
-                          setPopupTrocaPulseira(false)
-                        }}
-                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${hasCheckIn
-                          ? 'border-gray-200 hover:bg-gray-50'
-                          : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
-                          }`}
-                      >
-                        <div className="flex items-center gap-3">
+                        return (
                           <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center ${hasCheckIn
-                              ? 'bg-gradient-to-br from-blue-500 to-blue-600'
-                              : 'bg-gray-300'
+                            key={participant.id}
+                            onClick={async () => {
+                              if (!hasCheckIn) {
+                                toast.error(
+                                  'Participante precisa ter check-in para trocar pulseira',
+                                )
+                                return
+                              }
+
+                              // Buscar código atual da pulseira
+                              try {
+                                const movementCredential = await getMovementCredentialByParticipant(eventId, participant.id)
+                                const currentCode = movementCredential?.data?.code || ''
+                                setNewWristbandCode(currentCode)
+
+                                // Atualizar o mapa de pulseiras
+                                setParticipantWristbands(prev => {
+                                  const newMap = new Map(prev)
+                                  newMap.set(participant.id, currentCode)
+                                  return newMap
+                                })
+                              } catch (error) {
+                                console.error('Erro ao buscar código da pulseira:', error)
+                                setNewWristbandCode('')
+                              }
+
+                              setEditingWristbandId(participant.id)
+                            }}
+                            className={`p-3 border rounded-lg transition-colors ${hasCheckIn
+                              ? 'border-gray-200 hover:bg-gray-50 cursor-pointer'
+                              : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
                               }`}
                           >
-                            <span className="text-sm font-bold text-white">
-                              {getInitials(participant.name)}
-                            </span>
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-8 h-8 rounded-full flex items-center justify-center ${hasCheckIn
+                                  ? 'bg-gradient-to-br from-blue-500 to-blue-600'
+                                  : 'bg-gray-300'
+                                  }`}
+                              >
+                                <span className="text-sm font-bold text-white">
+                                  {getInitials(participant.name)}
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900">
+                                  {participant.name}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  {participant.role} • {participant.company}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {formatCPF(participant.cpf?.trim() || '')}
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end">
+                                {hasCheckIn ? (
+                                  <div className="flex items-center gap-1 text-green-600">
+                                    <Check className="w-3 h-3" />
+                                    <span className="text-xs">Check-in</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1 text-gray-400">
+                                    <Clock className="w-3 h-3" />
+                                    <span className="text-xs">Sem check-in</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <p className="font-medium text-gray-900">
-                              {participant.name}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              {participant.role} • {participant.company}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {participant.cpf}
-                            </p>
+                        )
+                      })}
+                    </div>
+
+                    {paginatedData.data.length === 0 && (
+                      <div className="text-center py-8 text-gray-500">
+                        <User className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                        <p>Nenhum participante encontrado</p>
+                      </div>
+                    )}
+
+                    {/* Informação sobre check-in */}
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <p className="text-sm text-blue-800">
+                        <strong>Nota:</strong> Apenas participantes com check-in podem ter suas pulseiras trocadas.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  /* Detalhes do participante selecionado para edição */
+                  (() => {
+                    const selectedParticipant = paginatedData.data.find(p => p.id === editingWristbandId)
+                    if (!selectedParticipant) return null
+
+                    const attendanceStatus = participantsAttendanceStatus.get(selectedParticipant.id)
+                    const currentWristband = participantWristbands.get(selectedParticipant.id) || 'Não informado'
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Detalhes do participante */}
+                        <div className="p-4 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                              <span className="text-white font-bold">
+                                {getInitials(selectedParticipant.name)}
+                              </span>
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-gray-900">{selectedParticipant.name}</h3>
+                              <p className="text-sm text-gray-600">{selectedParticipant.role}</p>
+                            </div>
                           </div>
-                          <div className="flex flex-col items-end">
-                            {hasCheckIn ? (
+
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <span className="text-gray-500">CPF:</span>
+                              <p className="font-mono text-gray-900">{formatCPF(selectedParticipant.cpf?.trim() || '')}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Empresa:</span>
+                              <p className="text-gray-900">{selectedParticipant.company}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Credencial:</span>
+                              <p className="text-gray-900">{getCredencial(selectedParticipant)}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Status:</span>
                               <div className="flex items-center gap-1 text-green-600">
                                 <Check className="w-3 h-3" />
-                                <span className="text-xs">Check-in</span>
+                                <span className="text-xs">Check-in realizado</span>
                               </div>
-                            ) : (
-                              <div className="flex items-center gap-1 text-gray-400">
-                                <Clock className="w-3 h-3" />
-                                <span className="text-xs">Sem check-in</span>
-                              </div>
-                            )}
+                            </div>
                           </div>
+
+                          <div className="mt-3 pt-3 border-t border-blue-200">
+                            <span className="text-gray-500 text-sm">Pulseira atual:</span>
+                            <p className="font-mono text-lg text-blue-900 font-semibold">{currentWristband}</p>
+                          </div>
+                        </div>
+
+                        {/* Campo para nova pulseira */}
+                        <div className="space-y-3">
+                          <label className="block text-sm font-medium text-gray-700">
+                            Nova pulseira:
+                          </label>
+                          <Input
+                            type="text"
+                            value={newWristbandCode}
+                            onChange={e => setNewWristbandCode(e.target.value)}
+                            placeholder="Digite o código da nova pulseira"
+                            className="text-center text-lg font-mono bg-white border-blue-300 focus:border-blue-500 focus:ring-blue-500"
+                            autoFocus
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                salvarNovaPulseiraInline(selectedParticipant.id)
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                cancelarEdicaoPulseira()
+                              }
+                            }}
+                          />
+                        </div>
+
+                        {/* Botões de ação */}
+                        <div className="flex gap-3 pt-2">
+                          <Button
+                            onClick={() => salvarNovaPulseiraInline(selectedParticipant.id)}
+                            disabled={loading || !newWristbandCode.trim()}
+                            className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+                          >
+                            {loading ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Salvando...
+                              </>
+                            ) : (
+                              <>
+                                <Check className="w-4 h-4 mr-2" />
+                                Salvar Pulseira
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={cancelarEdicaoPulseira}
+                            disabled={loading}
+                            className="px-6"
+                          >
+                            Voltar
+                          </Button>
                         </div>
                       </div>
                     )
-                  })}
-                </div>
-
-                {paginatedData.data.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <User className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                    <p>Nenhum participante encontrado</p>
-                  </div>
+                  })()
                 )}
-
-                {/* Informação sobre check-in */}
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <p className="text-sm text-blue-800">
-                    <strong>Nota:</strong> Apenas participantes com check-in
-                    podem ter suas pulseiras trocadas.
-                  </p>
-                </div>
               </div>
             </DialogContent>
           </Dialog>
 
-          {/* Modal de Troca de Pulseira Lazy-Loaded */}
-          <WristbandModalComponent
-            participant={selectedParticipantForPulseira}
-            eventId={eventId}
-            onSuccess={() => {
-              setSelectedParticipantForPulseira(null)
-              closeWristbandModal()
-              // Recarregar dados se necessário
-            }}
-          />
+
         </>
       )}
       <ModalAdicionarStaff isOpen={popupNovoStaff} eventId={eventId} onClose={() => setPopupNovoStaff(false)}
         evento={evento}
-        onSuccess={() => {
+        onSuccess={async () => {
           // Recarregar dados se necessário
           console.log("Staff adicionado com sucesso!");
+          await refetchParticipants();
+          await refetchAttendance();
         }} />
     </div>
   )

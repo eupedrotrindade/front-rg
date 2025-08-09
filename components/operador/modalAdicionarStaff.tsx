@@ -3,8 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Calendar, Plus, Loader2 } from 'lucide-react';
-import { useState, useCallback } from "react";
+import { Calendar, Plus, Loader2, Search, X } from 'lucide-react';
+import { useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
 import { useCredentials } from "@/features/eventos/api/query";
@@ -31,6 +31,8 @@ const initialStaff = {
 export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSuccess, evento }: ModalAdicionarStaffProps) {
   const [loading, setLoading] = useState(false);
   const [novoStaff, setNovoStaff] = useState(initialStaff);
+  const [empresaSearch, setEmpresaSearch] = useState("");
+  const [isEmpresaSelectOpen, setIsEmpresaSelectOpen] = useState(false);
 
   const { data: credentials = [] } = useCredentials({ eventId });
   const { data: empresas = [] } = useEmpresasByEvent(eventId);
@@ -43,6 +45,14 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
 
   const activeCredentials = credentials.filter((credential: Credential) => credential.isActive !== false);
   const empresasArray = Array.isArray(empresas) ? empresas : [];
+
+  // Filtrar empresas baseado na busca
+  const filteredEmpresas = useMemo(() => {
+    if (!empresaSearch.trim()) return empresasArray;
+    return empresasArray.filter(empresa => 
+      empresa.nome.toLowerCase().includes(empresaSearch.toLowerCase())
+    );
+  }, [empresasArray, empresaSearch]);
 
   const getDateRange = useCallback((startDate?: string, endDate?: string): string[] => {
     if (!startDate || !endDate) return [];
@@ -117,6 +127,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
 
   const handleClose = () => {
     setNovoStaff(initialStaff);
+    setEmpresaSearch("");
+    setIsEmpresaSelectOpen(false);
     onClose();
   };
 
@@ -172,22 +184,66 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
             <div>
               <label className="block text-sm font-medium mb-2">Empresa *</label>
               {empresasArray.length > 0 ? (
-                <Select
-                  value={novoStaff.empresa}
-                  onValueChange={(value) => setNovoStaff({ ...novoStaff, empresa: value })}
-                  disabled={loading}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma empresa" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {empresasArray.map((empresa) => (
-                      <SelectItem key={empresa.id} value={empresa.nome}>
-                        {empresa.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="relative">
+                  <Select
+                    value={novoStaff.empresa}
+                    onValueChange={(value) => {
+                      setNovoStaff({ ...novoStaff, empresa: value });
+                      setEmpresaSearch("");
+                      setIsEmpresaSelectOpen(false);
+                    }}
+                    disabled={loading}
+                    open={isEmpresaSelectOpen}
+                    onOpenChange={setIsEmpresaSelectOpen}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma empresa" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[200px]">
+                      {/* Campo de pesquisa */}
+                      <div className="sticky top-0 z-10 bg-white border-b p-2">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Pesquisar empresa..."
+                            value={empresaSearch}
+                            onChange={(e) => setEmpresaSearch(e.target.value)}
+                            className="pl-8 h-8"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          {empresaSearch && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="absolute right-1 top-1 h-6 w-6 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEmpresaSearch("");
+                              }}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Lista de empresas filtradas */}
+                      <div className="max-h-[150px] overflow-y-auto">
+                        {filteredEmpresas.length > 0 ? (
+                          filteredEmpresas.map((empresa) => (
+                            <SelectItem key={empresa.id} value={empresa.nome}>
+                              {empresa.nome}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <div className="p-2 text-center text-sm text-muted-foreground">
+                            Nenhuma empresa encontrada
+                          </div>
+                        )}
+                      </div>
+                    </SelectContent>
+                  </Select>
+                </div>
               ) : (
                 <Input
                   value={novoStaff.empresa}
