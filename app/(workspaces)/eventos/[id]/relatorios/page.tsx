@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import React, { useState, useMemo, useCallback } from "react"
@@ -106,6 +107,65 @@ export default function RelatoriosPage() {
     const { data: attendanceRecords = [], isLoading: attendanceLoading } = useAllEventAttendance(eventId);
     const { data: movementCredentials = [], isLoading: movementLoading } = useMovementCredential(eventId);
 
+    // Sistema de Análise Avançada de Dados
+    const analiseDados = useMemo(() => {
+        if (!participantes.length || !attendanceRecords.length) return null;
+
+        // Análise de IDs únicos
+        const participantIds = new Set(participantes.map(p => p.id));
+        const attendanceParticipantIds = new Set(attendanceRecords.map(r => r.participantId));
+
+        // IDs que estão em participantes mas não em attendance
+        const missingInAttendance = [...participantIds].filter(id => !attendanceParticipantIds.has(id));
+
+        // IDs que estão em attendance mas não em participantes  
+        const orphanAttendance = [...attendanceParticipantIds].filter(id => !participantIds.has(id));
+
+        // Participantes com múltiplos registros de attendance
+        const attendanceByParticipant: any = {};
+        attendanceRecords.forEach(record => {
+            if (!attendanceByParticipant[record.participantId]) {
+                attendanceByParticipant[record.participantId] = [];
+            }
+            attendanceByParticipant[record.participantId].push(record);
+        });
+
+        const participantesComMultiplosRegistros = Object.entries(attendanceByParticipant)
+            .filter(([_, records]: [string, any]) => records.length > 1)
+            .map(([participantId, records]: [string, any]) => ({
+                participantId,
+                count: records.length,
+                records: records
+            }));
+
+        // Análise de dados de check-in válidos
+        const attendanceComCheckIn = attendanceRecords.filter(r => r.checkIn && r.checkIn !== null);
+        const attendanceComCheckOut = attendanceRecords.filter(r => r.checkOut && r.checkOut !== null);
+
+        // Participantes originais com check-in
+        const participantesOriginaisComCheckIn = participantes.filter(p => p.checkIn && p.checkIn !== "");
+
+        const analise = {
+            totalParticipantes: participantes.length,
+            totalAttendanceRecords: attendanceRecords.length,
+            participantesComMatch: participantIds.size - missingInAttendance.length,
+            participantesSemMatch: missingInAttendance.length,
+            attendanceOrfaos: orphanAttendance.length,
+            participantesComMultiplosRegistros: participantesComMultiplosRegistros.length,
+            attendanceComCheckInValido: attendanceComCheckIn.length,
+            attendanceComCheckOutValido: attendanceComCheckOut.length,
+            participantesOriginaisComCheckIn: participantesOriginaisComCheckIn.length,
+            coverageRate: ((participantIds.size - missingInAttendance.length) / participantIds.size * 100).toFixed(2),
+            missingIds: missingInAttendance.slice(0, 5),
+            orphanIds: orphanAttendance.slice(0, 5),
+            multipleRecordsDetails: participantesComMultiplosRegistros.slice(0, 3)
+        };
+
+        console.log(`🔍 ANÁLISE AVANÇADA - Evento ${eventId}:`, analise);
+
+        return analise;
+    }, [participantes, attendanceRecords, eventId]);
+
     // Hook para exportação
     const exportPDFMutation = useExportPDF()
 
@@ -181,6 +241,28 @@ export default function RelatoriosPage() {
         return days
     }, [evento])
 
+    // Função para formatar data de ISO para YYYY/MM/DD HH:MM
+    const formatarDataHora = useCallback((isoString: string): string => {
+        try {
+            if (!isoString) return "-"
+            const data = new Date(isoString)
+
+            // Verificar se a data é válida
+            if (isNaN(data.getTime())) return "-"
+
+            const year = data.getFullYear()
+            const month = String(data.getMonth() + 1).padStart(2, '0')
+            const day = String(data.getDate()).padStart(2, '0')
+            const hours = String(data.getHours()).padStart(2, '0')
+            const minutes = String(data.getMinutes()).padStart(2, '0')
+
+            return `${year}/${month}/${day} ${hours}:${minutes}`
+        } catch (error) {
+            console.error("Erro ao formatar data:", error)
+            return "-"
+        }
+    }, [])
+
     // Função para calcular tempo total de trabalho
     const calcularTempoTotal = useCallback((checkIn: string, checkOut: string): string => {
         try {
@@ -213,67 +295,252 @@ export default function RelatoriosPage() {
         return credencial?.nome || ""
     }, [credenciais])
 
-    // Função para sincronizar dados de participante com attendance
+    // Sistema Ultra-Robusto de Sincronização de Attendance
     const sincronizarAttendance = useCallback((participante: EventParticipant) => {
-        // Buscar registros de attendance para este participante
-        const participantAttendance = attendanceRecords.filter(
-            record => record.participantId === participante.id
-        )
+        try {
+            // Validação de entrada
+            if (!participante || !participante.id) {
+                console.warn(`⚠️ Participante inválido:`, participante);
+                return {
+                    ...participante,
+                    checkIn: participante?.checkIn || "",
+                    checkOut: participante?.checkOut || ""
+                };
+            }
 
-        // Se não há registros de attendance, retornar dados do participante original
-        if (participantAttendance.length === 0) {
+            // Estratégia 1: Busca exata por ID
+            let participantAttendance = attendanceRecords.filter(
+                record => record && record.participantId === participante.id
+            );
+
+            // Estratégia 2: Busca por aproximação (caso haja problemas de encoding/formato)
+            if (participantAttendance.length === 0) {
+                participantAttendance = attendanceRecords.filter(record => {
+                    if (!record || !record.participantId) return false;
+                    return record.participantId.toLowerCase().trim() === participante.id.toLowerCase().trim();
+                });
+            }
+
+            // Estratégia 3: Busca por nome (fallback extremo)
+            if (participantAttendance.length === 0 && participante.name) {
+                participantAttendance = attendanceRecords.filter(record => {
+                    if (!record || !record.participant?.name) return false;
+                    const recordName = record.participant.name.toLowerCase().trim();
+                    const participantName = participante.name.toLowerCase().trim();
+                    return recordName === participantName;
+                });
+
+                if (participantAttendance.length > 0) {
+                    console.log(`🔄 Match por nome para ${participante.name}:`, participantAttendance.length);
+                }
+            }
+
+            // Log detalhado para debugging
+            const shouldLog = participantAttendance.length > 0 ||
+                (participante.checkIn && participante.checkIn !== "") ||
+                Math.random() < 0.1; // 10% sample para participantes sem match
+
+            if (shouldLog) {
+                console.log(`🔍 Sync ${participante.name}:`, {
+                    participantId: participante.id,
+                    attendanceFound: participantAttendance.length,
+                    originalCheckIn: participante.checkIn,
+                    originalCheckOut: participante.checkOut,
+                    attendanceRecords: participantAttendance.map(r => ({
+                        checkIn: r.checkIn,
+                        checkOut: r.checkOut,
+                        date: r.date
+                    }))
+                });
+            }
+
+            // Se não há registros de attendance, processar dados originais
+            if (participantAttendance.length === 0) {
+                // Tentar formatar dados originais se existirem
+                const originalCheckIn = participante.checkIn ?
+                    (participante.checkIn.includes('T') ? formatarDataHora(participante.checkIn) : participante.checkIn) : "";
+                const originalCheckOut = participante.checkOut ?
+                    (participante.checkOut.includes('T') ? formatarDataHora(participante.checkOut) : participante.checkOut) : "";
+
+                return {
+                    ...participante,
+                    checkIn: originalCheckIn,
+                    checkOut: originalCheckOut
+                };
+            }
+
+            // Processar registros de attendance válidos
+            const validAttendanceRecords = participantAttendance.filter(record =>
+                record && (record.checkIn || record.checkOut)
+            );
+
+            // Buscar melhor check-in (mais recente e válido)
+            const validCheckIns = validAttendanceRecords
+                .filter(record => record.checkIn && record.checkIn !== null && record.checkIn !== "")
+                .sort((a, b) => {
+                    try {
+                        return new Date(b.checkIn!).getTime() - new Date(a.checkIn!).getTime();
+                    } catch {
+                        return 0;
+                    }
+                });
+
+            // Buscar melhor check-out (mais recente e válido)
+            const validCheckOuts = validAttendanceRecords
+                .filter(record => record.checkOut && record.checkOut !== null && record.checkOut !== "")
+                .sort((a, b) => {
+                    try {
+                        return new Date(b.checkOut!).getTime() - new Date(a.checkOut!).getTime();
+                    } catch {
+                        return 0;
+                    }
+                });
+
+            const latestCheckin = validCheckIns[0];
+            const latestCheckout = validCheckOuts[0];
+
+            // Processar dados finais com fallbacks múltiplos
+            let finalCheckIn = "";
+            let finalCheckOut = "";
+
+            // Prioridade: Attendance > Original > Vazio
+            if (latestCheckin?.checkIn) {
+                try {
+                    finalCheckIn = formatarDataHora(latestCheckin.checkIn);
+                } catch (error) {
+                    console.error(`Erro ao formatar checkIn para ${participante.name}:`, error);
+                    finalCheckIn = latestCheckin.checkIn; // Usar valor bruto se formatação falhar
+                }
+            } else if (participante.checkIn && participante.checkIn !== "") {
+                try {
+                    finalCheckIn = participante.checkIn.includes('T') ?
+                        formatarDataHora(participante.checkIn) : participante.checkIn;
+                } catch (error) {
+                    finalCheckIn = participante.checkIn;
+                }
+            }
+
+            if (latestCheckout?.checkOut) {
+                try {
+                    finalCheckOut = formatarDataHora(latestCheckout.checkOut);
+                } catch (error) {
+                    console.error(`Erro ao formatar checkOut para ${participante.name}:`, error);
+                    finalCheckOut = latestCheckout.checkOut;
+                }
+            } else if (participante.checkOut && participante.checkOut !== "") {
+                try {
+                    finalCheckOut = participante.checkOut.includes('T') ?
+                        formatarDataHora(participante.checkOut) : participante.checkOut;
+                } catch (error) {
+                    finalCheckOut = participante.checkOut;
+                }
+            }
+
+            // Log do resultado final
+            if (shouldLog) {
+                console.log(`✅ Resultado para ${participante.name}:`, {
+                    finalCheckIn: finalCheckIn || "-",
+                    finalCheckOut: finalCheckOut || "-",
+                    source: {
+                        checkIn: latestCheckin?.checkIn ? 'attendance' : (participante.checkIn ? 'original' : 'none'),
+                        checkOut: latestCheckout?.checkOut ? 'attendance' : (participante.checkOut ? 'original' : 'none')
+                    }
+                });
+            }
+
             return {
                 ...participante,
-                checkIn: participante.checkIn || "",
-                checkOut: participante.checkOut || ""
-            }
+                checkIn: finalCheckIn,
+                checkOut: finalCheckOut
+            };
+
+        } catch (error) {
+            console.error(`🚨 Erro crítico na sincronização para ${participante?.name || 'unknown'}:`, error);
+            // Fallback de emergência
+            return {
+                ...participante,
+                checkIn: participante?.checkIn || "",
+                checkOut: participante?.checkOut || ""
+            };
         }
+    }, [attendanceRecords, formatarDataHora])
 
-        // Pegar o registro mais recente ou combinar todos os check-ins/check-outs
-        const latestCheckin = participantAttendance
-            .filter(record => record.checkIn)
-            .sort((a, b) => new Date(b.checkIn!).getTime() - new Date(a.checkIn!).getTime())[0]
-
-        const latestCheckout = participantAttendance
-            .filter(record => record.checkOut)
-            .sort((a, b) => new Date(b.checkOut!).getTime() - new Date(a.checkOut!).getTime())[0]
-
-        return {
-            ...participante,
-            checkIn: latestCheckin?.checkIn || participante.checkIn || "",
-            checkOut: latestCheckout?.checkOut || participante.checkOut || ""
-        }
-    }, [attendanceRecords])
-
-    // Função para filtrar participantes por dia com dados de attendance sincronizados
+    // Sistema Otimizado de Filtragem e Sincronização por Dia
     const getParticipantesPorDia = useCallback((dia: string): EventParticipant[] => {
-        let participantesFiltrados: EventParticipant[]
-
-        if (dia === 'all') {
-            participantesFiltrados = participantes
-        } else {
-            participantesFiltrados = participantes.filter((participant: EventParticipant) => {
-                if (!participant.daysWork || participant.daysWork.length === 0) {
-                    return false
+        try {
+            // SEMPRE sincronizar TODOS os participantes primeiro
+            const todosSincronizados = participantes.map(p => {
+                try {
+                    return sincronizarAttendance(p);
+                } catch (error) {
+                    console.error(`Erro na sincronização de ${p?.name || 'unknown'}:`, error);
+                    return p; // Fallback para participante original
                 }
-                return participant.daysWork.includes(dia)
-            })
-        }
+            });
 
-        // Sincronizar com dados de attendance
-        return participantesFiltrados.map(p => sincronizarAttendance(p))
+            // DEPOIS aplicar filtro por dia se necessário
+            let participantesFiltrados: EventParticipant[];
+
+            if (dia === 'all') {
+                participantesFiltrados = todosSincronizados;
+            } else {
+                participantesFiltrados = todosSincronizados.filter((participant: EventParticipant) => {
+                    if (!participant || !participant.daysWork || participant.daysWork.length === 0) {
+                        return false;
+                    }
+                    return participant.daysWork.includes(dia);
+                });
+            }
+
+            // Log de debug para acompanhar o processo
+            if (Math.random() < 0.2) { // 20% das vezes para não spammar logs
+                console.log(`🗓️ Filtro por dia "${dia}":`, {
+                    totalParticipantes: participantes.length,
+                    sincronizados: todosSincronizados.length,
+                    filtrados: participantesFiltrados.length,
+                    comCheckIn: participantesFiltrados.filter(p => p.checkIn && p.checkIn !== "" && p.checkIn !== "-").length
+                });
+            }
+
+            return participantesFiltrados;
+
+        } catch (error) {
+            console.error(`🚨 Erro crítico na filtragem por dia:`, error);
+            // Fallback de emergência - retornar participantes originais
+            return participantes.filter((participant: EventParticipant) => {
+                if (dia === 'all') return true;
+                if (!participant.daysWork || participant.daysWork.length === 0) return false;
+                return participant.daysWork.includes(dia);
+            });
+        }
     }, [participantes, sincronizarAttendance])
 
     // Dados filtrados por dia selecionado
     const participantesDoDia = getParticipantesPorDia(selectedDay)
 
-    // Estatísticas
+    // Estatísticas Avançadas com Dados de Sincronização
     const estatisticas = useMemo(() => {
         const totalParticipantes = participantesDoDia.length
-        const participantesComCheckIn = participantesDoDia.filter(p => p.checkIn).length
-        const participantesComCheckOut = participantesDoDia.filter(p => p.checkOut).length
+
+        // Filtros mais rigorosos para check-in/check-out válidos
+        const participantesComCheckIn = participantesDoDia.filter(p =>
+            p.checkIn && p.checkIn !== "" && p.checkIn !== "-"
+        ).length
+
+        const participantesComCheckOut = participantesDoDia.filter(p =>
+            p.checkOut && p.checkOut !== "" && p.checkOut !== "-"
+        ).length
+
         const participantesAtivos = participantesComCheckIn - participantesComCheckOut
         const participantesComPulseira = participantesDoDia.filter(p => p.credentialId).length
+
+        // Estatísticas de sincronização
+        const participantesComAttendanceMatch = participantesDoDia.filter(p =>
+            attendanceRecords.some(r => r.participantId === p.id)
+        ).length
+
+        const sincronizationRate = totalParticipantes > 0 ?
+            ((participantesComAttendanceMatch / totalParticipantes) * 100) : 0
 
         return {
             totalParticipantes,
@@ -281,12 +548,14 @@ export default function RelatoriosPage() {
             participantesComCheckOut,
             participantesAtivos,
             participantesComPulseira,
+            participantesComAttendanceMatch,
+            sincronizationRate: sincronizationRate.toFixed(1),
             totalCoordenadores: coordenadores.length,
             totalVagas: vagas.length,
             vagasRetiradas: vagas.filter(v => v.retirada === "retirada").length,
             vagasPendentes: vagas.filter(v => v.retirada === "pendente").length
         }
-    }, [participantesDoDia, coordenadores, vagas])
+    }, [participantesDoDia, coordenadores, vagas, attendanceRecords])
 
     // Função para obter a cor da tab baseada no tipo de dia
     const getTabColor = useCallback((type: string, isActive: boolean) => {
@@ -323,16 +592,30 @@ export default function RelatoriosPage() {
             case "geral":
                 // Relatório Geral: Lista todos staffs ordenados alfabeticamente
                 participantesProcessados = participantesDoDia
-                    .map(p => ({
-                        nome: p.name?.toUpperCase() || "",
-                        cpf: p.cpf || "",
-                        empresa: p.company?.toUpperCase() || "",
-                        funcao: p.role?.toUpperCase() || "",
-                        pulseira: obterCodigoPulseira(p.id),
-                        tipoPulseira: obterTipoPulseira(p.credentialId),
-                        checkIn: p.checkIn || "-",
-                        checkOut: p.checkOut || "-"
-                    } as RelatorioParticipanteCompleto))
+                    .map(p => {
+                        const dadosProcessados = {
+                            nome: p.name?.toUpperCase() || "",
+                            cpf: p.cpf || "",
+                            empresa: p.company?.toUpperCase() || "",
+                            funcao: p.role?.toUpperCase() || "",
+                            pulseira: obterCodigoPulseira(p.id),
+                            tipoPulseira: obterTipoPulseira(p.credentialId),
+                            checkIn: p.checkIn || "-",
+                            checkOut: p.checkOut || "-"
+                        }
+
+                        // Debug: Log específico para alguns participantes com dados
+                        if (p.checkIn && p.checkIn !== "" && p.checkIn !== "-") {
+                            console.log(`📋 Processando para relatório - ${p.name}:`, {
+                                originalCheckIn: p.checkIn,
+                                processedCheckIn: dadosProcessados.checkIn,
+                                originalCheckOut: p.checkOut,
+                                processedCheckOut: dadosProcessados.checkOut
+                            })
+                        }
+
+                        return dadosProcessados as RelatorioParticipanteCompleto
+                    })
                     .sort((a, b) => a.nome.localeCompare(b.nome))
                 break
 
@@ -527,7 +810,7 @@ export default function RelatoriosPage() {
 
         const nomeEmpresa = selectedCompanyForExport
         const participantesEmpresa = participantesDoDia.filter(p => p.company === nomeEmpresa)
-        
+
         const dadosEmpresa = participantesEmpresa.map(p => ({
             nome: p.name?.toUpperCase() || "",
             cpf: p.cpf || "",
@@ -594,8 +877,15 @@ export default function RelatoriosPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Check-in</p>
-                                    <p className="text-3xl font-bold">{estatisticas.participantesComCheckIn}</p>
+                                    <p className="text-sm opacity-90">Check-in Sincronizado</p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-3xl font-bold">{estatisticas.participantesComCheckIn}</p>
+                                        {analiseDados && (
+                                            <div className="text-xs opacity-75">
+                                                ({((estatisticas.participantesComCheckIn / estatisticas.totalParticipantes) * 100).toFixed(1)}%)
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <Clock className="h-8 w-8 opacity-80" />
                             </div>
@@ -828,7 +1118,7 @@ export default function RelatoriosPage() {
                             {/* Exportar por Empresa Específica */}
                             <div className="space-y-3">
                                 <label className="block text-sm font-medium">Exportar Relatório por Empresa</label>
-                                
+
                                 <Select
                                     value={selectedCompanyForExport}
                                     onValueChange={setSelectedCompanyForExport}
@@ -875,6 +1165,130 @@ export default function RelatoriosPage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
+                            {/* Sistema Avançado de Análise e Debug */}
+                            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                                <h4 className="font-medium text-sm text-gray-800 mb-2">🔬 Análise Avançada de Dados</h4>
+                                {analiseDados ? (
+                                    <div className="text-xs text-gray-600 space-y-2">
+                                        {/* Estatísticas principais */}
+                                        <div className="grid grid-cols-2 gap-2 p-2 bg-white rounded border">
+                                            <div><strong>Total participantes:</strong> {analiseDados.totalParticipantes}</div>
+                                            <div><strong>Total attendance:</strong> {analiseDados.totalAttendanceRecords}</div>
+
+                                            <div><strong>Matches encontrados:</strong> {analiseDados.participantesComMatch}</div>
+                                        </div>
+
+                                        {/* Problemas identificados */}
+                                        <div className="space-y-1">
+                                            <div className={analiseDados.participantesSemMatch > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
+                                                <strong>Participantes sem match:</strong> {analiseDados.participantesSemMatch}
+                                            </div>
+                                            <div className={analiseDados.attendanceOrfaos > 0 ? 'text-yellow-600' : 'text-green-600'}>
+                                                <strong>Attendance órfãos:</strong> {analiseDados.attendanceOrfaos}
+                                            </div>
+                                            <div className="text-blue-600">
+                                                <strong>Check-ins válidos:</strong> {analiseDados.attendanceComCheckInValido} de {analiseDados.totalAttendanceRecords}
+                                            </div>
+                                            <div className="text-purple-600">
+                                                <strong>Check-outs válidos:</strong> {analiseDados.attendanceComCheckOutValido} de {analiseDados.totalAttendanceRecords}
+                                            </div>
+                                        </div>
+
+                                        {/* Dados pós-sincronização */}
+                                        <div className="p-2 bg-blue-50 rounded border">
+                                            <div className="font-medium text-blue-800 mb-1">Resultado da Sincronização:</div>
+                                            <div><strong>Com checkIn:</strong> {participantesDoDia.filter(p => p.checkIn && p.checkIn !== "-" && p.checkIn !== "").length}</div>
+                                            <div><strong>Com checkOut:</strong> {participantesDoDia.filter(p => p.checkOut && p.checkOut !== "-" && p.checkOut !== "").length}</div>
+                                        </div>
+
+                                        {/* Detalhes dos problemas */}
+                                        {analiseDados.participantesSemMatch > 0 && (
+                                            <details className="mt-2">
+                                                <summary className="cursor-pointer text-red-600 font-medium">IDs sem match ({analiseDados.missingIds.length} primeiros)</summary>
+                                                <pre className="mt-1 text-xs bg-white p-2 rounded border max-h-20 overflow-auto">
+                                                    {analiseDados.missingIds.join('\n')}
+                                                </pre>
+                                            </details>
+                                        )}
+
+                                        {analiseDados.multipleRecordsDetails.length > 0 && (
+                                            <details className="mt-2">
+                                                <summary className="cursor-pointer text-yellow-600">Múltiplos registros ({analiseDados.multipleRecordsDetails.length})</summary>
+                                                <pre className="mt-1 text-xs bg-white p-2 rounded border max-h-32 overflow-auto">
+                                                    {JSON.stringify(analiseDados.multipleRecordsDetails, null, 2)}
+                                                </pre>
+                                            </details>
+                                        )}
+
+                                        {attendanceRecords.length > 0 && (
+                                            <details className="mt-2">
+                                                <summary className="cursor-pointer text-blue-600">Ver amostra attendance records</summary>
+                                                <pre className="mt-2 text-xs bg-white p-2 rounded border max-h-40 overflow-auto">
+                                                    {JSON.stringify(attendanceRecords.slice(0, 3), null, 2)}
+                                                </pre>
+                                            </details>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-gray-500">Aguardando dados...</p>
+                                )}
+                                {/* Ferramentas de Debug Avançado */}
+                                <div className="mt-3 flex gap-2">
+                                    <button
+                                        onClick={() => {
+                                            console.log("🚀 ANÁLISE COMPLETA:");
+                                            console.log("📊 Estatísticas:", analiseDados);
+
+                                            // Teste participantes com attendance
+                                            const participantesComAttendance = participantesDoDia.filter(p =>
+                                                attendanceRecords.some(r => r.participantId === p.id)
+                                            ).slice(0, 5);
+
+                                            console.log("👥 Participantes com attendance:", participantesComAttendance.map(p => ({
+                                                nome: p.name,
+                                                id: p.id,
+                                                checkInSincronizado: p.checkIn,
+                                                attendanceCount: attendanceRecords.filter(r => r.participantId === p.id).length
+                                            })));
+
+                                            // Teste participantes sem attendance mas com dados originais
+                                            const participantesSemAttendance = participantesDoDia.filter(p =>
+                                                !attendanceRecords.some(r => r.participantId === p.id) &&
+                                                (p.checkIn || p.checkOut)
+                                            ).slice(0, 3);
+
+                                            console.log("❌ Participantes sem attendance mas com dados originais:", participantesSemAttendance.map(p => ({
+                                                nome: p.name,
+                                                id: p.id,
+                                                checkInOriginal: p.checkIn,
+                                                checkOutOriginal: p.checkOut
+                                            })));
+                                        }}
+                                        className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+                                    >
+                                        🔍 Debug Completo
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            // Forçar re-sincronização de todos os participantes
+                                            console.log("🔄 FORÇANDO RE-SINCRONIZAÇÃO:");
+                                            const reprocessed = participantes.map(p => sincronizarAttendance(p));
+                                            console.log(`✅ ${reprocessed.length} participantes reprocessados`);
+
+                                            const comCheckIn = reprocessed.filter(p => p.checkIn && p.checkIn !== "" && p.checkIn !== "-");
+                                            console.log(`📊 Resultado: ${comCheckIn.length} participantes com check-in`);
+                                            console.log("Amostras:", comCheckIn.slice(0, 5).map(p => ({
+                                                nome: p.name,
+                                                checkIn: p.checkIn
+                                            })));
+                                        }}
+                                        className="px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600"
+                                    >
+                                        🔄 Re-sync
+                                    </button>
+                                </div>
+                            </div>
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm text-gray-600">Registros encontrados:</span>
@@ -921,7 +1335,7 @@ export default function RelatoriosPage() {
                                                 {
                                                     nome: "KAIQUE JARDIM DE LIMA",
                                                     cpf: "413.265.785-0",
-                                                    empresa: "2M PRODUÇÕES", 
+                                                    empresa: "2M PRODUÇÕES",
                                                     funcao: "MÍDIA",
                                                     pulseira: "-",
                                                     checkIn: "-",
@@ -949,7 +1363,7 @@ export default function RelatoriosPage() {
                                                     nome: "HERBERT RICHARD MARTINS LEITE",
                                                     cpf: "114.249.996-00",
                                                     empresa: "7 FEST",
-                                                    funcao: "FOTÓGRAFO", 
+                                                    funcao: "FOTÓGRAFO",
                                                     pulseira: "4004",
                                                     checkIn: "02/08/2025, 14:55:05",
                                                     checkOut: "-"
