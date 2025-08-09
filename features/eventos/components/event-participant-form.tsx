@@ -40,6 +40,8 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
             // Migrar wristbandId para credentialId se necessário
             credentialId: defaultValues?.credentialId || defaultValues?.wristbandId,
             ...defaultValues,
+            // Limpar shirtSize se inválido (campo não está no formulário)
+            shirtSize: undefined,
         },
     });
 
@@ -229,16 +231,19 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
         form.setValue("daysWork", currentDates.sort());
     }, [currentDaysWork, form]);
 
-    // Validação de CPF duplicado
-    const isCpfDuplicate = () => {
+    // Validação de CPF duplicado (memoizada para evitar verificações excessivas)
+    const isCpfDuplicate = useCallback(() => {
         if (!selectedEventId || !currentCpf) return false;
 
-        console.log("🔍 Verificando CPF duplicado:", {
-            currentCpf,
-            selectedEventId,
-            totalParticipants: participantsArray.length,
-            isEditing
-        });
+        // Reduzir logs para evitar spam
+        if (Math.random() < 0.1) { // Log apenas 10% das vezes
+            console.log("🔍 Verificando CPF duplicado:", {
+                currentCpf,
+                selectedEventId,
+                totalParticipants: participantsArray.length,
+                isEditing
+            });
+        }
 
         const existingParticipant = participantsArray.find(
             participant => {
@@ -261,17 +266,35 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
         );
 
         const isDuplicate = !!existingParticipant;
-        console.log("🔍 Resultado da validação:", isDuplicate);
+        
+        // Log resultado apenas quando necessário
+        if (Math.random() < 0.1) {
+            console.log("🔍 Resultado da validação:", isDuplicate);
+        }
 
         return isDuplicate;
-    };
+    }, [selectedEventId, currentCpf, participantsArray, isEditing, defaultValues?.id]);
 
     const handleSubmit = (data: FieldValues) => {
         console.log("🚀 Tentando submeter formulário:", {
             cpf: data.cpf,
             eventId: data.eventId,
-            isCpfDuplicate: isCpfDuplicate()
+            name: data.name,
+            company: data.company,
+            credentialId: data.credentialId,
+            activeCredentialsLength: activeCredentials.length,
+            isEditing: isEditing,
+            isCpfDuplicate: isCpfDuplicate(),
+            formErrors: form.formState.errors,
+            formIsValid: form.formState.isValid
         });
+
+        // Verificar se o formulário tem erros
+        if (Object.keys(form.formState.errors).length > 0) {
+            console.log("❌ Formulário tem erros de validação:", form.formState.errors);
+            toast.error("Corrija os erros no formulário antes de continuar");
+            return;
+        }
 
         // Verificar CPF duplicado antes de submeter
         if (isCpfDuplicate()) {
@@ -304,13 +327,27 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
             delete data.credentialId;
         }
 
-        // Garantir que o role tenha um valor
+        // Garantir que o role tenha um valor e limpar campos opcionais vazios
         const submitData = {
             ...data,
             role: data.role || "Participante",
             presenceConfirmed: data.presenceConfirmed || false,
             certificateIssued: data.certificateIssued || false,
-            daysWork: data.daysWork || []
+            daysWork: data.daysWork || [],
+            // Limpar campos de texto vazios
+            email: data.email?.trim() || undefined,
+            phone: data.phone?.trim() || undefined,
+            checkIn: data.checkIn?.trim() || undefined,
+            checkOut: data.checkOut?.trim() || undefined,
+            notes: data.notes?.trim() || undefined,
+            photo: data.photo?.trim() || undefined,
+            documentPhoto: data.documentPhoto?.trim() || undefined,
+            validatedBy: data.validatedBy?.trim() || undefined,
+            // Limpar campos UUID vazios (backend espera UUID válido ou undefined)
+            wristbandId: data.wristbandId?.trim() || undefined,
+            staffId: data.staffId?.trim() || undefined,
+            // Remover campos não utilizados no formulário
+            shirtSize: undefined
         };
 
         console.log("✅ Validação passou, enviando dados");
@@ -319,7 +356,10 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+            <form onSubmit={(e) => {
+                console.log("🔥 Form onSubmit disparado");
+                form.handleSubmit(handleSubmit)(e);
+            }} className="space-y-4">
                 <FormField
                     control={form.control}
                     name="eventId"
@@ -422,7 +462,7 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                     )}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                     <FormField
                         control={form.control}
                         name="cpf"
@@ -461,44 +501,50 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                         )}
                     />
 
-                    <FormField
-                        control={form.control}
-                        name="email"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Email</FormLabel>
-                                <FormControl>
-                                    <Input type="email" {...field} disabled={loading} placeholder="email@exemplo.com" />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                    {!isEditing && (
+                        <FormField
+                            control={form.control}
+                            name="email"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Email</FormLabel>
+                                    <FormControl>
+                                        <Input type="email" {...field} disabled={loading} placeholder="email@exemplo.com" />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                        control={form.control}
-                        name="phone"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Telefone</FormLabel>
-                                <FormControl>
-                                    <Input
-                                        {...field}
-                                        disabled={loading}
-                                        placeholder="(11) 99999-9999"
-                                        value={formatPhone(field.value || '')}
-                                        onChange={(e) => {
-                                            const formattedValue = formatPhone(e.target.value);
-                                            field.onChange(formattedValue);
-                                        }}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+
+
+                <div className="grid grid-cols-1 gap-4">
+                    {!isEditing && (
+                        <FormField
+                            control={form.control}
+                            name="phone"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Telefone</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            {...field}
+                                            disabled={loading}
+                                            placeholder="(11) 99999-9999"
+                                            value={formatPhone(field.value || '')}
+                                            onChange={(e) => {
+                                                const formattedValue = formatPhone(e.target.value);
+                                                field.onChange(formattedValue);
+                                            }}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    )}
 
                     <FormField
                         control={form.control}
@@ -694,6 +740,15 @@ const EventParticipantForm = ({ defaultValues, onSubmit, loading, isEditing = fa
                 <div className="flex justify-end space-x-2 pt-4">
                     <Button
                         type="submit"
+                        onClick={() => {
+                            console.log("🔵 Botão clicado", {
+                                loading,
+                                isCpfDuplicate: isCpfDuplicate(),
+                                disabled: loading || isCpfDuplicate(),
+                                formValid: form.formState.isValid,
+                                formErrors: form.formState.errors
+                            });
+                        }}
                         disabled={loading || isCpfDuplicate()}
                         className={`${isCpfDuplicate() ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#610e5c]'} text-white`}
                     >

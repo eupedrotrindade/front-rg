@@ -16,12 +16,13 @@ import { changeCredentialCode } from '@/features/eventos/actions/movement-creden
 import { updateParticipantCredential } from '@/features/eventos/actions/update-participant-credential'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2, RotateCcw } from 'lucide-react'
+import { Calendar, Clock, MapPin, Mail, Phone, UserCog, Eye, Trash2, Users, Building, Search, Download, Upload, Plus, Filter, User, Check, X, Loader2, RotateCcw, MoreVertical } from 'lucide-react'
 import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
@@ -323,11 +324,11 @@ export default function EventoDetalhesPage() {
     // Calcular estatísticas por credencial
     const getCredentialStats = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; credentialName: string; color: string }> = {}
-        
+
         credentialsArray.forEach(credential => {
             const participantsWithCredential = participantesDoDia.filter(p => p.credentialId === credential.id)
             const checkedInWithCredential = participantsWithCredential.filter(p => hasCheckIn(p.id, selectedDay))
-            
+
             stats[credential.id] = {
                 total: participantsWithCredential.length,
                 checkedIn: checkedInWithCredential.length,
@@ -335,11 +336,11 @@ export default function EventoDetalhesPage() {
                 color: credential.cor
             }
         })
-        
+
         // Adicionar participantes sem credencial
         const participantsWithoutCredential = participantesDoDia.filter(p => !p.credentialId)
         const checkedInWithoutCredential = participantsWithoutCredential.filter(p => hasCheckIn(p.id, selectedDay))
-        
+
         if (participantsWithoutCredential.length > 0) {
             stats['no-credential'] = {
                 total: participantsWithoutCredential.length,
@@ -348,7 +349,7 @@ export default function EventoDetalhesPage() {
                 color: '#6B7280'
             }
         }
-        
+
         return stats
     }, [participantesDoDia, credentialsArray, hasCheckIn, selectedDay])
 
@@ -534,12 +535,12 @@ export default function EventoDetalhesPage() {
             }
 
             toast.success("Check-in realizado com sucesso!");
-            
+
             // Forçar atualização dos dados de attendance
             await queryClient.invalidateQueries({
                 queryKey: ["event-attendance-by-event-date", String(params.id), formatDateForAPI(selectedDay)]
             });
-            
+
             setPopupCheckin(false);
             setParticipantAction(null);
             setCodigoPulseira("");
@@ -599,12 +600,12 @@ export default function EventoDetalhesPage() {
             });
 
             toast.success("Check-out realizado com sucesso!");
-            
+
             // Forçar atualização dos dados de attendance
             await queryClient.invalidateQueries({
                 queryKey: ["event-attendance-by-event-date", String(params.id), formatDateForAPI(selectedDay)]
             });
-            
+
             setPopupCheckout(false);
             setParticipantAction(null);
             setSelectedDateForAction("");
@@ -708,7 +709,7 @@ export default function EventoDetalhesPage() {
             for (const duplicate of duplicates) {
                 // Para cada grupo de duplicados, manter apenas o primeiro e remover os demais
                 const participantsToRemove = duplicate.participants.slice(1) // Remove o primeiro, mantém os outros
-                
+
                 for (const participant of participantsToRemove) {
                     try {
                         await new Promise((resolve, reject) => {
@@ -730,10 +731,10 @@ export default function EventoDetalhesPage() {
                                 }
                             )
                         })
-                        
+
                         // Delay pequeno entre remoções para evitar sobrecarga
                         await new Promise(resolve => setTimeout(resolve, 200))
-                        
+
                     } catch (error) {
                         console.error(`Erro ao processar duplicado ${participant.id}:`, error)
                         errorCount++
@@ -769,12 +770,12 @@ export default function EventoDetalhesPage() {
             })
 
             toast.success("Check-in resetado com sucesso!");
-            
+
             // Forçar atualização dos dados de attendance
             await queryClient.invalidateQueries({
                 queryKey: ["event-attendance-by-event-date", String(params.id), formatDateForAPI(selectedDay)]
             });
-            
+
             setPopupResetCheckin(false)
             setParticipantAction(null)
         } catch (error) {
@@ -1021,8 +1022,8 @@ export default function EventoDetalhesPage() {
                                     <CardContent className="p-4">
                                         <div className="flex items-center justify-between mb-2">
                                             <div className="flex items-center gap-2">
-                                                <div 
-                                                    className="w-3 h-3 rounded-full" 
+                                                <div
+                                                    className="w-3 h-3 rounded-full"
                                                     style={{ backgroundColor: stats.color }}
                                                 />
                                                 <span className="text-sm font-medium text-gray-900 uppercase">
@@ -1279,7 +1280,8 @@ export default function EventoDetalhesPage() {
                                             <p className="text-gray-600">{participant.cpf}</p>
                                         </TableCell>
                                         <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                                                {/* Botão principal de ação */}
                                                 {botaoTipo === "checkin" && (
                                                     <Button
                                                         size="sm"
@@ -1292,26 +1294,15 @@ export default function EventoDetalhesPage() {
                                                     </Button>
                                                 )}
                                                 {botaoTipo === "checkout" && (
-                                                    <>
-                                                        <Button
-                                                            size="sm"
-                                                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                            disabled={loading}
-                                                            onClick={() => abrirCheckout(participant)}
-                                                        >
-                                                            <Clock className="w-4 h-4 mr-1" />
-                                                            Check-out
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                                                            disabled={loading}
-                                                            onClick={() => abrirResetCheckin(participant)}
-                                                        >
-                                                            <RotateCcw className="w-4 h-4 mr-1" />
-                                                            Reset
-                                                        </Button>
-                                                    </>
+                                                    <Button
+                                                        size="sm"
+                                                        className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                                                        disabled={loading}
+                                                        onClick={() => abrirCheckout(participant)}
+                                                    >
+                                                        <Clock className="w-4 h-4 mr-1" />
+                                                        Check-out
+                                                    </Button>
                                                 )}
                                                 {botaoTipo === "reset" && (
                                                     <Button
@@ -1324,15 +1315,45 @@ export default function EventoDetalhesPage() {
                                                         Reset
                                                     </Button>
                                                 )}
-                                                <EventParticipantEditDialog participant={participant} />
-                                                <Button
-                                                    variant="destructive"
-                                                    size="sm"
-                                                    className='bg-red-600 hover:bg-red-700'
-                                                    onClick={() => handleDeleteParticipant(participant)}
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+
+                                                {/* Dropdown com ações secundárias */}
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-8 w-8 p-0 border-gray-200 hover:bg-gray-50"
+                                                        >
+                                                            <MoreVertical className="h-4 w-4 text-gray-500" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-48 bg-white">
+                                                        {/* Botão de reset quando está em checkout */}
+                                                        {botaoTipo === "checkout" && (
+                                                            <DropdownMenuItem
+                                                                onClick={() => abrirResetCheckin(participant)}
+                                                                className="text-yellow-600 focus:text-yellow-700"
+                                                            >
+                                                                <RotateCcw className="w-4 h-4 mr-2" />
+                                                                Resetar Check-in
+                                                            </DropdownMenuItem>
+                                                        )}
+
+                                                        {/* Editar participante */}
+                                                        <DropdownMenuItem asChild>
+                                                            <EventParticipantEditDialog participant={participant} />
+                                                        </DropdownMenuItem>
+
+                                                        {/* Excluir participante */}
+                                                        <DropdownMenuItem
+                                                            onClick={() => handleDeleteParticipant(participant)}
+                                                            className="text-red-600 focus:text-red-700 focus:bg-red-50"
+                                                        >
+                                                            <Trash2 className="w-4 h-4 mr-2" />
+                                                            Excluir Participante
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -1782,7 +1803,7 @@ export default function EventoDetalhesPage() {
                             Remover Participantes Duplicados
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Foram encontrados {duplicates.length} grupos de participantes duplicados. 
+                            Foram encontrados {duplicates.length} grupos de participantes duplicados.
                             O primeiro de cada grupo será mantido, os demais serão removidos.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -1796,26 +1817,24 @@ export default function EventoDetalhesPage() {
                                         CPF: {duplicate.cpf} ({duplicate.reason})
                                     </span>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     {duplicate.participants.map((participant, participantIndex) => (
-                                        <div 
-                                            key={participant.id} 
-                                            className={`p-3 rounded border ${
-                                                participantIndex === 0 
-                                                    ? 'bg-green-50 border-green-200' 
+                                        <div
+                                            key={participant.id}
+                                            className={`p-3 rounded border ${participantIndex === 0
+                                                    ? 'bg-green-50 border-green-200'
                                                     : 'bg-red-100 border-red-300'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="flex items-center justify-between mb-2">
                                                 <span className="text-sm font-medium">
                                                     {participant.name}
                                                 </span>
-                                                <span className={`text-xs px-2 py-1 rounded ${
-                                                    participantIndex === 0 
-                                                        ? 'bg-green-200 text-green-800' 
+                                                <span className={`text-xs px-2 py-1 rounded ${participantIndex === 0
+                                                        ? 'bg-green-200 text-green-800'
                                                         : 'bg-red-200 text-red-800'
-                                                }`}>
+                                                    }`}>
                                                     {participantIndex === 0 ? 'MANTER' : 'REMOVER'}
                                                 </span>
                                             </div>

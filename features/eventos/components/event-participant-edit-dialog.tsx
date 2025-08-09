@@ -18,17 +18,39 @@ const EventParticipantEditDialog = ({ participant }: EventParticipantEditDialogP
     const { mutate, isPending } = useUpdateEventParticipant();
 
     const handleSubmit = (data: EventParticipantSchema) => {
+        console.log("🟡 Dialog handleSubmit chamado:", data);
+        
         // Validar dados antes de enviar
         if (!data.name || !data.cpf || !data.company) {
+            console.log("❌ Dados incompletos no dialog");
             toast.error("Por favor, preencha todos os campos obrigatórios");
             return;
         }
 
-        // Garantir que o role tenha um valor padrão se estiver vazio
+        // Garantir que o role tenha um valor padrão e limpar campos opcionais vazios
         const submitData = {
             ...data,
-            role: data.role || "Participante"
+            role: data.role || "Participante",
+            // Limpar campos de texto vazios
+            email: data.email?.trim() || undefined,
+            phone: data.phone?.trim() || undefined,
+            checkIn: data.checkIn?.trim() || undefined,
+            checkOut: data.checkOut?.trim() || undefined,
+            notes: data.notes?.trim() || undefined,
+            photo: data.photo?.trim() || undefined,
+            documentPhoto: data.documentPhoto?.trim() || undefined,
+            validatedBy: data.validatedBy?.trim() || undefined,
+            // Limpar campos UUID vazios (backend espera UUID válido ou undefined)
+            wristbandId: data.wristbandId?.trim() || undefined,
+            staffId: data.staffId?.trim() || undefined,
+            // Remover campos não utilizados no formulário
+            shirtSize: undefined
         };
+
+        console.log("🟡 Chamando mutate com dados:", {
+            id: participant.id,
+            ...submitData
+        });
 
         mutate(
             {
@@ -37,11 +59,12 @@ const EventParticipantEditDialog = ({ participant }: EventParticipantEditDialogP
             },
             {
                 onSuccess: () => {
+                    console.log("✅ Mutate bem-sucedida");
                     toast.success("Participante atualizado com sucesso!");
                     setOpen(false);
                 },
                 onError: (error) => {
-                    console.error("Erro ao atualizar participante:", error);
+                    console.error("❌ Erro na mutate:", error);
                     toast.error("Erro ao atualizar participante. Tente novamente.");
                 },
             }
