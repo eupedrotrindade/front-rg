@@ -121,6 +121,7 @@ export default function RelatoriosPage() {
     })
 
     const [selectedDay, setSelectedDay] = useState<string>("all")
+    const [selectedCompanyForExport, setSelectedCompanyForExport] = useState<string>("all_companies")
 
 
     // Função para gerar dias do evento
@@ -517,6 +518,41 @@ export default function RelatoriosPage() {
         })
     }, [configRelatorio, gerarDadosRelatorio, exportPDFMutation])
 
+    // Função para exportar relatório específico de uma empresa
+    const exportarPDFEmpresa = useCallback(() => {
+        if (selectedCompanyForExport === "all_companies") {
+            toast.error("Selecione uma empresa específica para exportar")
+            return
+        }
+
+        const nomeEmpresa = selectedCompanyForExport
+        const participantesEmpresa = participantesDoDia.filter(p => p.company === nomeEmpresa)
+        
+        const dadosEmpresa = participantesEmpresa.map(p => ({
+            nome: p.name?.toUpperCase() || "",
+            cpf: p.cpf || "",
+            empresa: p.company?.toUpperCase() || "",
+            funcao: p.role?.toUpperCase() || "",
+            pulseira: obterCodigoPulseira(p.id),
+            tipoPulseira: obterTipoPulseira(p.credentialId),
+            checkIn: p.checkIn || "-",
+            checkOut: p.checkOut || "-"
+        })).sort((a, b) => a.nome.localeCompare(b.nome))
+
+        exportPDFMutation.mutate({
+            titulo: `Relatório Específico - ${nomeEmpresa}`,
+            tipo: "filtroEmpresa",
+            dados: dadosEmpresa,
+            filtros: {
+                dia: selectedDay,
+                empresa: nomeEmpresa,
+                funcao: "all_functions",
+                status: "",
+                tipoCredencial: "all_credentials"
+            }
+        })
+    }, [selectedCompanyForExport, participantesDoDia, selectedDay, obterCodigoPulseira, obterTipoPulseira, exportPDFMutation])
+
     const isLoading = participantesLoading || coordenadoresLoading || vagasLoading || credenciaisLoading || attendanceLoading
 
 
@@ -778,6 +814,55 @@ export default function RelatoriosPage() {
                                     </>
                                 )}
                             </Button>
+
+                            {/* Separador */}
+                            <div className="relative">
+                                <div className="absolute inset-0 flex items-center">
+                                    <div className="w-full border-t border-gray-300" />
+                                </div>
+                                <div className="relative flex justify-center text-xs uppercase">
+                                    <span className="bg-white px-2 text-gray-500">ou</span>
+                                </div>
+                            </div>
+
+                            {/* Exportar por Empresa Específica */}
+                            <div className="space-y-3">
+                                <label className="block text-sm font-medium">Exportar Relatório por Empresa</label>
+                                
+                                <Select
+                                    value={selectedCompanyForExport}
+                                    onValueChange={setSelectedCompanyForExport}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione uma empresa" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all_companies">Todas as empresas</SelectItem>
+                                        {Array.from(new Set(participantesDoDia.map(p => p.company).filter(Boolean))).sort().map(empresa => (
+                                            <SelectItem key={empresa} value={empresa}>{empresa}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                <Button
+                                    onClick={exportarPDFEmpresa}
+                                    disabled={isLoading || selectedCompanyForExport === "all_companies" || exportPDFMutation.isPending}
+                                    variant="outline"
+                                    className="w-full"
+                                >
+                                    {exportPDFMutation.isPending ? (
+                                        <>
+                                            <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-gray-600 border-t-transparent" />
+                                            Gerando PDF...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Building className="h-4 w-4 mr-2" />
+                                            Exportar por Empresa
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
 
