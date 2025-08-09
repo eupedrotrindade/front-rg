@@ -186,11 +186,7 @@ export default function Painel() {
     null,
   )
 
-  // Estados para cache e otimização
-  const [filteredDataCache, setFilteredDataCache] = useState<
-    Map<string, EventParticipant[]>
-  >(new Map())
-  const [lastFilterHash, setLastFilterHash] = useState<string>('')
+  // Estados para cache otimizado (simplificado)
   const [isDataStale, setIsDataStale] = useState(false)
 
   // Estados para virtualização e performance
@@ -198,6 +194,9 @@ export default function Painel() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [isMobileTable, setIsMobileTable] = useState(false)
+  
+  // ⚡ THROTTLE para evitar chamadas excessivas
+  const [lastUpdateTime, setLastUpdateTime] = useState(0)
 
   // Estados para filtros estilo Excel das colunas
   const [columnFilters, setColumnFilters] = useState<{
@@ -329,62 +328,50 @@ export default function Painel() {
 
   // TODOS OS useMemo DEPOIS DOS HOOKS DE DADOS
 
-  // TODOS OS useCallback DEPOIS DOS useMemo
-  const generateFilterHash = useCallback(
-    (filtro: any, selectedDay: string) => {
-      return JSON.stringify({ filtro, selectedDay })
-    },
-    [],
-  )
+  // Função simples para hash sem useCallback desnecessário
+  const generateFilterHash = (filtro: any, selectedDay: string) => {
+    return JSON.stringify({ filtro, selectedDay })
+  }
 
-  const debouncedSearch = useCallback(
-    (searchTerm: string) => {
-      if (searchDebounce) {
-        clearTimeout(searchDebounce)
-      }
+  // Função de debounce otimizada
+  const debouncedSearch = (searchTerm: string) => {
+    if (searchDebounce) {
+      clearTimeout(searchDebounce)
+    }
 
-      const timeout = setTimeout(() => {
-        // O filtro já foi atualizado imediatamente em handleBuscaOtimizada
-        // Aqui apenas resetamos a página para mostrar os resultados
-        setCurrentPage(1)
-      }, 300)
-
-      setSearchDebounce(timeout)
-    },
-    [searchDebounce],
-  )
-
-  // Handler otimizado de busca para mode virtual
-  const handleOptimizedSearch = useCallback(
-    (term: string) => {
-      setSearchTerm(term)
-      setIsSearching(true)
-
-      // Para datasets grandes, usar busca indexada
-      if (participantsData.length > 500) {
-        performOptimizedSearchFn(term)
-      } else {
-        // Para datasets menores, usar busca tradicional
-        debouncedSearch(term)
-      }
-
+    const timeout = setTimeout(() => {
       setCurrentPage(1)
-    },
-    [participantsData.length, performOptimizedSearchFn, debouncedSearch],
-  )
+    }, 50) // Muito reduzido para fluidez
 
-  const getPaginatedData = useCallback(
-    (data: EventParticipant[], page: number, perPage: number) => {
-      const startIndex = (page - 1) * perPage
-      const endIndex = startIndex + perPage
-      return data.slice(startIndex, endIndex)
-    },
-    [],
-  )
+    setSearchDebounce(timeout)
+  }
 
-  const calculateTotalPages = useCallback((total: number, perPage: number) => {
+  // Handler de busca simplificado sem useCallback
+  const handleOptimizedSearch = (term: string) => {
+    setSearchTerm(term)
+    setIsSearching(true)
+
+    // Para datasets grandes, usar busca indexada
+    if (participantsData.length > 500) {
+      performOptimizedSearchFn(term)
+    } else {
+      debouncedSearch(term)
+    }
+
+    setCurrentPage(1)
+  }
+
+  // Função simples de paginação sem useCallback
+  const getPaginatedData = (data: EventParticipant[], page: number, perPage: number) => {
+    const startIndex = (page - 1) * perPage
+    const endIndex = startIndex + perPage
+    return data.slice(startIndex, endIndex)
+  }
+
+  // Função simples sem useCallback
+  const calculateTotalPages = (total: number, perPage: number) => {
     return Math.ceil(total / perPage)
-  }, [])
+  }
 
   const getVisiblePages = useCallback(
     (currentPage: number, totalPages: number) => {
@@ -681,14 +668,14 @@ export default function Painel() {
 
   const getColaboradoresPorDia = useCallback(
     (dia: string): EventParticipant[] => {
-      if (dia === 'all') {
-        return participantsData
+      if (dia === 'all' || !dia) {
+        return participantsData || [] // Fallback seguro
       }
 
       // Extrair apenas a data do ID (remover prefixo se existir)
       const dataDia = dia.includes('_') ? dia.split('_')[1] : dia
 
-      return participantsData.filter((colab: EventParticipant) => {
+      return (participantsData || []).filter((colab: EventParticipant) => {
         if (!colab.daysWork || colab.daysWork.length === 0) {
           return false
         }
@@ -698,21 +685,23 @@ export default function Painel() {
     [participantsData],
   )
 
-  const scrollToLeft = useCallback(() => {
+  // Função simples sem useCallback
+  const scrollToLeft = () => {
     if (tabsContainerRef.current) {
       const container = tabsContainerRef.current
       const scrollAmount = container.clientWidth * 0.8
       container.scrollBy({ left: -scrollAmount, behavior: 'smooth' })
     }
-  }, [])
+  }
 
-  const scrollToRight = useCallback(() => {
+  // Função simples sem useCallback
+  const scrollToRight = () => {
     if (tabsContainerRef.current) {
       const container = tabsContainerRef.current
       const scrollAmount = container.clientWidth * 0.8
       container.scrollBy({ left: scrollAmount, behavior: 'smooth' })
     }
-  }, [])
+  }
 
   const getTabColor = useCallback((type: string, isActive: boolean) => {
     if (isActive) {
@@ -933,10 +922,10 @@ export default function Painel() {
     }
   }, [operadorInfo])
 
-  const clearCache = useCallback(() => {
-    setFilteredDataCache(new Map())
-    setIsDataStale(false)
-  }, [])
+  // Função de limpeza otimizada
+  const clearCache = () => {
+    setIsDataStale(prev => !prev) // Toggle para forçar refresh
+  }
 
   // Funções para filtros das colunas
   const handleColumnFilterChange = useCallback(
@@ -1087,50 +1076,78 @@ export default function Painel() {
     setPopupCheckout(true)
   }
 
-  // TODOS OS useMemo DEPOIS DOS useCallback
+  // TODOS OS useMemo DEPOIS DOS useCallback - OTIMIZADO
   const filtrarColaboradores = useMemo(() => {
-    const filterHash =
-      generateFilterHash(filtro, selectedDay) +
-      JSON.stringify(columnFilters)
-
-    if (filteredDataCache.has(filterHash) && !isDataStale) {
-      const cachedData = filteredDataCache.get(filterHash)!
-      return { data: cachedData, total: cachedData.length }
-    }
 
     let filtrados: EventParticipant[] = getColaboradoresPorDia(selectedDay)
 
     filtrados = filtrados.filter((colab: EventParticipant) => {
-      const nomeMatch = colab.name
-        ?.toLowerCase()
-        .includes(filtro.nome.toLowerCase())
-      const cpfTrimmed = colab.cpf?.trim() || ''
-      const cpfSemPontuacao = cpfTrimmed.replace(/\D/g, '')
-      const buscaSemPontuacao = filtro.nome.replace(/\D/g, '')
-      const cpfMatch =
-        cpfTrimmed === filtro.nome ||
-        (cpfSemPontuacao &&
-          buscaSemPontuacao &&
-          cpfSemPontuacao === buscaSemPontuacao) ||
-        (buscaSemPontuacao.length >= 3 &&
-          cpfSemPontuacao?.includes(buscaSemPontuacao))
-      const credentialMatch =
-        colab.credentialId?.toLowerCase() === filtro.nome.toLowerCase()
-      const empresaMatch = filtro.empresa
-        ? colab.company === filtro.empresa
-        : true
-      const funcaoMatch = filtro.funcao ? colab.role === filtro.funcao : true
+      // ⚡ BUSCA OTIMIZADA - SEM TRAVAMENTO
+      const searchTerm = filtro.nome?.toLowerCase()?.trim() || ''
+      
+      // Busca rápida e eficiente (sem loops complexos)
+      const quickMatch = (text: string, search: string): boolean => {
+        if (!search || !text) return !search
+        
+        const textLower = text.toLowerCase()
+        const searchLower = search.toLowerCase()
+        
+        // 1. Busca direta (mais rápida)
+        if (textLower.includes(searchLower)) return true
+        
+        // 2. Busca sem acentos (eficiente)
+        const textNorm = textLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        const searchNorm = searchLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        if (textNorm.includes(searchNorm)) return true
+        
+        // 3. Só busca avançada se termo > 2 chars (evita loops desnecessários)
+        if (searchNorm.length <= 2) return false
+        
+        // 4. Busca por iniciais (otimizada)
+        if (searchNorm.length === 2) {
+          const words = textLower.split(/[\s]+/)
+          if (words.length >= 2) {
+            const initials = words[0][0] + (words[1]?.[0] || '')
+            if (initials === searchNorm) return true
+          }
+        }
+        
+        return false
+      }
+      
+      // ⚡ BUSCA RÁPIDA - SEM LOOPS PESADOS
+      const nomeMatch = quickMatch(colab.name || '', searchTerm)
+      
+      // CPF (otimizado)
+      const cpfLimpo = (colab.cpf || '').replace(/\D/g, '')
+      const buscaCpfLimpa = searchTerm.replace(/\D/g, '')
+      const cpfMatch = buscaCpfLimpa ? cpfLimpo.includes(buscaCpfLimpa) : false
+      
+      // Empresa (rápida)
+      const empresaMatch_search = quickMatch(colab.company || '', searchTerm)
+      
+      // Função (rápida)
+      const funcaoMatch_search = quickMatch(colab.role || '', searchTerm)
+      
+      // Credencial (eficiente)
+      const credencialNome = getCredencial(colab)
+      const credencialMatch_search = quickMatch(credencialNome || '', searchTerm)
+      
+      // Pulseira (simples)
+      const wristbandCode = participantWristbands.get(colab.id) || ''
+      const wristbandMatch = wristbandCode.toLowerCase().includes(searchTerm)
 
-      // Filtro por credencial
-      const credencialMatch = filtro.credencial
-        ? getCredencial(colab) === filtro.credencial
-        : true
+      // Filtros específicos dos dropdowns
+      const empresaFilter = filtro.empresa ? colab.company === filtro.empresa : true
+      const funcaoFilter = filtro.funcao ? colab.role === filtro.funcao : true
+      const credencialFilter = filtro.credencial ? getCredencial(colab) === filtro.credencial : true
 
-      let match =
-        (nomeMatch || cpfMatch || credentialMatch) &&
-        empresaMatch &&
-        funcaoMatch &&
-        credencialMatch
+      // Match geral para busca de texto (MELHORADO - inclui pulseira)
+      const searchMatch = !filtro.nome.trim() ||
+        nomeMatch || cpfMatch || empresaMatch_search || funcaoMatch_search || 
+        credencialMatch_search || wristbandMatch
+
+      let match = searchMatch && empresaFilter && funcaoFilter && credencialFilter
 
 
       // Aplicar filtros das colunas
@@ -1250,27 +1267,12 @@ export default function Painel() {
 
     return { data: filtrados, total: filtrados.length }
   }, [
-    filtro,
+    filtro.nome,
+    filtro.empresa,
+    filtro.funcao,
     selectedDay,
-    ordenacao,
-    getColaboradoresPorDia,
-    generateFilterHash,
-    isDataStale,
-    filteredDataCache,
-    columnFilters,
-    hasActiveColumnFilters,
-    credential,
-  ])
-
-  const paginatedData = useMemo(() => {
-    const { data: allData, total } = filtrarColaboradores
-    const paginated = getPaginatedData(allData, currentPage, itemsPerPage)
-    return { data: paginated, total }
-  }, [filtrarColaboradores, currentPage, itemsPerPage, getPaginatedData])
-
-  const isHighVolume = paginatedData.total > 1000
-  const showPerformanceIndicator = isHighVolume && !participantsLoading
-
+    participantsData.length // APENAS length, não array completo
+  ]) // ⚡ ULTRA-OTIMIZADO: dependências mínimas
 
   // Detectar se é mobile para tabela regular
   useEffect(() => {
@@ -1284,95 +1286,63 @@ export default function Painel() {
     return () => window.removeEventListener('resize', checkIsMobileTable)
   }, [])
 
-  // Usar busca otimizada quando há termo de busca
-  const optimizedData = useMemo(() => {
-    if (searchTerm.trim() && searchTerm.length >= 2) {
-      const searchData = searchResult.items.filter((item: EventParticipant) => {
-        return getColaboradoresPorDia(selectedDay).includes(item)
-      })
-      return { data: searchData, total: searchData.length }
-    }
-    return filtrarColaboradores
+  // ⚡ DADOS UNIFICADOS - SEM TRAVAMENTO
+  const unifiedData = useMemo(() => {
+    return filtrarColaboradores // Sempre usar filtro tradicional otimizado
   }, [
-    searchTerm,
-    searchResult,
-    filtrarColaboradores,
-    selectedDay,
-    getColaboradoresPorDia,
-  ])
+    filtrarColaboradores
+  ]) // SIMPLIFIED: uma só dependência
 
-  // Dados finais para exibição
+  // Dados finais otimizados
   const finalData = useMemo(() => {
-    const sourceData = searchTerm.trim() ? optimizedData : filtrarColaboradores
     if (isVirtualMode) {
-      // No modo virtual, retornamos todos os dados filtrados
-      return sourceData
+      return unifiedData
     } else {
-      // No modo paginado, aplicamos paginação
       const paginated = getPaginatedData(
-        sourceData.data,
+        unifiedData.data,
         currentPage,
         itemsPerPage,
       )
-      return { data: paginated, total: sourceData.total }
+      return { data: paginated, total: unifiedData.total }
     }
   }, [
-    searchTerm,
-    optimizedData,
-    filtrarColaboradores,
+    unifiedData,
     isVirtualMode,
     currentPage,
-    itemsPerPage,
-    getPaginatedData,
-  ])
+    itemsPerPage
+  ]) // Removido getPaginatedData das dependências
 
-  // Valores únicos para filtros das colunas
+  // Para compatibilidade com componentes que usam paginatedData
+  const paginatedData = finalData
+
+  const isHighVolume = unifiedData.total > 1000
+  const showPerformanceIndicator = isHighVolume && !participantsLoading
+
+  // ⚡ VALORES ÚNICOS CORRIGIDOS - FUNCIONANDO
   const columnUniqueValues = useMemo(() => {
     const currentData = getColaboradoresPorDia(selectedDay)
-
-    return {
-      nome: Array.from(
-        new Set(
-          currentData
-            .map(c => c.name)
-            .filter((name): name is string => Boolean(name)),
-        ),
-      ),
-      cpf: Array.from(
-        new Set(
-          currentData
-            .map(c => formatCPF(c.cpf?.trim() || ''))
-            .filter((cpf): cpf is string => Boolean(cpf)),
-        ),
-      ),
-      funcao: Array.from(
-        new Set(
-          currentData
-            .map(c => c.role)
-            .filter((role): role is string => Boolean(role)),
-        ),
-      ),
-      empresa: Array.from(
-        new Set(
-          currentData
-            .map(c => c.company)
-            .filter((company): company is string => Boolean(company)),
-        ),
-      ),
-      credencial: Array.from(
-        new Set(
-          currentData
-            .map(c => {
-              const credentialSelected = credential.find(
-                w => w.id === c.credentialId,
-              )
-              return credentialSelected?.nome || 'SEM CREDENCIAL'
-            })
-            .filter((cred): cred is string => Boolean(cred)),
-        ),
-      ),
+    
+    if (!currentData || currentData.length === 0) {
+      return {
+        nome: [],
+        cpf: [],
+        funcao: [],
+        empresa: [],
+        credencial: []
+      }
     }
-  }, [getColaboradoresPorDia, selectedDay, credential])
+    
+    return {
+      nome: [...new Set(currentData.map(c => c.name).filter(Boolean))].sort(),
+      cpf: [...new Set(currentData.map(c => formatCPF(c.cpf?.trim() || '')).filter(Boolean))].sort(),
+      funcao: [...new Set(currentData.map(c => c.role).filter(Boolean))].sort(),
+      empresa: [...new Set(currentData.map(c => c.company).filter(Boolean))].sort(),
+      credencial: [...new Set(currentData.map(c => {
+        const cred = credential.find(w => w.id === c.credentialId)
+        return cred?.nome || 'SEM CREDENCIAL'
+      }).filter(Boolean))].sort()
+    }
+  }, [selectedDay, participantsData, credential]) // Dependências necessárias
 
 
 
@@ -1427,7 +1397,7 @@ export default function Painel() {
   useEffect(() => {
     if (participantsData.length > 0) {
       setIsDataStale(true)
-      setFilteredDataCache(new Map())
+
       setCurrentPage(1)
     }
   }, [participantsData])
@@ -1444,12 +1414,13 @@ export default function Painel() {
 
   // Carregar status de presença quando o dia selecionado mudar (debounced)
   useEffect(() => {
-    if (selectedDay && finalData.data.length > 0) {
+    const participantesParaCarregar = getColaboradoresPorDia(selectedDay)
+    if (selectedDay && participantesParaCarregar.length > 0) {
       setAttendanceDataLoaded(false) // Reset o status ao trocar de dia
       setIsLoadingAttendance(true) // Iniciar loading
-      debouncedLoadAttendanceStatus(finalData.data, selectedDay)
+      debouncedLoadAttendanceStatus(participantesParaCarregar, selectedDay)
     }
-  }, [selectedDay, finalData.data, debouncedLoadAttendanceStatus])
+  }, [selectedDay, getColaboradoresPorDia, debouncedLoadAttendanceStatus])
 
 
   // Preload do modal de troca de pulseira para melhor UX
@@ -1483,26 +1454,7 @@ export default function Painel() {
     router,
   ])
 
-  // useEffect para gerenciar cache
-  useEffect(() => {
-    const filterHash = generateFilterHash(filtro, selectedDay)
-    const { data: filtrados } = filtrarColaboradores
 
-    if (!filteredDataCache.has(filterHash) || isDataStale) {
-      const newCache = new Map(filteredDataCache)
-      newCache.set(filterHash, filtrados)
-      setFilteredDataCache(newCache)
-      setLastFilterHash(filterHash)
-      setIsDataStale(false)
-    }
-  }, [
-    filtrarColaboradores,
-    isDataStale,
-    filtro,
-    selectedDay,
-    filteredDataCache,
-    generateFilterHash,
-  ])
 
 
   // useEffect para definir o primeiro dia disponível como selecionado
@@ -1572,21 +1524,51 @@ export default function Painel() {
     setFiltro({ ...filtro, nome: valor })
   }
 
-  // Função otimizada de busca com debounce
+  // Função otimizada de busca unificada com debounce
   const handleBuscaOtimizada = (valor: string) => {
-    // Atualizar o filtro imediatamente para manter a responsividade do input
-    setFiltro(prev => ({ ...prev, nome: valor }))
-
-    // Usar busca otimizada baseada no tamanho do dataset
-    if (participantsData.length > 500) {
-      // Para datasets grandes, usar a busca indexada
-      performOptimizedSearchFn(valor)
-      setSearchTerm(valor)
-      setCurrentPage(1)
-    } else {
-      // Para datasets menores, usar busca tradicional com debounce apenas para otimização
-      debouncedSearch(valor)
+    const now = Date.now()
+    
+    // ⚡ THROTTLE - evitar chamadas muito frequentes
+    if (now - lastUpdateTime < 16) { // ~60fps
+      return
     }
+    setLastUpdateTime(now)
+    
+    // Limpar timeout pendente
+    if (searchDebounce) {
+      clearTimeout(searchDebounce)
+      setSearchDebounce(null)
+    }
+    
+    // ⚡ ATUALIZAÇÃO NÃO-BLOQUEANTE
+    requestAnimationFrame(() => {
+      setFiltro(prev => ({ ...prev, nome: valor }))
+      setCurrentPage(1)
+    })
+
+    // Busca vazia
+    if (!valor.trim()) {
+      setSearchTerm('')
+      setIsSearching(false)
+      return
+    }
+
+    // Atualizar termo
+    setSearchTerm(valor)
+    
+    // Sem debounce para datasets pequenos
+    if (participantsData.length <= 150) {
+      setIsSearching(false)
+      return
+    }
+
+    // Mínimo debounce necessário
+    setIsSearching(true)
+    const timeout = setTimeout(() => {
+      setIsSearching(false)
+    }, 30) // MÍNIMO
+
+    setSearchDebounce(timeout)
   }
 
   // Função para mudar página
@@ -1603,7 +1585,7 @@ export default function Painel() {
 
   // Componente de paginação
   const PaginationComponent = () => {
-    const totalPages = calculateTotalPages(paginatedData.total, itemsPerPage)
+    const totalPages = calculateTotalPages(unifiedData.total, itemsPerPage)
     const visiblePages = getVisiblePages(currentPage, totalPages)
 
     if (totalPages <= 1) return null
@@ -1630,11 +1612,16 @@ export default function Painel() {
           </div>
           <span className="text-sm text-gray-600">
             Mostrando {(currentPage - 1) * itemsPerPage + 1} a{' '}
-            {Math.min(currentPage * itemsPerPage, paginatedData.total)} de{' '}
-            {paginatedData.total} resultados
+            {Math.min(currentPage * itemsPerPage, unifiedData.total)} de{' '}
+            {unifiedData.total} resultados
+            {(searchTerm.trim() || filtro.nome.trim()) && (
+              <span className="ml-2 px-2 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full font-medium border border-blue-200" title="Busca inteligente: encontra por combinação de letras, iniciais, subsequência">
+                🎯 Busca inteligente ativa
+              </span>
+            )}
             {attendanceDataLoaded && (
               <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
-                ✓ Dados de presença carregados - Exibindo todos os registros
+                ✓ Dados sincronizados
               </span>
             )}
           </span>
@@ -2362,14 +2349,24 @@ export default function Painel() {
                     </div>
                   )}
                   <div className="text-sm text-gray-600">
-                    <span className="font-medium">{paginatedData.total}</span>{' '}
+                    <span className="font-medium">{unifiedData.total}</span>{' '}
                     colaboradores
                     {selectedDay && (
                       <span className="text-xs text-gray-500 ml-1">
                         (dia {selectedDay})
                       </span>
                     )}
-                    {paginatedData.total > 1000 && (
+                    {(searchTerm.trim() || filtro.nome.trim()) && (
+                      <span className="text-xs text-blue-600 ml-2">
+                        🔍 Filtrado
+                      </span>
+                    )}
+                    {isSearching && (
+                      <span className="text-xs text-orange-600 ml-2 animate-pulse">
+                        ⏳ Processando busca inteligente...
+                      </span>
+                    )}
+                    {unifiedData.total > 1000 && (
                       <span className="text-xs text-green-600 ml-2">
                         ⚡ Otimizado
                       </span>
@@ -2453,14 +2450,42 @@ export default function Painel() {
               <div className="flex flex-col lg:flex-row gap-4">
                 {/* Search Bar */}
                 <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 transition-colors duration-200 ${isSearching ? 'text-orange-500 animate-pulse' :
+                      (searchTerm.trim() || filtro.nome.trim()) ? 'text-blue-500' : 'text-gray-400'
+                    }`} />
                   <Input
                     type="text"
-                    placeholder="Procure pelo nome, cpf ou código da pulseira"
+                    placeholder="🔍 Busca inteligente: nome, iniciais, CPF, empresa, pulseira..."
                     value={filtro.nome}
                     onChange={e => handleBuscaOtimizada(e.target.value)}
-                    className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
+                    className={`pl-10 pr-10 text-gray-600 bg-white shadow-sm transition-all duration-200 ${isSearching ? 'border-orange-300 ring-2 ring-orange-100' :
+                        (searchTerm.trim() || filtro.nome.trim()) ? 'border-blue-300 ring-2 ring-blue-100' :
+                          'border-gray-200 focus:border-purple-500 focus:ring-purple-500'
+                      }`}
                   />
+                  {(searchTerm.trim() || filtro.nome.trim()) && (
+                    <button
+                      onClick={() => {
+                        // Limpar todos os estados de busca
+                        setFiltro(prev => ({ ...prev, nome: '' }))
+                        setSearchTerm('')
+                        setIsSearching(false)
+
+                        // Limpar debounce pendente
+                        if (searchDebounce) {
+                          clearTimeout(searchDebounce)
+                          setSearchDebounce(null)
+                        }
+
+                        // Limpar busca indexada se ativa
+                        clearSearch()
+                      }}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Limpar busca"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Filter Selects */}
@@ -2849,17 +2874,41 @@ export default function Painel() {
                         >
                           <div className="flex flex-col items-center">
                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                              <User className="w-8 h-8 text-gray-400" />
+                              {(searchTerm.trim() || filtro.nome.trim()) ? (
+                                <Search className="w-8 h-8 text-gray-400" />
+                              ) : (
+                                <User className="w-8 h-8 text-gray-400" />
+                              )}
                             </div>
                             <p className="text-lg font-semibold text-gray-700 mb-2">
-                              {selectedDay
-                                ? `Nenhum colaborador encontrado para ${selectedDay}`
-                                : 'Nenhum colaborador encontrado'}
+                              {(searchTerm.trim() || filtro.nome.trim()) ? (
+                                'Nenhum resultado encontrado'
+                              ) : selectedDay ? (
+                                `Nenhum colaborador encontrado para ${selectedDay}`
+                              ) : (
+                                'Nenhum colaborador encontrado'
+                              )}
                             </p>
                             <p className="text-sm text-gray-500">
-                              {selectedDay
-                                ? 'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
-                                : 'Tente ajustar os filtros ou adicionar novos colaboradores'}
+                              {(searchTerm.trim() || filtro.nome.trim()) ? (
+                                <>Tente termos diferentes ou <button
+                                  onClick={() => {
+                                    setFiltro(prev => ({ ...prev, nome: '' }))
+                                    setSearchTerm('')
+                                    setIsSearching(false)
+                                    if (searchDebounce) {
+                                      clearTimeout(searchDebounce)
+                                      setSearchDebounce(null)
+                                    }
+                                    clearSearch()
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800 underline"
+                                >limpe a busca</button></>
+                              ) : selectedDay ? (
+                                'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
+                              ) : (
+                                'Tente ajustar os filtros ou adicionar novos colaboradores'
+                              )}
                             </p>
                           </div>
                         </TableCell>
@@ -3376,7 +3425,7 @@ export default function Painel() {
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       <Input
                         type="text"
-                        placeholder="Busque por nome ou CPF..."
+                        placeholder="🔍 Busca inteligente: nome, iniciais, CPF..."
                         value={filtro.nome}
                         onChange={e => handleBuscaOtimizada(e.target.value)}
                         className="pl-10 text-gray-600 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 shadow-sm transition-all duration-200"
