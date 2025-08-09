@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Calendar, Plus, Loader2, Search, X } from 'lucide-react';
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
 import { useCredentials } from "@/features/eventos/api/query";
@@ -15,6 +15,7 @@ interface ModalAdicionarStaffProps {
   isOpen: boolean;
   onClose: () => void;
   eventId: string;
+  selectedDay?: string;
   onSuccess?: () => void;
   evento?: any;
 }
@@ -28,7 +29,7 @@ const initialStaff = {
   daysWork: [] as string[]
 };
 
-export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSuccess, evento }: ModalAdicionarStaffProps) {
+export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selectedDay, onSuccess, evento }: ModalAdicionarStaffProps) {
   const [loading, setLoading] = useState(false);
   const [novoStaff, setNovoStaff] = useState(initialStaff);
   const [empresaSearch, setEmpresaSearch] = useState("");
@@ -49,7 +50,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
   // Filtrar empresas baseado na busca
   const filteredEmpresas = useMemo(() => {
     if (!empresaSearch.trim()) return empresasArray;
-    return empresasArray.filter(empresa => 
+    return empresasArray.filter(empresa =>
       empresa.nome.toLowerCase().includes(empresaSearch.toLowerCase())
     );
   }, [empresasArray, empresaSearch]);
@@ -133,6 +134,25 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
 
   const periods = getEventPeriods();
   const hasDefinedPeriods = Object.values(periods).some(dates => dates.length > 0);
+
+  // Automaticamente selecionar o dia quando o modal abrir
+  useEffect(() => {
+    if (isOpen && selectedDay && !novoStaff.daysWork.includes(selectedDay)) {
+      // Verificar se o dia selecionado está disponível nos períodos do evento
+      const allAvailableDates = [
+        ...periods.preparacao,
+        ...periods.montagem,
+        ...periods.finalizacao
+      ];
+
+      if (allAvailableDates.includes(selectedDay)) {
+        setNovoStaff(prev => ({
+          ...prev,
+          daysWork: [selectedDay]
+        }));
+      }
+    }
+  }, [isOpen, selectedDay, periods.preparacao, periods.montagem, periods.finalizacao, novoStaff.daysWork]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -228,7 +248,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
                           )}
                         </div>
                       </div>
-                      
+
                       {/* Lista de empresas filtradas */}
                       <div className="max-h-[150px] overflow-y-auto">
                         {filteredEmpresas.length > 0 ? (
@@ -335,7 +355,12 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, onSucces
                 {novoStaff.daysWork.length > 0 && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                     <p className="text-sm text-blue-800">
-                      <strong>Selecionadas:</strong> {novoStaff.daysWork.join(', ')}
+                      <strong>Datas selecionadas:</strong> {novoStaff.daysWork.join(', ')}
+                      {selectedDay && novoStaff.daysWork.includes(selectedDay) && (
+                        <span className="ml-2 text-green-600 font-medium">
+                          (Dia atual selecionado automaticamente)
+                        </span>
+                      )}
                     </p>
                   </div>
                 )}

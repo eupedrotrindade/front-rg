@@ -3680,7 +3680,11 @@ export default function Painel() {
 
         </>
       )}
-      <ModalAdicionarStaff isOpen={popupNovoStaff} eventId={eventId} onClose={() => setPopupNovoStaff(false)}
+      <ModalAdicionarStaff 
+        isOpen={popupNovoStaff} 
+        eventId={eventId} 
+        selectedDay={selectedDay}
+        onClose={() => setPopupNovoStaff(false)}
         evento={evento}
         onSuccess={async () => {
           // Recarregar dados se necessário
