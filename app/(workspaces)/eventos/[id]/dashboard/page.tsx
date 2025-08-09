@@ -399,7 +399,7 @@ export default function EventDashboardPage() {
                                     <TrendingUp className="w-5 h-5 text-blue-600" />
                                     Resumo por Credenciais - {selectedDay}
                                 </h2>
-                                <Button
+                                {/* <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => router.push(`/eventos/${params.id}/analytics`)}
@@ -407,7 +407,7 @@ export default function EventDashboardPage() {
                                 >
                                     <BarChart3 className="w-4 h-4" />
                                     Ver Análises Detalhadas
-                                </Button>
+                                </Button> */}
                             </div>
 
                             {Object.keys(credentialStats).length === 0 ? (
