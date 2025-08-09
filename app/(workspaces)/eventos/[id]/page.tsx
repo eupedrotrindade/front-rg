@@ -973,7 +973,7 @@ export default function EventoDetalhesPage() {
                                 Filtros
                             </Button>
 
-                            {duplicates.length > 0 && (
+                            {/* {duplicates.length > 0 && (
                                 <Button
                                     variant="outline"
                                     size="sm"
@@ -984,7 +984,7 @@ export default function EventoDetalhesPage() {
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Remover Duplicados ({duplicates.length})
                                 </Button>
-                            )}
+                            )} */}
                         </div>
 
                         <Button
@@ -1823,8 +1823,8 @@ export default function EventoDetalhesPage() {
                                         <div
                                             key={participant.id}
                                             className={`p-3 rounded border ${participantIndex === 0
-                                                    ? 'bg-green-50 border-green-200'
-                                                    : 'bg-red-100 border-red-300'
+                                                ? 'bg-green-50 border-green-200'
+                                                : 'bg-red-100 border-red-300'
                                                 }`}
                                         >
                                             <div className="flex items-center justify-between mb-2">
@@ -1832,8 +1832,8 @@ export default function EventoDetalhesPage() {
                                                     {participant.name}
                                                 </span>
                                                 <span className={`text-xs px-2 py-1 rounded ${participantIndex === 0
-                                                        ? 'bg-green-200 text-green-800'
-                                                        : 'bg-red-200 text-red-800'
+                                                    ? 'bg-green-200 text-green-800'
+                                                    : 'bg-red-200 text-red-800'
                                                     }`}>
                                                     {participantIndex === 0 ? 'MANTER' : 'REMOVER'}
                                                 </span>
