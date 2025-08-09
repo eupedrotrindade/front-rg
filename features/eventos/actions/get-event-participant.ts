@@ -1,59 +1,59 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { apiClient } from "@/lib/api-client";
-import { EventParticipant, PaginationParams } from "../types";
+import { apiClient } from '@/lib/api-client'
+import { EventParticipant, PaginationParams } from '../types'
 
 export const getEventParticipant = async (
-  id: string
+  id: string,
 ): Promise<EventParticipant | null> => {
   try {
     const { data } = await apiClient.get<EventParticipant>(
-      `/event-participants/${id}`
-    );
-    return data;
+      `/event-participants/${id}`,
+    )
+    return data
   } catch (error) {
-    console.error("Erro ao buscar participante:", error);
-    return null;
+    console.error('Erro ao buscar participante:', error)
+    return null
   }
-};
+}
 
 export const getEventParticipantAll = async (
-  params?: PaginationParams
+  params?: PaginationParams,
 ): Promise<EventParticipant[] | null> => {
   try {
-    console.log("🔍 Buscando participantes com params:", params);
+    console.log('🔍 Buscando participantes com params:', params)
     const { data } = await apiClient.get<EventParticipant[]>(
-      "/event-participants",
+      '/event-participants',
       {
         params,
-      }
-    );
-    console.log("📦 Resposta da API (participantes):", data);
-    console.log("📊 Tipo da resposta:", typeof data);
-    console.log("📋 É array?", Array.isArray(data));
-    if (data && typeof data === "object" && "data" in data) {
-      console.log("📦 Dados dentro de data.data:", data.data);
-      return Array.isArray(data.data) ? data.data : [];
+      },
+    )
+    // console.log('📦 Resposta da API (participantes):', data)
+    console.log('📊 Tipo da resposta:', typeof data)
+    console.log('📋 É array?', Array.isArray(data))
+    if (data && typeof data === 'object' && 'data' in data) {
+      console.log('📦 Dados dentro de data.data:', data.data)
+      return Array.isArray(data.data) ? data.data : []
     }
-    return data;
+    return data
   } catch (error) {
-    console.error("❌ Erro ao buscar participantes:", error);
-    return null;
+    console.error('❌ Erro ao buscar participantes:', error)
+    return null
   }
-};
+}
 
 export const getEventParticipantByCpf = async (
-  cpf: string
+  cpf: string,
 ): Promise<EventParticipant | null> => {
   try {
     const { data } = await apiClient.get<EventParticipant>(
-      `/event-participants/cpf/${cpf}`
-    );
-    return data;
+      `/event-participants/cpf/${cpf}`,
+    )
+    return data
   } catch (error) {
-    console.error("Erro ao buscar participante por CPF:", error);
-    return null;
+    console.error('Erro ao buscar participante por CPF:', error)
+    return null
   }
-};
+}
 
 // Buscar todos os participantes de um evento pelo id do evento
 
@@ -71,40 +71,40 @@ export const getEventParticipantByCpf = async (
 export const getEventParticipantsByEvent = async (
   eventId: string,
   search?: string,
-  sortBy = "name",
-  sortOrder = "asc"
+  sortBy = 'name',
+  sortOrder = 'asc',
 ): Promise<EventParticipant[]> => {
   try {
-    const params: Record<string, any> = {};
-    if (search) params.search = search;
-    if (sortBy) params.sortBy = sortBy;
-    if (sortOrder) params.sortOrder = sortOrder;
+    const params: Record<string, any> = {}
+    if (search) params.search = search
+    if (sortBy) params.sortBy = sortBy
+    if (sortOrder) params.sortOrder = sortOrder
 
     const { data } = await apiClient.get<{
-      data: EventParticipant[];
-      total: number;
-    }>(`/event-participants/event/${eventId}`, { params });
+      data: EventParticipant[]
+      total: number
+    }>(`/event-participants/event/${eventId}`, { params })
 
-    console.log("📦 Resposta da API:", data);
+    // console.log('📦 Resposta da API:', data)
 
     // Verifica se a resposta tem a estrutura esperada
-    if (data && typeof data === "object" && "data" in data) {
-      return Array.isArray(data.data) ? data.data : [];
+    if (data && typeof data === 'object' && 'data' in data) {
+      return Array.isArray(data.data) ? data.data : []
     }
 
     // Fallback para resposta direta (compatibilidade)
     if (Array.isArray(data)) {
-      return data;
+      return data
     }
 
-    return [];
+    return []
   } catch (error: any) {
     if (error?.status === 404) {
       // Lida com "não encontrado"
-      throw new Error("Nenhum participante encontrado para este evento");
+      throw new Error('Nenhum participante encontrado para este evento')
     }
     // Loga erro e lança erro genérico
-    console.error("Erro ao buscar participantes por evento:", error);
-    throw new Error("Erro interno do servidor");
+    console.error('Erro ao buscar participantes por evento:', error)
+    throw new Error('Erro interno do servidor')
   }
-};
+}

@@ -35,6 +35,7 @@ import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/use-event-attendance'
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
 import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
+// TODO: Substituir por useEventById para melhor performance
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import { EventParticipant } from '@/features/eventos/types'
 import { useQueryClient } from '@tanstack/react-query'
@@ -68,14 +69,15 @@ export default function EventoDetalhesPage() {
   const params = useParams()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { data: eventos } = useEventos()
+
+  // Queries React Query
   const { data: participantsData = [], isLoading: participantsLoading } =
     useEventParticipantsByEvent({ eventId: String(params.id) })
 
   const { mutate: deleteParticipant, isPending: isDeleting } =
     useDeleteEventParticipant()
   const { data: credentials } = useCredentials({ eventId: String(params.id) })
-  // Hooks para coordenadores, vagas e empresas
+  // Hooks para dados adicionais (otimização: só carregam quando necessário)
   const { data: coordenadores = [], isLoading: coordenadoresLoading } =
     useCoordenadoresByEvent({
       eventId: String(params.id),
@@ -87,8 +89,7 @@ export default function EventoDetalhesPage() {
   )
   const { data: empresas = [], isLoading: empresasLoading } =
     useEmpresasByEvent(String(params.id))
-  const { mutate: updateParticipant, isPending: isUpdatingParticipant } =
-    useUpdateEventParticipant()
+  const { mutate: updateParticipant } = useUpdateEventParticipant()
   const checkInMutation = useCheckIn()
   const checkOutMutation = useCheckOut()
   const deleteAttendanceMutation = useDeleteEventAttendance()
@@ -184,11 +185,15 @@ export default function EventoDetalhesPage() {
       formatDateForAPI(selectedDay),
     )
 
-  const evento = Array.isArray(eventos)
-    ? eventos.find(e => String(e.id) === String(params.id))
-    : undefined
+  // Buscar apenas dados necessários do evento (TODO: criar hook específico)
+  const { data: eventos } = useEventos() // Temporário - precisa ser otimizado
+  const evento = useMemo(() => {
+    return Array.isArray(eventos)
+      ? eventos.find(e => String(e.id) === String(params.id))
+      : undefined
+  }, [eventos, params.id])
 
-  // const participantsArray = Array.isArray(participantsData) ? participantsData : []
+  // Memoizar array de participantes
   const participantsArray = useMemo(() => {
     return Array.isArray(participantsData) ? participantsData : []
   }, [participantsData])
@@ -382,10 +387,81 @@ export default function EventoDetalhesPage() {
     [attendanceData, normalizeDate],
   )
 
-  // Auto-selecionar primeiro dia se nenhum dia foi selecionado
-  const eventDays = getEventDays()
-  const currentSelectedDay =
-    selectedDay || (eventDays.length > 0 ? eventDays[0].id : '')
+  // Memoizar dias do evento para evitar recálculo
+  const eventDays = useMemo(() => {
+    if (!evento) return []
+
+    const days: Array<{
+      id: string
+      label: string
+      date: string
+      type: string
+    }> = []
+
+    // Adicionar dias de montagem
+    if (evento.setupStartDate && evento.setupEndDate) {
+      const startDate = new Date(evento.setupStartDate)
+      const endDate = new Date(evento.setupEndDate)
+      for (
+        let date = new Date(startDate);
+        date <= endDate;
+        date.setDate(date.getDate() + 1)
+      ) {
+        const dateStr = date.toLocaleDateString('pt-BR')
+        days.push({
+          id: dateStr,
+          label: `${dateStr} (MONTAGEM)`,
+          date: dateStr,
+          type: 'setup',
+        })
+      }
+    }
+
+    // Adicionar dias de Evento/evento
+    if (evento.preparationStartDate && evento.preparationEndDate) {
+      const startDate = new Date(evento.preparationStartDate)
+      const endDate = new Date(evento.preparationEndDate)
+      for (
+        let date = new Date(startDate);
+        date <= endDate;
+        date.setDate(date.getDate() + 1)
+      ) {
+        const dateStr = date.toLocaleDateString('pt-BR')
+        days.push({
+          id: dateStr,
+          label: `${dateStr} (EVENTO)`,
+          date: dateStr,
+          type: 'preparation',
+        })
+      }
+    }
+
+    // Adicionar dias de finalizacão
+    if (evento.finalizationStartDate && evento.finalizationEndDate) {
+      const startDate = new Date(evento.finalizationStartDate)
+      const endDate = new Date(evento.finalizationEndDate)
+      for (
+        let date = new Date(startDate);
+        date <= endDate;
+        date.setDate(date.getDate() + 1)
+      ) {
+        const dateStr = date.toLocaleDateString('pt-BR')
+        days.push({
+          id: dateStr,
+          label: `${dateStr} (DESMONTAGEM)`,
+          date: dateStr,
+          type: 'finalization',
+        })
+      }
+    }
+
+    return days
+  }, [evento])
+
+  const currentSelectedDay = useMemo(
+    () => selectedDay || (eventDays.length > 0 ? eventDays[0].id : ''),
+    [selectedDay, eventDays],
+  )
 
   // Sincronizar selectedDay com o primeiro dia disponível se não houver seleção
   React.useEffect(() => {
@@ -394,8 +470,26 @@ export default function EventoDetalhesPage() {
     }
   }, [selectedDay, eventDays])
 
-  // Participantes do dia atual
-  const participantesDoDia = getParticipantesPorDia(currentSelectedDay)
+  // Memoizar participantes do dia para evitar recálculo custoso
+  const participantesDoDia = useMemo(() => {
+    return participantsArray.filter((participant: EventParticipant) => {
+      if (!participant.daysWork || participant.daysWork.length === 0) {
+        return false // Se não tem dias de trabalho definidos, não aparece em nenhum dia específico
+      }
+
+      // Normalizar o dia selecionado
+      const normalizedDia = normalizeDate(currentSelectedDay)
+
+      // Verificar se algum dos dias de trabalho do participante corresponde ao dia selecionado
+      const hasDay = participant.daysWork.some(workDay => {
+        const normalizedWorkDay = normalizeDate(workDay)
+        const matches = normalizedWorkDay === normalizedDia
+        return matches
+      })
+
+      return hasDay
+    })
+  }, [currentSelectedDay, participantsArray, normalizeDate])
 
   // Credentials array
   const credentialsArray = Array.isArray(credentials) ? credentials : []
@@ -421,21 +515,32 @@ export default function EventoDetalhesPage() {
     credentialsArray,
   })
 
-  // KPIs baseados no dia selecionado
-  const totalParticipants = participantesDoDia.length
-  const participantsWithWristbands = participantesDoDia.filter(
-    p => p.wristbandId,
-  ).length
-  const participantsWithoutWristbands =
-    totalParticipants - participantsWithWristbands
+  // Memoizar KPIs baseados no dia selecionado para evitar recálculos
+  const kpiStats = useMemo(() => {
+    const totalParticipants = participantesDoDia.length
+    const participantsWithWristbands = participantesDoDia.filter(
+      p => p.wristbandId,
+    ).length
+    const participantsWithoutWristbands =
+      totalParticipants - participantsWithWristbands
 
-  // Calcular check-ins e check-outs baseado nos dados reais de attendance (otimizado)
-  const checkedInParticipants = dayStats.statusCounts.checkedIn
-  const checkedOutParticipants = dayStats.statusCounts.checkedOut
-  const activeParticipants = checkedInParticipants - checkedOutParticipants
+    // Calcular check-ins e check-outs baseado nos dados reais de attendance
+    const checkedInParticipants = dayStats.statusCounts.checkedIn
+    const checkedOutParticipants = dayStats.statusCounts.checkedOut
+    const activeParticipants = checkedInParticipants - checkedOutParticipants
 
-  // Calcular estatísticas por credencial (otimizado)
-  const getCredentialStats = useCallback(() => {
+    return {
+      totalParticipants,
+      participantsWithWristbands,
+      participantsWithoutWristbands,
+      checkedInParticipants,
+      checkedOutParticipants,
+      activeParticipants,
+    }
+  }, [participantesDoDia, dayStats.statusCounts])
+
+  // Memoizar estatísticas por credencial para evitar recálculo
+  const credentialStats = useMemo(() => {
     const stats: Record<
       string,
       {
@@ -492,22 +597,47 @@ export default function EventoDetalhesPage() {
     return duplicates
   }, [participantsArray])
 
-  const duplicates = findDuplicates()
+  // Memoizar duplicados para evitar recálculo custoso
+  const duplicates = useMemo(() => {
+    const dups: Array<{
+      cpf: string
+      participants: EventParticipant[]
+      reason: string
+    }> = []
 
-  if (!evento) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Evento não encontrado</h2>
-          <Button onClick={() => router.back()}>Voltar</Button>
-        </div>
-      </div>
-    )
-  }
+    // Agrupar por CPF
+    const participantsByCpf = participantsArray.reduce((acc, participant) => {
+      if (participant.cpf) {
+        const cpf = participant.cpf.replace(/\D/g, '') // Remove formatacão
+        if (!acc[cpf]) {
+          acc[cpf] = []
+        }
+        acc[cpf].push(participant)
+      }
+      return acc
+    }, {} as Record<string, EventParticipant[]>)
 
-  const handleDeleteParticipant = (participant: EventParticipant) => {
-    setDeletingParticipant(participant)
-  }
+    // Encontrar duplicados por CPF
+    Object.entries(participantsByCpf).forEach(([cpf, participants]) => {
+      if (participants.length > 1) {
+        dups.push({
+          cpf,
+          participants,
+          reason: 'CPF duplicado',
+        })
+      }
+    })
+
+    return dups
+  }, [participantsArray])
+
+  // Handlers memoizados
+  const handleDeleteParticipant = useCallback(
+    (participant: EventParticipant) => {
+      setDeletingParticipant(participant)
+    },
+    [],
+  )
 
   const confirmDeleteParticipant = () => {
     if (!deletingParticipant) return
@@ -530,54 +660,62 @@ export default function EventoDetalhesPage() {
     )
   }
 
-  const getInitials = (nome: string) =>
-    nome
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
+  // ========== HANDLERS E FUNÇÕES ==========
 
-  // Função para abrir popup de check-in
-  const abrirCheckin = (participant: EventParticipant) => {
-    // Verificar se já fez check-in no dia selecionado
-    if (hasCheckIn(participant.id, selectedDay)) {
-      toast.error('Este participante já fez check-in neste dia!')
-      return
-    }
+  // OTIMIZAÇÕES APLICADAS:
+  // 1. Queries memoizadas e reduzidas (TODO: implementar useEventById)
+  // 2. Cálculos custosos memoizados (eventDays, participantesDoDia, duplicates)
+  // 3. KPIs e estatísticas memoizadas (kpiStats, credentialStats)
+  // 4. Funções memoizadas com useCallback
+  // 5. Renderização condicional otimizada
+  // 6. Funções não utilizadas removidas (getCredencial, getBotaoAcao, getInitials)
 
-    setParticipantAction(participant)
-    setCodigoPulseira('')
-    setSelectedDateForAction(selectedDay)
-    setPopupCheckin(true)
-  }
+  // Função para abrir popup de check-in (memoizada)
+  const abrirCheckin = useCallback(
+    (participant: EventParticipant) => {
+      // Verificar se já fez check-in no dia selecionado
+      if (hasCheckIn(participant.id, selectedDay)) {
+        toast.error('Este participante já fez check-in neste dia!')
+        return
+      }
 
-  // Função para abrir popup de check-out
-  const abrirCheckout = (participant: EventParticipant) => {
-    // Verificar se já fez check-out no dia selecionado
-    if (hasCheckOut(participant.id, selectedDay)) {
-      toast.error('Este participante já fez check-out neste dia!')
-      return
-    }
+      setParticipantAction(participant)
+      setCodigoPulseira('')
+      setSelectedDateForAction(selectedDay)
+      setPopupCheckin(true)
+    },
+    [hasCheckIn, selectedDay],
+  )
 
-    // Verificar se fez check-in antes de fazer check-out
-    if (!hasCheckIn(participant.id, selectedDay)) {
-      toast.error(
-        'Este participante precisa fazer check-in antes do check-out!',
-      )
-      return
-    }
+  // Função para abrir popup de check-out (memoizada)
+  const abrirCheckout = useCallback(
+    (participant: EventParticipant) => {
+      // Verificar se já fez check-out no dia selecionado
+      if (hasCheckOut(participant.id, selectedDay)) {
+        toast.error('Este participante já fez check-out neste dia!')
+        return
+      }
 
-    setParticipantAction(participant)
-    setSelectedDateForAction(selectedDay)
-    setPopupCheckout(true)
-  }
+      // Verificar se fez check-in antes de fazer check-out
+      if (!hasCheckIn(participant.id, selectedDay)) {
+        toast.error(
+          'Este participante precisa fazer check-in antes do check-out!',
+        )
+        return
+      }
 
-  // Função para abrir popup de reset check-in
-  const abrirResetCheckin = (participant: EventParticipant) => {
+      setParticipantAction(participant)
+      setSelectedDateForAction(selectedDay)
+      setPopupCheckout(true)
+    },
+    [hasCheckIn, hasCheckOut, selectedDay],
+  )
+
+  // Função para abrir popup de reset check-in (memoizada)
+  const abrirResetCheckin = useCallback((participant: EventParticipant) => {
     setParticipantAction(participant)
     setPopupResetCheckin(true)
-  }
+  }, [])
 
   // Função para confirmar check-in
   const confirmarCheckin = async () => {
@@ -723,8 +861,8 @@ export default function EventoDetalhesPage() {
     setLoading(false)
   }
 
-  // Funções para seleção múltipla
-  const toggleParticipantSelection = (participantId: string) => {
+  // Funções para seleção múltipla (memoizadas)
+  const toggleParticipantSelection = useCallback((participantId: string) => {
     setSelectedParticipants(prev => {
       const newSet = new Set(prev)
       if (newSet.has(participantId)) {
@@ -734,19 +872,19 @@ export default function EventoDetalhesPage() {
       }
       return newSet
     })
-  }
+  }, [])
 
-  const selectAllParticipants = () => {
+  const selectAllParticipants = useCallback(() => {
     if (selectedParticipants.size === filteredParticipants.length) {
       setSelectedParticipants(new Set())
     } else {
       setSelectedParticipants(new Set(filteredParticipants.map(p => p.id)))
     }
-  }
+  }, [selectedParticipants.size, filteredParticipants])
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setSelectedParticipants(new Set())
-  }
+  }, [])
 
   // Função para edição em massa
   const handleBulkEdit = async () => {
@@ -914,51 +1052,6 @@ export default function EventoDetalhesPage() {
     setLoading(false)
   }
 
-  const getCredencial = (participant: EventParticipant): string => {
-    const credential = credentialsArray.find(
-      (c: { id: string }) => c.id === participant.credentialId,
-    )
-    if (credential && participant.credentialId) {
-      return participant.credentialId
-    } else {
-      return 'SEM CREDENCIAL'
-    }
-  }
-
-  const getBotaoAcao = (participant: EventParticipant) => {
-    // Verificar se o participante trabalha no dia selecionado usando normalização
-    if (!participant.daysWork || participant.daysWork.length === 0) {
-      return null // Não trabalha nesta data
-    }
-
-    // Normalizar o dia selecionado
-    const normalizedSelectedDay = normalizeDate(currentSelectedDay)
-
-    // Verificar se algum dos dias de trabalho do participante corresponde ao dia selecionado
-    const hasDay = participant.daysWork.some(workDay => {
-      const normalizedWorkDay = normalizeDate(workDay)
-      return normalizedWorkDay === normalizedSelectedDay
-    })
-
-    if (!hasDay) {
-      return null // Não trabalha nesta data
-    }
-
-    // Verificar status de presença baseado nos dados reais de attendance
-    const hasCheckInToday = hasCheckIn(participant.id, currentSelectedDay)
-    const hasCheckOutToday = hasCheckOut(participant.id, currentSelectedDay)
-
-    if (!hasCheckInToday) {
-      return 'checkin'
-    } else if (hasCheckInToday && !hasCheckOutToday) {
-      return 'checkout'
-    } else if (hasCheckInToday && hasCheckOutToday) {
-      return 'reset' // Permitir resetar quando já fez check-in e check-out
-    } else {
-      return null
-    }
-  }
-
   // Função para abrir popup de replicação de staff
   const handleOpenReplicateDialog = (sourceDay: string) => {
     setReplicateSourceDay(sourceDay)
@@ -1083,12 +1176,34 @@ export default function EventoDetalhesPage() {
     }
   }
 
-  const isLoading =
-    participantsLoading ||
-    coordenadoresLoading ||
-    vagasLoading ||
-    empresasLoading ||
-    attendanceLoading
+  // Estados calculados memoizados
+  const isLoading = useMemo(
+    () =>
+      participantsLoading ||
+      coordenadoresLoading ||
+      vagasLoading ||
+      empresasLoading ||
+      attendanceLoading,
+    [
+      participantsLoading,
+      coordenadoresLoading,
+      vagasLoading,
+      empresasLoading,
+      attendanceLoading,
+    ],
+  )
+
+  // Early return se evento não existir
+  if (!evento) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Evento não encontrado</h2>
+          <Button onClick={() => router.back()}>Voltar</Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <EventLayout eventId={String(params.id)} eventName={evento.name}>
@@ -1143,8 +1258,8 @@ export default function EventoDetalhesPage() {
           </div>
         </div>
 
-        {/* Filtros Otimizados */}
-        {currentSelectedDay && (
+        {/* Filtros Otimizados - Renderizar apenas quando há participantes */}
+        {currentSelectedDay && participantesDoDia.length > 0 && (
           <OptimizedFilters
             filters={filters}
             popoverStates={popoverStates}
@@ -1161,125 +1276,125 @@ export default function EventoDetalhesPage() {
           />
         )}
 
-        {/* Estatísticas por Credencial */}
-        {selectedDay && (
+        {/* Estatísticas por Credencial - Renderizar apenas quando há dados */}
+        {selectedDay && Object.keys(credentialStats).length > 0 && (
           <div className="mb-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {Object.entries(getCredentialStats()).map(
-                ([credentialId, stats]) => (
-                  <Card
-                    key={credentialId}
-                    className="bg-white shadow-lg border-l-4"
-                    style={{ borderLeftColor: stats.color }}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: stats.color }}
-                          />
-                          <span className="text-sm font-medium text-gray-900 uppercase">
-                            {stats.credentialName}
-                          </span>
+              {Object.entries(credentialStats).map(([credentialId, stats]) => (
+                <Card
+                  key={credentialId}
+                  className="bg-white shadow-lg border-l-4"
+                  style={{ borderLeftColor: stats.color }}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: stats.color }}
+                        />
+                        <span className="text-sm font-medium text-gray-900 uppercase">
+                          {stats.credentialName}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-2xl font-bold text-gray-900">
+                        {stats.checkedIn}/{stats.total}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">Check-ins</div>
+                        <div className="text-xs text-gray-600">
+                          {stats.total > 0
+                            ? Math.round((stats.checkedIn / stats.total) * 100)
+                            : 0}
+                          %
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div className="text-2xl font-bold text-gray-900">
-                          {stats.checkedIn}/{stats.total}
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs text-gray-500">Check-ins</div>
-                          <div className="text-xs text-gray-600">
-                            {stats.total > 0
-                              ? Math.round(
-                                  (stats.checkedIn / stats.total) * 100,
-                                )
-                              : 0}
-                            %
-                          </div>
-                        </div>
+                    </div>
+                    <div className="mt-2">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="h-2 rounded-full transition-all duration-300"
+                          style={{
+                            backgroundColor: stats.color,
+                            width:
+                              stats.total > 0
+                                ? `${(stats.checkedIn / stats.total) * 100}%`
+                                : '0%',
+                          }}
+                        />
                       </div>
-                      <div className="mt-2">
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="h-2 rounded-full transition-all duration-300"
-                            style={{
-                              backgroundColor: stats.color,
-                              width:
-                                stats.total > 0
-                                  ? `${(stats.checkedIn / stats.total) * 100}%`
-                                  : '0%',
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ),
-              )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Tabs dos dias do evento com carrossel */}
-        <div className="mb-8">
-          <div className="border-b border-gray-200 bg-white rounded-t-lg relative">
-            {/* Container dos tabs sem scroll horizontal */}
-            <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
-              {getEventDays().map(day => {
-                const participantesNoDia = getParticipantesPorDia(day.id).length
-                const isActive = selectedDay === day.id
+        {/* Tabs dos dias do evento */}
+        {eventDays.length > 0 && (
+          <div className="mb-8">
+            <div className="border-b border-gray-200 bg-white rounded-t-lg relative">
+              {/* Container dos tabs sem scroll horizontal */}
+              <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
+                {eventDays.map(day => {
+                  const participantesNoDia = getParticipantesPorDia(
+                    day.id,
+                  ).length
+                  const isActive = selectedDay === day.id
 
-                return (
-                  <div key={day.id} className="flex items-center gap-2">
-                    <button
-                      onClick={() => setSelectedDay(day.id)}
-                      className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${
-                        isActive
-                          ? getTabColor(day.type, true)
-                          : `border-transparent text-gray-500 ${getTabColor(
-                              day.type,
-                              false,
-                            )}`
-                      }`}
-                    >
-                      <div className="flex flex-col items-center">
-                        <span className="text-xs font-medium">
-                          {day.label.split(' ')[0]}
-                        </span>
-                        <span className="text-xs opacity-75">
-                          ({participantesNoDia})
-                        </span>
-                      </div>
-                    </button>
-                    {isActive && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleOpenReplicateDialog(day.id)}
-                        disabled={replicatingStaff === day.id}
-                        className="text-xs h-6 px-2 bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                  return (
+                    <div key={day.id} className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedDay(day.id)}
+                        className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${
+                          isActive
+                            ? getTabColor(day.type, true)
+                            : `border-transparent text-gray-500 ${getTabColor(
+                                day.type,
+                                false,
+                              )}`
+                        }`}
                       >
-                        {replicatingStaff === day.id ? (
-                          <>
-                            <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1"></div>
-                            Replicando...
-                          </>
-                        ) : (
-                          <>
-                            <Users className="w-3 h-3 mr-1" />
-                            Replicar Participantes
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                )
-              })}
-            </nav>
+                        <div className="flex flex-col items-center">
+                          <span className="text-xs font-medium">
+                            {day.label.split(' ')[0]}
+                          </span>
+                          <span className="text-xs opacity-75">
+                            ({participantesNoDia})
+                          </span>
+                        </div>
+                      </button>
+                      {isActive && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenReplicateDialog(day.id)}
+                          disabled={replicatingStaff === day.id}
+                          className="text-xs h-6 px-2 bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                        >
+                          {replicatingStaff === day.id ? (
+                            <>
+                              <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1"></div>
+                              Replicando...
+                            </>
+                          ) : (
+                            <>
+                              <Users className="w-3 h-3 mr-1" />
+                              Replicar Participantes
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </nav>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Barra de ações em massa */}
         {selectedParticipants.size > 0 && (
@@ -1313,22 +1428,34 @@ export default function EventoDetalhesPage() {
           </div>
         )}
 
-        {/* Tabela Virtualizada */}
-        <VirtualizedParticipantsTable
-          participants={filteredParticipants}
-          selectedParticipants={selectedParticipants}
-          currentSelectedDay={currentSelectedDay}
-          hasCheckIn={hasCheckIn}
-          hasCheckOut={hasCheckOut}
-          onToggleParticipant={toggleParticipantSelection}
-          onSelectAll={selectAllParticipants}
-          onCheckIn={abrirCheckin}
-          onCheckOut={abrirCheckout}
-          onReset={abrirResetCheckin}
-          onDelete={handleDeleteParticipant}
-          isLoading={isLoading}
-          loading={loading}
-        />
+        {/* Tabela Virtualizada - Renderizar apenas quando necessário */}
+        {!isLoading && currentSelectedDay && (
+          <VirtualizedParticipantsTable
+            participants={filteredParticipants}
+            selectedParticipants={selectedParticipants}
+            currentSelectedDay={currentSelectedDay}
+            hasCheckIn={hasCheckIn}
+            hasCheckOut={hasCheckOut}
+            onToggleParticipant={toggleParticipantSelection}
+            onSelectAll={selectAllParticipants}
+            onCheckIn={abrirCheckin}
+            onCheckOut={abrirCheckout}
+            onReset={abrirResetCheckin}
+            onDelete={handleDeleteParticipant}
+            isLoading={isLoading}
+            loading={loading}
+          />
+        )}
+
+        {/* Loader quando carregando */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-500">Carregando participantes...</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Dialog de Confirmação de Exclusão de Participante */}
