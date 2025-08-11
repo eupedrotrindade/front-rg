@@ -1,19 +1,34 @@
 import { z } from "zod";
 
+// Schema para EventDay
+const eventDaySchema = z.object({
+  date: z.string().datetime("Formato de data e hora inválido"), // ISO datetime
+  start: z.boolean(),
+  end: z.boolean(),
+});
+
 export const eventoSchema = z.object({
   name: z.string().min(1, "Nome obrigatório"),
   description: z.string().optional(),
   type: z.string().optional(),
   bannerUrl: z.string().optional(),
   totalDays: z.number().min(1).optional(),
-  startDate: z.string().min(1, "Início do evento obrigatório"),
-  endDate: z.string().min(1, "Fim do evento obrigatório"),
+  startDate: z.string().optional(), // Será calculado automaticamente
+  endDate: z.string().optional(), // Será calculado automaticamente
+  
+  // Nova estrutura de dias por fase
+  montagem: z.array(eventDaySchema).default([]),
+  evento: z.array(eventDaySchema).default([]),
+  desmontagem: z.array(eventDaySchema).default([]),
+  
+  // Campos antigos para compatibilidade (opcionais)
   setupStartDate: z.string().optional(),
   setupEndDate: z.string().optional(),
-  preparationStartDate: z.string().min(1, "Início da Evento obrigatório"),
-  preparationEndDate: z.string().min(1, "Fim da Evento obrigatório"),
+  preparationStartDate: z.string().optional(),
+  preparationEndDate: z.string().optional(),
   finalizationStartDate: z.string().optional(),
   finalizationEndDate: z.string().optional(),
+  
   venue: z.string().min(1, "Local obrigatório"),
   address: z.string().optional(),
   status: z.enum(["active", "closed", "canceled", "draft"]).default("draft"),
@@ -23,6 +38,16 @@ export const eventoSchema = z.object({
   registrationLink: z.string().optional(),
   qrCodeTemplate: z.enum(["default", "custom"]).optional(),
   isActive: z.boolean().optional(),
+}).refine((data) => {
+  // Validação customizada: pelo menos uma fase deve ter dias
+  const hasMontagemDays = data.montagem.length > 0;
+  const hasEventoDays = data.evento.length > 0;
+  const hasDesmontagemDays = data.desmontagem.length > 0;
+  
+  return hasMontagemDays || hasEventoDays || hasDesmontagemDays;
+}, {
+  message: "Pelo menos uma fase deve ter dias definidos",
+  path: ["evento"] // Apontar erro para o campo evento
 });
 
 export type EventoSchema = z.infer<typeof eventoSchema>;

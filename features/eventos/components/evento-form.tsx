@@ -23,6 +23,8 @@ import { ImageIcon, Upload, Loader2, Calendar, MapPin, Settings, Users, Tag, Lin
 import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
 import { fetchGalleryImages, type FileObject } from '@/features/gallery/components/gallery-dashboard'
+import EventDaysManager from '@/components/event-days/EventDaysManager'
+import { EventDay } from '@/types/event-days'
 
 interface EventoFormProps {
     defaultValues?: Partial<EventoSchema>
@@ -32,6 +34,17 @@ interface EventoFormProps {
 }
 
 const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: EventoFormProps) => {
+    // State para gerenciar os dias do evento
+    const [eventDays, setEventDays] = useState<{
+        montagem: EventDay[];
+        evento: EventDay[];
+        desmontagem: EventDay[];
+    }>({
+        montagem: defaultValues?.montagem || [],
+        evento: defaultValues?.evento || [],
+        desmontagem: defaultValues?.desmontagem || []
+    });
+
     const form = useForm<FieldValues>({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         resolver: zodResolver(eventoSchema) as any,
@@ -46,111 +59,65 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
     const handleSubmit = (data: FieldValues) => {
         console.log(data)
 
-        // Validar se pelo menos o período de Evento está preenchido
-        if (!data.preparationStartDate || !data.preparationEndDate) {
-            console.error('Período de Evento é obrigatório')
+        // Validar se pelo menos uma fase tem dias definidos
+        if (eventDays.montagem.length === 0 && eventDays.evento.length === 0 && eventDays.desmontagem.length === 0) {
+            console.error('Pelo menos uma fase deve ter dias definidos')
             return
         }
 
-        // Garantir que startDate e endDate estão preenchidos
-        if (!data.startDate || !data.endDate) {
-            console.error('startDate e endDate devem ser preenchidos automaticamente')
-            return
-        }
+        // Incluir os dias do evento no data e garantir que startDate/endDate sejam strings
+        const formDataWithEventDays = {
+            ...data,
+            startDate: data.startDate || '',
+            endDate: data.endDate || '',
+            montagem: eventDays.montagem,
+            evento: eventDays.evento,
+            desmontagem: eventDays.desmontagem,
+        };
 
-        onSubmit(data as EventoSchema)
+        onSubmit(formDataWithEventDays as EventoSchema)
     }
 
+    // Atualizar startDate e endDate automaticamente baseado nos dias do evento
     useEffect(() => {
-        const setupStart = form.watch('setupStartDate');
-        const setupEnd = form.watch('setupEndDate');
-        const preparationStart = form.watch('preparationStartDate');
-        const preparationEnd = form.watch('preparationEndDate');
-        const finalizationStart = form.watch('finalizationStartDate');
-        const finalizationEnd = form.watch('finalizationEndDate');
+        const allDays = [...eventDays.montagem, ...eventDays.evento, ...eventDays.desmontagem];
+        
+        if (allDays.length > 0) {
+            // Parse dates and sort them
+            const parsedDates = allDays.map(day => {
+                // Handle DD/MM/YYYY format
+                if (day.date.includes('/')) {
+                    const [dayPart, month, year] = day.date.split('/');
+                    return new Date(parseInt(year), parseInt(month) - 1, parseInt(dayPart));
+                }
+                // Handle ISO format
+                return new Date(day.date);
+            }).sort((a, b) => a.getTime() - b.getTime());
 
-        // Determinar startDate e endDate baseado nos períodos disponíveis
-        let startDate = '';
-        let endDate = '';
+            const startDate = parsedDates[0];
+            const endDate = parsedDates[parsedDates.length - 1];
 
-        if (setupStart && finalizationEnd) {
-            // Se tem montagem e desmontagem, usar o período completo
-            startDate = setupStart;
-            endDate = finalizationEnd;
-        } else if (setupStart && preparationEnd) {
-            // Se tem montagem mas não desmontagem, usar montagem até Evento
-            startDate = setupStart;
-            endDate = preparationEnd;
-        } else if (preparationStart && finalizationEnd) {
-            // Se tem Evento e desmontagem, usar Evento até desmontagem
-            startDate = preparationStart;
-            endDate = finalizationEnd;
-        } else if (preparationStart && preparationEnd) {
-            // Se tem apenas Evento, usar apenas o período de Evento
-            startDate = preparationStart;
-            endDate = preparationEnd;
-        }
+            // Convert to YYYY-MM-DD format for form
+            const formatForForm = (date: Date): string => {
+                const year = date.getFullYear();
+                const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                const day = date.getDate().toString().padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
 
-        // Definir startDate e endDate
-        if (startDate && endDate) {
-            form.setValue('startDate', startDate);
-            form.setValue('endDate', endDate);
-
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-
-            if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end >= start) {
-                const diff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                form.setValue('totalDays', diff);
-            } else {
-                form.setValue('totalDays', undefined);
-            }
+            form.setValue('startDate', formatForForm(startDate));
+            form.setValue('endDate', formatForForm(endDate));
+            
+            // Calculate total days
+            const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+            form.setValue('totalDays', diffDays);
         } else {
+            form.setValue('startDate', '');
+            form.setValue('endDate', '');
             form.setValue('totalDays', undefined);
         }
-    }, [
-        form.watch('setupStartDate'),
-        form.watch('setupEndDate'),
-        form.watch('preparationStartDate'),
-        form.watch('preparationEndDate'),
-        form.watch('finalizationStartDate'),
-        form.watch('finalizationEndDate')
-    ]);
-
-    // Inicializar startDate e endDate quando o formulário é carregado com valores padrão
-    useEffect(() => {
-        if (defaultValues) {
-            const setupStart = defaultValues.setupStartDate;
-            const setupEnd = defaultValues.setupEndDate;
-            const preparationStart = defaultValues.preparationStartDate;
-            const preparationEnd = defaultValues.preparationEndDate;
-            const finalizationStart = defaultValues.finalizationStartDate;
-            const finalizationEnd = defaultValues.finalizationEndDate;
-
-            // Determinar startDate e endDate baseado nos períodos disponíveis
-            let startDate = '';
-            let endDate = '';
-
-            if (setupStart && finalizationEnd) {
-                startDate = setupStart;
-                endDate = finalizationEnd;
-            } else if (setupStart && preparationEnd) {
-                startDate = setupStart;
-                endDate = preparationEnd;
-            } else if (preparationStart && finalizationEnd) {
-                startDate = preparationStart;
-                endDate = finalizationEnd;
-            } else if (preparationStart && preparationEnd) {
-                startDate = preparationStart;
-                endDate = preparationEnd;
-            }
-
-            if (startDate && endDate) {
-                form.setValue('startDate', startDate);
-                form.setValue('endDate', endDate);
-            }
-        }
-    }, [defaultValues, form]);
+    }, [eventDays, form]);
 
     return (
         <div className="space-y-6">
@@ -336,7 +303,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                         </CardContent>
                     </Card>
 
-                    {/* Datas e Cronograma */}
+                    {/* Cronograma do Evento - Nova Estrutura Flexível */}
                     <Card className="border-purple-200">
                         <CardHeader className="bg-purple-50">
                             <CardTitle className="flex items-center gap-2 text-[#610e5c]">
@@ -344,186 +311,11 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                 Cronograma do Evento
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-6 pt-6">
-                            {/* Datas principais */}
-                            <div>
-                                <h4 className="font-semibold text-gray-800 mb-3">Período do Evento</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <FormField
-                                        control={form.control}
-                                        name="startDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-gray-700 font-medium">Data de Início</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="date"
-                                                        {...field}
-                                                        disabled
-                                                        className="border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="endDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-gray-700 font-medium">Data de Fim</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="date"
-                                                        {...field}
-                                                        disabled
-                                                        className="border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-                            </div>
-
-                            <Separator />
-
-                            {/* Etapas do evento */}
-                            <div className="flex flex-col gap-6">
-                                {/* Montagem */}
-                                <div className="space-y-3">
-                                    <h4 className="font-semibold text-gray-800 flex items-center gap-2">
-                                        <Settings className="h-4 w-4 text-orange-600" />
-                                        Montagem
-                                    </h4>
-                                    <FormField
-                                        control={form.control}
-                                        name="setupStartDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-sm text-gray-600">Início da Montagem</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="date"
-                                                        {...field}
-                                                        disabled={loading}
-                                                        className="border-gray-300 focus:border-orange-500 focus:ring-orange-500"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="setupEndDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-sm text-gray-600">Fim da Montagem</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="date"
-                                                        {...field}
-                                                        disabled={loading}
-                                                        className="border-gray-300 focus:border-orange-500 focus:ring-orange-500"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-
-                                {/* Evento */}
-                                <div className="space-y-3">
-                                    <h4 className="font-semibold text-gray-800 flex items-center gap-2">
-                                        <Calendar className="h-4 w-4 text-blue-600" />
-                                        Evento
-                                    </h4>
-                                    <FormField
-                                        control={form.control}
-                                        name="preparationStartDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-sm text-gray-600">Início do Evento</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="date"
-                                                        {...field}
-                                                        disabled={loading}
-                                                        className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="preparationEndDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-sm text-gray-600">Fim do Evento</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="date"
-                                                        {...field}
-                                                        disabled={loading}
-                                                        className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-
-                                {/* Desmontagem */}
-                                <div className="space-y-3">
-                                    <h4 className="font-semibold text-gray-800 flex items-center gap-2">
-                                        <Settings className="h-4 w-4 text-red-600" />
-                                        Desmontagem
-                                    </h4>
-                                    <FormField
-                                        control={form.control}
-                                        name="finalizationStartDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-sm text-gray-600">Início da Desmontagem</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="date"
-                                                        {...field}
-                                                        disabled={loading}
-                                                        className="border-gray-300 focus:border-red-500 focus:ring-red-500"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="finalizationEndDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-sm text-gray-600">Fim da Desmontagem</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="date"
-                                                        {...field}
-                                                        disabled={loading}
-                                                        className="border-gray-300 focus:border-red-500 focus:ring-red-500"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-                            </div>
+                        <CardContent className="pt-6">
+                            <EventDaysManager 
+                                initialData={eventDays}
+                                onChange={setEventDays}
+                            />
                         </CardContent>
                     </Card>
 

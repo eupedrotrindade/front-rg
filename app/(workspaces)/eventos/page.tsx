@@ -16,34 +16,7 @@ import { useDeleteEvento } from "@/features/eventos/api/mutation/use-delete-even
 import { toast } from "sonner"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import HeaderWorkspace from "@/components/layout/header-work"
-
-export interface Event {
-    id: string
-    slug?: string
-    name: string
-    description?: string
-    bannerUrl?: string
-    totalDays?: number
-    startDate?: string | Date
-    endDate?: string | Date
-    setupStartDate?: string | Date
-    setupEndDate?: string | Date
-    preparationStartDate?: string | Date
-    preparationEndDate?: string | Date
-    finalizationStartDate?: string | Date
-    finalizationEndDate?: string | Date
-    venue?: string
-    address?: string
-    status: string
-    visibility?: string
-    categories?: string[]
-    capacity?: number
-    registrationLink?: string
-    qrCodeTemplate?: "default" | "custom"
-    isActive?: boolean
-    createdAt?: string | Date
-    updatedAt?: string | Date
-}
+import { EventDay } from '@/types/event-days'
 
 const EventosPage = () => {
     const { data: eventos, isLoading } = useEventos()
@@ -96,6 +69,48 @@ const EventosPage = () => {
         if (!startDate && !endDate) return ""
         if (!endDate || startDate === endDate) return formatDate(startDate)
         return `${formatDate(startDate)} - ${formatDate(endDate)}`
+    }
+
+    // Função para formatar dias flexíveis (nova estrutura) - suporta datetime
+    const formatEventDays = (days: EventDay[]): string => {
+        if (!days || days.length === 0) return ""
+        
+        if (days.length === 1) {
+            return formatDate(days[0].date)
+        }
+        
+        // Ordenar datas (suporta tanto DD/MM/YYYY quanto ISO datetime)
+        const sortedDays = days.map(day => {
+            // Converter DD/MM/YYYY para Date (compatibilidade)
+            if (day.date.includes('/')) {
+                const [dayPart, month, year] = day.date.split('/');
+                return new Date(parseInt(year), parseInt(month) - 1, parseInt(dayPart));
+            }
+            // Converter ISO datetime para Date
+            return new Date(day.date);
+        }).sort((a, b) => a.getTime() - b.getTime());
+
+        const firstDate = formatDate(sortedDays[0]);
+        const lastDate = formatDate(sortedDays[sortedDays.length - 1]);
+        
+        return `${firstDate} - ${lastDate}`
+    }
+
+    // Função para determinar se usar estrutura nova ou antiga
+    const getEventDaysDisplay = (evento: EventType) => {
+        // Verificar se tem estrutura nova
+        const hasNewStructure = (evento as any).montagem || (evento as any).evento || (evento as any).desmontagem;
+        
+        if (hasNewStructure) {
+            return {
+                montagem: (evento as any).montagem as EventDay[],
+                evento: (evento as any).evento as EventDay[], 
+                desmontagem: (evento as any).desmontagem as EventDay[]
+            };
+        }
+        
+        // Usar estrutura antiga como fallback
+        return null;
     }
 
     const getStatusConfig = (status: string) => {
@@ -237,40 +252,80 @@ const EventosPage = () => {
 
                                         </div>
 
-                                        {/* Seção de Datas */}
-                                        <div className="space-y-2 pt-2 border-t border-gray-100">
-                                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cronograma</h4>
+                                        {/* Seção de Datas - Suporta nova e antiga estrutura */}
+                                        {(() => {
+                                            const eventDays = getEventDaysDisplay(evento);
+                                            
+                                            return (
+                                                <div className="space-y-2 pt-2 border-t border-gray-100">
+                                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cronograma</h4>
 
-
-                                            {(evento.setupStartDate || evento.setupEndDate) && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <Settings className="h-3 w-3 text-orange-500 flex-shrink-0" />
-                                                    <span className="text-gray-700 font-medium">Montagem:</span>
-                                                    <span className="text-gray-600 text-xs">
-                                                        {formatDateRange(evento.setupStartDate, evento.setupEndDate)}
-                                                    </span>
+                                                    {eventDays ? (
+                                                        // Nova estrutura flexível
+                                                        <>
+                                                            {eventDays.montagem && eventDays.montagem.length > 0 && (
+                                                                <div className="flex items-center gap-2 text-sm">
+                                                                    <Settings className="h-3 w-3 text-orange-500 flex-shrink-0" />
+                                                                    <span className="text-gray-700 font-medium">Montagem:</span>
+                                                                    <span className="text-gray-600 text-xs">
+                                                                        {formatEventDays(eventDays.montagem)}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {eventDays.evento && eventDays.evento.length > 0 && (
+                                                                <div className="flex items-center gap-2 text-sm">
+                                                                    <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                                                    <span className="text-gray-700 font-medium">Evento:</span>
+                                                                    <span className="text-gray-600 text-xs">
+                                                                        {formatEventDays(eventDays.evento)}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {eventDays.desmontagem && eventDays.desmontagem.length > 0 && (
+                                                                <div className="flex items-center gap-2 text-sm">
+                                                                    <DoorOpen className="h-3 w-3 text-red-500 flex-shrink-0" />
+                                                                    <span className="text-gray-700 font-medium">Desmontagem:</span>
+                                                                    <span className="text-gray-600 text-xs">
+                                                                        {formatEventDays(eventDays.desmontagem)}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        // Fallback para estrutura antiga
+                                                        <>
+                                                            {(evento.setupStartDate || evento.setupEndDate) && (
+                                                                <div className="flex items-center gap-2 text-sm">
+                                                                    <Settings className="h-3 w-3 text-orange-500 flex-shrink-0" />
+                                                                    <span className="text-gray-700 font-medium">Montagem:</span>
+                                                                    <span className="text-gray-600 text-xs">
+                                                                        {formatDateRange(evento.setupStartDate, evento.setupEndDate)}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {(evento.preparationStartDate || evento.preparationEndDate) && (
+                                                                <div className="flex items-center gap-2 text-sm">
+                                                                    <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                                                    <span className="text-gray-700 font-medium">Evento:</span>
+                                                                    <span className="text-gray-600 text-xs">
+                                                                        {formatDateRange(evento.preparationStartDate, evento.preparationEndDate)}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {(evento.finalizationStartDate || evento.finalizationEndDate) && (
+                                                                <div className="flex items-center gap-2 text-sm">
+                                                                    <DoorOpen className="h-3 w-3 text-red-500 flex-shrink-0" />
+                                                                    <span className="text-gray-700 font-medium">Desmontagem:</span>
+                                                                    <span className="text-gray-600 text-xs">
+                                                                        {formatDateRange(evento.finalizationStartDate, evento.finalizationEndDate)}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
                                                 </div>
-                                            )}
-                                            {(evento.preparationStartDate || evento.preparationEndDate) && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                                                    <span className="text-gray-700 font-medium">Evento:</span>
-                                                    <span className="text-gray-600 text-xs">
-                                                        {formatDateRange(evento.preparationStartDate, evento.preparationEndDate)}
-                                                    </span>
-                                                </div>
-                                            )}
-                                            {(evento.finalizationStartDate || evento.finalizationEndDate) && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <DoorOpen className="h-3 w-3 text-red-500 flex-shrink-0" />
-                                                    <span className="text-gray-700 font-medium">Desmontagem:</span>
-                                                    <span className="text-gray-600 text-xs">
-                                                        {formatDateRange(evento.finalizationStartDate, evento.finalizationEndDate)}
-                                                    </span>
-                                                </div>
-                                            )}
-
-                                        </div>
+                                            );
+                                        })()}
 
                                         {/* Categorias */}
                                         {evento.categories && evento.categories.length > 0 && (

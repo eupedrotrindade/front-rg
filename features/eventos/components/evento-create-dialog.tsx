@@ -42,7 +42,7 @@ const EventoCreateDialog = () => {
                     </CardContent>
                 </Card>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white text-gray-800">
                 <DialogHeader className="border-b pb-4">
                     <DialogTitle className="text-2xl font-bold text-purple-800">Criar Novo Evento</DialogTitle>
                     <p className="text-gray-600 mt-2">Preencha as informações abaixo para criar seu evento</p>

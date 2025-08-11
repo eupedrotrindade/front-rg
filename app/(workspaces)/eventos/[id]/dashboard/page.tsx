@@ -100,14 +100,38 @@ export default function EventDashboardPage() {
         return dateStr;
     }, []);
 
-    // Função para gerar tabs dos dias do evento
+    // Função para gerar tabs dos dias do evento usando nova estrutura
     const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string }> => {
         if (!evento) return [];
 
         const days: Array<{ id: string; label: string; date: string; type: string }> = [];
 
-        // Adicionar dias de montagem
-        if (evento.setupStartDate && evento.setupEndDate) {
+        // Helper function para converter formato de data
+        const parseDate = (dateStr: string): Date => {
+            // Se está no formato DD/MM/YYYY, converte para YYYY-MM-DD
+            if (dateStr.includes('/')) {
+                const [day, month, year] = dateStr.split('/');
+                return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+            }
+            // Se já está no formato ISO, usa diretamente
+            return new Date(dateStr);
+        };
+
+        // Adicionar dias de montagem da nova estrutura
+        if (evento.montagem && Array.isArray(evento.montagem)) {
+            evento.montagem.forEach(eventDay => {
+                const date = parseDate(eventDay.date);
+                const dateStr = date.toLocaleDateString('pt-BR');
+                days.push({
+                    id: dateStr,
+                    label: `${dateStr} (MONTAGEM)`,
+                    date: dateStr,
+                    type: 'setup'
+                });
+            });
+        }
+        // Fallback para estrutura antiga
+        else if (evento.setupStartDate && evento.setupEndDate) {
             const startDate = new Date(evento.setupStartDate);
             const endDate = new Date(evento.setupEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
@@ -121,8 +145,21 @@ export default function EventDashboardPage() {
             }
         }
 
-        // Adicionar dias de evento
-        if (evento.preparationStartDate && evento.preparationEndDate) {
+        // Adicionar dias de evento da nova estrutura
+        if (evento.evento && Array.isArray(evento.evento)) {
+            evento.evento.forEach(eventDay => {
+                const date = parseDate(eventDay.date);
+                const dateStr = date.toLocaleDateString('pt-BR');
+                days.push({
+                    id: dateStr,
+                    label: `${dateStr} (EVENTO)`,
+                    date: dateStr,
+                    type: 'event'
+                });
+            });
+        }
+        // Fallback para estrutura antiga
+        else if (evento.preparationStartDate && evento.preparationEndDate) {
             const startDate = new Date(evento.preparationStartDate);
             const endDate = new Date(evento.preparationEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
@@ -136,8 +173,21 @@ export default function EventDashboardPage() {
             }
         }
 
-        // Adicionar dias de finalização
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
+        // Adicionar dias de desmontagem da nova estrutura
+        if (evento.desmontagem && Array.isArray(evento.desmontagem)) {
+            evento.desmontagem.forEach(eventDay => {
+                const date = parseDate(eventDay.date);
+                const dateStr = date.toLocaleDateString('pt-BR');
+                days.push({
+                    id: dateStr,
+                    label: `${dateStr} (DESMONTAGEM)`,
+                    date: dateStr,
+                    type: 'teardown'
+                });
+            });
+        }
+        // Fallback para estrutura antiga
+        else if (evento.finalizationStartDate && evento.finalizationEndDate) {
             const startDate = new Date(evento.finalizationStartDate);
             const endDate = new Date(evento.finalizationEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
@@ -563,42 +613,63 @@ export default function EventDashboardPage() {
                                 Períodos do Evento
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {/* Montagem */}
-                                {evento.setupStartDate && evento.setupEndDate && (
+                                {/* Montagem - Nova estrutura com fallback */}
+                                {((evento.montagem && evento.montagem.length > 0) || 
+                                  (evento.setupStartDate && evento.setupEndDate)) && (
                                     <Card>
                                         <CardContent className="p-4">
                                             <div className="text-center">
                                                 <div className="text-sm font-medium text-green-600 mb-1">MONTAGEM</div>
                                                 <div className="text-sm text-gray-600">
-                                                    {new Date(evento.setupStartDate).toLocaleDateString('pt-BR')} - {new Date(evento.setupEndDate).toLocaleDateString('pt-BR')}
+                                                    {evento.montagem && evento.montagem.length > 0 ? (
+                                                        evento.montagem.length === 1 ? 
+                                                        evento.montagem[0].date :
+                                                        `${evento.montagem[0].date} - ${evento.montagem[evento.montagem.length - 1].date}`
+                                                    ) : (
+                                                        `${new Date(evento.setupStartDate!).toLocaleDateString('pt-BR')} - ${new Date(evento.setupEndDate!).toLocaleDateString('pt-BR')}`
+                                                    )}
                                                 </div>
                                             </div>
                                         </CardContent>
                                     </Card>
                                 )}
 
-                                {/* Evento */}
-                                {evento.preparationStartDate && evento.preparationEndDate && (
+                                {/* Evento - Nova estrutura com fallback */}
+                                {((evento.evento && evento.evento.length > 0) || 
+                                  (evento.preparationStartDate && evento.preparationEndDate)) && (
                                     <Card>
                                         <CardContent className="p-4">
                                             <div className="text-center">
                                                 <div className="text-sm font-medium text-blue-600 mb-1">EVENTO</div>
                                                 <div className="text-sm text-gray-600">
-                                                    {new Date(evento.preparationStartDate).toLocaleDateString('pt-BR')} - {new Date(evento.preparationEndDate).toLocaleDateString('pt-BR')}
+                                                    {evento.evento && evento.evento.length > 0 ? (
+                                                        evento.evento.length === 1 ? 
+                                                        evento.evento[0].date :
+                                                        `${evento.evento[0].date} - ${evento.evento[evento.evento.length - 1].date}`
+                                                    ) : (
+                                                        `${new Date(evento.preparationStartDate!).toLocaleDateString('pt-BR')} - ${new Date(evento.preparationEndDate!).toLocaleDateString('pt-BR')}`
+                                                    )}
                                                 </div>
                                             </div>
                                         </CardContent>
                                     </Card>
                                 )}
 
-                                {/* Finalização */}
-                                {evento.finalizationStartDate && evento.finalizationEndDate && (
+                                {/* Desmontagem - Nova estrutura com fallback */}
+                                {((evento.desmontagem && evento.desmontagem.length > 0) || 
+                                  (evento.finalizationStartDate && evento.finalizationEndDate)) && (
                                     <Card>
                                         <CardContent className="p-4">
                                             <div className="text-center">
-                                                <div className="text-sm font-medium text-purple-600 mb-1">FINALIZAÇÃO</div>
+                                                <div className="text-sm font-medium text-purple-600 mb-1">DESMONTAGEM</div>
                                                 <div className="text-sm text-gray-600">
-                                                    {new Date(evento.finalizationStartDate).toLocaleDateString('pt-BR')} - {new Date(evento.finalizationEndDate).toLocaleDateString('pt-BR')}
+                                                    {evento.desmontagem && evento.desmontagem.length > 0 ? (
+                                                        evento.desmontagem.length === 1 ? 
+                                                        evento.desmontagem[0].date :
+                                                        `${evento.desmontagem[0].date} - ${evento.desmontagem[evento.desmontagem.length - 1].date}`
+                                                    ) : (
+                                                        `${new Date(evento.finalizationStartDate!).toLocaleDateString('pt-BR')} - ${new Date(evento.finalizationEndDate!).toLocaleDateString('pt-BR')}`
+                                                    )}
                                                 </div>
                                             </div>
                                         </CardContent>

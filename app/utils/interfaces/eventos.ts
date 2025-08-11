@@ -4,6 +4,13 @@ export type EventPermission = "admin" | "manager" | "editor" | "viewer";
 export type ActionType = "created" | "updated" | "deleted";
 export type ShirtSize = "PP" | "P" | "M" | "G" | "GG" | "XG" | "XXG" | "EXG";
 
+// Nova estrutura para dias de evento flexível
+export interface EventDay {
+  date: string; // formato: "2025-08-11T10:00:00" (ISO datetime)
+  start: boolean; // Define se é um dia de início
+  end: boolean; // Define se é um dia de fim
+}
+
 export interface ActionHistory {
   action: ActionType;
   performedBy: string; // user ID, email or name
@@ -18,8 +25,34 @@ export interface Event {
   description?: string;
   bannerUrl: string;
   totalDays: number;
-  startDate: string | Date;
-  endDate: string | Date;
+  startDate: string | Date; // Data geral de início (para compatibilidade)
+  endDate: string | Date;   // Data geral de fim (para compatibilidade)
+  
+  // Nova estrutura de dias por fase
+  montagem: EventDay[];
+  evento: EventDay[];
+  desmontagem: EventDay[];
+  
+  // Campos antigos para compatibilidade (deprecated)
+  /** @deprecated Use 'montagem' array instead */
+  setupStartDate?: string | Date;
+  /** @deprecated Use 'montagem' array instead */
+  setupEndDate?: string | Date;
+  /** @deprecated Use 'evento' array instead */
+  preparationStartDate?: string | Date;
+  /** @deprecated Use 'evento' array instead */
+  preparationEndDate?: string | Date;
+  /** @deprecated Use 'desmontagem' array instead */
+  finalizationStartDate?: string | Date;
+  /** @deprecated Use 'desmontagem' array instead */
+  finalizationEndDate?: string | Date;
+  /** @deprecated Use 'montagem' array instead */
+  setupDate?: string | Date;
+  /** @deprecated Use 'evento' array instead */
+  preparationDate?: string | Date;
+  /** @deprecated Use 'desmontagem' array instead */
+  finalizationDate?: string | Date;
+  
   venue: string;
   address?: string;
   status: EventStatus;
