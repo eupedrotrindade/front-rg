@@ -3,6 +3,17 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { RowInput } from "jspdf-autotable";
 
+interface ColumnConfig {
+  key: string;
+  width: number | "auto";
+}
+
+interface ExportConfig {
+  columns: string[];
+  columnOrder: string[];
+  columnWidths: ColumnConfig[];
+}
+
 interface ExportPDFData {
   titulo: string;
   tipo:
@@ -17,6 +28,7 @@ interface ExportPDFData {
     | "tipoCredencial"
     | "cadastradoPor";
   dados: Record<string, unknown>[];
+  columnConfig?: ExportConfig;
   filtros: {
     dia?: string;
     empresa?: string;
@@ -39,18 +51,18 @@ export const useExportPDF = () => {
 
         // Função para adicionar cabeçalho respeitando a margem do topo
         const addHeader = async (doc: any, pageNumber: number = 1) => {
-          const headerStartY = 20; // Começar o cabeçalho em 20pt do topo da página
+          const headerStartY = 30; // Começar o cabeçalho em 15pt do topo da página
 
           // Título do relatório
-          doc.setFontSize(18);
+          doc.setFontSize(16);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(138, 43, 138);
-          doc.text(data.titulo, 105, headerStartY + 20, { align: "center" });
+          doc.text(data.titulo, 105, headerStartY + 15, { align: "center" });
 
           // Linha separadora
           doc.setDrawColor(200, 200, 200);
           doc.setLineWidth(0.5);
-          doc.line(20, headerStartY + 27, 190, headerStartY + 27);
+          doc.line(20, headerStartY + 22, 190, headerStartY + 22);
 
           // Subtítulo
           const subtitulos: Record<ExportPDFData["tipo"], string> = {
@@ -67,14 +79,11 @@ export const useExportPDF = () => {
           };
 
           const subtitulo = subtitulos[data.tipo] ?? "Relatório de Eventos";
-          doc.setFontSize(16);
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(100, 100, 100);
-          doc.text(subtitulo, 105, headerStartY + 34, { align: "center" });
+          doc.setFontSize(12);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(80, 80, 80);
+          doc.text(subtitulo, 105, headerStartY + 28, { align: "center" });
         };
-
-        // Adicionar cabeçalho na primeira página
-        await addHeader(doc, 1);
 
         let colunas: string[] = [];
         let linhas: RowInput[] = [];
@@ -83,12 +92,11 @@ export const useExportPDF = () => {
           data.tipo
         );
 
-        // Get dynamic column headers based on data structure
+        // Get dynamic column headers based on data structure or config
         const getColumnHeaders = (
-          dados: Record<string, unknown>[]
+          dados: Record<string, unknown>[],
+          columnConfig?: ExportConfig
         ): string[] => {
-          if (!dados || dados.length === 0) return [];
-
           const columnMap: Record<string, string> = {
             nome: "Nome",
             cpf: "CPF",
@@ -102,8 +110,25 @@ export const useExportPDF = () => {
             status: "Status",
           };
 
+          // Use column config if available
+          if (columnConfig && columnConfig.columnOrder.length > 0) {
+            return columnConfig.columnOrder.map((key) => columnMap[key] || key);
+          }
+
+          // Fall back to data structure
+          if (!dados || dados.length === 0) return [];
           const firstRecord = dados[0];
           return Object.keys(firstRecord).map((key) => columnMap[key] || key);
+        };
+
+        // Get column widths from config
+        const getColumnWidths = (
+          columnConfig?: ExportConfig
+        ): (number | "auto")[] | undefined => {
+          if (!columnConfig || !columnConfig.columnWidths.length)
+            return undefined;
+
+          return columnConfig.columnWidths.map((config) => config.width);
         };
 
         // Get values from record in same order as headers
@@ -116,7 +141,7 @@ export const useExportPDF = () => {
 
         if (isAgrupadoPorEmpresa) {
           // Use dynamic columns for grouped reports
-          colunas = getColumnHeaders(data.dados);
+          colunas = getColumnHeaders(data.dados, data.columnConfig);
 
           const participantesPorEmpresa = new Map<string, typeof data.dados>();
 
@@ -158,7 +183,7 @@ export const useExportPDF = () => {
           });
         } else {
           // For non-grouped reports, also use dynamic columns
-          colunas = getColumnHeaders(data.dados);
+          colunas = getColumnHeaders(data.dados, data.columnConfig);
           linhas = data.dados.map((record) => getRowValues(record));
         }
 
@@ -178,14 +203,10 @@ export const useExportPDF = () => {
                 reader.readAsDataURL(watermarkBlob);
               });
 
-              // Salvar o estado atual
+              // Salvar estado para isolar a imagem
               doc.saveGraphicsState();
 
-              // Configurar transparência para o papel timbrado com opacidade alta
-              doc.setGState(new doc.GState({ opacity: 0.8 }));
-
-              // Adicionar a imagem como fundo respeitando as margens
-              // A imagem ocupa toda a página, mas o conteúdo respeita as margens
+              // Adicionar a imagem como fundo (sem alterar opacidade)
               doc.addImage(
                 watermarkBase64,
                 "JPEG",
@@ -197,87 +218,89 @@ export const useExportPDF = () => {
                 "FAST"
               );
 
-              // Restaurar estado
+              // Restaurar estado para não interferir com texto/tabela
               doc.restoreGraphicsState();
             }
           } catch (error) {
-            console.log("Erro ao carregar papel timbrado, usando fallback");
-            // Fallback: usar marca d'água de texto se a imagem falhar
-            doc.saveGraphicsState();
-            doc.setGState(new doc.GState({ opacity: 0.05 }));
-
-            const centerX = pageWidth / 2;
-            const centerY = pageHeight / 2;
-
-            doc.setTextColor(160, 160, 160);
-            doc.setFontSize(48);
-            doc.setFont("helvetica", "bold");
-            doc.text("RG PRODUÇÕES", centerX, centerY, {
-              align: "center",
-              angle: -45,
-            });
-
-            doc.restoreGraphicsState();
+            console.log("Erro ao carregar papel timbrado");
           }
         };
 
-        // Adicionar papel timbrado na primeira página
+        // Definir margens adequadas
+        const headerHeight = 70; // Altura do cabeçalho (aumentado para mais espaçamento)
+        const footerHeight = 40; // Altura do rodapé
+
+        // Get column widths configuration
+        const columnWidths = getColumnWidths(data.columnConfig);
+
+        // Ordem correta: 1) Imagem no fundo, 2) Título/subtítulo, 3) Tabela
         await addWatermark(doc);
-
-        // Converter pixels para pontos (1px ≈ 0.75pt)
-        const topMarginPx = 80;
-        const footerMarginPx = 75;
-        const topMarginPt = topMarginPx * 0.75; // ≈ 150pt
-        const footerMarginPt = footerMarginPx * 0.75; // ≈ 75pt
-
-        // Armazenar promessas de carregamento para páginas adicionais
-        const pagePromises: Promise<void>[] = [];
+        await addHeader(doc, 1);
 
         autoTable(doc, {
           head: [colunas],
           body: linhas,
-          startY: topMarginPt, // Começar após a margem do topo (200px)
+          startY: headerHeight, // Começar após o cabeçalho
           styles: {
-            fontSize: 8,
-            cellPadding: 2,
-            lineWidth: 0.1,
-            lineColor: [200, 200, 200],
+            fontSize: 9,
+            cellPadding: 3,
+            lineWidth: 0.2,
+            lineColor: [180, 180, 180],
+            textColor: [40, 40, 40],
           },
           headStyles: {
             fillColor: [138, 43, 138],
             textColor: [255, 255, 255],
             fontStyle: "bold",
-            fontSize: 9,
+            fontSize: 10,
             halign: "center",
+            cellPadding: 4,
           },
           alternateRowStyles: {
-            fillColor: [248, 248, 248],
+            fillColor: [252, 252, 252],
           },
+          columnStyles: columnWidths
+            ? columnWidths.reduce((styles, width, index) => {
+                if (typeof width === "number") {
+                  styles[index] = { cellWidth: width };
+                }
+                return styles;
+              }, {} as any)
+            : undefined,
           margin: {
-            left: 15,
-            right: 15,
-            bottom: footerMarginPt, // Margem inferior para respeitar o rodapé (100px)
+            left: 20,
+            right: 20,
+            top: headerHeight,
+            bottom: footerHeight,
           },
-          theme: "grid",
-          // Callback síncrono - apenas registra as páginas que precisam de marca d'água
-          didDrawPage: function (data) {
-            if (data.pageNumber > 1) {
-              // Armazenar a promessa para processar depois
-              pagePromises.push(
-                (async () => {
-                  const currentPage = data.pageNumber;
-                  doc.setPage(currentPage);
-                  await addWatermark(doc);
-                  await addHeader(doc, currentPage);
-                })()
-              );
-            }
-          },
+          theme: "striped",
+          tableLineColor: [180, 180, 180],
+          tableLineWidth: 0.1,
         });
 
-        // Aguardar todas as promessas de páginas adicionais
-        if (pagePromises.length > 0) {
-          await Promise.all(pagePromises);
+        // Get total number of pages after table generation
+        const totalPages = (doc as any).internal.pages.length - 1;
+
+        // Processar cada página individualmente para adicionar fundo e cabeçalho
+        for (let pageNumber = 2; pageNumber <= totalPages; pageNumber++) {
+          doc.setPage(pageNumber);
+
+          // Salvar o estado atual da página
+          const pageContent = (doc as any).internal.pages[pageNumber];
+          
+          // Limpar a página atual
+          (doc as any).internal.pages[pageNumber] = [];
+
+          // Reconstruir na ordem correta:
+          // 1. Papel timbrado (fundo)
+          await addWatermark(doc);
+          
+          // 2. Título e subtítulo (sobre a imagem) 
+          await addHeader(doc, pageNumber);
+
+          // 3. Restaurar o conteúdo da tabela (mantém o que estava na página)
+          const currentContent = (doc as any).internal.pages[pageNumber];
+          (doc as any).internal.pages[pageNumber] = currentContent.concat(pageContent);
         }
 
         const finalY = (doc as any).lastAutoTable?.finalY || 100;
@@ -286,32 +309,27 @@ export const useExportPDF = () => {
         const totalRegistros = data.dados.length;
         const totalPaginas = (doc as any).internal.pages.length - 1;
 
-        // Calcular posições do rodapé respeitando a margem de 100px
+        // Calcular posições do rodapé
         const pageHeight = doc.internal.pageSize.height;
-        const footerStartY = pageHeight - footerMarginPt; // Começar o rodapé 100px antes do final
+        const footerStartY = pageHeight - footerHeight; // Começar o rodapé na margem inferior
 
         // Adicionar rodapé em todas as páginas
         for (let pageNumber = 1; pageNumber <= totalPaginas; pageNumber++) {
           doc.setPage(pageNumber);
 
-          // Linha separadora no rodapé (respeitando a margem)
+          // Linha separadora no rodapé
           doc.setDrawColor(200, 200, 200);
           doc.setLineWidth(0.5);
-          doc.line(
-            15,
-            footerStartY + 10, // Linha 10pt após o início da área do rodapé
-            195,
-            footerStartY + 10
-          );
+          doc.line(20, footerStartY + 5, 190, footerStartY + 5);
 
           // Total de registros (lado esquerdo)
-          doc.setFontSize(8);
-          doc.setTextColor(100, 100, 100);
+          doc.setFontSize(9);
+          doc.setTextColor(80, 80, 80);
           doc.setFont("helvetica", "bold");
           doc.text(
             `Total de registros: ${totalRegistros}`,
-            15,
-            footerStartY + 20 // 20pt após o início da área do rodapé
+            20,
+            footerStartY + 15
           );
 
           // Numeração das páginas (centro)
@@ -319,22 +337,22 @@ export const useExportPDF = () => {
           doc.text(
             `Página ${pageNumber} de ${totalPaginas}`,
             105,
-            footerStartY + 20,
+            footerStartY + 15,
             { align: "center" }
           );
 
           // Data e hora (lado direito)
-          doc.text(`Emitido em ${dataHora}`, 195, footerStartY + 20, {
+          doc.text(`Emitido em ${dataHora}`, 190, footerStartY + 15, {
             align: "right",
           });
 
           // Informações da empresa no rodapé
-          doc.setFontSize(7);
+          doc.setFontSize(8);
           doc.setTextColor(120, 120, 120);
           doc.text(
             "RG Produções & Eventos - Sistema de Gestão de Eventos",
             105,
-            footerStartY + 27, // 27pt após o início da área do rodapé
+            footerStartY + 25,
             { align: "center" }
           );
         }

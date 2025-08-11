@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Download, Filter, Check, ChevronsUpDown, Building2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { CompanyStats } from "../types"
-import { ColumnSelectionDialog } from "./column-selection-dialog"
+import { ColumnSelectionDialog, type ExportConfig } from "./column-selection-dialog"
 
 interface ReportFiltersProps {
     companies: CompanyStats[]
@@ -18,8 +18,8 @@ interface ReportFiltersProps {
     onStatusChange: (status: string) => void
     selectedAttendance: string
     onAttendanceChange: (attendance: string) => void
-    onExport: (selectedColumns?: string[]) => void
-    onExportCompany: (selectedColumns?: string[]) => void
+    onExport: (config: ExportConfig) => void
+    onExportCompany: (config: ExportConfig) => void
     isExporting: boolean
 }
 
@@ -47,11 +47,11 @@ export function ReportFilters({
         setShowColumnDialog(true)
     }
 
-    const handleColumnSelection = (selectedColumns: string[]) => {
+    const handleColumnSelection = (config: ExportConfig) => {
         if (pendingExportType === 'all') {
-            onExport(selectedColumns)
+            onExport(config)
         } else if (pendingExportType === 'company') {
-            onExportCompany(selectedColumns)
+            onExportCompany(config)
         }
         setPendingExportType(null)
     }

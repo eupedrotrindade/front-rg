@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { toast } from "sonner";
 import { useExportPDF } from "@/features/eventos/api/mutation/use-export-pdf";
 import type { ParticipantRecord } from "../types";
+import type { ExportConfig } from "../components/column-selection-dialog";
 
 interface UseExportProps {
   eventName: string;
@@ -14,7 +15,7 @@ export function useExport({ eventName, participants }: UseExportProps) {
 
   // Convert participant record to export format
   const convertToExportFormat = useCallback(
-    (participants: ParticipantRecord[], selectedColumns?: string[]) => {
+    (participants: ParticipantRecord[], config?: ExportConfig) => {
       return participants.map((p) => {
         const fullRecord = {
           nome: p.nome.toUpperCase(),
@@ -29,21 +30,20 @@ export function useExport({ eventName, participants }: UseExportProps) {
           status: p.status,
         };
 
-        // If no columns specified, return all columns
-        if (!selectedColumns || selectedColumns.length === 0) {
+        // If no config specified, return all columns
+        if (!config || config.columns.length === 0) {
           return fullRecord;
         }
 
-        // Filter to only include selected columns
-        const filteredRecord: any = {};
-        selectedColumns.forEach((column) => {
-          if (column in fullRecord) {
-            filteredRecord[column] =
-              fullRecord[column as keyof typeof fullRecord];
+        // Filter and order columns based on config
+        const orderedRecord: any = {};
+        config.columnOrder.forEach((column) => {
+          if (config.columns.includes(column) && column in fullRecord) {
+            orderedRecord[column] = fullRecord[column as keyof typeof fullRecord];
           }
         });
 
-        return filteredRecord;
+        return orderedRecord;
       });
     },
     []
@@ -51,19 +51,20 @@ export function useExport({ eventName, participants }: UseExportProps) {
 
   // Export all participants
   const exportAll = useCallback(
-    (selectedColumns?: string[]) => {
+    (config: ExportConfig) => {
       if (participants.length === 0) {
         toast.error("Nenhum participante para exportar");
         return;
       }
 
-      const exportData = convertToExportFormat(participants, selectedColumns);
+      const exportData = convertToExportFormat(participants, config);
 
       exportPDFMutation.mutate(
         {
           titulo: `Relatório de Presença - ${eventName}`,
           tipo: "geral",
           dados: exportData,
+          columnConfig: config,
           filtros: {
             dia: "all",
             empresa: "all_companies",
@@ -87,7 +88,7 @@ export function useExport({ eventName, participants }: UseExportProps) {
 
   // Export by company
   const exportByCompany = useCallback(
-    (company: string, selectedColumns?: string[]) => {
+    (company: string, config: ExportConfig) => {
       if (!company || company === "all") {
         toast.error("Selecione uma empresa específica");
         return;
@@ -102,16 +103,14 @@ export function useExport({ eventName, participants }: UseExportProps) {
         return;
       }
 
-      const exportData = convertToExportFormat(
-        companyParticipants,
-        selectedColumns
-      );
+      const exportData = convertToExportFormat(companyParticipants, config);
 
       exportPDFMutation.mutate(
         {
           titulo: `Relatório de Presença - ${company}`,
           tipo: "filtroEmpresa",
           dados: exportData,
+          columnConfig: config,
           filtros: {
             dia: "all",
             empresa: company,

@@ -110,8 +110,8 @@ export default function Relatorio2Page() {
                             onStatusChange={setSelectedStatus}
                             selectedAttendance={selectedAttendance}
                             onAttendanceChange={setSelectedAttendance}
-                            onExport={(selectedColumns) => exportAll(selectedColumns)}
-                            onExportCompany={(selectedColumns) => exportByCompany(selectedCompany, selectedColumns)}
+                            onExport={(config) => exportAll(config)}
+                            onExportCompany={(config) => exportByCompany(selectedCompany, config)}
                             isExporting={isExporting}
                         />
 
