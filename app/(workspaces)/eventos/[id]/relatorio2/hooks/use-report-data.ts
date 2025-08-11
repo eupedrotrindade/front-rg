@@ -171,7 +171,7 @@ export function useReportData({
 
   // === FILTER DATA ===
   const filterData = useCallback(
-    (filters: { empresa?: string; status?: string }) => {
+    (filters: { empresa?: string; status?: string; attendance?: string }) => {
       let filtered = syncedParticipants;
 
       if (filters.empresa && filters.empresa !== "all") {
@@ -180,6 +180,16 @@ export function useReportData({
 
       if (filters.status && filters.status !== "all") {
         filtered = filtered.filter((p) => p.status === filters.status);
+      }
+
+      if (filters.attendance && filters.attendance !== "all") {
+        if (filters.attendance === "attended") {
+          // Participants who have either check-in or check-out
+          filtered = filtered.filter((p) => p.checkIn !== "-" || p.checkOut !== "-");
+        } else if (filters.attendance === "not_attended") {
+          // Participants who have neither check-in nor check-out
+          filtered = filtered.filter((p) => p.checkIn === "-" && p.checkOut === "-");
+        }
       }
 
       return filtered;

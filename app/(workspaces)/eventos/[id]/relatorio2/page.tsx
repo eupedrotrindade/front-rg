@@ -40,6 +40,7 @@ export default function Relatorio2Page() {
     // === FILTER STATES ===
     const [selectedCompany, setSelectedCompany] = useState<string>("all")
     const [selectedStatus, setSelectedStatus] = useState<string>("all")
+    const [selectedAttendance, setSelectedAttendance] = useState<string>("all")
 
     // === DATA PROCESSING ===
     const { participants, summary, companyStats, filterData } = useReportData({
@@ -52,7 +53,8 @@ export default function Relatorio2Page() {
     // === FILTERED DATA ===
     const filteredParticipants = filterData({
         empresa: selectedCompany,
-        status: selectedStatus
+        status: selectedStatus,
+        attendance: selectedAttendance
     })
 
     // === EXPORT FUNCTIONALITY ===
@@ -106,6 +108,8 @@ export default function Relatorio2Page() {
                             onCompanyChange={setSelectedCompany}
                             selectedStatus={selectedStatus}
                             onStatusChange={setSelectedStatus}
+                            selectedAttendance={selectedAttendance}
+                            onAttendanceChange={setSelectedAttendance}
                             onExport={exportAll}
                             onExportCompany={() => exportByCompany(selectedCompany)}
                             isExporting={isExporting}

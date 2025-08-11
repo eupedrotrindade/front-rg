@@ -15,6 +15,8 @@ interface ReportFiltersProps {
     onCompanyChange: (company: string) => void
     selectedStatus: string
     onStatusChange: (status: string) => void
+    selectedAttendance: string
+    onAttendanceChange: (attendance: string) => void
     onExport: () => void
     onExportCompany: () => void
     isExporting: boolean
@@ -26,6 +28,8 @@ export function ReportFilters({
     onCompanyChange,
     selectedStatus,
     onStatusChange,
+    selectedAttendance,
+    onAttendanceChange,
     onExport,
     onExportCompany,
     isExporting
@@ -44,7 +48,7 @@ export function ReportFilters({
                 </CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     {/* Company Filter with Command */}
                     <div>
                         <label className="block text-sm font-medium mb-2">Empresa</label>
@@ -163,6 +167,21 @@ export function ReportFilters({
                                 <SelectItem value="present">Presentes</SelectItem>
                                 <SelectItem value="checked_out">Finalizados</SelectItem>
                                 <SelectItem value="no_checkin">Sem Check-in</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Attendance Filter */}
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Comparecimento</label>
+                        <Select value={selectedAttendance} onValueChange={onAttendanceChange}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Todos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todos</SelectItem>
+                                <SelectItem value="attended">Compareceram</SelectItem>
+                                <SelectItem value="not_attended">Não Compareceram</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
