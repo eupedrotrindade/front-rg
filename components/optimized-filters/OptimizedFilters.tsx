@@ -7,14 +7,13 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Input } from '@/components/ui/input'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { EventParticipant } from '@/features/eventos/types'
-import { Check, ChevronDown, Filter, Search, X } from 'lucide-react'
+import { Check, ChevronDown, Filter, X } from 'lucide-react'
 import React, { memo, useCallback, useMemo } from 'react'
 
 interface OptimizedFiltersProps {
@@ -423,25 +422,8 @@ const OptimizedFilters: React.FC<OptimizedFiltersProps> = ({
   return (
     <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex flex-col lg:flex-row gap-4">
-        {/* Campo de busca */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <Input
-            type="text"
-            placeholder="Procure pelo nome, cpf ou código da pulseira"
-            value={filters.searchTerm}
-            onChange={e => onUpdateFilter('searchTerm', e.target.value)}
-            className="pl-10 bg-white border-gray-200 focus:border-purple-500 focus:ring-purple-500 shadow-sm transition-all duration-200"
-          />
-          {isFilteringInProgress && (
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          )}
-        </div>
-
         {/* Filtros */}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 w-full">
           {/* Filtro por Empresa */}
           <FilterPopover
             type="empresa"
