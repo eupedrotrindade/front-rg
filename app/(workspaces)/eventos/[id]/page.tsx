@@ -1265,7 +1265,7 @@ export default function EventoDetalhesPage() {
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                         <div className="relative max-w-md mb-4">
                             <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 transition-colors duration-200 ${isFilteringInProgress ? 'text-orange-500 animate-pulse' :
-                                    hasActiveFilters ? 'text-blue-500' : 'text-gray-400'
+                                hasActiveFilters ? 'text-blue-500' : 'text-gray-400'
                                 }`} />
                             <Input
                                 type="text"
@@ -1273,8 +1273,8 @@ export default function EventoDetalhesPage() {
                                 value={filters.searchTerm}
                                 onChange={e => updateFilter('searchTerm', e.target.value)}
                                 className={`pl-10 pr-10 text-gray-600 bg-white shadow-sm transition-all duration-200 ${isFilteringInProgress ? 'border-orange-300 ring-2 ring-orange-100' :
-                                        hasActiveFilters ? 'border-blue-300 ring-2 ring-blue-100' :
-                                            'border-gray-200 focus:border-purple-500 focus:ring-purple-500'
+                                    hasActiveFilters ? 'border-blue-300 ring-2 ring-blue-100' :
+                                        'border-gray-200 focus:border-purple-500 focus:ring-purple-500'
                                     }`}
                             />
                             {hasActiveFilters && (
@@ -1356,62 +1356,7 @@ export default function EventoDetalhesPage() {
                     />
                 )}
 
-                {/* Estatísticas por Credencial - Renderizar apenas quando há dados */}
-                {selectedDay && Object.keys(credentialStats).length > 0 && (
-                    <div className="mb-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {Object.entries(credentialStats).map(([credentialId, stats]) => (
-                                <Card
-                                    key={credentialId}
-                                    className="bg-white shadow-lg border-l-4"
-                                    style={{ borderLeftColor: stats.color }}
-                                >
-                                    <CardContent className="p-4">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <div
-                                                    className="w-3 h-3 rounded-full"
-                                                    style={{ backgroundColor: stats.color }}
-                                                />
-                                                <span className="text-sm font-medium text-gray-900 uppercase">
-                                                    {stats.credentialName}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-2xl font-bold text-gray-900">
-                                                {stats.checkedIn}/{stats.total}
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-xs text-gray-500">Check-ins</div>
-                                                <div className="text-xs text-gray-600">
-                                                    {stats.total > 0
-                                                        ? Math.round((stats.checkedIn / stats.total) * 100)
-                                                        : 0}
-                                                    %
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2">
-                                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                                <div
-                                                    className="h-2 rounded-full transition-all duration-300"
-                                                    style={{
-                                                        backgroundColor: stats.color,
-                                                        width:
-                                                            stats.total > 0
-                                                                ? `${(stats.checkedIn / stats.total) * 100}%`
-                                                                : '0%',
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    </div>
-                )}
+
 
                 {/* Tabs dos dias do evento */}
                 {eventDays.length > 0 && (
@@ -1430,11 +1375,11 @@ export default function EventoDetalhesPage() {
                                             <button
                                                 onClick={() => setSelectedDay(day.id)}
                                                 className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
-                                                        ? getTabColor(day.type, true)
-                                                        : `border-transparent text-gray-500 ${getTabColor(
-                                                            day.type,
-                                                            false,
-                                                        )}`
+                                                    ? getTabColor(day.type, true)
+                                                    : `border-transparent text-gray-500 ${getTabColor(
+                                                        day.type,
+                                                        false,
+                                                    )}`
                                                     }`}
                                             >
                                                 <div className="flex flex-col items-center">
@@ -1659,8 +1604,8 @@ export default function EventoDetalhesPage() {
                                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                                     style={{
                                         width: `${progressData.total > 0
-                                                ? (progressData.current / progressData.total) * 100
-                                                : 0
+                                            ? (progressData.current / progressData.total) * 100
+                                            : 0
                                             }%`,
                                     }}
                                 ></div>
@@ -2049,8 +1994,8 @@ export default function EventoDetalhesPage() {
                                             <div
                                                 key={participant.id}
                                                 className={`p-3 rounded border ${participantIndex === 0
-                                                        ? 'bg-green-50 border-green-200'
-                                                        : 'bg-red-100 border-red-300'
+                                                    ? 'bg-green-50 border-green-200'
+                                                    : 'bg-red-100 border-red-300'
                                                     }`}
                                             >
                                                 <div className="flex items-center justify-between mb-2">
@@ -2059,8 +2004,8 @@ export default function EventoDetalhesPage() {
                                                     </span>
                                                     <span
                                                         className={`text-xs px-2 py-1 rounded ${participantIndex === 0
-                                                                ? 'bg-green-200 text-green-800'
-                                                                : 'bg-red-200 text-red-800'
+                                                            ? 'bg-green-200 text-green-800'
+                                                            : 'bg-red-200 text-red-800'
                                                             }`}
                                                     >
                                                         {participantIndex === 0 ? 'MANTER' : 'REMOVER'}

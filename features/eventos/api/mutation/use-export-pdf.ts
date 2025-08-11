@@ -30,6 +30,13 @@ export const useExportPDF = () => {
   return useMutation({
     mutationFn: async (data: ExportPDFData) => {
       try {
+        console.log("📋 API PDF Export - Data received:", {
+          tipo: data.tipo,
+          dadosKeys: data.dados[0] ? Object.keys(data.dados[0]) : [],
+          dadosSample: data.dados[0],
+          totalRecords: data.dados.length
+        });
+
         const jsPDF = (await import("jspdf")).default;
         const autoTable = (await import("jspdf-autotable")).default;
 
@@ -105,16 +112,39 @@ export const useExportPDF = () => {
           data.tipo
         );
 
-        if (isAgrupadoPorEmpresa) {
-          colunas = [
-            "Nome",
-            "CPF",
-            "Função",
-            "Pulseira",
-            "Check-in",
-            "Check-out",
-          ];
+        // Get dynamic column headers based on data structure
+        const getColumnHeaders = (dados: Record<string, unknown>[]): string[] => {
+          if (!dados || dados.length === 0) return [];
+          
+          const columnMap: Record<string, string> = {
+            nome: "Nome",
+            cpf: "CPF", 
+            empresa: "Empresa",
+            funcao: "Função",
+            pulseira: "Pulseira",
+            tipoPulseira: "Tipo de Pulseira",
+            checkIn: "Check-in",
+            checkOut: "Check-out", 
+            tempoTotal: "Tempo Total",
+            status: "Status"
+          };
+          
+          const firstRecord = dados[0];
+          return Object.keys(firstRecord).map(key => columnMap[key] || key);
+        };
 
+        // Get values from record in same order as headers
+        const getRowValues = (record: Record<string, unknown>): string[] => {
+          return Object.values(record).map(value => {
+            if (value === null || value === undefined) return "-";
+            return String(value).toUpperCase();
+          });
+        };
+
+        if (isAgrupadoPorEmpresa) {
+          // Use dynamic columns for grouped reports
+          colunas = getColumnHeaders(data.dados);
+          
           const participantesPorEmpresa = new Map<string, typeof data.dados>();
 
           data.dados.forEach((p) => {
@@ -150,123 +180,20 @@ export const useExportPDF = () => {
             ]);
 
             participantes.forEach((p) => {
-              linhas.push([
-                String(p.nome ?? "-").toUpperCase(),
-                String(p.cpf ?? "-"),
-                String(p.funcao ?? "-").toUpperCase(),
-                String(p.pulseira ?? "-"),
-                String(p.checkIn ?? "-"),
-                String(p.checkOut ?? "-"),
-              ]);
+              linhas.push(getRowValues(p));
             });
           });
         } else {
-          switch (data.tipo) {
-            case "participantes":
-              colunas = [
-                "Nome",
-                "CPF",
-                "Empresa",
-                "Função",
-                "Check-in",
-                "Check-out",
-                "Validado Por",
-              ];
-              linhas = data.dados.map((d) => [
-                String(d.nome ?? "-").toUpperCase(),
-                String(d.cpf ?? "-"),
-                String(d.empresa ?? "-").toUpperCase(),
-                String(d.funcao ?? "-").toUpperCase(),
-                String(d.checkIn ?? "-"),
-                String(d.checkOut ?? "-"),
-                String(d.validadoPor ?? "-"),
-              ]);
-              break;
-            case "coordenadores":
-              colunas = ["Nome", "Email", "Eventos"];
-              linhas = data.dados.map((d) => [
-                String(d.nome ?? "-").toUpperCase(),
-                String(d.email ?? "-"),
-                String(d.eventos ?? "-"),
-              ]);
-              break;
-            case "vagas":
-              colunas = ["Empresa", "Placa", "Modelo", "Credencial", "Status"];
-              linhas = data.dados.map((d) => [
-                String(d.empresa ?? "-").toUpperCase(),
-                String(d.placa ?? "-"),
-                String(d.modelo ?? "-"),
-                String(d.credencial ?? "-"),
-                String(d.status ?? "-"),
-              ]);
-              break;
-            case "checkin":
-            case "checkout":
-              colunas = [
-                "Nome",
-                "CPF",
-                "Empresa",
-                "Função",
-                data.tipo === "checkin" ? "Check-in" : "Check-out",
-                "Validado Por",
-              ];
-              linhas = data.dados.map((d) => [
-                String(d.nome ?? "-").toUpperCase(),
-                String(d.cpf ?? "-"),
-                String(d.empresa ?? "-").toUpperCase(),
-                String(d.funcao ?? "-").toUpperCase(),
-                String(data.tipo === "checkin" ? d.checkIn : d.checkOut ?? "-"),
-                String(d.validadoPor ?? "-"),
-              ]);
-              break;
-            case "tempo":
-              colunas = [
-                "Nome",
-                "CPF",
-                "Empresa",
-                "Função",
-                "Check-in",
-                "Check-out",
-                "Tempo Total",
-              ];
-              linhas = data.dados.map((d) => [
-                String(d.nome ?? "-").toUpperCase(),
-                String(d.cpf ?? "-"),
-                String(d.empresa ?? "-").toUpperCase(),
-                String(d.funcao ?? "-").toUpperCase(),
-                String(d.checkIn ?? "-"),
-                String(d.checkOut ?? "-"),
-                String(d.tempoTotal ?? "-"),
-              ]);
-              break;
-            case "tipoCredencial":
-              colunas = [
-                "Nome",
-                "CPF",
-                "Empresa",
-                "Função",
-                "Tipo de Credencial",
-              ];
-              linhas = data.dados.map((d) => [
-                String(d.nome ?? "-").toUpperCase(),
-                String(d.cpf ?? "-"),
-                String(d.empresa ?? "-").toUpperCase(),
-                String(d.funcao ?? "-").toUpperCase(),
-                String(d.tipoCredencial ?? "-"),
-              ]);
-              break;
-            case "cadastradoPor":
-              colunas = ["Nome", "CPF", "Empresa", "Função", "Cadastrado Por"];
-              linhas = data.dados.map((d) => [
-                String(d.nome ?? "-").toUpperCase(),
-                String(d.cpf ?? "-"),
-                String(d.empresa ?? "-").toUpperCase(),
-                String(d.funcao ?? "-").toUpperCase(),
-                String(d.cadastradoPor ?? "-"),
-              ]);
-              break;
-          }
+          // For non-grouped reports, also use dynamic columns
+          colunas = getColumnHeaders(data.dados);
+          linhas = data.dados.map(record => getRowValues(record));
         }
+
+        console.log("📊 API PDF Export - Final columns and data:", {
+          colunas,
+          firstRowValues: linhas[0],
+          totalRows: linhas.length
+        });
 
         autoTable(doc, {
           head: [colunas],

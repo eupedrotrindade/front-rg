@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Download, Filter, Check, ChevronsUpDown, Building2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { CompanyStats } from "../types"
+import { ColumnSelectionDialog } from "./column-selection-dialog"
 
 interface ReportFiltersProps {
     companies: CompanyStats[]
@@ -17,8 +18,8 @@ interface ReportFiltersProps {
     onStatusChange: (status: string) => void
     selectedAttendance: string
     onAttendanceChange: (attendance: string) => void
-    onExport: () => void
-    onExportCompany: () => void
+    onExport: (selectedColumns?: string[]) => void
+    onExportCompany: (selectedColumns?: string[]) => void
     isExporting: boolean
 }
 
@@ -35,9 +36,26 @@ export function ReportFilters({
     isExporting
 }: ReportFiltersProps) {
     const [companyOpen, setCompanyOpen] = useState(false)
+    const [showColumnDialog, setShowColumnDialog] = useState(false)
+    const [pendingExportType, setPendingExportType] = useState<'all' | 'company' | null>(null)
 
     const selectedCompanyData = companies.find(c => c.empresa === selectedCompany)
     const displayValue = selectedCompany === "all" ? "Todas as Empresas" : selectedCompany
+
+    const handleExportClick = (type: 'all' | 'company') => {
+        setPendingExportType(type)
+        setShowColumnDialog(true)
+    }
+
+    const handleColumnSelection = (selectedColumns: string[]) => {
+        console.log("🎯 ReportFilters handleColumnSelection:", { pendingExportType, selectedColumns })
+        if (pendingExportType === 'all') {
+            onExport(selectedColumns)
+        } else if (pendingExportType === 'company') {
+            onExportCompany(selectedColumns)
+        }
+        setPendingExportType(null)
+    }
 
     return (
         <Card className="mb-6">
@@ -190,7 +208,7 @@ export function ReportFilters({
                     <div>
                         <label className="block text-sm font-medium mb-2">Exportar Geral</label>
                         <Button
-                            onClick={onExport}
+                            onClick={() => handleExportClick('all')}
                             disabled={isExporting}
                             className="w-full"
                         >
@@ -206,7 +224,7 @@ export function ReportFilters({
                     <div>
                         <label className="block text-sm font-medium mb-2">Exportar Empresa</label>
                         <Button
-                            onClick={onExportCompany}
+                            onClick={() => handleExportClick('company')}
                             disabled={isExporting || selectedCompany === 'all'}
                             variant="outline"
                             className="w-full"
@@ -221,6 +239,16 @@ export function ReportFilters({
                     </div>
                 </div>
             </CardContent>
+            
+            {/* Column Selection Dialog */}
+            <ColumnSelectionDialog
+                open={showColumnDialog}
+                onOpenChange={setShowColumnDialog}
+                onConfirm={handleColumnSelection}
+                isExporting={isExporting}
+                exportType={pendingExportType || 'all'}
+                companyName={pendingExportType === 'company' ? selectedCompany : undefined}
+            />
         </Card>
     )
 }
