@@ -144,6 +144,10 @@ export default function EventoDetalhesPage() {
     const [showDuplicatesModal, setShowDuplicatesModal] = useState(false)
     const [duplicatesLoading, setDuplicatesLoading] = useState(false)
 
+    // Estados para exclusão em massa
+    const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+    const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false)
+
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
         // Se já está no formato dd-mm-yyyy, retorna como está
@@ -958,6 +962,73 @@ export default function EventoDetalhesPage() {
         setBulkEditLoading(false)
     }
 
+    // Função para exclusão em massa
+    const handleBulkDelete = async () => {
+        if (selectedParticipants.size === 0) {
+            toast.error('Nenhum participante selecionado')
+            return
+        }
+
+        setBulkDeleteLoading(true)
+        let successCount = 0
+        let errorCount = 0
+
+        try {
+            for (const participantId of Array.from(selectedParticipants)) {
+                try {
+                    await new Promise((resolve, reject) => {
+                        deleteParticipant(
+                            {
+                                id: participantId,
+                                performedBy: 'exclusao-em-massa',
+                            },
+                            {
+                                onSuccess: () => {
+                                    successCount++
+                                    resolve(true)
+                                },
+                                onError: error => {
+                                    console.error(
+                                        `Erro ao excluir participante ${participantId}:`,
+                                        error,
+                                    )
+                                    errorCount++
+                                    reject(error)
+                                },
+                            },
+                        )
+                    })
+
+                    // Delay pequeno entre exclusões para evitar sobrecarga
+                    await new Promise(resolve => setTimeout(resolve, 100))
+                } catch (error) {
+                    console.error(
+                        `Erro ao processar exclusão ${participantId}:`,
+                        error,
+                    )
+                    errorCount++
+                }
+            }
+
+            if (successCount > 0) {
+                toast.success(
+                    `${successCount} participantes excluídos com sucesso!`,
+                )
+            }
+            if (errorCount > 0) {
+                toast.error(`${errorCount} erros durante a exclusão`)
+            }
+
+            setShowBulkDeleteModal(false)
+            clearSelection()
+        } catch (error) {
+            console.error('Erro geral na exclusão em massa:', error)
+            toast.error('Erro ao excluir participantes')
+        }
+
+        setBulkDeleteLoading(false)
+    }
+
     // Função para remover duplicados
     const handleRemoveDuplicates = async () => {
         setDuplicatesLoading(true)
@@ -1446,6 +1517,15 @@ export default function EventoDetalhesPage() {
                                 >
                                     <UserCog className="w-4 h-4 mr-2" />
                                     Editar em massa
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setShowBulkDeleteModal(true)}
+                                    className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                                >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Excluir em massa
                                 </Button>
                             </div>
                         </div>
@@ -1951,6 +2031,72 @@ export default function EventoDetalhesPage() {
                                 </>
                             ) : (
                                 'Atualizar Participantes'
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Modal de Exclusão em Massa */}
+            <AlertDialog open={showBulkDeleteModal} onOpenChange={setShowBulkDeleteModal}>
+                <AlertDialogContent className="bg-white text-black max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <Trash2 className="h-5 w-5 text-red-600" />
+                            Excluir Participantes em Massa
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Você está prestes a excluir {selectedParticipants.size} participante(s) selecionado(s).
+                            Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                                <span className="text-sm font-medium text-red-800">
+                                    Atenção - Ação Irreversível
+                                </span>
+                            </div>
+                            <div className="text-xs text-red-700 space-y-1">
+                                <div>• {selectedParticipants.size} participante(s) serão permanentemente removidos</div>
+                                <div>• Todos os dados de check-in/check-out serão perdidos</div>
+                                <div>• Esta ação ficará registrada no histórico do sistema</div>
+                                <div>• Esta operação não pode ser desfeita</div>
+                            </div>
+                        </div>
+
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Users className="h-4 w-4 text-yellow-600" />
+                                <span className="text-sm font-medium text-yellow-800">
+                                    Participantes Selecionados
+                                </span>
+                            </div>
+                            <div className="text-xs text-yellow-700">
+                                {selectedParticipants.size} participante(s) do dia {currentSelectedDay} serão excluídos
+                            </div>
+                        </div>
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleBulkDelete}
+                            disabled={bulkDeleteLoading}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            {bulkDeleteLoading ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Excluindo...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Confirmar Exclusão
+                                </>
                             )}
                         </AlertDialogAction>
                     </AlertDialogFooter>
