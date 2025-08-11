@@ -509,7 +509,7 @@ export function ColumnSelectionDialog({
                 <div className="mt-3 pt-3 border-t border-purple-200">
                   <p className="text-xs text-purple-600 flex items-center gap-1">
                     <Settings className="w-3 h-3" />
-                    Vá para a aba "Larguras" para ajustar cada coluna individualmente
+                    Vá para a aba &quot;Larguras&quot; para ajustar cada coluna individualmente
                   </p>
                 </div>
               )}
