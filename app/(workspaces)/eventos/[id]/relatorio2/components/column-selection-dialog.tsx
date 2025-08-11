@@ -241,244 +241,329 @@ export function ColumnSelectionDialog({
     .filter((col): col is Column => col !== undefined)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] bg-white overflow-y-auto text-gray-800">
-        <DialogHeader className="pb-3 border-b">
-          <DialogTitle className="flex items-center gap-2 text-lg font-bold">
-            <FileText className="w-5 h-5 text-blue-600" />
-            {getExportTitle()}
-          </DialogTitle>
-          <DialogDescription className="text-sm text-gray-600">
-            {getExportDescription()}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <style jsx>{`
+        .slider::-webkit-slider-thumb {
+          appearance: none;
+          height: 20px;
+          width: 20px;
+          border-radius: 50%;
+          background: #9333ea;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        
+        .slider::-moz-range-thumb {
+          height: 20px;
+          width: 20px;
+          border-radius: 50%;
+          background: #9333ea;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+      `}</style>
 
-        <div className="py-3">
-          <Tabs defaultValue="selection" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 h-9 bg-gray-100 p-1 rounded-lg">
-              <TabsTrigger
-                value="selection"
-                className="flex items-center justify-center gap-1 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm transition-all duration-200 rounded-md"
-              >
-                <Settings className="w-3 h-3" />
-                Seleção
-              </TabsTrigger>
-              <TabsTrigger
-                value="order"
-                className="flex items-center justify-center gap-1 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm transition-all duration-200 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={selectedColumns.length === 0}
-              >
-                <List className="w-3 h-3" />
-                Ordem ({selectedColumns.length})
-              </TabsTrigger>
-              <TabsTrigger
-                value="width"
-                className="flex items-center justify-center gap-1 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm transition-all duration-200 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={selectedColumns.length === 0}
-              >
-                <Expand className="w-3 h-3" />
-                Larguras
-              </TabsTrigger>
-            </TabsList>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[85vh] bg-white overflow-y-auto text-gray-800">
+          <DialogHeader className="pb-3 border-b">
+            <DialogTitle className="flex items-center gap-2 text-lg font-bold">
+              <FileText className="w-5 h-5 text-blue-600" />
+              {getExportTitle()}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-gray-600">
+              {getExportDescription()}
+            </DialogDescription>
+          </DialogHeader>
 
-            {/* Tab 1: Seleção */}
-            <TabsContent value="selection" className="space-y-3 mt-3">
-              <div className="flex flex-wrap gap-2 p-2 bg-gray-50 rounded border">
-                <Button variant="outline" size="sm" onClick={handleSelectAll} className="h-7 px-3 text-xs">
-                  <CheckSquare className="w-3 h-3 mr-1" />
-                  Todas ({AVAILABLE_COLUMNS.length})
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleSelectBasic} className="h-7 px-3 text-xs">
-                  <Square className="w-3 h-3 mr-1" />
-                  Básicas (4)
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleSelectNone} className="h-7 px-3 text-xs">
-                  Limpar
-                </Button>
-                <Badge variant="secondary" className="ml-auto text-xs">
-                  {selectedColumns.length} de {AVAILABLE_COLUMNS.length}
-                </Badge>
-              </div>
+          <div className="py-3">
+            <Tabs defaultValue="selection" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 h-9 bg-gray-100 p-1 rounded-lg">
+                <TabsTrigger
+                  value="selection"
+                  className="flex items-center justify-center gap-1 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm transition-all duration-200 rounded-md"
+                >
+                  <Settings className="w-3 h-3" />
+                  Seleção
+                </TabsTrigger>
+                <TabsTrigger
+                  value="order"
+                  className="flex items-center justify-center gap-1 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm transition-all duration-200 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={selectedColumns.length === 0}
+                >
+                  <List className="w-3 h-3" />
+                  Ordem ({selectedColumns.length})
+                </TabsTrigger>
+                <TabsTrigger
+                  value="width"
+                  className="flex items-center justify-center gap-1 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm transition-all duration-200 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={selectedColumns.length === 0}
+                >
+                  <Expand className="w-3 h-3" />
+                  Larguras
+                </TabsTrigger>
+              </TabsList>
 
-              <div className="border rounded overflow-hidden">
-                <div className="max-h-[400px] overflow-y-auto">
-                  {AVAILABLE_COLUMNS.map((column) => (
-                    <div
-                      key={column.key}
-                      className={`flex items-center gap-3 p-3 border-b last:border-b-0 cursor-pointer transition-colors ${selectedColumns.includes(column.key) ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'
-                        }`}
-                      onClick={() => handleColumnToggle(column.key)}
-                    >
-                      <Checkbox
-                        checked={selectedColumns.includes(column.key)}
-                        className={selectedColumns.includes(column.key) ? 'border-blue-500 data-[state=checked]:bg-blue-600' : ''}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Label className={`text-sm cursor-pointer ${selectedColumns.includes(column.key) ? 'text-blue-900' : 'text-gray-900'}`}>
-                            {column.label}
-                          </Label>
-                          {selectedColumns.includes(column.key) && (
-                            <Badge className="bg-blue-600 text-white text-xs px-1">
-                              #{columnOrder.indexOf(column.key) + 1}
-                            </Badge>
+              {/* Tab 1: Seleção */}
+              <TabsContent value="selection" className="space-y-3 mt-3">
+                <div className="flex flex-wrap gap-2 p-2 bg-gray-50 rounded border">
+                  <Button variant="outline" size="sm" onClick={handleSelectAll} className="h-7 px-3 text-xs">
+                    <CheckSquare className="w-3 h-3 mr-1" />
+                    Todas ({AVAILABLE_COLUMNS.length})
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleSelectBasic} className="h-7 px-3 text-xs">
+                    <Square className="w-3 h-3 mr-1" />
+                    Básicas (4)
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleSelectNone} className="h-7 px-3 text-xs">
+                    Limpar
+                  </Button>
+                  <Badge variant="secondary" className="ml-auto text-xs">
+                    {selectedColumns.length} de {AVAILABLE_COLUMNS.length}
+                  </Badge>
+                </div>
+
+                <div className="border rounded overflow-hidden">
+                  <div className="max-h-[400px] overflow-y-auto">
+                    {AVAILABLE_COLUMNS.map((column) => (
+                      <div
+                        key={column.key}
+                        className={`flex items-center gap-3 p-3 border-b last:border-b-0 cursor-pointer transition-colors ${selectedColumns.includes(column.key) ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'
+                          }`}
+                        onClick={() => handleColumnToggle(column.key)}
+                      >
+                        <Checkbox
+                          checked={selectedColumns.includes(column.key)}
+                          className={selectedColumns.includes(column.key) ? 'border-blue-500 data-[state=checked]:bg-blue-600' : ''}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Label className={`text-sm cursor-pointer ${selectedColumns.includes(column.key) ? 'text-blue-900' : 'text-gray-900'}`}>
+                              {column.label}
+                            </Label>
+                            {selectedColumns.includes(column.key) && (
+                              <Badge className="bg-blue-600 text-white text-xs px-1">
+                                #{columnOrder.indexOf(column.key) + 1}
+                              </Badge>
+                            )}
+                          </div>
+                          {column.description && (
+                            <p className={`text-xs mt-1 ${selectedColumns.includes(column.key) ? 'text-blue-700' : 'text-gray-500'}`}>
+                              {column.description}
+                            </p>
                           )}
                         </div>
-                        {column.description && (
-                          <p className={`text-xs mt-1 ${selectedColumns.includes(column.key) ? 'text-blue-700' : 'text-gray-500'}`}>
-                            {column.description}
-                          </p>
-                        )}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Tab 2: Ordenação */}
-            <TabsContent value="order" className="space-y-3 mt-3">
-              {selectedColumns.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 p-2 bg-green-50 rounded border border-green-200">
-                    <GripVertical className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-800">
-                      Arraste para reordenar ({selectedColumns.length} colunas)
-                    </span>
+                    ))}
                   </div>
-
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                    <SortableContext items={columnOrder.filter(key => selectedColumns.includes(key))} strategy={verticalListSortingStrategy}>
-                      <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                        {selectedOrderedColumns.map((column, index) => (
-                          <SortableColumnItem key={column.key} column={column} index={index} />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <List className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Selecione colunas primeiro</p>
-                </div>
-              )}
-            </TabsContent>
+              </TabsContent>
 
-            {/* Tab 3: Larguras */}
-            <TabsContent value="width" className="space-y-3 mt-3">
-              {selectedColumns.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-2 bg-purple-50 rounded border border-purple-200">
-                    <div className="flex items-center gap-2">
-                      <Ruler className="w-4 h-4 text-purple-600" />
-                      <span className="text-sm text-purple-800">Largura das Colunas</span>
+              {/* Tab 2: Ordenação */}
+              <TabsContent value="order" className="space-y-3 mt-3">
+                {selectedColumns.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 p-2 bg-green-50 rounded border border-green-200">
+                      <GripVertical className="w-4 h-4 text-green-600" />
+                      <span className="text-sm text-green-800">
+                        Arraste para reordenar ({selectedColumns.length} colunas)
+                      </span>
                     </div>
-                    <div className="flex items-center gap-3">
+
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                      <SortableContext items={columnOrder.filter(key => selectedColumns.includes(key))} strategy={verticalListSortingStrategy}>
+                        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                          {selectedOrderedColumns.map((column, index) => (
+                            <SortableColumnItem key={column.key} column={column} index={index} />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <List className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">Selecione colunas primeiro</p>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Tab 3: Larguras */}
+              <TabsContent value="width" className="space-y-3 mt-3">
+                {selectedColumns.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-2 bg-purple-50 rounded border border-purple-200">
                       <div className="flex items-center gap-2">
-                        <Switch checked={useAutoWidth} onCheckedChange={setUseAutoWidth} />
-                        <Label className="text-xs text-purple-800">Automático</Label>
+                        <Ruler className="w-4 h-4 text-purple-600" />
+                        <span className="text-sm text-purple-800">Ajustar Larguras Manualmente</span>
                       </div>
                       <Button variant="outline" size="sm" onClick={handleResetWidths} className="h-7 px-2 text-xs">
                         <RotateCcw className="w-3 h-3 mr-1" />
-                        Resetar
+                        Resetar Padrões
                       </Button>
                     </div>
+
+                    {!useAutoWidth && (
+                      <div className="space-y-3 max-h-[350px] overflow-y-auto">
+                        {selectedColumns.map(columnKey => {
+                          const column = AVAILABLE_COLUMNS.find(col => col.key === columnKey)
+                          const widthConfig = columnWidths.find(config => config.key === columnKey)
+                          if (!column) return null
+
+                          const currentWidth = widthConfig?.width === 'auto' ? column.defaultWidth || 30 : widthConfig?.width || 30
+
+                          return (
+                            <div key={columnKey} className="p-3 bg-white rounded border">
+                              <div className="flex items-center justify-between mb-2">
+                                <Label className="text-sm font-medium text-gray-900">
+                                  {column.label}
+                                </Label>
+                                <Badge variant="outline" className="text-xs">
+                                  {currentWidth}mm
+                                </Badge>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1">
+                                  <input
+                                    type="range"
+                                    min="15"
+                                    max="80"
+                                    value={currentWidth}
+                                    onChange={(e) => handleWidthChange(columnKey, e.target.value)}
+                                    className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer slider"
+                                    style={{
+                                      background: `linear-gradient(to right, #9333ea 0%, #9333ea ${((currentWidth - 15) / (80 - 15)) * 100}%, #e2d1f3 ${((currentWidth - 15) / (80 - 15)) * 100}%, #e2d1f3 100%)`
+                                    }}
+                                  />
+                                </div>
+
+                                <Input
+                                  type="number"
+                                  min="15"
+                                  max="80"
+                                  value={currentWidth}
+                                  onChange={(e) => handleWidthChange(columnKey, e.target.value)}
+                                  className="w-20 h-8 text-xs text-center"
+                                />
+                                <span className="text-xs text-gray-500 min-w-[20px]">mm</span>
+                              </div>
+
+                              <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                <span>15mm</span>
+                                <span className="text-purple-600 font-medium">Largura: {currentWidth}mm</span>
+                                <span>80mm</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {useAutoWidth && (
+                      <div className="text-center py-8">
+                        <Ruler className="w-12 h-12 text-purple-400 mx-auto mb-3" />
+                        <h4 className="text-base font-medium text-purple-900 mb-2">Largura Automática</h4>
+                        <p className="text-sm text-purple-700">Colunas se ajustam ao conteúdo automaticamente.</p>
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Expand className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">Selecione colunas primeiro</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
 
-                  {!useAutoWidth && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[350px] overflow-y-auto">
-                      {selectedColumns.map(columnKey => {
-                        const column = AVAILABLE_COLUMNS.find(col => col.key === columnKey)
-                        const widthConfig = columnWidths.find(config => config.key === columnKey)
-                        if (!column) return null
-
-                        return (
-                          <div key={columnKey} className="flex items-center gap-2 p-2 bg-white rounded border">
-                            <Label className="text-xs font-medium flex-1 truncate">
-                              {column.label}:
-                            </Label>
-                            <Input
-                              type="number"
-                              min="10"
-                              max="100"
-                              value={widthConfig?.width === 'auto' ? '' : widthConfig?.width || ''}
-                              onChange={(e) => handleWidthChange(columnKey, e.target.value)}
-                              placeholder="Auto"
-                              className="w-16 h-7 text-xs"
-                            />
-                            <span className="text-xs text-gray-500">mm</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-
-                  {useAutoWidth && (
-                    <div className="text-center py-8">
-                      <Ruler className="w-12 h-12 text-purple-400 mx-auto mb-3" />
-                      <h4 className="text-base font-medium text-purple-900 mb-2">Largura Automática</h4>
-                      <p className="text-sm text-purple-700">Colunas se ajustam ao conteúdo automaticamente.</p>
-                    </div>
-                  )}
+            {/* Width Configuration Summary */}
+            <div className="mt-4 p-4 rounded-lg border bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Ruler className="w-5 h-5 text-purple-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-purple-900">
+                      Largura das Colunas
+                    </p>
+                    <p className="text-xs text-purple-700">
+                      {useAutoWidth ? 'Automático - Ajusta ao conteúdo' : 'Manual - Larguras personalizadas'}
+                    </p>
+                  </div>
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Expand className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Selecione colunas primeiro</p>
+
+                <div className="flex items-center gap-3">
+                  <Label className="text-sm text-purple-800 font-medium">
+                    Automático
+                  </Label>
+                  <Switch
+                    checked={useAutoWidth}
+                    onCheckedChange={setUseAutoWidth}
+                    className="data-[state=checked]:bg-purple-600"
+                  />
+                </div>
+              </div>
+
+              {!useAutoWidth && selectedColumns.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-purple-200">
+                  <p className="text-xs text-purple-600 flex items-center gap-1">
+                    <Settings className="w-3 h-3" />
+                    Vá para a aba &quot;Larguras&quot; para ajustar cada coluna individualmente
+                  </p>
                 </div>
               )}
-            </TabsContent>
-          </Tabs>
+            </div>
 
-          {/* Status Summary */}
-          <div className={`mt-4 p-3 rounded border-l-4 ${selectedColumns.length === 0
-            ? 'bg-red-50 border-red-400' : selectedColumns.length <= 4 ? 'bg-green-50 border-green-400' : 'bg-blue-50 border-blue-400'
-            }`}>
-            <div className="flex items-center gap-3">
-              <Layers className={`w-5 h-5 ${selectedColumns.length === 0 ? 'text-red-600' : selectedColumns.length <= 4 ? 'text-green-600' : 'text-blue-600'}`} />
-              <div>
-                <p className={`text-sm font-semibold ${selectedColumns.length === 0 ? 'text-red-800' : selectedColumns.length <= 4 ? 'text-green-800' : 'text-blue-800'}`}>
-                  <span className="font-bold">{selectedColumns.length}</span> colunas selecionadas
-                </p>
-                <p className={`text-xs ${selectedColumns.length === 0 ? 'text-red-600' : selectedColumns.length <= 4 ? 'text-green-600' : 'text-blue-600'}`}>
-                  {selectedColumns.length === 0 ? 'Selecione pelo menos uma coluna' : `${selectedColumns.length <= 4 ? 'Compacto' : 'Detalhado'} • ${useAutoWidth ? 'Automático' : 'Personalizado'}`}
-                </p>
+            {/* Status Summary */}
+            <div className={`mt-3 p-3 rounded border-l-4 ${selectedColumns.length === 0
+              ? 'bg-red-50 border-red-400' : selectedColumns.length <= 4 ? 'bg-green-50 border-green-400' : 'bg-blue-50 border-blue-400'
+              }`}>
+              <div className="flex items-center gap-3">
+                <Layers className={`w-5 h-5 ${selectedColumns.length === 0 ? 'text-red-600' : selectedColumns.length <= 4 ? 'text-green-600' : 'text-blue-600'}`} />
+                <div>
+                  <p className={`text-sm font-semibold ${selectedColumns.length === 0 ? 'text-red-800' : selectedColumns.length <= 4 ? 'text-green-800' : 'text-blue-800'}`}>
+                    <span className="font-bold">{selectedColumns.length}</span> colunas selecionadas
+                  </p>
+                  <p className={`text-xs ${selectedColumns.length === 0 ? 'text-red-600' : selectedColumns.length <= 4 ? 'text-green-600' : 'text-blue-600'}`}>
+                    {selectedColumns.length === 0 ? 'Selecione pelo menos uma coluna' : `${selectedColumns.length <= 4 ? 'Compacto' : 'Detalhado'} • ${useAutoWidth ? 'Automático' : 'Personalizado'}`}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <DialogFooter className="pt-3 border-t">
-          <div className="flex items-center justify-between w-full">
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isExporting} className="h-9 px-4">
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleConfirm}
-              disabled={selectedColumns.length === 0 || isExporting}
-              className="h-9 px-6 min-w-[140px]"
-            >
-              {isExporting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Exportando...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 mr-2" />
-                  Exportar PDF
-                  {selectedColumns.length > 0 && (
-                    <Badge variant="secondary" className="bg-white/20 text-white border-white/30 text-xs ml-2">
-                      {selectedColumns.length}
-                    </Badge>
-                  )}
-                </>
-              )}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter className="pt-3 border-t">
+            <div className="flex items-center justify-between w-full">
+              <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isExporting} className="h-9 px-4">
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleConfirm}
+                disabled={selectedColumns.length === 0 || isExporting}
+                className="h-9 px-6 min-w-[140px]"
+              >
+                {isExporting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Exportando...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Exportar PDF
+                    {selectedColumns.length > 0 && (
+                      <Badge variant="secondary" className="bg-white/20 text-white border-white/30 text-xs ml-2">
+                        {selectedColumns.length}
+                      </Badge>
+                    )}
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
