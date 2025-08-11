@@ -13,12 +13,6 @@ export function useExport({ eventName, participants }: UseExportProps) {
     
     // Convert participant record to export format
     const convertToExportFormat = useCallback((participants: ParticipantRecord[], selectedColumns?: string[]) => {
-        console.log("🔍 DEBUG convertToExportFormat:", {
-            participantsCount: participants.length,
-            selectedColumns,
-            sampleParticipant: participants[0]
-        })
-
         return participants.map(p => {
             const fullRecord = {
                 nome: p.nome.toUpperCase(),
@@ -35,7 +29,6 @@ export function useExport({ eventName, participants }: UseExportProps) {
             
             // If no columns specified, return all columns
             if (!selectedColumns || selectedColumns.length === 0) {
-                console.log("📋 Returning all columns")
                 return fullRecord
             }
             
@@ -44,21 +37,8 @@ export function useExport({ eventName, participants }: UseExportProps) {
             selectedColumns.forEach(column => {
                 if (column in fullRecord) {
                     filteredRecord[column] = fullRecord[column as keyof typeof fullRecord]
-                } else {
-                    console.warn(`⚠️ Column '${column}' not found in fullRecord`)
                 }
             })
-            
-            // Only log for first record to avoid spam
-            if (participants.indexOf(p) === 0) {
-                console.log("✂️ Filtered record sample:", {
-                    originalKeys: Object.keys(fullRecord),
-                    filteredKeys: Object.keys(filteredRecord),
-                    selectedColumns,
-                    original: fullRecord,
-                    filtered: filteredRecord
-                })
-            }
             
             return filteredRecord
         })
@@ -66,21 +46,12 @@ export function useExport({ eventName, participants }: UseExportProps) {
     
     // Export all participants
     const exportAll = useCallback((selectedColumns?: string[]) => {
-        console.log("🚀 DEBUG exportAll called with selectedColumns:", selectedColumns)
-        
         if (participants.length === 0) {
             toast.error("Nenhum participante para exportar")
             return
         }
         
         const exportData = convertToExportFormat(participants, selectedColumns)
-        
-        console.log("📊 DEBUG Export data being sent:", {
-            selectedColumns,
-            exportDataSample: exportData[0],
-            exportDataKeys: exportData[0] ? Object.keys(exportData[0]) : [],
-            totalRecords: exportData.length
-        })
         
         exportPDFMutation.mutate({
             titulo: `Relatório de Presença - ${eventName}`,
@@ -105,8 +76,6 @@ export function useExport({ eventName, participants }: UseExportProps) {
     
     // Export by company
     const exportByCompany = useCallback((company: string, selectedColumns?: string[]) => {
-        console.log("🏢 DEBUG exportByCompany called:", { company, selectedColumns })
-        
         if (!company || company === 'all') {
             toast.error("Selecione uma empresa específica")
             return
@@ -120,14 +89,6 @@ export function useExport({ eventName, participants }: UseExportProps) {
         }
         
         const exportData = convertToExportFormat(companyParticipants, selectedColumns)
-        
-        console.log("📊 DEBUG Company export data:", {
-            company,
-            selectedColumns,
-            exportDataSample: exportData[0],
-            exportDataKeys: exportData[0] ? Object.keys(exportData[0]) : [],
-            totalRecords: exportData.length
-        })
         
         exportPDFMutation.mutate({
             titulo: `Relatório de Presença - ${company}`,

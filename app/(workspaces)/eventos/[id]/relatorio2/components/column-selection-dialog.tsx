@@ -79,7 +79,6 @@ export function ColumnSelectionDialog({
     if (selectedColumns.length === 0) {
       return // Não permite exportar sem colunas selecionadas
     }
-    console.log("✅ Dialog handleConfirm - selectedColumns:", selectedColumns)
     onConfirm(selectedColumns)
     onOpenChange(false)
   }

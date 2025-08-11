@@ -48,7 +48,6 @@ export function ReportFilters({
     }
 
     const handleColumnSelection = (selectedColumns: string[]) => {
-        console.log("🎯 ReportFilters handleColumnSelection:", { pendingExportType, selectedColumns })
         if (pendingExportType === 'all') {
             onExport(selectedColumns)
         } else if (pendingExportType === 'company') {
