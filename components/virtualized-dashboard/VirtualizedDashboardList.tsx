@@ -23,7 +23,7 @@ interface VirtualizedDashboardListProps {
 
 const DashboardListItem = ({ index, style, data }: any) => {
   const item: DashboardItem = data.items[index]
-  
+
   return (
     <div style={style} className="px-4 py-2">
       <div className="bg-white rounded-lg border border-gray-200 p-4 dashboard-item transition-all duration-200">
@@ -38,13 +38,12 @@ const DashboardListItem = ({ index, style, data }: any) => {
               <div className="font-medium text-gray-900 truncate" title={item.name}>
                 {item.name}
               </div>
-              <Badge 
-                variant="secondary" 
-                className={`text-xs mt-1 badge-animate ${
-                  item.type === 'credential' 
-                    ? 'bg-purple-100 text-purple-700' 
+              <Badge
+                variant="secondary"
+                className={`text-xs mt-1 badge-animate ${item.type === 'credential'
+                    ? 'bg-purple-100 text-purple-700'
                     : 'bg-blue-100 text-blue-700'
-                }`}
+                  }`}
               >
                 {item.type === 'credential' ? 'Credencial' : 'Empresa'}
               </Badge>
@@ -85,10 +84,10 @@ const DashboardListItem = ({ index, style, data }: any) => {
   )
 }
 
-export default function VirtualizedDashboardList({ 
-  items, 
-  height = 600, 
-  itemHeight = 100 
+export default function VirtualizedDashboardList({
+  items,
+  height = 600,
+  itemHeight = 100
 }: VirtualizedDashboardListProps) {
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
@@ -129,6 +128,7 @@ export default function VirtualizedDashboardList({
       {/* Lista virtualizada */}
       <List
         height={height}
+        width="100%"
         itemCount={sortedItems.length}
         itemSize={itemHeight}
         itemData={{ items: sortedItems }}
