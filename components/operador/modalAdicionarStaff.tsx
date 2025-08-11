@@ -220,9 +220,9 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione uma empresa" />
                     </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
+                    <SelectContent className="max-h-[200px] bg-white border-none">
                       {/* Campo de pesquisa */}
-                      <div className="sticky top-0 z-10 bg-white border-b p-2">
+                      <div className="sticky top-0 z-10  border-none p-2">
                         <div className="relative">
                           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                           <Input
@@ -290,7 +290,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o tipo de credencial" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="border-none">
                   {activeCredentials.map((credential) => (
                     <SelectItem key={credential.id} value={credential.id}>
                       <div className="flex items-center gap-2">
