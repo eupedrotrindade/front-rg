@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
-import { Download, Filter, Check, ChevronsUpDown, Building2 } from "lucide-react"
+import { Download, Filter, Check, ChevronsUpDown, Building2, FileSpreadsheet } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { CompanyStats } from "../types"
 import { ColumnSelectionDialog, type ExportConfig } from "./column-selection-dialog"
@@ -20,6 +20,8 @@ interface ReportFiltersProps {
     onAttendanceChange: (attendance: string) => void
     onExport: (config: ExportConfig) => void
     onExportCompany: (config: ExportConfig) => void
+    onExportXLSX?: () => void
+    onExportCompanyXLSX?: (company: string) => void
     isExporting: boolean
 }
 
@@ -33,6 +35,8 @@ export function ReportFilters({
     onAttendanceChange,
     onExport,
     onExportCompany,
+    onExportXLSX,
+    onExportCompanyXLSX,
     isExporting
 }: ReportFiltersProps) {
     const [companyOpen, setCompanyOpen] = useState(false)
@@ -65,7 +69,7 @@ export function ReportFilters({
                 </CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
                     {/* Company Filter with Command */}
                     <div>
                         <label className="block text-sm font-medium mb-2">Empresa</label>
@@ -234,6 +238,41 @@ export function ReportFilters({
                                 <Download className="h-4 w-4 mr-2" />
                             )}
                             PDF Empresa
+                        </Button>
+                    </div>
+
+                    {/* XLSX Export Buttons */}
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Excel Geral</label>
+                        <Button
+                            onClick={() => onExportXLSX?.()}
+                            disabled={isExporting}
+                            variant="secondary"
+                            className="w-full"
+                        >
+                            {isExporting ? (
+                                <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-green-600 border-t-transparent" />
+                            ) : (
+                                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                            )}
+                            {isExporting ? "Exportando..." : "XLSX Completo"}
+                        </Button>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Excel Empresa</label>
+                        <Button
+                            onClick={() => onExportCompanyXLSX?.(selectedCompany)}
+                            disabled={isExporting || selectedCompany === 'all'}
+                            variant="secondary"
+                            className="w-full"
+                        >
+                            {isExporting ? (
+                                <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-green-600 border-t-transparent" />
+                            ) : (
+                                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                            )}
+                            XLSX Empresa
                         </Button>
                     </div>
                 </div>

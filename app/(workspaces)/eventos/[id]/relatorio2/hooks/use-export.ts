@@ -2,6 +2,7 @@
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { useExportPDF } from "@/features/eventos/api/mutation/use-export-pdf";
+import { useExportXLSX } from "@/features/eventos/api/mutation/use-export-xlsx";
 import type { ParticipantRecord } from "../types";
 import type { ExportConfig } from "../components/column-selection-dialog";
 
@@ -12,6 +13,7 @@ interface UseExportProps {
 
 export function useExport({ eventName, participants }: UseExportProps) {
   const exportPDFMutation = useExportPDF();
+  const exportXLSXMutation = useExportXLSX();
 
   // Convert participant record to export format
   const convertToExportFormat = useCallback(
@@ -134,9 +136,104 @@ export function useExport({ eventName, participants }: UseExportProps) {
     [participants, convertToExportFormat, exportPDFMutation]
   );
 
+  // Export all participants to XLSX
+  const exportAllXLSX = useCallback(() => {
+    if (participants.length === 0) {
+      toast.error("Nenhum participante para exportar");
+      return;
+    }
+
+    // Função helper para manter timestamp bruto
+    const getTimestampValue = (dateValue: any): any => {
+      // Para XLSX, mantemos o valor original (já deve estar como timestamp ou string)
+      return dateValue || "";
+    };
+
+    const exportData = participants.map(p => ({
+      nome: p.nome,
+      cpf: p.cpf,
+      funcao: p.funcao || "",
+      empresa: p.empresa,
+      tipoPulseira: p.tipoPulseira,
+      pulseira: p.pulseira,
+      checkIn: getTimestampValue(p.checkIn), // Mantém formato original/timestamp
+      checkOut: getTimestampValue(p.checkOut), // Mantém formato original/timestamp
+      tempoTotal: p.tempoTotal,
+      status: p.status,
+      // Campos adicionais específicos para XLSX
+      pulseiraTrocada: "Não", // Campo padrão
+      cadastradoPor: "Sistema", // Campo padrão
+    }));
+
+    exportXLSXMutation.mutate({
+      titulo: `Relatorio_Presenca_${eventName}`,
+      dados: exportData,
+      filtros: {
+        dia: "all",
+        empresa: "all_companies",
+        funcao: "all_functions",
+        status: "",
+        tipoCredencial: "all_credentials",
+      },
+    });
+  }, [participants, exportXLSXMutation, eventName]);
+
+  // Export by company to XLSX
+  const exportByCompanyXLSX = useCallback((company: string) => {
+    if (!company || company === "all") {
+      toast.error("Selecione uma empresa específica");
+      return;
+    }
+
+    const companyParticipants = participants.filter(
+      (p) => p.empresa === company
+    );
+
+    if (companyParticipants.length === 0) {
+      toast.error("Nenhum participante encontrado para esta empresa");
+      return;
+    }
+
+    // Função helper para manter timestamp bruto
+    const getTimestampValue = (dateValue: any): any => {
+      // Para XLSX, mantemos o valor original (já deve estar como timestamp ou string)
+      return dateValue || "";
+    };
+
+    const exportData = companyParticipants.map(p => ({
+      nome: p.nome,
+      cpf: p.cpf,
+      funcao: p.funcao || "",
+      empresa: p.empresa,
+      tipoPulseira: p.tipoPulseira,
+      pulseira: p.pulseira,
+      checkIn: getTimestampValue(p.checkIn), // Mantém formato original/timestamp
+      checkOut: getTimestampValue(p.checkOut), // Mantém formato original/timestamp
+      tempoTotal: p.tempoTotal,
+      status: p.status,
+      // Campos adicionais específicos para XLSX
+      pulseiraTrocada: "Não", // Campo padrão
+      cadastradoPor: "Sistema", // Campo padrão
+    }));
+
+    exportXLSXMutation.mutate({
+      titulo: `Relatorio_Empresa_${company}`,
+      dados: exportData,
+      filtros: {
+        dia: "all",
+        empresa: company,
+        funcao: "all_functions",
+        status: "",
+        tipoCredencial: "all_credentials",
+      },
+    });
+  }, [participants, exportXLSXMutation]);
+
   return {
     exportAll,
     exportByCompany,
-    isExporting: exportPDFMutation.isPending,
+    exportAllXLSX,
+    exportByCompanyXLSX,
+    isExporting: exportPDFMutation.isPending || exportXLSXMutation.isPending,
   };
 }

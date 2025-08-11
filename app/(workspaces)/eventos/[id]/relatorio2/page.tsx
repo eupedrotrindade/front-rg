@@ -58,7 +58,7 @@ export default function Relatorio2Page() {
     })
 
     // === EXPORT FUNCTIONALITY ===
-    const { exportAll, exportByCompany, isExporting } = useExport({
+    const { exportAll, exportByCompany, exportAllXLSX, exportByCompanyXLSX, isExporting } = useExport({
         eventName: evento?.name || "Evento",
         participants: filteredParticipants
     })
@@ -112,6 +112,8 @@ export default function Relatorio2Page() {
                             onAttendanceChange={setSelectedAttendance}
                             onExport={(config) => exportAll(config)}
                             onExportCompany={(config) => exportByCompany(selectedCompany, config)}
+                            onExportXLSX={exportAllXLSX}
+                            onExportCompanyXLSX={exportByCompanyXLSX}
                             isExporting={isExporting}
                         />
 
