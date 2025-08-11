@@ -5,18 +5,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Building, Users, Calendar, MapPin, Phone, Mail, User, Clock, CheckCircle, XCircle, Upload, FileSpreadsheet, Download, AlertCircle, Loader2, FileText, Check, X, AlertTriangle } from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Building, Users, Calendar, MapPin, Phone, Mail, User, Clock, CheckCircle, XCircle, Upload, FileSpreadsheet, Download, AlertCircle, Loader2, FileText, Check, X, AlertTriangle, Search, Filter, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { useParams } from "next/navigation"
 import { getEmpresa } from "@/features/eventos/actions/get-empresas"
 import { getEvent } from "@/features/eventos/actions/get-event"
-import { getEventParticipantsByEvent } from "@/features/eventos/actions/get-event-participant"
+
 import { updateEventParticipant } from "@/features/eventos/actions/update-event-participant"
 import { useImportRequestsByEmpresa } from "@/features/eventos/api/query/use-import-requests"
-import type { Empresa, EventParticipant, Event, ImportRequest } from "@/features/eventos/types"
+import type { Empresa, EventParticipant, Event, ImportRequest, EventAttendance, Credential } from "@/features/eventos/types"
 import { apiClient } from "@/lib/api-client"
 import { useClerk } from "@clerk/nextjs"
 import * as XLSX from "xlsx"
+import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
+import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
+import { useEventAttendanceByEventAndDate } from "@/features/eventos/api/query/use-event-attendance"
+import { useExportPDF } from "@/features/eventos/api/mutation/use-export-pdf"
+import { useExportXLSX } from "@/features/eventos/api/mutation/use-export-xlsx"
+import { ColumnSelectionDialog, type ExportConfig } from "./components/column-selection-dialog"
 
 interface DecodedToken {
     empresaId: string
@@ -72,6 +81,40 @@ export default function PublicEmpresaPage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [dragActive, setDragActive] = useState(false)
 
+    // Table filter states
+    const [searchTerm, setSearchTerm] = useState<string>('')
+    const [filtros, setFiltros] = useState({
+        empresa: '',
+        funcao: '',
+        status: 'all' // all, present, absent
+    })
+    const [ordenacao, setOrdenacao] = useState<{
+        campo: string
+        direcao: 'asc' | 'desc'
+    }>({ campo: 'name', direcao: 'asc' })
+
+    // Attendance data states (similar to operator panel)
+    const [participantsAttendanceStatus, setParticipantsAttendanceStatus] = useState<
+        Map<
+            string,
+            {
+                checkIn: string | null
+                checkOut: string | null
+                status: string
+            }
+        >
+    >(new Map())
+    const [loadingAttendance, setLoadingAttendance] = useState(false)
+    const [attendanceDataLoaded, setAttendanceDataLoaded] = useState(false)
+    const [isTableExpanded, setIsTableExpanded] = useState(false)
+
+    // Export hooks
+    const exportPDFMutation = useExportPDF()
+    const exportXLSXMutation = useExportXLSX()
+
+    // Dialog states
+    const [showColumnDialog, setShowColumnDialog] = useState(false)
+
     const { user } = useClerk()
     const isClerkUser = !!user
 
@@ -109,6 +152,159 @@ export default function PublicEmpresaPage() {
         return Date.now() - timestamp < sevenDaysInMs
     }
 
+    // Decodificar token para obter eventId
+    const decodedToken = React.useMemo(() => decodeToken(token), [token])
+    const eventId = decodedToken?.eventId || ""
+
+    const {
+        data: participantsData = [],
+        isLoading: participantsLoading,
+        isError: participantsError,
+        error: participantsErrorObj,
+        refetch: refetchParticipants,
+    } = useEventParticipantsByEvent({ eventId })
+
+    // Hook para buscar credenciais do evento
+    const { data: credentials = [] } = useCredentialsByEvent(eventId)
+
+    // Função para formatar data para o formato esperado pela API (DD-MM-YYYY)
+    const formatDateForAPI = (dateString: string) => {
+        if (!dateString) return ''
+
+        // Se já está no formato brasileiro (DD/MM/YYYY)
+        if (dateString.includes('/')) {
+            return dateString.split('/').join('-')
+        }
+
+        // Se está no formato ISO (YYYY-MM-DD)
+        try {
+            const date = new Date(dateString)
+            const day = date.getDate().toString().padStart(2, '0')
+            const month = (date.getMonth() + 1).toString().padStart(2, '0')
+            const year = date.getFullYear()
+            return `${day}-${month}-${year}`
+        } catch {
+            return dateString
+        }
+    }
+
+    // Hook para buscar dados de presença por evento e data
+    const { data: attendanceData, refetch: refetchAttendance } =
+        useEventAttendanceByEventAndDate(
+            eventId,
+            selectedDay
+                ? formatDateForAPI(selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay)
+                : formatDateForAPI(new Date().toLocaleDateString('pt-BR')),
+        )
+
+    // Preparar dados para exportação
+    const prepareExportData = () => {
+        return filteredAndSortedParticipants.map((participant) => {
+            const attendanceStatus = participantsAttendanceStatus.get(participant.id)
+            const credential = credentials.find(c => c.id === participant.credentialId)
+
+            return {
+                nome: participant.name?.toUpperCase() || '',
+                cpf: participant.cpf || '',
+                empresa: participant.company?.toUpperCase() || '',
+                funcao: participant.role?.toUpperCase() || '',
+                pulseira: credential?.nome || '',
+                tipoPulseira: credential?.nome || '',
+                checkIn: attendanceStatus?.checkIn || null,
+                checkOut: attendanceStatus?.checkOut || null,
+                tempoTotal: '', // Pode ser calculado se necessário
+                status: !attendanceStatus ? 'Não registrado' :
+                    attendanceStatus.checkIn && attendanceStatus.checkOut ? 'Finalizado' :
+                        attendanceStatus.checkIn ? 'Presente' : 'Pendente'
+            }
+        })
+    }
+
+    // Função para abrir dialog de exportação PDF
+    const handleExportPDFClick = () => {
+        if (!empresa || !event) return
+
+        if (filteredAndSortedParticipants.length === 0) {
+            toast.error("Nenhum participante para exportar")
+            return
+        }
+
+        setShowColumnDialog(true)
+    }
+
+    // Função para exportar PDF com configuração de colunas
+    const exportPDF = (config: ExportConfig) => {
+        if (!empresa || !event) return
+
+        const exportData = prepareExportData()
+
+        if (exportData.length === 0) {
+            toast.error("Nenhum participante para exportar")
+            return
+        }
+
+        exportPDFMutation.mutate(
+            {
+                titulo: `Relatório de Presença - ${empresa.nome}`,
+                tipo: "filtroEmpresa",
+                dados: exportData,
+                columnConfig: config,
+                filtros: {
+                    dia: selectedDay ? formatDate(selectedDay) : "all",
+                    empresa: empresa.nome,
+                    funcao: "all_functions",
+                    status: "",
+                    tipoCredencial: "all_credentials"
+                }
+            },
+            {
+                onSuccess: () => {
+                    toast.success(`Relatório da empresa ${empresa.nome} exportado com sucesso!`)
+                },
+                onError: () => {
+                    toast.error("Erro ao exportar relatório da empresa")
+                }
+            }
+        )
+    }
+
+    // Função para exportar XLSX
+    const exportXLSX = () => {
+        if (!empresa || !event) return
+
+        const exportData = prepareExportData().map(p => ({
+            nome: p.nome,
+            cpf: p.cpf,
+            funcao: p.funcao || "",
+            empresa: p.empresa,
+            tipoPulseira: p.tipoPulseira,
+            pulseira: p.pulseira,
+            checkIn: p.checkIn || "",
+            checkOut: p.checkOut || "",
+            tempoTotal: p.tempoTotal,
+            status: p.status,
+            pulseiraTrocada: "Não",
+            cadastradoPor: "Sistema"
+        }))
+
+        if (exportData.length === 0) {
+            toast.error("Nenhum participante para exportar")
+            return
+        }
+
+        exportXLSXMutation.mutate({
+            titulo: `Relatorio_Empresa_${empresa.nome.replace(/\s+/g, '_')}`,
+            dados: exportData,
+            filtros: {
+                dia: selectedDay ? formatDate(selectedDay) : "all",
+                empresa: empresa.nome,
+                funcao: "all_functions",
+                status: "",
+                tipoCredencial: "all_credentials"
+            }
+        })
+    }
+
     // Buscar dados da empresa
     const fetchEmpresaData = async (empresaId: string, eventId: string) => {
         try {
@@ -130,15 +326,6 @@ export default function PublicEmpresaPage() {
             }
             setEvent(eventData)
 
-            // Buscar participantes da empresa
-            const allParticipants = await getEventParticipantsByEvent(eventId)
-
-            // Filtrar participantes da empresa
-            const empresaParticipants = allParticipants.filter((p: EventParticipant) =>
-                p.company?.toLowerCase() === empresaData.nome?.toLowerCase()
-            )
-            setParticipants(empresaParticipants)
-
             // Selecionar primeiro dia por padrão
             if (empresaData.days && empresaData.days.length > 0) {
                 setSelectedDay(empresaData.days[0])
@@ -151,6 +338,56 @@ export default function PublicEmpresaPage() {
             setLoading(false)
         }
     }
+
+
+    // Filtrar participantes da empresa quando os dados chegarem
+    React.useEffect(() => {
+        if (participantsData.length > 0 && empresa) {
+            console.log("📊 Total de participantes encontrados:", participantsData.length)
+            console.log("🏢 Nome da empresa buscada:", empresa.nome)
+
+            // Debug: mostrar algumas empresas dos participantes
+            const uniqueCompanies = [...new Set(participantsData.map(p => p.company?.toLowerCase()))]
+            console.log("🏢 Empresas encontradas nos participantes:", uniqueCompanies)
+
+            // Filtrar participantes da empresa
+            const empresaParticipants = participantsData.filter((p: EventParticipant) =>
+                p.company?.toLowerCase() === empresa.nome?.toLowerCase()
+            )
+            console.log("👥 Participantes da empresa filtrados:", empresaParticipants.length)
+            setParticipants(empresaParticipants)
+        }
+    }, [participantsData, empresa])
+
+    // Processar dados de presença quando recebidos do hook
+    React.useEffect(() => {
+        if (Array.isArray(attendanceData)) {
+            const statusMap = new Map()
+
+            attendanceData.forEach((attendance: EventAttendance) => {
+                const status = attendance.checkIn && attendance.checkOut
+                    ? 'Finalizado'
+                    : attendance.checkIn
+                        ? 'Presente'
+                        : 'Pendente'
+
+                statusMap.set(attendance.participantId, {
+                    checkIn: attendance.checkIn,
+                    checkOut: attendance.checkOut,
+                    status: status
+                })
+            })
+
+            setParticipantsAttendanceStatus(statusMap)
+            setLoadingAttendance(false)
+            setAttendanceDataLoaded(true)
+        } else if (attendanceData !== undefined) {
+            // Hook retornou mas sem dados - limpar map
+            setParticipantsAttendanceStatus(new Map())
+            setLoadingAttendance(false)
+            setAttendanceDataLoaded(true)
+        }
+    }, [attendanceData])
 
     useEffect(() => {
         const decoded = decodeToken(token)
@@ -218,10 +455,125 @@ export default function PublicEmpresaPage() {
         }
     }
 
+    // Função para converter data ISO para formato brasileiro
+    const convertIsoToBrazilian = (isoDate: string) => {
+        if (!isoDate) return ''
+        try {
+            const date = new Date(isoDate)
+            return date.toLocaleDateString('pt-BR')
+        } catch {
+            return isoDate
+        }
+    }
+
     // Filtrar participantes por dia selecionado
-    const participantsByDay = participants.filter(p =>
-        p.daysWork?.includes(selectedDay)
-    )
+    const participantsByDay = React.useMemo(() => {
+        if (!selectedDay) {
+            return participants
+        }
+
+        // Converter selectedDay para formato brasileiro se necessário
+        const selectedDayBr = selectedDay.includes('/') ? selectedDay : convertIsoToBrazilian(selectedDay)
+
+        const filtered = participants.filter(p => {
+            return p.daysWork?.includes(selectedDayBr)
+        })
+
+        return filtered
+    }, [participants, selectedDay])
+
+    // Filtrar e ordenar participantes para a tabela
+    const filteredAndSortedParticipants = React.useMemo(() => {
+        let filtered = participantsByDay
+
+        // Aplicar busca por nome/CPF
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase().trim()
+            filtered = filtered.filter(p => {
+                const name = p.name?.toLowerCase() || ''
+                const cpf = p.cpf?.replace(/\D/g, '') || ''
+                const searchCpf = term.replace(/\D/g, '')
+                return name.includes(term) || cpf.includes(searchCpf)
+            })
+        }
+
+        // Aplicar filtros
+        if (filtros.funcao && filtros.funcao !== '') {
+            filtered = filtered.filter(p => p.role === filtros.funcao)
+        }
+
+        if (filtros.status && filtros.status !== 'all') {
+            filtered = filtered.filter(p => {
+                const attendanceStatus = participantsAttendanceStatus.get(p.id)
+                if (filtros.status === 'present') {
+                    return attendanceStatus?.checkIn !== null
+                } else if (filtros.status === 'absent') {
+                    return attendanceStatus?.checkIn === null
+                }
+                return true
+            })
+        }
+
+        // Aplicar ordenação
+        if (ordenacao.campo) {
+            filtered.sort((a, b) => {
+                let aVal: string = ''
+                let bVal: string = ''
+
+                switch (ordenacao.campo) {
+                    case 'name':
+                        aVal = a.name || ''
+                        bVal = b.name || ''
+                        break
+                    case 'cpf':
+                        aVal = a.cpf || ''
+                        bVal = b.cpf || ''
+                        break
+                    case 'role':
+                        aVal = a.role || ''
+                        bVal = b.role || ''
+                        break
+                    case 'company':
+                        aVal = a.company || ''
+                        bVal = b.company || ''
+                        break
+                    default:
+                        return 0
+                }
+
+                if (ordenacao.direcao === 'asc') {
+                    return aVal.localeCompare(bVal)
+                } else {
+                    return bVal.localeCompare(aVal)
+                }
+            })
+        }
+
+        return filtered
+    }, [participantsByDay, searchTerm, filtros, ordenacao])
+
+    // Obter valores únicos para filtros
+    const uniqueValues = React.useMemo(() => {
+        return {
+            funcoes: [...new Set(participantsByDay.map(p => p.role).filter(Boolean))].sort()
+        }
+    }, [participantsByDay])
+
+    // Função para formatar CPF
+    const formatCPF = (cpf: string) => {
+        if (!cpf) return ''
+        const digits = cpf.replace(/\D/g, '')
+        if (digits.length !== 11) return cpf
+        return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+    }
+
+    // Função para ordenar coluna
+    const handleSort = (campo: string) => {
+        setOrdenacao(prev => ({
+            campo,
+            direcao: prev.campo === campo && prev.direcao === 'asc' ? 'desc' : 'asc'
+        }))
+    }
 
     // Função para iniciar edição de campo
     const startEditing = (participantId: string, field: string, currentValue: string) => {
@@ -781,53 +1133,319 @@ export default function PublicEmpresaPage() {
                                     <CardContent>
                                         {selectedDay ? (
                                             participantsByDay.length > 0 ? (
-                                                <div className="space-y-4">
-                                                    {participantsByDay.map((participant) => (
-                                                        <div
-                                                            key={participant.id}
-                                                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                                                        >
-                                                            <div className="flex items-center space-x-4">
-                                                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                                                                    <User className="h-5 w-5 text-white" />
-                                                                </div>
-                                                                <div>
-                                                                    <h3 className="font-medium text-gray-900">
-                                                                        {participant.name}
-                                                                    </h3>
-                                                                    <p className="text-sm text-gray-600">
-                                                                        {participant.role || 'Colaborador'}
-                                                                    </p>
-                                                                    {participant.cpf && (
-                                                                        <p className="text-xs text-gray-500">
-                                                                            CPF: {participant.cpf}
-                                                                        </p>
-                                                                    )}
-                                                                    {isClerkUser && (
-                                                                        <p className="text-xs text-blue-500">
-                                                                            Clique nos campos vazios para editar
-                                                                        </p>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="flex items-center space-x-4">
-                                                                {renderEditableField(participant, 'email', 'Email', <Mail className="h-4 w-4 text-gray-400" />)}
-                                                                {renderEditableField(participant, 'phone', 'Telefone', <Phone className="h-4 w-4 text-gray-400" />)}
-
-                                                                <div className="flex items-center space-x-2">
-                                                                    {participant.checkIn ? (
-                                                                        <CheckCircle className="h-4 w-4 text-green-500" />
-                                                                    ) : (
-                                                                        <Clock className="h-4 w-4 text-yellow-500" />
-                                                                    )}
-                                                                    <span className="text-xs text-gray-500">
-                                                                        {participant.checkIn ? 'Check-in realizado' : 'Aguardando check-in'}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
+                                                <div className="space-y-6">
+                                                    {/* Filtros e Busca */}
+                                                    <div className="space-y-4">
+                                                        {/* Linha de busca */}
+                                                        <div className="relative">
+                                                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                                            <Input
+                                                                type="text"
+                                                                placeholder="Buscar por nome ou CPF..."
+                                                                value={searchTerm}
+                                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                                className="pl-10"
+                                                            />
                                                         </div>
-                                                    ))}
+
+                                                        {/* Linha de filtros */}
+                                                        <div className="flex flex-wrap gap-4">
+                                                            <div className="flex items-center space-x-2">
+                                                                <Filter className="h-4 w-4 text-gray-500" />
+                                                                <span className="text-sm font-medium text-gray-700">Filtros:</span>
+                                                            </div>
+
+                                                            <Select value={filtros.funcao || "all"} onValueChange={(value) => setFiltros(prev => ({ ...prev, funcao: value === "all" ? "" : value }))}>
+                                                                <SelectTrigger className="w-48">
+                                                                    <SelectValue placeholder="Todas as funções" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="all">Todas as funções</SelectItem>
+                                                                    {uniqueValues.funcoes.map((funcao) => (
+                                                                        <SelectItem key={funcao} value={funcao || ""}>{funcao}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+
+                                                            <Select value={filtros.status} onValueChange={(value) => setFiltros(prev => ({ ...prev, status: value }))}>
+                                                                <SelectTrigger className="w-48">
+                                                                    <SelectValue placeholder="Status de presença" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="all">Todos os status</SelectItem>
+                                                                    <SelectItem value="present">Presentes</SelectItem>
+                                                                    <SelectItem value="absent">Pendentes</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+
+                                                            {(searchTerm || filtros.funcao || filtros.status !== 'all') && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        setSearchTerm('')
+                                                                        setFiltros({ empresa: '', funcao: '', status: 'all' })
+                                                                    }}
+                                                                >
+                                                                    <X className="h-4 w-4 mr-2" />
+                                                                    Limpar filtros
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Estatísticas Gerais */}
+                                                    <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+                                                        <CardHeader>
+                                                            <CardTitle className="flex items-center gap-2 text-blue-900">
+                                                                <Users className="h-5 w-5" />
+                                                                <span>Estatísticas Gerais da Empresa</span>
+                                                            </CardTitle>
+                                                        </CardHeader>
+                                                        <CardContent>
+                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                                <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                                                                    <div className="text-2xl font-bold text-gray-900">{participants.length}</div>
+                                                                    <div className="text-sm text-gray-600">Total de Colaboradores</div>
+                                                                </div>
+                                                                <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                                                                    <div className="text-2xl font-bold text-blue-600">
+                                                                        {empresa.days?.length || 0}
+                                                                    </div>
+                                                                    <div className="text-sm text-gray-600">Dias de Trabalho</div>
+                                                                </div>
+                                                                <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                                                                    <div className="text-2xl font-bold text-green-600">
+                                                                        {uniqueValues.funcoes.length}
+                                                                    </div>
+                                                                    <div className="text-sm text-gray-600">Funções Diferentes</div>
+                                                                </div>
+                                                                <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                                                                    <div className="text-2xl font-bold text-purple-600">
+                                                                        {credentials.length}
+                                                                    </div>
+                                                                    <div className="text-sm text-gray-600">Credenciais Disponíveis</div>
+                                                                </div>
+                                                            </div>
+                                                        </CardContent>
+                                                    </Card>
+
+                                                    {/* Botões para Expandir Tabela e Exportar */}
+                                                    <div className="flex justify-between items-center">
+                                                        <h3 className="text-lg font-semibold text-gray-900">Lista de Colaboradores</h3>
+                                                        <div className="flex gap-2">
+                                                            {/* Botões de Exportação */}
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={handleExportPDFClick}
+                                                                disabled={exportPDFMutation.isPending || filteredAndSortedParticipants.length === 0}
+                                                                className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                                            >
+                                                                {exportPDFMutation.isPending ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <FileText className="h-4 w-4" />
+                                                                )}
+                                                                Exportar PDF
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={exportXLSX}
+                                                                disabled={exportXLSXMutation.isPending || filteredAndSortedParticipants.length === 0}
+                                                                className="flex items-center gap-2 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                                                            >
+                                                                {exportXLSXMutation.isPending ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <FileSpreadsheet className="h-4 w-4" />
+                                                                )}
+                                                                Exportar Excel
+                                                            </Button>
+                                                            {/* Botão Expandir Tabela */}
+                                                            <Button
+                                                                variant="outline"
+                                                                onClick={() => setIsTableExpanded(!isTableExpanded)}
+                                                                className="flex items-center gap-2"
+                                                            >
+                                                                {isTableExpanded ? (
+                                                                    <>
+                                                                        <ChevronDown className="h-4 w-4 rotate-180" />
+                                                                        Recolher Tabela
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <ChevronDown className="h-4 w-4" />
+                                                                        Expandir Tabela
+                                                                    </>
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Tabela */}
+                                                    <div className="border rounded-lg overflow-hidden max-h-96 overflow-y-auto">
+                                                        <Table>
+                                                            <TableHeader>
+                                                                <TableRow className="bg-gray-50">
+                                                                    <TableHead className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>
+                                                                        <div className="flex items-center space-x-1">
+                                                                            <span>Nome</span>
+                                                                            {ordenacao.campo === 'name' && (
+                                                                                <ChevronDown className={`h-4 w-4 ${ordenacao.direcao === 'desc' ? 'rotate-180' : ''}`} />
+                                                                            )}
+                                                                        </div>
+                                                                    </TableHead>
+                                                                    <TableHead className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('cpf')}>
+                                                                        <div className="flex items-center space-x-1">
+                                                                            <span>CPF</span>
+                                                                            {ordenacao.campo === 'cpf' && (
+                                                                                <ChevronDown className={`h-4 w-4 ${ordenacao.direcao === 'desc' ? 'rotate-180' : ''}`} />
+                                                                            )}
+                                                                        </div>
+                                                                    </TableHead>
+                                                                    <TableHead className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('role')}>
+                                                                        <div className="flex items-center space-x-1">
+                                                                            <span>Função</span>
+                                                                            {ordenacao.campo === 'role' && (
+                                                                                <ChevronDown className={`h-4 w-4 ${ordenacao.direcao === 'desc' ? 'rotate-180' : ''}`} />
+                                                                            )}
+                                                                        </div>
+                                                                    </TableHead>
+                                                                    <TableHead>Pulseira</TableHead>
+                                                                    <TableHead className="text-center">Status</TableHead>
+                                                                    <TableHead className="text-center">Check-in</TableHead>
+                                                                    <TableHead className="text-center">Check-out</TableHead>
+                                                                </TableRow>
+                                                            </TableHeader>
+                                                            <TableBody>
+                                                                {filteredAndSortedParticipants.length > 0 ? (
+                                                                    filteredAndSortedParticipants.map((participant) => (
+                                                                        <TableRow key={participant.id} className="hover:bg-gray-50">
+                                                                            <TableCell className="font-medium">
+                                                                                <div className="flex items-center space-x-3">
+                                                                                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                                                                                        <User className="h-4 w-4 text-white" />
+                                                                                    </div>
+                                                                                    <span>{participant.name}</span>
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <span className="font-mono text-sm">
+                                                                                    {formatCPF(participant.cpf || '')}
+                                                                                </span>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <Badge variant="secondary">
+                                                                                    {participant.role || 'Colaborador'}
+                                                                                </Badge>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                {isClerkUser ? (
+                                                                                    <div className="flex items-center space-x-2">
+                                                                                        <Badge variant="outline" className="font-mono text-xs">
+                                                                                            {(() => {
+                                                                                                const credential = credentials.find(c => c.id === participant.credentialId);
+                                                                                                return credential ? credential.nome : 'N/A';
+                                                                                            })()}
+                                                                                        </Badge>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="flex items-center space-x-2">
+                                                                                        <Badge variant="outline" className="font-mono text-xs">
+                                                                                            {(() => {
+                                                                                                // Buscar credencial do participante
+                                                                                                const credential = credentials.find(c => c.id === participant.credentialId);
+                                                                                                return credential ? credential.nome : 'N/A';
+                                                                                            })()}
+                                                                                        </Badge>
+                                                                                    </div>
+                                                                                )}
+                                                                            </TableCell>
+                                                                            <TableCell className="px-4 py-2">
+                                                                                {(() => {
+                                                                                    const attendanceStatus = participantsAttendanceStatus.get(participant.id)
+                                                                                    if (!attendanceStatus) {
+                                                                                        return (
+                                                                                            <div className="flex items-center gap-2">
+                                                                                                <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                                                                                <span className="text-sm font-medium text-gray-500">Não registrado</span>
+                                                                                            </div>
+                                                                                        )
+                                                                                    }
+
+                                                                                    const hasCheckIn = attendanceStatus.checkIn
+                                                                                    const hasCheckOut = attendanceStatus.checkOut
+
+                                                                                    if (hasCheckIn && hasCheckOut) {
+                                                                                        return (
+                                                                                            <div className="flex items-center gap-2">
+                                                                                                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                                                                                <span className="text-sm font-medium text-blue-700">Finalizado</span>
+                                                                                            </div>
+                                                                                        )
+                                                                                    } else if (hasCheckIn) {
+                                                                                        return (
+                                                                                            <div className="flex items-center gap-2">
+                                                                                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                                                                                <span className="text-sm font-medium text-green-700">Presente</span>
+                                                                                            </div>
+                                                                                        )
+                                                                                    } else {
+                                                                                        return (
+                                                                                            <div className="flex items-center gap-2">
+                                                                                                <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+                                                                                                <span className="text-sm font-medium text-orange-600">Pendente</span>
+                                                                                            </div>
+                                                                                        )
+                                                                                    }
+                                                                                })()}
+                                                                            </TableCell>
+                                                                            <TableCell className="px-4 py-2 text-sm text-gray-600">
+                                                                                {(() => {
+                                                                                    const attendanceStatus = participantsAttendanceStatus.get(participant.id)
+                                                                                    if (!attendanceStatus?.checkIn) return '-'
+                                                                                    return new Date(attendanceStatus.checkIn).toLocaleString('pt-BR', {
+                                                                                        day: '2-digit',
+                                                                                        month: '2-digit',
+                                                                                        hour: '2-digit',
+                                                                                        minute: '2-digit'
+                                                                                    })
+                                                                                })()}
+                                                                            </TableCell>
+                                                                            <TableCell className="px-4 py-2 text-sm text-gray-600">
+                                                                                {(() => {
+                                                                                    const attendanceStatus = participantsAttendanceStatus.get(participant.id)
+                                                                                    if (!attendanceStatus?.checkOut) return '-'
+                                                                                    return new Date(attendanceStatus.checkOut).toLocaleString('pt-BR', {
+                                                                                        day: '2-digit',
+                                                                                        month: '2-digit',
+                                                                                        hour: '2-digit',
+                                                                                        minute: '2-digit'
+                                                                                    })
+                                                                                })()}
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    ))
+                                                                ) : (
+                                                                    <TableRow>
+                                                                        <TableCell colSpan={7} className="text-center py-8">
+                                                                            <div className="flex flex-col items-center space-y-2">
+                                                                                <Users className="h-8 w-8 text-gray-400" />
+                                                                                <p className="text-gray-500">Nenhum colaborador encontrado com os filtros aplicados</p>
+                                                                            </div>
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                )}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </div>
+
+                                                    {/* Informações adicionais */}
+                                                    <div className="text-sm text-gray-600">
+                                                        Exibindo {filteredAndSortedParticipants.length} de {participantsByDay.length} colaboradores
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <div className="text-center py-8">
@@ -854,42 +1472,7 @@ export default function PublicEmpresaPage() {
                                     </CardContent>
                                 </Card>
 
-                                {/* Estatísticas */}
-                                {selectedDay && participantsByDay.length > 0 && (
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle>Estatísticas do Dia</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                <div className="text-center">
-                                                    <div className="text-2xl font-bold text-blue-600">
-                                                        {participantsByDay.length}
-                                                    </div>
-                                                    <div className="text-sm text-gray-600">Total</div>
-                                                </div>
-                                                <div className="text-center">
-                                                    <div className="text-2xl font-bold text-green-600">
-                                                        {participantsByDay.filter(p => p.checkIn).length}
-                                                    </div>
-                                                    <div className="text-sm text-gray-600">Check-in</div>
-                                                </div>
-                                                <div className="text-center">
-                                                    <div className="text-2xl font-bold text-purple-600">
-                                                        {participantsByDay.filter(p => p.email).length}
-                                                    </div>
-                                                    <div className="text-sm text-gray-600">Com Email</div>
-                                                </div>
-                                                <div className="text-center">
-                                                    <div className="text-2xl font-bold text-orange-600">
-                                                        {participantsByDay.filter(p => p.phone).length}
-                                                    </div>
-                                                    <div className="text-sm text-gray-600">Com Telefone</div>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )}
+
                             </TabsContent>
 
                             {/* Aba Importar */}
@@ -1139,6 +1722,284 @@ export default function PublicEmpresaPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Modal de Tabela em Tela Cheia */}
+            {isTableExpanded && (
+                <div className="fixed inset-0 z-50 bg-white">
+                    <div className="h-full flex flex-col">
+                        {/* Header do Modal */}
+                        <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+                            <div className="flex items-center space-x-4">
+                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                                    <Building className="h-5 w-5 text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold text-gray-900">{empresa?.nome} - Colaboradores</h1>
+                                    <p className="text-gray-600 text-sm">
+                                        {selectedDay ? `${formatDate(selectedDay)} - ${getDayPeriod(selectedDay)}` : 'Todos os colaboradores'}
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                variant="outline"
+                                onClick={() => setIsTableExpanded(false)}
+                                className="flex items-center gap-2"
+                            >
+                                <X className="h-4 w-4" />
+                                Fechar
+                            </Button>
+                        </div>
+
+                        {/* Filtros no Modal */}
+                        <div className="bg-gray-50 p-4 border-b border-gray-200">
+                            <div className="max-w-7xl mx-auto space-y-4">
+                                {/* Linha de busca */}
+                                <div className="relative max-w-md">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Input
+                                        type="text"
+                                        placeholder="Buscar por nome ou CPF..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="pl-10"
+                                    />
+                                </div>
+
+                                {/* Linha de filtros */}
+                                <div className="flex flex-wrap gap-4">
+                                    <div className="flex items-center space-x-2">
+                                        <Filter className="h-4 w-4 text-gray-500" />
+                                        <span className="text-sm font-medium text-gray-700">Filtros:</span>
+                                    </div>
+
+                                    <Select value={filtros.funcao || "all"} onValueChange={(value) => setFiltros(prev => ({ ...prev, funcao: value === "all" ? "" : value }))}>
+                                        <SelectTrigger className="w-48">
+                                            <SelectValue placeholder="Todas as funções" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todas as funções</SelectItem>
+                                            {uniqueValues.funcoes.map((funcao) => (
+                                                <SelectItem key={funcao} value={funcao || ""}>{funcao}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
+                                    <Select value={filtros.status} onValueChange={(value) => setFiltros(prev => ({ ...prev, status: value }))}>
+                                        <SelectTrigger className="w-48">
+                                            <SelectValue placeholder="Status de presença" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todos os status</SelectItem>
+                                            <SelectItem value="present">Presentes</SelectItem>
+                                            <SelectItem value="absent">Pendentes</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+
+                                    {(searchTerm || filtros.funcao || filtros.status !== 'all') && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setSearchTerm('')
+                                                setFiltros({ empresa: '', funcao: '', status: 'all' })
+                                            }}
+                                        >
+                                            <X className="h-4 w-4 mr-2" />
+                                            Limpar filtros
+                                        </Button>
+                                    )}
+
+                                    <div className="ml-auto text-sm text-gray-600">
+                                        Exibindo {filteredAndSortedParticipants.length} de {participantsByDay.length} colaboradores
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Conteúdo Principal - Tabela */}
+                        <div className="flex-1 overflow-auto p-4">
+                            <div className="max-w-7xl mx-auto">
+                                {/* Botões de exportação no modal */}
+                                <div className="mb-4 flex gap-2 justify-end">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleExportPDFClick}
+                                        disabled={exportPDFMutation.isPending || filteredAndSortedParticipants.length === 0}
+                                        className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                    >
+                                        {exportPDFMutation.isPending ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <FileText className="h-4 w-4" />
+                                        )}
+                                        Exportar PDF
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={exportXLSX}
+                                        disabled={exportXLSXMutation.isPending || filteredAndSortedParticipants.length === 0}
+                                        className="flex items-center gap-2 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                                    >
+                                        {exportXLSXMutation.isPending ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <FileSpreadsheet className="h-4 w-4" />
+                                        )}
+                                        Exportar Excel
+                                    </Button>
+                                </div>
+
+                                <div className="border rounded-lg overflow-hidden bg-white">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="bg-gray-50">
+                                                <TableHead className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>
+                                                    <div className="flex items-center space-x-1">
+                                                        <span>Nome</span>
+                                                        {ordenacao.campo === 'name' && (
+                                                            <ChevronDown className={`h-4 w-4 ${ordenacao.direcao === 'desc' ? 'rotate-180' : ''}`} />
+                                                        )}
+                                                    </div>
+                                                </TableHead>
+                                                <TableHead className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('cpf')}>
+                                                    <div className="flex items-center space-x-1">
+                                                        <span>CPF</span>
+                                                        {ordenacao.campo === 'cpf' && (
+                                                            <ChevronDown className={`h-4 w-4 ${ordenacao.direcao === 'desc' ? 'rotate-180' : ''}`} />
+                                                        )}
+                                                    </div>
+                                                </TableHead>
+                                                <TableHead className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('role')}>
+                                                    <div className="flex items-center space-x-1">
+                                                        <span>Função</span>
+                                                        {ordenacao.campo === 'role' && (
+                                                            <ChevronDown className={`h-4 w-4 ${ordenacao.direcao === 'desc' ? 'rotate-180' : ''}`} />
+                                                        )}
+                                                    </div>
+                                                </TableHead>
+                                                <TableHead>Pulseira</TableHead>
+                                                <TableHead className="text-center">Status</TableHead>
+                                                <TableHead className="text-center">Check-in</TableHead>
+                                                <TableHead className="text-center">Check-out</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredAndSortedParticipants.length > 0 ? (
+                                                filteredAndSortedParticipants.map((participant) => (
+                                                    <TableRow key={participant.id} className="hover:bg-gray-50">
+                                                        <TableCell className="font-medium">
+                                                            <div className="flex items-center space-x-3">
+                                                                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                                                                    <User className="h-4 w-4 text-white" />
+                                                                </div>
+                                                                <span>{participant.name}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <span className="font-mono text-sm">
+                                                                {formatCPF(participant.cpf || '')}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="secondary">
+                                                                {participant.role || 'Colaborador'}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex items-center space-x-2">
+                                                                <Badge variant="outline" className="font-mono text-xs">
+                                                                    {(() => {
+                                                                        const credential = credentials.find(c => c.id === participant.credentialId);
+                                                                        return credential ? credential.nome : 'N/A';
+                                                                    })()}
+                                                                </Badge>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="px-4 py-2">
+                                                            {(() => {
+                                                                const attendanceStatus = participantsAttendanceStatus.get(participant.id)
+                                                                if (!attendanceStatus) {
+                                                                    return (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                                                            <span className="text-sm font-medium text-gray-500">Não registrado</span>
+                                                                        </div>
+                                                                    )
+                                                                }
+
+                                                                const hasCheckIn = attendanceStatus.checkIn
+                                                                const hasCheckOut = attendanceStatus.checkOut
+
+                                                                if (hasCheckIn && hasCheckOut) {
+                                                                    return (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                                                            <span className="text-sm font-medium text-blue-700">Finalizado</span>
+                                                                        </div>
+                                                                    )
+                                                                } else if (hasCheckIn) {
+                                                                    return (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                                                            <span className="text-sm font-medium text-green-700">Presente</span>
+                                                                        </div>
+                                                                    )
+                                                                } else {
+                                                                    return (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+                                                                            <span className="text-sm font-medium text-orange-600">Pendente</span>
+                                                                        </div>
+                                                                    )
+                                                                }
+                                                            })()}
+                                                        </TableCell>
+                                                        <TableCell className="px-4 py-2 text-sm text-gray-600">
+                                                            {(() => {
+                                                                const attendanceStatus = participantsAttendanceStatus.get(participant.id)
+                                                                if (!attendanceStatus?.checkIn) return '-'
+                                                                return new Date(attendanceStatus.checkIn).toLocaleString('pt-BR', {
+                                                                    day: '2-digit',
+                                                                    month: '2-digit',
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit'
+                                                                })
+                                                            })()}
+                                                        </TableCell>
+                                                        <TableCell className="px-4 py-2 text-sm text-gray-600">
+                                                            {(() => {
+                                                                const attendanceStatus = participantsAttendanceStatus.get(participant.id)
+                                                                if (!attendanceStatus?.checkOut) return '-'
+                                                                return new Date(attendanceStatus.checkOut).toLocaleString('pt-BR', {
+                                                                    day: '2-digit',
+                                                                    month: '2-digit',
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit'
+                                                                })
+                                                            })()}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={7} className="text-center py-8">
+                                                        <div className="flex flex-col items-center space-y-2">
+                                                            <Users className="h-8 w-8 text-gray-400" />
+                                                            <p className="text-gray-500">Nenhum colaborador encontrado com os filtros aplicados</p>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 } 
