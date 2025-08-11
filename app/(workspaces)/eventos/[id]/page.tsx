@@ -1356,7 +1356,7 @@ export default function EventoDetalhesPage() {
                     />
                 )}
 
-
+                <span></span>
 
                 {/* Tabs dos dias do evento */}
                 {eventDays.length > 0 && (
