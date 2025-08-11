@@ -10,10 +10,13 @@ import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, BarChart3, Building, Calendar, TrendingUp, Users, Clock, Activity, MapPin, CalendarDays, UserCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useMemo, useCallback } from 'react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
+import VirtualizedDashboardList from '@/components/virtualized-dashboard/VirtualizedDashboardList'
+import '@/styles/virtualized-dashboard.css'
 
 export default function EventDashboardPage() {
     const params = useParams()
@@ -260,6 +263,65 @@ export default function EventDashboardPage() {
     const credentialStats = getCredentialStats();
     const companySummary = getCompanySummary();
 
+    // Preparar dados para a lista virtualizada
+    const dashboardItems = useMemo(() => {
+        const items: Array<{
+            id: string
+            name: string
+            type: 'credential' | 'company'
+            checkedIn: number
+            total: number
+            percentage: number
+            color: string
+        }> = []
+
+        // Adicionar credenciais
+        Object.entries(credentialStats).forEach(([credentialId, stats]) => {
+            items.push({
+                id: `credential-${credentialId}`,
+                name: stats.credentialName,
+                type: 'credential',
+                checkedIn: stats.checkedIn,
+                total: stats.total,
+                percentage: stats.total > 0 ? Math.round((stats.checkedIn / stats.total) * 100) : 0,
+                color: stats.color
+            })
+        })
+
+        // Adicionar empresas
+        Object.entries(companySummary).forEach(([companyName, stats]) => {
+            // Gerar cor baseada no nome da empresa
+            const getCompanyColor = (name: string) => {
+                const colors = [
+                    '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
+                    '#8B5CF6', '#F97316', '#06B6D4', '#84CC16',
+                    '#EC4899', '#6366F1', '#14B8A6', '#F87171'
+                ];
+                let hash = 0;
+                for (let i = 0; i < name.length; i++) {
+                    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+                }
+                return colors[Math.abs(hash) % colors.length];
+            };
+
+            items.push({
+                id: `company-${companyName}`,
+                name: stats.companyName,
+                type: 'company',
+                checkedIn: stats.checkedIn,
+                total: stats.total,
+                percentage: stats.total > 0 ? Math.round((stats.checkedIn / stats.total) * 100) : 0,
+                color: getCompanyColor(companyName)
+            })
+        })
+
+        return items
+    }, [credentialStats, companySummary])
+
+    // Separar itens por tipo
+    const credentialItems = dashboardItems.filter(item => item.type === 'credential')
+    const companyItems = dashboardItems.filter(item => item.type === 'company')
+
     const isLoading = participantsLoading || empresasLoading || attendanceLoading;
 
     if (!evento) {
@@ -392,157 +454,61 @@ export default function EventDashboardPage() {
                             </div>
                         </div>
 
-                        {/* Resumo de Credenciais */}
+                        {/* Listas Virtualizadas de Progress */}
                         <div className="mb-8">
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <TrendingUp className="w-5 h-5 text-blue-600" />
-                                    Todas as Credenciais - Progresso em {selectedDay}
+                                    Progresso de Check-in - {selectedDay}
                                 </h2>
-                                {/* <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => router.push(`/eventos/${params.id}/analytics`)}
-                                    className="flex items-center gap-2"
-                                >
-                                    <BarChart3 className="w-4 h-4" />
-                                    Ver Análises Detalhadas
-                                </Button> */}
+                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                    <span>Total: {dashboardItems.reduce((sum, item) => sum + item.checkedIn, 0)}/{dashboardItems.reduce((sum, item) => sum + item.total, 0)} presentes</span>
+                                </div>
                             </div>
 
-                            {Object.keys(credentialStats).length === 0 ? (
-                                <Card className="bg-gray-50 border-dashed">
-                                    <CardContent className="p-6 text-center">
-                                        <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                                        <p className="text-gray-600 text-sm">
-                                            Nenhum participante para o dia selecionado
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {Object.entries(credentialStats).map(([credentialId, stats]) => (
-                                        <Card key={credentialId} className="border-l-4" style={{ borderLeftColor: stats.color }}>
-                                            <CardContent className="p-4">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <div
-                                                            className="w-3 h-3 rounded-full"
-                                                            style={{ backgroundColor: stats.color }}
-                                                        />
-                                                        <span className="text-sm font-medium text-gray-900">
-                                                            {stats.credentialName}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center justify-between">
-                                                    <div className="text-2xl font-bold text-gray-900">
-                                                        {stats.checkedIn}/{stats.total}
-                                                    </div>
-                                                    <div className="text-sm font-medium text-gray-600">
-                                                        {stats.total > 0 ? Math.round((stats.checkedIn / stats.total) * 100) : 0}%
-                                                    </div>
-                                                </div>
-                                                <div className="mt-2">
-                                                    <div className="w-full bg-gray-200 rounded-full h-2">
-                                                        <div
-                                                            className="h-2 rounded-full transition-all duration-300"
-                                                            style={{
-                                                                backgroundColor: stats.color,
-                                                                width: stats.total > 0 ? `${(stats.checkedIn / stats.total) * 100}%` : '0%'
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                            <Tabs defaultValue="credentials" className="w-full">
+                                <TabsList className="grid w-full grid-cols-3 bg-gray-100 p-1 rounded-lg">
 
-                        {/* Resumo de Empresas */}
-                        <div className="mb-8">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                    <Building className="w-5 h-5 text-green-600" />
-                                    Todas as Empresas - Progresso em {selectedDay}
-                                </h2>
-                            </div>
+                                    <TabsTrigger
+                                        value="credentials"
+                                        className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-3 py-2 text-sm font-medium transition-colors"
+                                    >
+                                        <MapPin className="w-4 h-4" />
+                                        Credenciais ({credentialItems.length})
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="companies"
+                                        className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-3 py-2 text-sm font-medium transition-colors"
+                                    >
+                                        <Building className="w-4 h-4" />
+                                        Empresas ({companyItems.length})
+                                    </TabsTrigger>
+                                </TabsList>
 
-                            {Object.keys(companySummary).length === 0 ? (
-                                <Card className="bg-gray-50 border-dashed">
-                                    <CardContent className="p-6 text-center">
-                                        <Building className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                                        <p className="text-gray-600 text-sm">
-                                            Nenhuma empresa para o dia selecionado
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {Object.entries(companySummary)
-                                        .sort(([, a], [, b]) => b.total - a.total)
-                                        .map(([companyName, stats]) => {
-                                            // Gerar cor baseada no nome da empresa
-                                            const getCompanyColor = (name: string) => {
-                                                const colors = [
-                                                    '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
-                                                    '#8B5CF6', '#F97316', '#06B6D4', '#84CC16',
-                                                    '#EC4899', '#6366F1', '#14B8A6', '#F87171'
-                                                ];
-                                                let hash = 0;
-                                                for (let i = 0; i < name.length; i++) {
-                                                    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-                                                }
-                                                return colors[Math.abs(hash) % colors.length];
-                                            };
+                                <TabsContent value="all" className="mt-4">
+                                    <VirtualizedDashboardList
+                                        items={dashboardItems}
+                                        height={600}
+                                        itemHeight={100}
+                                    />
+                                </TabsContent>
 
-                                            const companyColor = getCompanyColor(companyName);
-                                            const percentage = stats.total > 0 ? Math.round((stats.checkedIn / stats.total) * 100) : 0;
+                                <TabsContent value="credentials" className="mt-4">
+                                    <VirtualizedDashboardList
+                                        items={credentialItems}
+                                        height={600}
+                                        itemHeight={100}
+                                    />
+                                </TabsContent>
 
-                                            return (
-                                                <Card key={companyName} className="border-l-4" style={{ borderLeftColor: companyColor }}>
-                                                    <CardContent className="p-4">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <div
-                                                                    className="w-3 h-3 rounded-full"
-                                                                    style={{ backgroundColor: companyColor }}
-                                                                />
-                                                                <span className="text-sm font-medium text-gray-900 truncate">
-                                                                    {stats.companyName}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="text-2xl font-bold text-gray-900">
-                                                                {stats.checkedIn}/{stats.total}
-                                                            </div>
-                                                            <div className="text-sm font-medium text-gray-600">
-                                                                {percentage}%
-                                                            </div>
-                                                        </div>
-                                                        <div className="mt-2">
-                                                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                                                <div
-                                                                    className="h-2 rounded-full transition-all duration-300"
-                                                                    style={{
-                                                                        backgroundColor: companyColor,
-                                                                        width: `${percentage}%`
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div className="mt-1 text-xs text-gray-500 text-center">
-                                                            {stats.checkedIn} presentes
-                                                        </div>
-                                                    </CardContent>
-                                                </Card>
-                                            );
-                                        })}
-                                </div>
-                            )}
+                                <TabsContent value="companies" className="mt-4">
+                                    <VirtualizedDashboardList
+                                        items={companyItems}
+                                        height={600}
+                                        itemHeight={100}
+                                    />
+                                </TabsContent>
+                            </Tabs>
                         </div>
 
                         {/* Ações Rápidas */}
