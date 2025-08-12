@@ -66,6 +66,7 @@ import VirtualizedParticipantsTable from '@/components/virtualized-table/Virtual
 import { useCredentials } from '@/features/eventos/api/query'
 import { useOptimizedFilters } from '@/hooks/use-optimized-filters'
 import '@/styles/virtualized-table.css'
+import { formatEventDate } from '@/lib/utils'
 
 export default function EventoDetalhesPage() {
     const params = useParams()
@@ -194,9 +195,25 @@ export default function EventoDetalhesPage() {
     // Buscar apenas dados necessários do evento (TODO: criar hook específico)
     const { data: eventos } = useEventos() // Temporário - precisa ser otimizado
     const evento = useMemo(() => {
-        return Array.isArray(eventos)
+        const foundEvent = Array.isArray(eventos)
             ? eventos.find(e => String(e.id) === String(params.id))
             : undefined
+
+        // Debug temporário para verificar estrutura dos dados
+        if (foundEvent) {
+            console.log('🔍 Evento encontrado:', {
+                id: foundEvent.id,
+                name: foundEvent.name,
+                montagem: foundEvent.montagem,
+                evento: foundEvent.evento,
+                desmontagem: foundEvent.desmontagem,
+                montagemType: typeof foundEvent.montagem,
+                eventoType: typeof foundEvent.evento,
+                desmontagemType: typeof foundEvent.desmontagem
+            })
+        }
+
+        return foundEvent
     }, [eventos, params.id])
 
     // Memoizar array de participantes
@@ -221,13 +238,71 @@ export default function EventoDetalhesPage() {
         try {
             const date = new Date(dateStr)
             if (!isNaN(date.getTime())) {
-                return date.toLocaleDateString('pt-BR')
+                return formatEventDate(dateStr)
             }
         } catch (error) {
             console.error('Erro ao converter data:', dateStr, error)
         }
 
         return dateStr
+    }, [])
+
+    // Função helper para parsear dados que podem estar como JSON string
+    const parseEventDays = useCallback((data: any): any[] => {
+        if (!data) return []
+
+        // Se for string, tentar fazer parse
+        if (typeof data === 'string') {
+            try {
+                const parsed = JSON.parse(data)
+                return Array.isArray(parsed) ? parsed : []
+            } catch (error) {
+                console.error('❌ Erro ao fazer parse de JSON string:', data, error)
+                return []
+            }
+        }
+
+        // Se já for array, retornar como está
+        if (Array.isArray(data)) {
+            return data
+        }
+
+        // Se for objeto, tentar extrair dados
+        if (typeof data === 'object' && data !== null) {
+            console.warn('⚠️ Dados inesperados para dias do evento:', data)
+            return []
+        }
+
+        return []
+    }, [])
+
+    // Função helper para garantir que os dados sejam arrays válidos
+    const ensureArray = useCallback((data: any): any[] => {
+        if (!data) return []
+
+        // Se for string, tentar fazer parse
+        if (typeof data === 'string') {
+            try {
+                const parsed = JSON.parse(data)
+                return Array.isArray(parsed) ? parsed : []
+            } catch (error) {
+                console.warn('⚠️ Dados não são JSON válido:', data)
+                return []
+            }
+        }
+
+        // Se já for array, retornar como está
+        if (Array.isArray(data)) {
+            return data
+        }
+
+        // Se for objeto, tentar extrair dados
+        if (typeof data === 'object' && data !== null) {
+            console.warn('⚠️ Dados inesperados para dias do evento:', data)
+            return []
+        }
+
+        return []
     }, [])
 
     // Função para gerar tabs dos dias do evento
@@ -246,8 +321,26 @@ export default function EventoDetalhesPage() {
             type: string
         }> = []
 
-        // Adicionar dias de montagem
-        if (evento.setupStartDate && evento.setupEndDate) {
+        // Usar a nova estrutura SimpleEventDay se disponível
+        const montagemData = ensureArray(evento.montagem)
+        if (montagemData.length > 0) {
+            montagemData.forEach(day => {
+                if (day && day.date) {
+                    try {
+                        const dateStr = formatEventDate(day.date)
+                        days.push({
+                            id: dateStr,
+                            label: `${dateStr} (MONTAGEM)`,
+                            date: dateStr,
+                            type: 'setup',
+                        })
+                    } catch (error) {
+                        console.error('❌ Erro ao processar data da montagem:', day, error)
+                    }
+                }
+            })
+        } else if (evento.setupStartDate && evento.setupEndDate) {
+            // Fallback para estrutura antiga
             const startDate = new Date(evento.setupStartDate)
             const endDate = new Date(evento.setupEndDate)
             for (
@@ -255,7 +348,7 @@ export default function EventoDetalhesPage() {
                 date <= endDate;
                 date.setDate(date.getDate() + 1)
             ) {
-                const dateStr = date.toLocaleDateString('pt-BR')
+                const dateStr = formatEventDate(date.toISOString())
                 days.push({
                     id: dateStr,
                     label: `${dateStr} (MONTAGEM)`,
@@ -266,7 +359,25 @@ export default function EventoDetalhesPage() {
         }
 
         // Adicionar dias de Evento/evento
-        if (evento.preparationStartDate && evento.preparationEndDate) {
+        const eventoData = ensureArray(evento.evento)
+        if (eventoData.length > 0) {
+            eventoData.forEach(day => {
+                if (day && day.date) {
+                    try {
+                        const dateStr = formatEventDate(day.date)
+                        days.push({
+                            id: dateStr,
+                            label: `${dateStr} (EVENTO)`,
+                            date: dateStr,
+                            type: 'preparation',
+                        })
+                    } catch (error) {
+                        console.error('❌ Erro ao processar data do evento:', day, error)
+                    }
+                }
+            })
+        } else if (evento.preparationStartDate && evento.preparationEndDate) {
+            // Fallback para estrutura antiga
             const startDate = new Date(evento.preparationStartDate)
             const endDate = new Date(evento.preparationEndDate)
             for (
@@ -274,7 +385,7 @@ export default function EventoDetalhesPage() {
                 date <= endDate;
                 date.setDate(date.getDate() + 1)
             ) {
-                const dateStr = date.toLocaleDateString('pt-BR')
+                const dateStr = formatEventDate(date.toISOString())
                 days.push({
                     id: dateStr,
                     label: `${dateStr} (EVENTO)`,
@@ -285,7 +396,25 @@ export default function EventoDetalhesPage() {
         }
 
         // Adicionar dias de finalização
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
+        const desmontagemData = ensureArray(evento.desmontagem)
+        if (desmontagemData.length > 0) {
+            desmontagemData.forEach(day => {
+                if (day && day.date) {
+                    try {
+                        const dateStr = formatEventDate(day.date)
+                        days.push({
+                            id: dateStr,
+                            label: `${dateStr} (DESMONTAGEM)`,
+                            date: dateStr,
+                            type: 'finalization',
+                        })
+                    } catch (error) {
+                        console.error('❌ Erro ao processar data da desmontagem:', day, error)
+                    }
+                }
+            })
+        } else if (evento.finalizationStartDate && evento.finalizationEndDate) {
+            // Fallback para estrutura antiga
             const startDate = new Date(evento.finalizationStartDate)
             const endDate = new Date(evento.finalizationEndDate)
             for (
@@ -293,7 +422,7 @@ export default function EventoDetalhesPage() {
                 date <= endDate;
                 date.setDate(date.getDate() + 1)
             ) {
-                const dateStr = date.toLocaleDateString('pt-BR')
+                const dateStr = formatEventDate(date.toISOString())
                 days.push({
                     id: dateStr,
                     label: `${dateStr} (DESMONTAGEM)`,
@@ -304,7 +433,7 @@ export default function EventoDetalhesPage() {
         }
 
         return days
-    }, [evento])
+    }, [evento, ensureArray])
 
     // Função para filtrar participantes por dia selecionado
     const getParticipantesPorDia = useCallback(
@@ -395,74 +524,8 @@ export default function EventoDetalhesPage() {
 
     // Memoizar dias do evento para evitar recálculo
     const eventDays = useMemo(() => {
-        if (!evento) return []
-
-        const days: Array<{
-            id: string
-            label: string
-            date: string
-            type: string
-        }> = []
-
-        // Adicionar dias de montagem
-        if (evento.setupStartDate && evento.setupEndDate) {
-            const startDate = new Date(evento.setupStartDate)
-            const endDate = new Date(evento.setupEndDate)
-            for (
-                let date = new Date(startDate);
-                date <= endDate;
-                date.setDate(date.getDate() + 1)
-            ) {
-                const dateStr = date.toLocaleDateString('pt-BR')
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (MONTAGEM)`,
-                    date: dateStr,
-                    type: 'setup',
-                })
-            }
-        }
-
-        // Adicionar dias de Evento/evento
-        if (evento.preparationStartDate && evento.preparationEndDate) {
-            const startDate = new Date(evento.preparationStartDate)
-            const endDate = new Date(evento.preparationEndDate)
-            for (
-                let date = new Date(startDate);
-                date <= endDate;
-                date.setDate(date.getDate() + 1)
-            ) {
-                const dateStr = date.toLocaleDateString('pt-BR')
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (EVENTO)`,
-                    date: dateStr,
-                    type: 'preparation',
-                })
-            }
-        }
-
-        // Adicionar dias de finalizacão
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
-            const startDate = new Date(evento.finalizationStartDate)
-            const endDate = new Date(evento.finalizationEndDate)
-            for (
-                let date = new Date(startDate);
-                date <= endDate;
-                date.setDate(date.getDate() + 1)
-            ) {
-                const dateStr = date.toLocaleDateString('pt-BR')
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (DESMONTAGEM)`,
-                    date: dateStr,
-                    type: 'finalization',
-                })
-            }
-        }
-
-        return days
-    }, [evento])
+        return getEventDays()
+    }, [getEventDays])
 
     const currentSelectedDay = useMemo(
         () => selectedDay || (eventDays.length > 0 ? eventDays[0].id : ''),

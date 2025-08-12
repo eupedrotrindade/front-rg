@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import { useParams } from 'next/navigation'
@@ -7,9 +8,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Clock, User, Plus, Check, X, RotateCcw, Car, Download, Upload, History, Package } from 'lucide-react'
+import { Calendar, Clock, User, Plus, Check, X, RotateCcw, Car, Download, Upload, History, Package, Sun, Moon } from 'lucide-react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
+import { formatEventDate } from '@/lib/utils'
 import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
 import { useCreateEventVehicle, useUpdateEventVehicle, useDeleteEventVehicle, useRetrieveEventVehicle } from '@/features/eventos/api/mutation'
 import { EventVehicle } from '@/features/eventos/actions/create-event-vehicle'
@@ -34,26 +36,104 @@ export default function VagasPage() {
 
     // Queries
     const { data: eventos = [] } = useEventos()
-    const evento = Array.isArray(eventos) ? eventos.find(e => e.id === eventId) : null
 
-    // Função para gerar dias do evento
-    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string }> => {
+    // Buscar dados do evento com tratamento robusto
+    const evento = useMemo(() => {
+        const foundEvent = Array.isArray(eventos)
+            ? eventos.find(e => String(e.id) === String(eventId))
+            : undefined
+
+        // Debug temporário para verificar estrutura dos dados
+        if (foundEvent) {
+            console.log('🔍 Evento encontrado em estacionamento:', {
+                id: foundEvent.id,
+                name: foundEvent.name,
+                montagem: foundEvent.montagem,
+                evento: foundEvent.evento,
+                desmontagem: foundEvent.desmontagem,
+                montagemType: typeof foundEvent.montagem,
+                eventoType: typeof foundEvent.evento,
+                desmontagemType: typeof foundEvent.desmontagem
+            })
+        }
+
+        return foundEvent
+    }, [eventos, eventId])
+
+
+    // Função para gerar dias do evento usando nova estrutura SimpleEventDay
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
         if (!evento) return []
 
-        const days: Array<{ id: string; label: string; date: string; type: string }> = []
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = []
 
+        // Função helper para processar arrays de dados do evento (nova estrutura)
+        const processEventArray = (eventData: any, stage: string, stageName: string) => {
+            if (!eventData) return;
+            
+            try {
+                let dataArray: any[] = [];
+                
+                // Se for string JSON, fazer parse
+                if (typeof eventData === 'string') {
+                    dataArray = JSON.parse(eventData);
+                }
+                // Se já for array, usar diretamente
+                else if (Array.isArray(eventData)) {
+                    dataArray = eventData;
+                }
+                // Se não for nem string nem array, sair
+                else {
+                    return;
+                }
+
+                // Processar cada item do array
+                dataArray.forEach(item => {
+                    if (item && item.date) {
+                        const formattedDate = formatEventDate(item.date);
+                        const dateISO = new Date(item.date).toISOString().split('T')[0]; // YYYY-MM-DD para ID
+                        const dateObj = new Date(item.date);
+                        const hour = dateObj.getHours();
+                        
+                        // Determinar período (diurno: 6h-18h, noturno: 18h-6h)
+                        const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        
+                        days.push({
+                            id: dateISO,
+                            label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
+                            date: formattedDate,
+                            type: stage,
+                            period
+                        });
+                    }
+                });
+            } catch (error) {
+                console.warn(`Erro ao processar dados do evento para stage ${stage}:`, error);
+            }
+        };
+
+        // Processar nova estrutura do evento
+        processEventArray(evento.montagem, 'setup', 'MONTAGEM');
+        processEventArray(evento.evento, 'event', 'EVENTO');
+        processEventArray(evento.desmontagem, 'teardown', 'DESMONTAGEM');
+
+        // Fallback para estrutura antiga (manter compatibilidade)
         // Adicionar dias de montagem
         if (evento.setupStartDate && evento.setupEndDate) {
             const startDate = new Date(evento.setupStartDate)
             const endDate = new Date(evento.setupEndDate)
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = date.toLocaleDateString('pt-BR')
+                const dateStr = formatEventDate(date.toISOString())
                 const dateISO = date.toISOString().split('T')[0] // YYYY-MM-DD
+                const hour = date.getHours();
+                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                
                 days.push({
                     id: dateISO,
-                    label: `${dateStr} (MONTAGEM)`,
+                    label: `${dateStr} (MONTAGEM - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
                     date: dateStr,
-                    type: 'setup'
+                    type: 'setup',
+                    period
                 })
             }
         }
@@ -63,13 +143,17 @@ export default function VagasPage() {
             const startDate = new Date(evento.preparationStartDate)
             const endDate = new Date(evento.preparationEndDate)
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = date.toLocaleDateString('pt-BR')
+                const dateStr = formatEventDate(date.toISOString())
                 const dateISO = date.toISOString().split('T')[0] // YYYY-MM-DD
+                const hour = date.getHours();
+                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                
                 days.push({
                     id: dateISO,
-                    label: `${dateStr} (EVENTO)`,
+                    label: `${dateStr} (EVENTO - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
                     date: dateStr,
-                    type: 'preparation'
+                    type: 'preparation',
+                    period
                 })
             }
         }
@@ -79,16 +163,27 @@ export default function VagasPage() {
             const startDate = new Date(evento.finalizationStartDate)
             const endDate = new Date(evento.finalizationEndDate)
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = date.toLocaleDateString('pt-BR')
+                const dateStr = formatEventDate(date.toISOString())
                 const dateISO = date.toISOString().split('T')[0] // YYYY-MM-DD
+                const hour = date.getHours();
+                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                
                 days.push({
                     id: dateISO,
-                    label: `${dateStr} (DESMONTAGEM)`,
+                    label: `${dateStr} (DESMONTAGEM - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
                     date: dateStr,
-                    type: 'finalization'
+                    type: 'finalization',
+                    period
                 })
             }
         }
+
+        // Ordenar dias cronologicamente
+        days.sort((a, b) => {
+            const dateA = new Date(a.date.split('/').reverse().join('-'));
+            const dateB = new Date(b.date.split('/').reverse().join('-'));
+            return dateA.getTime() - dateB.getTime();
+        });
 
         return days
     }, [evento])
@@ -117,26 +212,44 @@ export default function VagasPage() {
         if (isActive) {
             switch (type) {
                 case 'setup':
-                    return 'border-yellow-500 text-yellow-600 bg-yellow-50'
+                    return 'border-orange-500 text-orange-600 bg-orange-50'
+                case 'event':
+                    return 'border-blue-500 text-blue-600 bg-blue-50'
+                case 'teardown':
+                    return 'border-red-500 text-red-600 bg-red-50'
                 case 'preparation':
                     return 'border-blue-500 text-blue-600 bg-blue-50'
                 case 'finalization':
-                    return 'border-purple-500 text-purple-600 bg-purple-50'
+                    return 'border-red-500 text-red-600 bg-red-50'
                 default:
-                    return 'border-purple-500 text-purple-600 bg-purple-50'
+                    return 'border-gray-500 text-gray-600 bg-gray-50'
             }
         } else {
             switch (type) {
                 case 'setup':
-                    return 'hover:text-yellow-700 hover:border-yellow-300'
+                    return 'hover:text-orange-700 hover:border-orange-300'
+                case 'event':
+                    return 'hover:text-blue-700 hover:border-blue-300'
+                case 'teardown':
+                    return 'hover:text-red-700 hover:border-red-300'
                 case 'preparation':
                     return 'hover:text-blue-700 hover:border-blue-300'
                 case 'finalization':
-                    return 'hover:text-purple-700 hover:border-purple-300'
+                    return 'hover:text-red-700 hover:border-red-300'
                 default:
                     return 'hover:text-gray-700 hover:border-gray-300'
             }
         }
+    }, [])
+    
+    // Função para obter ícone do período
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+        if (period === 'diurno') {
+            return <Sun className="h-3 w-3 text-yellow-500" />;
+        } else if (period === 'noturno') {
+            return <Moon className="h-3 w-3 text-blue-500" />;
+        }
+        return null;
     }, [])
 
     // Filtrar veículos
@@ -175,6 +288,25 @@ export default function VagasPage() {
             totalDias
         }
     }, [veiculos])
+
+    // Se não há evento, mostrar loading
+    if (!evento) {
+        return (
+            <EventLayout
+                eventId={eventId}
+                eventName="Carregando..."
+            >
+                <div className="p-4">
+                    <div className="flex items-center justify-center h-64">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                            <p className="text-gray-600">Carregando estacionamento do evento...</p>
+                        </div>
+                    </div>
+                </div>
+            </EventLayout>
+        )
+    }
 
     // Handlers para modais
     const handleOpenModal = (veiculo?: EventVehicle) => {
@@ -271,16 +403,6 @@ export default function VagasPage() {
             default:
                 return <Badge variant="secondary">{status}</Badge>
         }
-    }
-
-    if (!evento) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center">
-                    <h2 className="text-2xl font-bold mb-4">Evento não encontrado</h2>
-                </div>
-            </div>
-        )
     }
 
     return (
@@ -397,10 +519,28 @@ export default function VagasPage() {
                                             : `border-transparent text-gray-500 ${getTabColor(day.type, false)}`
                                             }`}
                                     >
-                                        <div className="flex flex-col items-center">
-                                            <span className="text-xs font-medium">
-                                                {day.label.split(' ')[0]}
-                                            </span>
+                                        <div className="flex flex-col items-center gap-1">
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs font-medium">
+                                                    {day.label.split(' ')[0]}
+                                                </span>
+                                                {getPeriodIcon(day.period)}
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs opacity-75">
+                                                    {day.type === 'setup' ? 'MONTAGEM' : 
+                                                     day.type === 'event' ? 'EVENTO' :
+                                                     day.type === 'teardown' ? 'DESMONTAGEM' :
+                                                     day.type === 'preparation' ? 'EVENTO' :
+                                                     day.type === 'finalization' ? 'DESMONTAGEM' : 
+                                                     'EVENTO'}
+                                                </span>
+                                                {day.period && (
+                                                    <span className="text-xs opacity-60">
+                                                        ({day.period === 'diurno' ? 'D' : 'N'})
+                                                    </span>
+                                                )}
+                                            </div>
                                             <span className="text-xs opacity-75">
                                                 ({veiculosInDay})
                                             </span>
@@ -457,7 +597,7 @@ export default function VagasPage() {
                                             <div className="flex flex-col items-center">
                                                 <Car className="w-8 h-8 text-gray-400 mb-2" />
                                                 <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                    {selectedDay ? `Nenhum veículo encontrado para ${new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR')}` : 'Selecione uma data'}
+                                                    {selectedDay ? `Nenhum veículo encontrado para ${formatEventDate(selectedDay + 'T00:00:00')}` : 'Selecione uma data'}
                                                 </p>
                                                 <p className="text-sm text-gray-500">
                                                     {selectedDay ? 'Registre uma nova retirada para esta data' : 'Escolha uma data do evento para ver os veículos'}
@@ -493,7 +633,7 @@ export default function VagasPage() {
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                 <div className="flex items-center gap-1">
                                                     <Calendar className="h-4 w-4 text-gray-400" />
-                                                    {new Date(veiculo.dia + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                                    {formatEventDate(veiculo.dia + 'T00:00:00')}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

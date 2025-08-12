@@ -13,6 +13,7 @@ export const useEventos = (params?: PaginationParams & { id?: string }) => {
       }
       // Busca todos os eventos
       const data = await getEventAll(params);
+      console.log("HOOK", data);
       return Array.isArray(data) ? data : [];
     },
   });

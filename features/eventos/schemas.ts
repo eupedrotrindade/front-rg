@@ -142,7 +142,11 @@ export const credentialSchema = z.object({
   id_events: z.string().min(1, "Evento obrigatório"),
   days_works: z
     .array(z.string())
-    .min(1, "Pelo menos um dia de trabalho é obrigatório"),
+    .refine((days) => {
+      // Filtrar valores undefined/null e verificar se há pelo menos um dia válido
+      const validDays = days.filter(day => day && day.trim().length > 0);
+      return validDays.length > 0;
+    }, "Pelo menos um dia de trabalho válido é obrigatório"),
   isActive: z.boolean().optional(),
   isDistributed: z.boolean().optional(),
 });
@@ -153,7 +157,13 @@ export const credentialUpdateSchema = z.object({
   id_events: z.string().min(1, "Evento obrigatório").optional(),
   days_works: z
     .array(z.string())
-    .min(1, "Pelo menos um dia de trabalho é obrigatório")
+    .refine((days) => {
+      // Se o array não foi fornecido (opcional), é válido
+      if (!days) return true;
+      // Se fornecido, deve ter pelo menos um dia válido
+      const validDays = days.filter(day => day && day.trim().length > 0);
+      return validDays.length > 0;
+    }, "Pelo menos um dia de trabalho válido é obrigatório")
     .optional(),
   isActive: z.boolean().optional(),
   isDistributed: z.boolean().optional(),

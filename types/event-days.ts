@@ -1,18 +1,20 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Tipos para a nova estrutura flexível de dias de evento
 
 export interface EventDay {
   date: string; // formato: "2025-08-11T10:00:00" (ISO datetime)
   start: boolean; // Define se é um dia de início
   end: boolean; // Define se é um dia de fim
+  idSync?: string; // ID para sincronizar início e fim do mesmo período
 }
 
 export interface EventDaysStructure {
-  montagem: EventDay[];
-  evento: EventDay[];
-  desmontagem: EventDay[];
+  montagem: SimpleEventDay[];
+  evento: SimpleEventDay[];
+  desmontagem: SimpleEventDay[];
 }
 
-export type EventPhase = 'montagem' | 'evento' | 'desmontagem';
+export type EventPhase = "montagem" | "evento" | "desmontagem";
 
 // Tipos para manipulação de dias
 export interface EventDayFormData {
@@ -43,8 +45,9 @@ export interface LegacyEventDates {
 }
 
 // Tipo combinado que suporta ambas as estruturas
-export type EventWithFlexibleDays = EventDaysStructure & Partial<LegacyEventDates> & {
-  id: string;
-  name: string;
-  [key: string]: any;
-};
+export type EventWithFlexibleDays = EventDaysStructure &
+  Partial<LegacyEventDates> & {
+    id: string;
+    name: string;
+    [key: string]: any;
+  };

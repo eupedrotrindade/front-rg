@@ -17,6 +17,7 @@ import { useState, useMemo, useCallback } from 'react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import VirtualizedDashboardList from '@/components/virtualized-dashboard/VirtualizedDashboardList'
 import '@/styles/virtualized-dashboard.css'
+import { formatEventDate } from '@/lib/utils'
 
 export default function EventDashboardPage() {
     const params = useParams()
@@ -91,7 +92,7 @@ export default function EventDashboardPage() {
         try {
             const date = new Date(dateStr);
             if (!isNaN(date.getTime())) {
-                return date.toLocaleDateString('pt-BR');
+                return formatEventDate(date.toISOString());
             }
         } catch (error) {
             console.error('Erro ao converter data:', dateStr, error);
@@ -106,36 +107,55 @@ export default function EventDashboardPage() {
 
         const days: Array<{ id: string; label: string; date: string; type: string }> = [];
 
-        // Helper function para converter formato de data
-        const parseDate = (dateStr: string): Date => {
-            // Se está no formato DD/MM/YYYY, converte para YYYY-MM-DD
-            if (dateStr.includes('/')) {
-                const [day, month, year] = dateStr.split('/');
-                return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        // Função helper para processar arrays de dados do evento (nova estrutura)
+        const processEventArray = (eventData: any, stage: string, stageName: string) => {
+            if (!eventData) return;
+            
+            try {
+                let dataArray: any[] = [];
+                
+                // Se for string JSON, fazer parse
+                if (typeof eventData === 'string') {
+                    dataArray = JSON.parse(eventData);
+                }
+                // Se já for array, usar diretamente
+                else if (Array.isArray(eventData)) {
+                    dataArray = eventData;
+                }
+                // Se não for nem string nem array, sair
+                else {
+                    return;
+                }
+
+                // Processar cada item do array
+                dataArray.forEach(item => {
+                    if (item && item.date) {
+                        const formattedDate = formatEventDate(item.date);
+                        
+                        days.push({
+                            id: formattedDate,
+                            label: `${formattedDate} (${stageName})`,
+                            date: formattedDate,
+                            type: stage
+                        });
+                    }
+                });
+            } catch (error) {
+                console.warn(`Erro ao processar dados do evento para stage ${stage}:`, error);
             }
-            // Se já está no formato ISO, usa diretamente
-            return new Date(dateStr);
         };
 
-        // Adicionar dias de montagem da nova estrutura
-        if (evento.montagem && Array.isArray(evento.montagem)) {
-            evento.montagem.forEach(eventDay => {
-                const date = parseDate(eventDay.date);
-                const dateStr = date.toLocaleDateString('pt-BR');
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (MONTAGEM)`,
-                    date: dateStr,
-                    type: 'setup'
-                });
-            });
-        }
-        // Fallback para estrutura antiga
-        else if (evento.setupStartDate && evento.setupEndDate) {
+        // Processar nova estrutura do evento
+        processEventArray(evento.montagem, 'setup', 'MONTAGEM');
+        processEventArray(evento.evento, 'event', 'EVENTO');
+        processEventArray(evento.desmontagem, 'teardown', 'DESMONTAGEM');
+
+        // Fallback para estrutura antiga (manter compatibilidade)
+        if (evento.setupStartDate && evento.setupEndDate) {
             const startDate = new Date(evento.setupStartDate);
             const endDate = new Date(evento.setupEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = date.toLocaleDateString('pt-BR');
+                const dateStr = formatEventDate(date.toISOString());
                 days.push({
                     id: dateStr,
                     label: `${dateStr} (MONTAGEM)`,
@@ -145,25 +165,11 @@ export default function EventDashboardPage() {
             }
         }
 
-        // Adicionar dias de evento da nova estrutura
-        if (evento.evento && Array.isArray(evento.evento)) {
-            evento.evento.forEach(eventDay => {
-                const date = parseDate(eventDay.date);
-                const dateStr = date.toLocaleDateString('pt-BR');
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (EVENTO)`,
-                    date: dateStr,
-                    type: 'event'
-                });
-            });
-        }
-        // Fallback para estrutura antiga
-        else if (evento.preparationStartDate && evento.preparationEndDate) {
+        if (evento.preparationStartDate && evento.preparationEndDate) {
             const startDate = new Date(evento.preparationStartDate);
             const endDate = new Date(evento.preparationEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = date.toLocaleDateString('pt-BR');
+                const dateStr = formatEventDate(date.toISOString());
                 days.push({
                     id: dateStr,
                     label: `${dateStr} (EVENTO)`,
@@ -173,25 +179,11 @@ export default function EventDashboardPage() {
             }
         }
 
-        // Adicionar dias de desmontagem da nova estrutura
-        if (evento.desmontagem && Array.isArray(evento.desmontagem)) {
-            evento.desmontagem.forEach(eventDay => {
-                const date = parseDate(eventDay.date);
-                const dateStr = date.toLocaleDateString('pt-BR');
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (DESMONTAGEM)`,
-                    date: dateStr,
-                    type: 'teardown'
-                });
-            });
-        }
-        // Fallback para estrutura antiga
-        else if (evento.finalizationStartDate && evento.finalizationEndDate) {
+        if (evento.finalizationStartDate && evento.finalizationEndDate) {
             const startDate = new Date(evento.finalizationStartDate);
             const endDate = new Date(evento.finalizationEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = date.toLocaleDateString('pt-BR');
+                const dateStr = formatEventDate(date.toISOString());
                 days.push({
                     id: dateStr,
                     label: `${dateStr} (DESMONTAGEM)`,
@@ -200,6 +192,13 @@ export default function EventDashboardPage() {
                 });
             }
         }
+
+        // Ordenar dias cronologicamente
+        days.sort((a, b) => {
+            const dateA = new Date(a.date.split('/').reverse().join('-'));
+            const dateB = new Date(b.date.split('/').reverse().join('-'));
+            return dateA.getTime() - dateB.getTime();
+        });
 
         return days;
     }, [evento]);
@@ -623,10 +622,10 @@ export default function EventDashboardPage() {
                                                 <div className="text-sm text-gray-600">
                                                     {evento.montagem && evento.montagem.length > 0 ? (
                                                         evento.montagem.length === 1 ? 
-                                                        evento.montagem[0].date :
-                                                        `${evento.montagem[0].date} - ${evento.montagem[evento.montagem.length - 1].date}`
+                                                        formatEventDate(evento.montagem[0].date) :
+                                                        `${formatEventDate(evento.montagem[0].date)} - ${formatEventDate(evento.montagem[evento.montagem.length - 1].date)}`
                                                     ) : (
-                                                        `${new Date(evento.setupStartDate!).toLocaleDateString('pt-BR')} - ${new Date(evento.setupEndDate!).toLocaleDateString('pt-BR')}`
+                                                        `${formatEventDate(evento.setupStartDate!)} - ${formatEventDate(evento.setupEndDate!)}`
                                                     )}
                                                 </div>
                                             </div>
@@ -644,10 +643,10 @@ export default function EventDashboardPage() {
                                                 <div className="text-sm text-gray-600">
                                                     {evento.evento && evento.evento.length > 0 ? (
                                                         evento.evento.length === 1 ? 
-                                                        evento.evento[0].date :
-                                                        `${evento.evento[0].date} - ${evento.evento[evento.evento.length - 1].date}`
+                                                        formatEventDate(evento.evento[0].date) :
+                                                        `${formatEventDate(evento.evento[0].date)} - ${formatEventDate(evento.evento[evento.evento.length - 1].date)}`
                                                     ) : (
-                                                        `${new Date(evento.preparationStartDate!).toLocaleDateString('pt-BR')} - ${new Date(evento.preparationEndDate!).toLocaleDateString('pt-BR')}`
+                                                        `${formatEventDate(evento.preparationStartDate!)} - ${formatEventDate(evento.preparationEndDate!)}`
                                                     )}
                                                 </div>
                                             </div>
@@ -665,10 +664,10 @@ export default function EventDashboardPage() {
                                                 <div className="text-sm text-gray-600">
                                                     {evento.desmontagem && evento.desmontagem.length > 0 ? (
                                                         evento.desmontagem.length === 1 ? 
-                                                        evento.desmontagem[0].date :
-                                                        `${evento.desmontagem[0].date} - ${evento.desmontagem[evento.desmontagem.length - 1].date}`
+                                                        formatEventDate(evento.desmontagem[0].date) :
+                                                        `${formatEventDate(evento.desmontagem[0].date)} - ${formatEventDate(evento.desmontagem[evento.desmontagem.length - 1].date)}`
                                                     ) : (
-                                                        `${new Date(evento.finalizationStartDate!).toLocaleDateString('pt-BR')} - ${new Date(evento.finalizationEndDate!).toLocaleDateString('pt-BR')}`
+                                                        `${formatEventDate(evento.finalizationStartDate!)} - ${formatEventDate(evento.finalizationEndDate!)}`
                                                     )}
                                                 </div>
                                             </div>

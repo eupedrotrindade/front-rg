@@ -3,20 +3,28 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Trash2, Plus, Calendar, AlertCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Trash2, Plus, Calendar, AlertCircle, Info, CheckCircle2 } from 'lucide-react';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { renderTimeViewClock } from '@mui/x-date-pickers/timeViewRenderers';
+import { DemoContainer } from '@mui/x-date-pickers/internals/demo';
+import dayjs, { Dayjs } from 'dayjs';
+import 'dayjs/locale/pt-br';
 import { EventDay, EventPhase } from '@/types/event-days';
 import { useEventDays } from '@/hooks/use-event-days';
+import { SimpleEventDay } from '@/types/simple-event-days';
 
 interface EventDaysManagerProps {
   initialData?: {
-    montagem: EventDay[];
-    evento: EventDay[];
-    desmontagem: EventDay[];
+    montagem: SimpleEventDay[];
+    evento: SimpleEventDay[];
+    desmontagem: SimpleEventDay[];
   };
-  onChange?: (days: { montagem: EventDay[]; evento: EventDay[]; desmontagem: EventDay[] }) => void;
+  onChange?: (days: { montagem: SimpleEventDay[]; evento: SimpleEventDay[]; desmontagem: SimpleEventDay[] }) => void;
   className?: string;
 }
 
@@ -55,35 +63,154 @@ export default function EventDaysManager({ initialData, onChange, className = ''
   const [newDayForm, setNewDayForm] = useState<{
     phase: EventPhase | '';
     date: string;
-    start: boolean;
-    end: boolean;
+    selectedGroup: string;
   }>({
     phase: '',
     date: '',
-    start: true,
-    end: false
+    selectedGroup: ''
   });
 
+  // MUI DatePicker state
+  const [selectedDate, setSelectedDate] = useState<Dayjs | null>(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+  // Update form date when MUI picker changes
+  React.useEffect(() => {
+    if (selectedDate) {
+      setNewDayForm(prev => ({ ...prev, date: selectedDate.toISOString() }));
+    }
+  }, [selectedDate]);
+
+  // Handle date selection and close modal
+  const handleDateSelect = (newDate: Dayjs | null) => {
+    setSelectedDate(newDate);
+    if (newDate) {
+      setDatePickerOpen(false);
+    }
+  };
+
+  // Format selected date for display
+  const formatSelectedDateForDisplay = () => {
+    if (!selectedDate) return 'Selecionar data e hora';
+    return selectedDate.format('DD/MM/YYYY HH:mm');
+  };
+
   // Call onChange when data changes
+  const prevDataRef = React.useRef<string>('');
   React.useEffect(() => {
     if (onChange) {
-      onChange({
+      const currentData = {
         montagem: eventDays.montagem,
         evento: eventDays.evento,
         desmontagem: eventDays.desmontagem
-      });
+      };
+      const currentDataString = JSON.stringify(currentData);
+
+      // Only call onChange if data actually changed
+      if (prevDataRef.current !== currentDataString) {
+        prevDataRef.current = currentDataString;
+        onChange(currentData);
+      }
     }
   }, [eventDays.montagem, eventDays.evento, eventDays.desmontagem, onChange]);
+
+  // Helper functions for idSync generation
+  const generateNextGroupId = (phase: EventPhase): string => {
+    const syncedPeriods = eventDays.getSyncedPeriods(phase);
+    const existingNumbers = Object.keys(syncedPeriods)
+      .filter(id => id.startsWith(`${phase}-`))
+      .map(id => parseInt(id.split('-')[1]) || 0)
+      .filter(num => !isNaN(num));
+
+    const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
+    return `${phase}-${maxNumber + 1}`;
+  };
+
+  const getExistingGroups = (phase: EventPhase): string[] => {
+    const syncedPeriods = eventDays.getSyncedPeriods(phase);
+    return Object.keys(syncedPeriods).filter(id => id.startsWith(`${phase}-`));
+  };
+
+  const getGroupStatus = (phase: EventPhase, groupId: string): { hasStart: boolean; hasEnd: boolean } => {
+    const existingDays = eventDays.getDaysByPhase(phase);
+    const groupDays = existingDays.filter(day => day.idSync === groupId);
+
+    return {
+      hasStart: groupDays.some(day => day.start),
+      hasEnd: groupDays.some(day => day.end)
+    };
+  };
 
   const handleAddDay = () => {
     if (!newDayForm.phase || !newDayForm.date) {
       return;
     }
 
+    let idSync: string | undefined;
+
+    if (newDayForm.selectedGroup === 'NEW_GROUP') {
+      // Generate new group ID
+      idSync = generateNextGroupId(newDayForm.phase as EventPhase);
+    } else if (newDayForm.selectedGroup) {
+      // Use existing group
+      idSync = newDayForm.selectedGroup;
+    }
+
+    // Determine start/end automatically based on existing dates in the period
+    const existingDays = eventDays.getDaysByPhase(newDayForm.phase as EventPhase);
+    const groupDays = existingDays.filter(day => day.idSync === idSync);
+    const newDate = new Date(newDayForm.date);
+
+    let start = false;
+    let end = false;
+
+    if (groupDays.length === 0) {
+      // First day in period - mark as start
+      start = true;
+    } else {
+      // Check if this should be start or end based on chronological order
+      const groupDates = groupDays.map(day => new Date(day.date)).sort((a, b) => a.getTime() - b.getTime());
+      const earliestDate = groupDates[0];
+      const latestDate = groupDates[groupDates.length - 1];
+
+      if (newDate < earliestDate) {
+        // New date is earlier than all existing dates - make it start
+        start = true;
+        // Update existing earliest date to not be start anymore
+        const earliestDay = groupDays.find(day => new Date(day.date).getTime() === earliestDate.getTime());
+        if (earliestDay) {
+          const dayIndex = existingDays.indexOf(earliestDay);
+          eventDays.updateEventDay(newDayForm.phase as EventPhase, dayIndex, {
+            ...earliestDay,
+            start: false
+          });
+        }
+      } else if (newDate > latestDate) {
+        // New date is later than all existing dates - make it end
+        end = true;
+        // Update existing latest date to not be end anymore
+        const latestDay = groupDays.find(day => new Date(day.date).getTime() === latestDate.getTime());
+        if (latestDay) {
+          const dayIndex = existingDays.indexOf(latestDay);
+          eventDays.updateEventDay(newDayForm.phase as EventPhase, dayIndex, {
+            ...latestDay,
+            end: false
+          });
+        }
+      }
+      // If date is between existing dates, it's neither start nor end
+    }
+
+    // If there's only one other day and this is the second, make this one end and keep the other as start
+    if (groupDays.length === 1) {
+      end = true;
+    }
+
     const newDay: EventDay = {
       date: newDayForm.date,
-      start: newDayForm.start,
-      end: newDayForm.end
+      start: start,
+      end: end,
+      idSync: idSync
     };
 
     eventDays.addEventDay(newDayForm.phase as EventPhase, newDay);
@@ -92,19 +219,19 @@ export default function EventDaysManager({ initialData, onChange, className = ''
     setNewDayForm({
       phase: '',
       date: '',
-      start: true,
-      end: false
+      selectedGroup: ''
     });
+    setSelectedDate(null);
   };
 
   const formatDateTimeForInput = (dateTimeStr: string): string => {
     // Convert ISO datetime to datetime-local format (YYYY-MM-DDTHH:mm)
     if (!dateTimeStr) return '';
-    
+
     try {
       const date = new Date(dateTimeStr);
       if (isNaN(date.getTime())) return '';
-      
+
       return date.toISOString().slice(0, 16); // Remove seconds and timezone
     } catch {
       return '';
@@ -114,11 +241,11 @@ export default function EventDaysManager({ initialData, onChange, className = ''
   const formatDateTimeFromInput = (inputStr: string): string => {
     // Convert datetime-local format to ISO datetime
     if (!inputStr) return '';
-    
+
     try {
       const date = new Date(inputStr);
       if (isNaN(date.getTime())) return '';
-      
+
       return date.toISOString(); // Full ISO datetime
     } catch {
       return '';
@@ -128,14 +255,14 @@ export default function EventDaysManager({ initialData, onChange, className = ''
   const formatDateTimeDisplay = (dateTimeStr: string): string => {
     // Format ISO datetime for display as DD/MM/YYYY HH:mm
     if (!dateTimeStr) return '';
-    
+
     try {
       const date = new Date(dateTimeStr);
       if (isNaN(date.getTime())) return dateTimeStr; // Fallback to original string
-      
-      return date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+
+      return date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit'
       });
     } catch {
       return dateTimeStr; // Fallback to original string
@@ -147,88 +274,165 @@ export default function EventDaysManager({ initialData, onChange, className = ''
   return (
     <div className={`space-y-6 ${className}`}>
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <Calendar className="w-5 h-5 text-blue-600" />
-        <h3 className="text-lg font-semibold">Gerenciar Dias do Evento</h3>
+      <div className="flex items-center gap-3 mb-2">
+        <div className="p-2 bg-blue-50 rounded-lg">
+          <Calendar className="w-6 h-6 text-blue-600" />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold text-gray-900">Gerenciar Dias do Evento</h3>
+          <p className="text-sm text-gray-600">Configure as datas e períodos das diferentes fases do evento</p>
+        </div>
       </div>
 
       {/* Validation Errors */}
       {!validation.isValid && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertCircle className="w-4 h-4 text-red-600" />
-            <span className="font-medium text-red-800">Erros de Validação</span>
-          </div>
-          <ul className="list-disc list-inside space-y-1 text-red-700 text-sm">
-            {validation.errors.map((error, index) => (
-              <li key={index}>{error}</li>
-            ))}
-          </ul>
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <p className="font-medium">Erros de Validação:</p>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                {validation.errors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Add New Day Form */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Adicionar Novo Dia</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Plus className="w-5 h-5 text-blue-600" />
+            Adicionar Novo Dia
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1  gap-4">
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <Label htmlFor="phase">Fase</Label>
-              <select
-                id="phase"
+              <Select
                 value={newDayForm.phase}
-                onChange={(e) => setNewDayForm(prev => ({ ...prev, phase: e.target.value as EventPhase }))}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                onValueChange={(value) => setNewDayForm(prev => ({ ...prev, phase: value as EventPhase }))}
               >
-                <option value="">Selecione uma fase</option>
-                {phases.map(phase => (
-                  <option key={phase.key} value={phase.key}>
-                    {phase.title}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma fase" />
+                </SelectTrigger>
+                <SelectContent className=''>
+                  {phases.map(phase => (
+                    <SelectItem key={phase.key} value={phase.key}>
+                      {phase.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <Label htmlFor="date">Data e Hora</Label>
-              <Input
-                id="date"
-                type="datetime-local"
-                value={formatDateTimeForInput(newDayForm.date)}
-                onChange={(e) => setNewDayForm(prev => ({ ...prev, date: formatDateTimeFromInput(e.target.value) }))}
-              />
+              <Label>Data e Hora</Label>
+              <div className="mt-2">
+                <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="pt-br">
+                  <DemoContainer components={['DateTimePicker']}>
+                    <DateTimePicker
+                      label="Selecionar data e hora"
+                      value={selectedDate}
+                      onChange={handleDateSelect}
+                      viewRenderers={{
+                        hours: renderTimeViewClock,
+                        minutes: renderTimeViewClock,
+                        seconds: renderTimeViewClock,
+                      }}
+                    />
+                  </DemoContainer>
+                </LocalizationProvider>
+              </div>
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="start"
-                  checked={newDayForm.start}
-                  onCheckedChange={(checked) => setNewDayForm(prev => ({ ...prev, start: !!checked }))}
-                />
-                <Label htmlFor="start">Dia de início</Label>
-              </div>
+              <Label htmlFor="groupSelect">Período</Label>
+              <Select
+                value={newDayForm.selectedGroup}
+                onValueChange={(value) => setNewDayForm(prev => ({ ...prev, selectedGroup: value }))}
+                disabled={!newDayForm.phase}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NEW_GROUP">
+                    + Criar novo período ({newDayForm.phase ? generateNextGroupId(newDayForm.phase as EventPhase) : 'fase-1'})
+                  </SelectItem>
+                  {newDayForm.phase && getExistingGroups(newDayForm.phase as EventPhase).map(groupId => {
+                    const status = getGroupStatus(newDayForm.phase as EventPhase, groupId);
+                    const statusIcon = status.hasStart && status.hasEnd ? '✅' :
+                      status.hasStart ? '🟡' : '⏳';
+                    const statusText = status.hasStart && status.hasEnd ? ' (completo)' :
+                      status.hasStart ? ' (precisa fim)' : ' (precisa início)';
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="end"
-                  checked={newDayForm.end}
-                  onCheckedChange={(checked) => setNewDayForm(prev => ({ ...prev, end: !!checked }))}
-                />
-                <Label htmlFor="end">Dia de fim</Label>
-              </div>
+                    return (
+                      <SelectItem key={groupId} value={groupId}>
+                        {statusIcon} {groupId}{statusText}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  <strong>Automatização:</strong> Primeira data = início, última data = fim
+                </AlertDescription>
+              </Alert>
+
+              {/* Status hints */}
+              {newDayForm.selectedGroup && newDayForm.selectedGroup !== 'NEW_GROUP' && newDayForm.phase && (
+                <Alert>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    {(() => {
+                      const existingDays = eventDays.getDaysByPhase(newDayForm.phase as EventPhase);
+                      const groupDays = existingDays.filter(day => day.idSync === newDayForm.selectedGroup);
+                      const dayCount = groupDays.length;
+
+                      if (dayCount === 0) {
+                        return '💡 Este será o primeiro dia do período (automaticamente marcado como início).';
+                      } else if (dayCount === 1) {
+                        return '✨ Este será o segundo dia do período. O sistema determinará início/fim pela ordem cronológica.';
+                      } else {
+                        return `📅 Este período já tem ${dayCount} dias. A nova data será posicionada cronologicamente.`;
+                      }
+                    })()}
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
-            <div className="flex items-end">
+            <Alert className="border-green-200 bg-green-50">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <AlertDescription>
+                <p className="text-sm text-green-800 font-medium">✨ Automatização Ativada</p>
+                <p className="text-xs text-green-600 mt-1">
+                  O sistema define automaticamente início e fim baseado na ordem cronológica das datas no período.
+                </p>
+              </AlertDescription>
+            </Alert>
+
+            <div className="pt-2">
               <Button
                 onClick={handleAddDay}
-                disabled={!newDayForm.phase || !newDayForm.date}
-                className="w-full"
+                disabled={
+                  !newDayForm.phase ||
+                  !newDayForm.date ||
+                  !newDayForm.selectedGroup
+                }
+                className="w-full h-11 text-base font-medium"
+                size="lg"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Adicionar
+                <Plus className="w-5 h-5 mr-2" />
+                Adicionar Dia
               </Button>
             </div>
           </div>
@@ -236,63 +440,104 @@ export default function EventDaysManager({ initialData, onChange, className = ''
       </Card>
 
       {/* Phases */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {phases.map((phaseConfig) => {
           const phaseDays = eventDays.getDaysByPhase(phaseConfig.key);
           const displayFormat = eventDays.formatDatesForDisplay();
+          const groupedPeriods = eventDays.getPeriodsGrouped(phaseConfig.key);
 
           return (
             <Card key={phaseConfig.key} className={phaseConfig.color}>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center justify-between">
-                  {phaseConfig.title}
-                  <span className="text-sm font-normal text-gray-600">
-                    ({phaseDays.length} dia{phaseDays.length !== 1 ? 's' : ''})
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <CardTitle className="text-lg font-semibold text-gray-900">
+                    {phaseConfig.title}
+                  </CardTitle>
+                  <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
+                    {phaseDays.length} dia{phaseDays.length !== 1 ? 's' : ''}
                   </span>
-                </CardTitle>
-                <p className="text-xs text-gray-600">{phaseConfig.description}</p>
+                </div>
+                <p className="text-sm text-gray-600 mb-3">{phaseConfig.description}</p>
                 {displayFormat[phaseConfig.key] && (
-                  <p className="text-sm font-medium text-gray-800">
-                    {displayFormat[phaseConfig.key]}
-                  </p>
+                  <div className="p-2 bg-gray-50 rounded-md">
+                    <p className="text-sm font-medium text-gray-800">
+                      {displayFormat[phaseConfig.key]}
+                    </p>
+                  </div>
                 )}
               </CardHeader>
 
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-4">
                 {phaseDays.length === 0 ? (
                   <p className="text-sm text-gray-500 italic">Nenhum dia adicionado</p>
                 ) : (
-                  phaseDays.map((day, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-2 bg-white rounded border"
-                    >
-                      <div>
-                        <span className="font-medium">{formatDateTimeDisplay(day.date)}</span>
-                        <div className="flex gap-2 mt-1">
-                          {day.start && (
-                            <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
-                              Início
-                            </span>
-                          )}
-                          {day.end && (
-                            <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
-                              Fim
-                            </span>
-                          )}
+                  <>
+                    {/* Períodos Sincronizados */}
+                    {Object.entries(groupedPeriods.synced).map(([idSync, syncedDays]) => (
+                      <div key={idSync} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            {idSync}
+                          </h4>
+                          <span className="px-2 py-1 text-xs font-medium bg-blue-50 text-blue-700 rounded-full">
+                            {syncedDays.length} dia{syncedDays.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {syncedDays.map((day, dayIndex) => {
+                            const originalIndex = phaseDays.findIndex(d => d === day);
+                            return (
+                              <div
+                                key={dayIndex}
+                                className="flex items-center justify-between p-2 bg-white rounded border"
+                              >
+                                <div className="flex-1">
+                                  <span className="font-medium">{formatDateTimeDisplay(day.date)}</span>
+                                  <div className="flex flex-wrap gap-2 mt-1">
+                                    {day.start && (
+                                      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
+                                        Início
+                                      </span>
+                                    )}
+                                    {day.end && (
+                                      <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
+                                        Fim
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => eventDays.removeEventDay(phaseConfig.key, originalIndex)}
+                                  className="text-red-600 hover:text-red-800"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
+                    ))}
 
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => eventDays.removeEventDay(phaseConfig.key, index)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))
+                    {/* Alerta para dias sem período (não deveria acontecer mais) */}
+                    {groupedPeriods.individual.length > 0 && (
+                      <Alert variant="default" className="border-yellow-200 bg-yellow-50">
+                        <AlertCircle className="h-4 w-4 text-yellow-600" />
+                        <AlertDescription>
+                          <p className="text-sm text-yellow-800 font-medium">
+                            ⚠️ Encontrados {groupedPeriods.individual.length} dia(s) sem período definido
+                          </p>
+                          <p className="text-xs text-yellow-600 mt-1">
+                            Estes dias foram criados antes da implementação dos períodos obrigatórios.
+                          </p>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </>
                 )}
 
                 {phaseDays.length > 0 && (
@@ -313,14 +558,26 @@ export default function EventDaysManager({ initialData, onChange, className = ''
 
       {/* Summary */}
       {eventDays.hasAnyDays() && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Resumo</CardTitle>
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              Resumo da Configuração
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-sm text-gray-600">
-              <p>Total de dias configurados: {eventDays.getAllDays().length}</p>
-              <p>Status: {validation.isValid ? '✅ Configuração válida' : '❌ Configuração inválida'}</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
+                <span className="text-sm font-medium text-gray-700">Total de dias configurados</span>
+                <span className="text-lg font-bold text-blue-600">{eventDays.getAllDays().length}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
+                <span className="text-sm font-medium text-gray-700">Status da configuração</span>
+                <span className={`text-sm font-semibold ${validation.isValid ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                  {validation.isValid ? '✅ Válida' : '❌ Inválida'}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import React, { useState } from "react"
+import React, { useState, useMemo, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,7 +18,6 @@ import {
     Building,
     Shield,
     Bell,
-
     FileText,
     Save,
     AlertTriangle,
@@ -33,10 +33,57 @@ export default function EventoConfiguracoesPage() {
     const eventId = String(params.id)
     const { data: eventos } = useEventos()
 
-    // Buscar dados do evento
-    const evento = Array.isArray(eventos)
-        ? eventos.find((e) => String(e.id) === String(eventId))
-        : undefined
+    // Buscar dados do evento com tratamento robusto
+    const evento = useMemo(() => {
+        const foundEvent = Array.isArray(eventos)
+            ? eventos.find((e) => String(e.id) === String(eventId))
+            : undefined
+
+        // Debug temporário para verificar estrutura dos dados
+        if (foundEvent) {
+            console.log('🔍 Evento encontrado em configurações:', {
+                id: foundEvent.id,
+                name: foundEvent.name,
+                montagem: foundEvent.montagem,
+                evento: foundEvent.evento,
+                desmontagem: foundEvent.desmontagem,
+                montagemType: typeof foundEvent.montagem,
+                eventoType: typeof foundEvent.evento,
+                desmontagemType: typeof foundEvent.desmontagem
+            })
+        }
+
+        return foundEvent
+    }, [eventos, eventId])
+
+    // Função helper para garantir que os dados sejam arrays válidos
+    const ensureArray = useCallback((data: any): any[] => {
+        if (!data) return []
+
+        // Se for string, tentar fazer parse
+        if (typeof data === 'string') {
+            try {
+                const parsed = JSON.parse(data)
+                return Array.isArray(parsed) ? parsed : []
+            } catch (error) {
+                console.warn('⚠️ Dados não são JSON válido:', data)
+                return []
+            }
+        }
+
+        // Se já for array, retornar como está
+        if (Array.isArray(data)) {
+            return data
+        }
+
+        // Se for objeto, tentar extrair dados
+        if (typeof data === 'object' && data !== null) {
+            console.warn('⚠️ Dados inesperados para dias do evento:', data)
+            return []
+        }
+
+        return []
+    }, [])
 
     // Estados para configurações
     const [configuracoes, setConfiguracoes] = useState({
@@ -99,6 +146,18 @@ export default function EventoConfiguracoesPage() {
 
     const [isLoading, setIsLoading] = useState(false)
 
+    // Atualizar configurações quando evento mudar
+    React.useEffect(() => {
+        if (evento) {
+            setConfiguracoes(prev => ({
+                ...prev,
+                nome: evento.name || "",
+                descricao: evento.description || "",
+                status: evento.isActive ? "ativo" : "inativo"
+            }))
+        }
+    }, [evento])
+
     const handleSave = async () => {
         setIsLoading(true)
         try {
@@ -160,6 +219,25 @@ export default function EventoConfiguracoesPage() {
             })
             toast.success("Configurações redefinidas!")
         }
+    }
+
+    // Se não há evento, mostrar loading
+    if (!evento) {
+        return (
+            <EventLayout
+                eventId={eventId}
+                eventName="Carregando..."
+            >
+                <div className="p-8">
+                    <div className="flex items-center justify-center h-64">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                            <p className="text-gray-600">Carregando configurações do evento...</p>
+                        </div>
+                    </div>
+                </div>
+            </EventLayout>
+        )
     }
 
     return (
@@ -245,7 +323,6 @@ export default function EventoConfiguracoesPage() {
                                         placeholder="Local do evento"
                                     />
                                 </div>
-
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-2">Descrição</label>
@@ -258,8 +335,6 @@ export default function EventoConfiguracoesPage() {
                             </div>
                         </CardContent>
                     </Card>
-
-
 
                     {/* Configurações de Segurança */}
                     <Card>
@@ -324,10 +399,6 @@ export default function EventoConfiguracoesPage() {
                             </div>
                         </CardContent>
                     </Card>
-
-
-
-
                 </div>
 
                 {/* Actions */}

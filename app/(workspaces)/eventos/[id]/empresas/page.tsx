@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink } from "lucide-react"
+import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink, Sun, Moon } from "lucide-react"
 import { toast } from "sonner"
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas"
 import { useCreateEmpresa, useDeleteEmpresa, useUpdateEmpresa } from "@/features/eventos/api/mutation"
@@ -17,6 +17,7 @@ import { useEventos } from "@/features/eventos/api/query"
 import type { CreateEmpresaRequest, Empresa, Event } from "@/features/eventos/types"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useParams } from "next/navigation"
+import { formatEventDate } from "@/lib/utils"
 
 export default function EmpresasPage() {
     const [searchTerm, setSearchTerm] = useState("")
@@ -41,42 +42,106 @@ export default function EmpresasPage() {
     const { data: event } = useEventos({ id: eventId })
 
     // Função para calcular os dias do evento com período
-    const getEventDays = (event: Event): { label: string; value: string; periodo: string }[] => {
-        if (!event.startDate || !event.endDate) return []
+    const getEventDays = (event: Event): { label: string; value: string; periodo: string; diurnoNoturno?: 'diurno' | 'noturno' }[] => {
+        if (!event) return []
 
-        // Parse datas dos períodos
+        const days: { label: string; value: string; periodo: string; diurnoNoturno?: 'diurno' | 'noturno' }[] = []
+
+        // Função helper para processar arrays de dados do evento (nova estrutura)
+        const processEventArray = (eventData: any, stage: string, stageName: string) => {
+            if (!eventData) return;
+            
+            try {
+                let dataArray: any[] = [];
+                
+                // Se for string JSON, fazer parse
+                if (typeof eventData === 'string') {
+                    dataArray = JSON.parse(eventData);
+                }
+                // Se já for array, usar diretamente
+                else if (Array.isArray(eventData)) {
+                    dataArray = eventData;
+                }
+                // Se não for nem string nem array, sair
+                else {
+                    return;
+                }
+
+                // Processar cada item do array
+                dataArray.forEach(item => {
+                    if (item && item.date) {
+                        const formattedDate = formatEventDate(item.date);
+                        const dateObj = new Date(item.date);
+                        const hour = dateObj.getHours();
+                        const value = dateObj.toISOString().slice(0, 10); // YYYY-MM-DD
+                        
+                        // Determinar período (diurno: 6h-18h, noturno: 18h-6h)
+                        const diurnoNoturno = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        
+                        days.push({
+                            label: `${formattedDate} - ${stageName} - ${diurnoNoturno === 'diurno' ? 'Diurno' : 'Noturno'}`,
+                            value,
+                            periodo: stage,
+                            diurnoNoturno
+                        });
+                    }
+                });
+            } catch (error) {
+                console.warn(`Erro ao processar dados do evento para stage ${stage}:`, error);
+            }
+        };
+
+        // Processar nova estrutura do evento
+        processEventArray(event.montagem, 'montagem', 'MONTAGEM');
+        processEventArray(event.evento, 'evento', 'EVENTO');
+        processEventArray(event.desmontagem, 'desmontagem', 'DESMONTAGEM');
+
+        // Fallback para estrutura antiga (manter compatibilidade)
+        if (!event.startDate || !event.endDate) return days;
+
+        // Parse datas dos períodos da estrutura antiga
         const parse = (d?: string) => d ? new Date(d) : undefined
         const setupStart = parse(event.setupStartDate)
         const setupEnd = parse(event.setupEndDate)
         const prepStart = parse(event.preparationStartDate)
         const prepEnd = parse(event.preparationEndDate)
-        const eventStart = parse(event.preparationStartDate)
-        const eventEnd = parse(event.preparationEndDate)
         const finalStart = parse(event.finalizationStartDate)
         const finalEnd = parse(event.finalizationEndDate)
 
-        const days: { label: string; value: string; periodo: string }[] = []
-
         for (let d = new Date(event.startDate); d <= new Date(event.endDate); d.setDate(d.getDate() + 1)) {
-            const dateStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+            const dateStr = formatEventDate(d.toISOString())
             const value = d.toISOString().slice(0, 10) // YYYY-MM-DD
+            const hour = d.getHours();
+            const diurnoNoturno = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
 
             // Descobre o período
             let periodo = ''
             if (setupStart && setupEnd && d >= setupStart && d <= setupEnd) {
                 periodo = 'montagem'
-            } else if (eventStart && eventEnd && d >= eventStart && d <= eventEnd) {
+            } else if (prepStart && prepEnd && d >= prepStart && d <= prepEnd) {
                 periodo = 'evento'
             } else if (finalStart && finalEnd && d >= finalStart && d <= finalEnd) {
                 periodo = 'desmontagem'
             }
 
-            days.push({
-                label: `${dateStr} - ${periodo}`,
-                value,
-                periodo,
-            })
+            // Só adiciona se não foi adicionado pela nova estrutura
+            const existingDay = days.find(day => day.value === value);
+            if (!existingDay) {
+                days.push({
+                    label: `${dateStr} - ${periodo} - ${diurnoNoturno === 'diurno' ? 'Diurno' : 'Noturno'}`,
+                    value,
+                    periodo,
+                    diurnoNoturno
+                })
+            }
         }
+
+        // Ordenar dias cronologicamente
+        days.sort((a, b) => {
+            const dateA = new Date(a.value);
+            const dateB = new Date(b.value);
+            return dateA.getTime() - dateB.getTime();
+        });
 
         return days
     }
@@ -287,26 +352,36 @@ export default function EmpresasPage() {
         if (isActive) {
             switch (periodo) {
                 case 'montagem':
-                    return 'border-yellow-500 text-yellow-600 bg-yellow-50'
+                    return 'border-orange-500 text-orange-600 bg-orange-50'
                 case 'evento':
-                    return 'border-green-500 text-green-600 bg-green-50'
+                    return 'border-blue-500 text-blue-600 bg-blue-50'
                 case 'desmontagem':
-                    return 'border-purple-500 text-purple-600 bg-purple-50'
+                    return 'border-red-500 text-red-600 bg-red-50'
                 default:
-                    return 'border-purple-500 text-purple-600 bg-purple-50'
+                    return 'border-gray-500 text-gray-600 bg-gray-50'
             }
         } else {
             switch (periodo) {
                 case 'montagem':
-                    return 'hover:text-yellow-700 hover:border-yellow-300'
+                    return 'hover:text-orange-700 hover:border-orange-300'
                 case 'evento':
-                    return 'hover:text-green-700 hover:border-green-300'
+                    return 'hover:text-blue-700 hover:border-blue-300'
                 case 'desmontagem':
-                    return 'hover:text-purple-700 hover:border-purple-300'
+                    return 'hover:text-red-700 hover:border-red-300'
                 default:
                     return 'hover:text-gray-700 hover:border-gray-300'
             }
         }
+    }
+
+    // Função para obter ícone do período
+    const getPeriodIcon = (diurnoNoturno?: 'diurno' | 'noturno') => {
+        if (diurnoNoturno === 'diurno') {
+            return <Sun className="h-3 w-3 text-yellow-500" />;
+        } else if (diurnoNoturno === 'noturno') {
+            return <Moon className="h-3 w-3 text-blue-500" />;
+        }
+        return null;
     }
 
     // Função para obter status badge
@@ -431,13 +506,23 @@ export default function EmpresasPage() {
                                             : `border-transparent text-gray-500 ${getTabColor(date.periodo, false)}`
                                             }`}
                                     >
-                                        <div className="flex flex-col items-center">
-                                            <span className="text-xs font-medium">
-                                                {date.label.split(' - ')[0]}
-                                            </span>
-                                            <span className="text-xs opacity-75">
-                                                {date.periodo}
-                                            </span>
+                                        <div className="flex flex-col items-center gap-1">
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs font-medium">
+                                                    {date.label.split(' - ')[0]}
+                                                </span>
+                                                {getPeriodIcon(date.diurnoNoturno)}
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs opacity-75">
+                                                    {date.periodo.toUpperCase()}
+                                                </span>
+                                                {date.diurnoNoturno && (
+                                                    <span className="text-xs opacity-60">
+                                                        ({date.diurnoNoturno === 'diurno' ? 'D' : 'N'})
+                                                    </span>
+                                                )}
+                                            </div>
                                             <span className="text-xs opacity-75">
                                                 ({empresasInDay})
                                             </span>
@@ -495,15 +580,12 @@ export default function EmpresasPage() {
                                                 <div className="flex flex-wrap gap-1">
                                                     {Array.isArray(empresa.days) && empresa.days.length > 0 ? (
                                                         empresa.days.slice(0, 3).map((day, index) => {
-                                                            const date = new Date(day)
-                                                            const dateStr = date.toLocaleDateString("pt-BR", {
-                                                                day: "2-digit",
-                                                                month: "2-digit",
-                                                            })
+                                                            const dateStr = formatEventDate(day + 'T00:00:00')
 
                                                             // Encontrar o período da data
                                                             const availableDate = availableDates.find(d => d.value === day)
                                                             const periodo = availableDate?.periodo || ''
+                                                            const diurnoNoturno = availableDate?.diurnoNoturno || ''
 
                                                             return (
                                                                 <Badge
@@ -511,7 +593,7 @@ export default function EmpresasPage() {
                                                                     variant="secondary"
                                                                     className="text-xs bg-purple-50 text-purple-700 border-purple-200"
                                                                 >
-                                                                    {dateStr} - {periodo}
+                                                                    {dateStr} - {periodo.toUpperCase()} - {diurnoNoturno === 'diurno' ? 'Diurno' : 'Noturno'}
                                                                 </Badge>
                                                             )
                                                         })

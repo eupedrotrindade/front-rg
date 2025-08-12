@@ -36,9 +36,9 @@ interface EventoFormProps {
 const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: EventoFormProps) => {
     // State para gerenciar os dias do evento
     const [eventDays, setEventDays] = useState<{
-        montagem: EventDay[];
-        evento: EventDay[];
-        desmontagem: EventDay[];
+        montagem: SimpleEventDay[];
+        evento: SimpleEventDay[];
+        desmontagem: SimpleEventDay[];
     }>({
         montagem: defaultValues?.montagem || [],
         evento: defaultValues?.evento || [],
@@ -81,7 +81,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
     // Atualizar startDate e endDate automaticamente baseado nos dias do evento
     useEffect(() => {
         const allDays = [...eventDays.montagem, ...eventDays.evento, ...eventDays.desmontagem];
-        
+
         if (allDays.length > 0) {
             // Parse dates and sort them
             const parsedDates = allDays.map(day => {
@@ -107,7 +107,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
 
             form.setValue('startDate', formatForForm(startDate));
             form.setValue('endDate', formatForForm(endDate));
-            
+
             // Calculate total days
             const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
@@ -312,7 +312,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="pt-6">
-                            <EventDaysManager 
+                            <EventDaysManager
                                 initialData={eventDays}
                                 onChange={setEventDays}
                             />

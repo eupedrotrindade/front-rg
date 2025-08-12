@@ -1,3 +1,6 @@
+import { EventDay } from "@/types/event-days";
+import { SimpleEventDay } from "@/types/simple-event-days";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type Event = {
   id: string;
@@ -15,6 +18,9 @@ export type Event = {
   preparationEndDate?: string;
   finalizationStartDate?: string;
   finalizationEndDate?: string;
+  montagem: SimpleEventDay[];
+  evento: SimpleEventDay[];
+  desmontagem: SimpleEventDay[];
   venue: string;
   address?: string;
   status: "active" | "closed" | "canceled" | "draft";
@@ -217,6 +223,9 @@ export type CreateEventRequest = {
   preparationEndDate?: string;
   finalizationStartDate?: string;
   finalizationEndDate?: string;
+  montagem: SimpleEventDay[];
+  evento: SimpleEventDay[];
+  desmontagem: SimpleEventDay[];
   venue: string;
   address?: string;
   status: "active" | "closed" | "canceled" | "draft";

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
@@ -17,6 +18,7 @@ import { toast } from "sonner"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import HeaderWorkspace from "@/components/layout/header-work"
 import { EventDay } from '@/types/event-days'
+import { SimpleEventDay } from "@/types/simple-event-days"
 
 const EventosPage = () => {
     const { data: eventos, isLoading } = useEventos()
@@ -72,13 +74,13 @@ const EventosPage = () => {
     }
 
     // Função para formatar dias flexíveis (nova estrutura) - suporta datetime
-    const formatEventDays = (days: EventDay[]): string => {
-        if (!days || days.length === 0) return ""
-        
+    const formatEventDays = (days: SimpleEventDay[] | null | undefined): string => {
+        if (!days || !Array.isArray(days) || days.length === 0) return ""
+
         if (days.length === 1) {
             return formatDate(days[0].date)
         }
-        
+
         // Ordenar datas (suporta tanto DD/MM/YYYY quanto ISO datetime)
         const sortedDays = days.map(day => {
             // Converter DD/MM/YYYY para Date (compatibilidade)
@@ -92,7 +94,7 @@ const EventosPage = () => {
 
         const firstDate = formatDate(sortedDays[0]);
         const lastDate = formatDate(sortedDays[sortedDays.length - 1]);
-        
+
         return `${firstDate} - ${lastDate}`
     }
 
@@ -100,15 +102,29 @@ const EventosPage = () => {
     const getEventDaysDisplay = (evento: EventType) => {
         // Verificar se tem estrutura nova
         const hasNewStructure = (evento as any).montagem || (evento as any).evento || (evento as any).desmontagem;
-        
+
         if (hasNewStructure) {
+            // Função auxiliar para parse de arrays que podem ser strings JSON
+            const parseEventDays = (data: any) => {
+                if (Array.isArray(data)) {
+                    return data;
+                } else if (typeof data === 'string' && data.trim().startsWith('[')) {
+                    try {
+                        return JSON.parse(data);
+                    } catch {
+                        return [];
+                    }
+                }
+                return [];
+            };
+
             return {
-                montagem: (evento as any).montagem as EventDay[],
-                evento: (evento as any).evento as EventDay[], 
-                desmontagem: (evento as any).desmontagem as EventDay[]
+                montagem: parseEventDays((evento as any).montagem),
+                evento: parseEventDays((evento as any).evento),
+                desmontagem: parseEventDays((evento as any).desmontagem)
             };
         }
-        
+
         // Usar estrutura antiga como fallback
         return null;
     }
@@ -204,7 +220,7 @@ const EventosPage = () => {
                                                         className="cursor-pointer bg-white"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            setEditingEvent(evento);
+                                                            router.push(`/eventos/${evento.id}/editar`);
                                                         }}
                                                     >
                                                         <Edit className="h-4 w-4 mr-2" />
@@ -255,7 +271,7 @@ const EventosPage = () => {
                                         {/* Seção de Datas - Suporta nova e antiga estrutura */}
                                         {(() => {
                                             const eventDays = getEventDaysDisplay(evento);
-                                            
+
                                             return (
                                                 <div className="space-y-2 pt-2 border-t border-gray-100">
                                                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cronograma</h4>

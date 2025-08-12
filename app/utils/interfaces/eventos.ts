@@ -26,13 +26,13 @@ export interface Event {
   bannerUrl: string;
   totalDays: number;
   startDate: string | Date; // Data geral de início (para compatibilidade)
-  endDate: string | Date;   // Data geral de fim (para compatibilidade)
-  
+  endDate: string | Date; // Data geral de fim (para compatibilidade)
+
   // Nova estrutura de dias por fase
-  montagem: EventDay[];
-  evento: EventDay[];
-  desmontagem: EventDay[];
-  
+  montagem: SimpleEventDay[];
+  evento: SimpleEventDay[];
+  desmontagem: SimpleEventDay[];
+
   // Campos antigos para compatibilidade (deprecated)
   /** @deprecated Use 'montagem' array instead */
   setupStartDate?: string | Date;
@@ -52,7 +52,7 @@ export interface Event {
   preparationDate?: string | Date;
   /** @deprecated Use 'desmontagem' array instead */
   finalizationDate?: string | Date;
-  
+
   venue: string;
   address?: string;
   status: EventStatus;

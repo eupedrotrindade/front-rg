@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { X, Palette, Wrench, Calendar, Truck } from "lucide-react";
 import { HexColorPicker } from "react-colorful";
+import { formatEventDate, getCurrentDateBR } from "@/lib/utils";
 
 interface CredentialFormProps {
     credential?: Credential;
@@ -36,8 +37,7 @@ const generateEventDays = (event: Event): { [key: string]: string[] } => {
     if (!event) return daysByStage;
 
     const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('pt-BR');
+        return formatEventDate(dateString);
     };
 
     const addDaysToStage = (startDate: string, endDate: string, stage: string) => {
@@ -52,22 +52,71 @@ const generateEventDays = (event: Event): { [key: string]: string[] } => {
         }
     };
 
-    // Adicionar dias de setup (montagem)
+    // Função helper para processar arrays de dados do evento
+    const processEventArray = (eventData: any, stage: string) => {
+        if (!eventData) return;
+        
+        try {
+            let dataArray: any[] = [];
+            
+            // Se for string JSON, fazer parse
+            if (typeof eventData === 'string') {
+                dataArray = JSON.parse(eventData);
+            }
+            // Se já for array, usar diretamente
+            else if (Array.isArray(eventData)) {
+                dataArray = eventData;
+            }
+            // Se não for nem string nem array, sair
+            else {
+                return;
+            }
+
+            // Processar cada item do array
+            dataArray.forEach(item => {
+                if (item && item.date) {
+                    const formattedDate = formatDate(item.date);
+                    if (!daysByStage[stage].includes(formattedDate)) {
+                        daysByStage[stage].push(formattedDate);
+                    }
+                }
+            });
+        } catch (error) {
+            console.warn(`Erro ao processar dados do evento para stage ${stage}:`, error);
+        }
+    };
+
+    // Processar nova estrutura do evento
+    console.log('🔍 Processando dados do evento:', {
+        montagem: event.montagem,
+        evento: event.evento,
+        desmontagem: event.desmontagem
+    });
+    
+    processEventArray(event.montagem, 'setup');
+    processEventArray(event.evento, 'event');
+    processEventArray(event.desmontagem, 'teardown');
+    
+    console.log('🔍 Dias gerados:', {
+        setup: daysByStage.setup,
+        event: daysByStage.event,
+        teardown: daysByStage.teardown,
+        total: Object.values(daysByStage).flat().length
+    });
+
+    // Fallback para estrutura antiga (manter compatibilidade)
     if (event.setupStartDate && event.setupEndDate) {
         addDaysToStage(event.setupStartDate, event.setupEndDate, 'setup');
     }
 
-    // Adicionar dias de preparação (montagem)
     if (event.preparationStartDate && event.preparationEndDate) {
         addDaysToStage(event.preparationStartDate, event.preparationEndDate, 'setup');
     }
 
-    // Adicionar dias do evento principal
     if (event.startDate && event.endDate) {
         addDaysToStage(event.startDate, event.endDate, 'event');
     }
 
-    // Adicionar dias de finalização (desmontagem)
     if (event.finalizationStartDate && event.finalizationEndDate) {
         addDaysToStage(event.finalizationStartDate, event.finalizationEndDate, 'teardown');
     }
@@ -227,11 +276,31 @@ export const CredentialForm = ({
     // Gerar dias disponíveis baseados no evento
     const availableDays = event ? generateEventDays(event) : {};
     const overlapInfo = checkOverlaps(availableDays);
+    
+    // Debug para verificar os dias disponíveis
+    console.log('🔍 Debug availableDays:', {
+        event: event,
+        availableDays: availableDays,
+        totalDays: Object.values(availableDays).flat().length,
+        eventStructure: event ? {
+            montagem: event.montagem,
+            evento: event.evento, 
+            desmontagem: event.desmontagem,
+            montagemType: typeof event.montagem,
+            eventoType: typeof event.evento,
+            desmontagemType: typeof event.desmontagem
+        } : null
+    });
 
     useEffect(() => {
         if (Object.values(availableDays).flat().length > 0 && selectedDays.length === 0 && !credential?.days_works) {
-            setSelectedDays([availableDays.setup[0]]);
-            setValue("days_works", [availableDays.setup[0]]);
+            // Encontrar o primeiro dia disponível de qualquer etapa
+            const allDays = Object.values(availableDays).flat().filter(day => day !== undefined && day !== null);
+            if (allDays.length > 0) {
+                setSelectedDays([allDays[0]]);
+                setValue("days_works", [allDays[0]]);
+                console.log('🔄 Selecionando primeiro dia disponível:', allDays[0]);
+            }
         }
     }, [availableDays, selectedDays.length, credential?.days_works, setValue]);
 
@@ -281,29 +350,67 @@ export const CredentialForm = ({
         trigger("cor");
     };
 
+    // Se não há dias disponíveis no evento, permitir criar credencial sem dias específicos
+    const hasAvailableDays = Object.values(availableDays).flat().length > 0;
+
     const handleFormSubmit = async (data: FormData) => {
+        // Filtrar valores undefined/null do array de dias selecionados
+        let cleanSelectedDays = selectedDays.filter(day => day && day.trim().length > 0);
+        
+        // Se não há dias válidos selecionados e não há dias disponíveis no evento, usar data atual
+        let daysToSubmit = cleanSelectedDays;
+        if (cleanSelectedDays.length === 0 && !hasAvailableDays) {
+            daysToSubmit = [getCurrentDateBR()];
+            console.log('🚀 Usando data atual como fallback:', daysToSubmit);
+        }
+        
         const formData = {
             ...data,
-            days_works: selectedDays,
+            days_works: daysToSubmit,
             cor: selectedColor,
         };
 
-        // Verificar duplicatas antes de submeter
-        const duplicateCheck = checkDuplicateCredentials(
-            existingCredentials,
-            formData,
-            credential?.id
-        );
+        // Verificar duplicatas antes de submeter (apenas se há dias para verificar)
+        if (daysToSubmit.length > 0) {
+            const duplicateCheck = checkDuplicateCredentials(
+                existingCredentials,
+                formData,
+                credential?.id
+            );
 
-        if (duplicateCheck.hasDuplicate) {
-            setDuplicateError(duplicateCheck.message);
-            return;
+            if (duplicateCheck.hasDuplicate) {
+                setDuplicateError(duplicateCheck.message);
+                return;
+            }
         }
 
         onSubmit(formData);
     };
 
-    const isFormValid = isValid && selectedDays.length > 0 && !duplicateError;
+    const validSelectedDays = selectedDays.filter(day => day && day.trim().length > 0);
+    const isFormValid = isValid && (!hasAvailableDays || validSelectedDays.length > 0) && !duplicateError;
+
+    // Revalidar o formulário quando os dias válidos mudarem
+    React.useEffect(() => {
+        if (validSelectedDays.length > 0) {
+            setValue("days_works", validSelectedDays);
+            trigger("days_works");
+        }
+    }, [validSelectedDays.length, setValue, trigger]);
+    
+    // Debug para entender por que o botão não habilita
+    console.log('🔍 Debug isFormValid:', {
+        isValid: isValid,
+        selectedDays: selectedDays,
+        selectedDaysLength: selectedDays.length,
+        validSelectedDays: validSelectedDays,
+        validSelectedDaysLength: validSelectedDays.length,
+        duplicateError: duplicateError,
+        hasAvailableDays: hasAvailableDays,
+        isFormValid: isFormValid,
+        availableDaysCount: Object.values(availableDays).flat().length,
+        buttonShouldBeEnabled: !isLoading && isFormValid
+    });
 
     if (isLoadingEvent) {
         return (
@@ -432,10 +539,13 @@ export const CredentialForm = ({
                             </div>
                         )}
                         <div className="space-y-4">
-                            {Object.keys(availableDays).length === 0 ? (
-                                <p className="text-sm text-amber-600">
-                                    Nenhum dia disponível para este evento. Verifique as datas configuradas.
-                                </p>
+                            {Object.keys(availableDays).length === 0 || Object.values(availableDays).flat().length === 0 ? (
+                                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                    <p className="text-sm text-blue-800">
+                                        ℹ️ Nenhum dia específico configurado para este evento. 
+                                        A credencial será criada com a data atual ({getCurrentDateBR()}) como padrão.
+                                    </p>
+                                </div>
                             ) : (
                                 <>
                                     {Object.entries(availableDays).map(([stage, days]) => {
@@ -513,8 +623,8 @@ export const CredentialForm = ({
                 </Button>
                 <Button
                     type="submit"
-                    disabled={isLoading || !isFormValid || Object.values(availableDays).flat().length === 0}
-                    className={!isFormValid || Object.values(availableDays).flat().length === 0 ? "opacity-50 cursor-not-allowed" : ""}
+                    disabled={isLoading || (!isFormValid && Object.values(availableDays).flat().length === 0)}
+                    className={isLoading || (!isFormValid && Object.values(availableDays).flat().length === 0) ? "opacity-50 cursor-not-allowed" : ""}
                 >
                     {isLoading ? "Salvando..." : credential ? "Atualizar" : "Criar"}
                 </Button>

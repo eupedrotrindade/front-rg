@@ -10,6 +10,7 @@ export { useEmpresasByEvent } from "./use-empresas";
 
 // Eventos queries
 export { useEventos } from "./use-eventos";
+export { useEvento } from "./use-evento";
 
 export * from "./use-event-managers";
 export * from "./use-event-staff";

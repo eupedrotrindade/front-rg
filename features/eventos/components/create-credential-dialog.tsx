@@ -11,6 +11,7 @@ import { CreateCredentialRequest } from "@/features/eventos/types"
 import { toast } from "sonner"
 import { Loader2, Plus, Palette } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
+import { getCurrentDateBR } from "@/lib/utils"
 
 interface CreateCredentialDialogProps {
     eventId: string
@@ -47,7 +48,7 @@ const CreateCredentialDialog = ({
         // Garantir que sempre tenha pelo menos uma data
         const daysWorks = formData.days_works.length > 0
             ? formData.days_works
-            : [new Date().toLocaleDateString('pt-BR')] // Data atual como fallback
+            : [getCurrentDateBR()] // Data atual como fallback
 
         const credentialData: CreateCredentialRequest = {
             nome: formData.nome.trim().toUpperCase(),
