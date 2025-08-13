@@ -12,6 +12,8 @@ export interface AttendanceRecord {
   validatedBy: string | null;
   notes: string | null;
   performedBy: string;
+  workPeriod?: string | null;
+  workStage?: string | null;
   createdAt: string;
   updatedAt: string;
   participant?: {
@@ -52,12 +54,16 @@ export const useCheckIn = () => {
       validatedBy,
       notes,
       performedBy,
+      workPeriod,
+      workStage,
     }: {
       participantId: string;
       date: string;
       validatedBy?: string;
       notes?: string;
       performedBy?: string;
+      workPeriod?: string;
+      workStage?: string;
     }) => {
       // Converter data se necessário
       const formattedDate = date.includes("/")
@@ -71,6 +77,8 @@ export const useCheckIn = () => {
           validatedBy,
           notes,
           performedBy,
+          workPeriod,
+          workStage,
         }
       );
       return data;
@@ -120,12 +128,16 @@ export const useCheckOut = () => {
       validatedBy,
       notes,
       performedBy,
+      workPeriod,
+      workStage,
     }: {
       participantId: string;
       date: string;
       validatedBy?: string;
       notes?: string;
       performedBy?: string;
+      workPeriod?: string;
+      workStage?: string;
     }) => {
       // Converter data se necessário
       const formattedDate = date.includes("/")
@@ -139,6 +151,8 @@ export const useCheckOut = () => {
           validatedBy,
           notes,
           performedBy,
+          workPeriod,
+          workStage,
         }
       );
       return data;

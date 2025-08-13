@@ -11,14 +11,16 @@ import { Edit } from "lucide-react";
 
 interface EventParticipantEditDialogProps {
     participant: EventParticipant;
+    currentShiftId?: string; // Novo: ID do turno específico sendo editado
 }
 
-const EventParticipantEditDialog = ({ participant }: EventParticipantEditDialogProps) => {
+const EventParticipantEditDialog = ({ participant, currentShiftId }: EventParticipantEditDialogProps) => {
     const [open, setOpen] = useState(false);
     const { mutate, isPending } = useUpdateEventParticipant();
 
     const handleSubmit = (data: EventParticipantSchema) => {
         console.log("🟡 Dialog handleSubmit chamado:", data);
+        console.log("🔧 currentShiftId:", currentShiftId);
         
         // Validar dados antes de enviar
         if (!data.name || !data.cpf || !data.company) {
@@ -27,10 +29,24 @@ const EventParticipantEditDialog = ({ participant }: EventParticipantEditDialogP
             return;
         }
 
+        // Lógica para edição específica por turno
+        let finalDaysWork: string[];
+        
+        if (currentShiftId) {
+            // Edição específica por turno: manter apenas o turno atual
+            console.log("🎯 Editando turno específico, mantendo apenas:", currentShiftId);
+            finalDaysWork = [currentShiftId];
+        } else {
+            // Edição geral: usar os daysWork do formulário
+            console.log("📝 Editação geral, usando daysWork do formulário");
+            finalDaysWork = data.daysWork || participant.daysWork || [];
+        }
+
         // Garantir que o role tenha um valor padrão e limpar campos opcionais vazios
         const submitData = {
             ...data,
             role: data.role || "Participante",
+            daysWork: finalDaysWork, // Usar daysWork específicos
             // Limpar campos de texto vazios
             email: data.email?.trim() || undefined,
             phone: data.phone?.trim() || undefined,
@@ -60,7 +76,40 @@ const EventParticipantEditDialog = ({ participant }: EventParticipantEditDialogP
             {
                 onSuccess: () => {
                     console.log("✅ Mutate bem-sucedida");
-                    toast.success("Participante atualizado com sucesso!");
+                    if (currentShiftId) {
+                        // Função parseShiftId para extrair informações do turno
+                        const parseShiftId = (shiftId: string) => {
+                            const parts = shiftId.split('-');
+                            if (parts.length >= 5) {
+                                const year = parts[0];
+                                const month = parts[1];
+                                const day = parts[2];
+                                const stage = parts[3];
+                                const period = parts[4] as 'diurno' | 'noturno';
+                                
+                                const date = new Date(`${year}-${month}-${day}`);
+                                const dateFormatted = date.toLocaleDateString('pt-BR');
+                                
+                                return {
+                                    dateISO: `${year}-${month}-${day}`,
+                                    dateFormatted,
+                                    stage,
+                                    period
+                                };
+                            }
+                            return {
+                                dateISO: shiftId,
+                                dateFormatted: shiftId,
+                                stage: 'unknown',
+                                period: 'diurno' as 'diurno'
+                            };
+                        };
+                        
+                        const { dateFormatted, period, stage } = parseShiftId(currentShiftId);
+                        toast.success(`Participante editado para o turno ${dateFormatted} (${stage.toUpperCase()} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})!`);
+                    } else {
+                        toast.success("Participante atualizado com sucesso!");
+                    }
                     setOpen(false);
                 },
                 onError: (error) => {
@@ -93,7 +142,40 @@ const EventParticipantEditDialog = ({ participant }: EventParticipantEditDialogP
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900">
                 <DialogHeader>
-                    <DialogTitle>Editar Participante</DialogTitle>
+                    <DialogTitle>
+                        {currentShiftId ? (() => {
+                            // Função parseShiftId para extrair informações do turno
+                            const parseShiftId = (shiftId: string) => {
+                                const parts = shiftId.split('-');
+                                if (parts.length >= 5) {
+                                    const year = parts[0];
+                                    const month = parts[1];
+                                    const day = parts[2];
+                                    const stage = parts[3];
+                                    const period = parts[4] as 'diurno' | 'noturno';
+                                    
+                                    const date = new Date(`${year}-${month}-${day}`);
+                                    const dateFormatted = date.toLocaleDateString('pt-BR');
+                                    
+                                    return {
+                                        dateISO: `${year}-${month}-${day}`,
+                                        dateFormatted,
+                                        stage,
+                                        period
+                                    };
+                                }
+                                return {
+                                    dateISO: shiftId,
+                                    dateFormatted: shiftId,
+                                    stage: 'unknown',
+                                    period: 'diurno' as 'diurno'
+                                };
+                            };
+                            
+                            const { dateFormatted, period, stage } = parseShiftId(currentShiftId);
+                            return `Editar Participante - ${dateFormatted} (${stage.toUpperCase()} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`;
+                        })() : "Editar Participante"}
+                    </DialogTitle>
                 </DialogHeader>
                 <EventParticipantForm
                     defaultValues={{

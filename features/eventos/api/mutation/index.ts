@@ -29,6 +29,8 @@ export * from "./use-delete-event-staff";
 export * from "./use-create-event-participant";
 export * from "./use-update-event-participant";
 export * from "./use-delete-event-participant";
+export * from "./use-delete-participant-from-shift";
+export * from "./use-delete-participant-all-shifts";
 export * from "./use-create-event-wristband";
 export * from "./use-update-event-wristband";
 export * from "./use-delete-event-wristband";

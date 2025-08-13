@@ -7,7 +7,11 @@ export interface CreateEventVehicleData {
   placa?: string;
   tipo_de_credencial?: string;
   retirada: "pendente" | "retirada";
-  dia: string;
+  // Novos campos do modelo de turno
+  shiftId: string;
+  workDate: string;
+  workStage: "montagem" | "evento" | "desmontagem";
+  workPeriod: "diurno" | "noturno";
 }
 
 export interface EventVehicle {
@@ -18,7 +22,13 @@ export interface EventVehicle {
   placa?: string;
   tipo_de_credencial?: string;
   retirada: "pendente" | "retirada";
-  dia: string;
+  // Campos de turno (novos)
+  shiftId?: string;
+  workDate?: string;
+  workStage?: "montagem" | "evento" | "desmontagem";
+  workPeriod?: "diurno" | "noturno";
+  // Campo legado (compatibilidade durante transição)
+  dia?: string;
   created_at: string;
   updated_at: string;
 }

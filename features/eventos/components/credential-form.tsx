@@ -353,6 +353,25 @@ export const CredentialForm = ({
     // Se não há dias disponíveis no evento, permitir criar credencial sem dias específicos
     const hasAvailableDays = Object.values(availableDays).flat().length > 0;
 
+    // Função para extrair informações do shift ID
+    const parseShiftId = (shiftId: string) => {
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            return {
+                workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
+                workStage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
+                workPeriod: parts[4] as 'diurno' | 'noturno'
+            };
+        }
+        // Fallback para dias simples (backward compatibility)
+        const dateISO = shiftId.match(/\d{4}-\d{2}-\d{2}/) ? shiftId : getCurrentDateBR();
+        return {
+            workDate: dateISO,
+            workStage: 'evento' as const,
+            workPeriod: 'diurno' as const
+        };
+    };
+
     const handleFormSubmit = async (data: FormData) => {
         // Filtrar valores undefined/null do array de dias selecionados
         let cleanSelectedDays = selectedDays.filter(day => day && day.trim().length > 0);
@@ -364,10 +383,23 @@ export const CredentialForm = ({
             console.log('🚀 Usando data atual como fallback:', daysToSubmit);
         }
         
+        // Extrair informações de shift para cada dia selecionado
+        const shiftData = daysToSubmit.map(day => {
+            const shiftInfo = parseShiftId(day);
+            return {
+                shiftId: day,
+                workDate: shiftInfo.workDate,
+                workStage: shiftInfo.workStage,
+                workPeriod: shiftInfo.workPeriod
+            };
+        });
+        
         const formData = {
             ...data,
             days_works: daysToSubmit,
             cor: selectedColor,
+            // Adicionar dados de shift ao modelo
+            shiftData: shiftData
         };
 
         // Verificar duplicatas antes de submeter (apenas se há dias para verificar)

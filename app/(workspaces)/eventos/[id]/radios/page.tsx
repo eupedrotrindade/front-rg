@@ -76,10 +76,18 @@ export default function RadiosPage() {
     const { data: eventos = [] } = useEventos()
     const evento = Array.isArray(eventos) ? eventos.find(e => e.id === eventId) : null
 
+    // Converter selectedDay para o formato correto da API (DD/MM/YYYY)
+    const selectedDayFormatted = useMemo(() => {
+        if (!selectedDay) return '';
+        // Extrair a data do selectedDay (formato: YYYY-MM-DD-stage-period)
+        const dayDate = selectedDay.split('-').slice(0, 3).join('-'); // YYYY-MM-DD
+        return formatEventDate(dayDate + 'T00:00:00'); // Converter para DD/MM/YYYY
+    }, [selectedDay]);
+
     const { data: assignmentsData, isLoading: assignmentsLoading } = useRadioAssignmentsByDay(
         eventId,
-        selectedDay || '',
-        { enabled: !!selectedDay }
+        selectedDayFormatted,
+        { enabled: !!selectedDayFormatted }
     )
 
     // Query para buscar todas as atribuições do evento (para contadores)
@@ -133,15 +141,30 @@ export default function RadiosPage() {
                 // Processar cada item do array
                 dataArray.forEach(item => {
                     if (item && item.date) {
-                        const formattedDate = formatEventDate(item.date);
+                        // Garantir que a data está no formato correto
                         const dateObj = new Date(item.date);
-                        const hour = dateObj.getHours();
+                        if (isNaN(dateObj.getTime())) {
+                            console.warn(`Data inválida encontrada: ${item.date}`);
+                            return;
+                        }
 
-                        // Determinar período (diurno: 6h-18h, noturno: 18h-6h)
-                        const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        const formattedDate = formatEventDate(dateObj.toISOString());
+                        
+                        // Usar período do item se disponível, senão calcular baseado na hora
+                        let period: 'diurno' | 'noturno';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                            period = item.period;
+                        } else {
+                            // Fallback: calcular baseado na hora
+                            const hour = dateObj.getHours();
+                            period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        }
+
+                        // Criar ID único baseado na data e período
+                        const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
 
                         days.push({
-                            id: formattedDate,
+                            id: dayId,
                             label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
                             date: formattedDate,
                             type: stage,
@@ -155,72 +178,96 @@ export default function RadiosPage() {
         };
 
         // Processar nova estrutura do evento
-        processEventArray(evento.montagem, 'setup', 'MONTAGEM');
-        processEventArray(evento.evento, 'event', 'EVENTO');
-        processEventArray(evento.desmontagem, 'teardown', 'DESMONTAGEM');
+        processEventArray(evento.montagem, 'montagem', 'MONTAGEM');
+        processEventArray(evento.evento, 'evento', 'EVENTO');
+        processEventArray(evento.desmontagem, 'desmontagem', 'DESMONTAGEM');
 
-        // Fallback para estrutura antiga (manter compatibilidade)
-        // Adicionar dias de montagem
-        if (evento.setupStartDate && evento.setupEndDate) {
+        // Fallback para estrutura antiga (manter compatibilidade) - só usar se não há nova estrutura
+        if (evento.setupStartDate && evento.setupEndDate && (!evento.montagem || evento.montagem.length === 0)) {
             const startDate = new Date(evento.setupStartDate)
             const endDate = new Date(evento.setupEndDate)
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatEventDate(date.toISOString())
-                const hour = date.getHours();
-                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+            
+            // Validar datas
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de setup inválidas:', evento.setupStartDate, evento.setupEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    // Para compatibilidade, assumir período diurno para estrutura antiga
+                    const dayId = `${date.toISOString().split('T')[0]}-montagem-diurno`;
 
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (MONTAGEM - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
-                    date: dateStr,
-                    type: 'setup',
-                    period
-                })
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (MONTAGEM - Diurno)`,
+                        date: dateStr,
+                        type: 'montagem',
+                        period: 'diurno'
+                    })
+                }
             }
         }
 
-        // Adicionar dias de Evento
-        if (evento.preparationStartDate && evento.preparationEndDate) {
+        if (evento.preparationStartDate && evento.preparationEndDate && (!evento.evento || evento.evento.length === 0)) {
             const startDate = new Date(evento.preparationStartDate)
             const endDate = new Date(evento.preparationEndDate)
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatEventDate(date.toISOString())
-                const hour = date.getHours();
-                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+            
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de preparação inválidas:', evento.preparationStartDate, evento.preparationEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    const dayId = `${date.toISOString().split('T')[0]}-evento-diurno`;
 
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (EVENTO - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
-                    date: dateStr,
-                    type: 'preparation',
-                    period
-                })
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (EVENTO - Diurno)`,
+                        date: dateStr,
+                        type: 'evento',
+                        period: 'diurno'
+                    })
+                }
             }
         }
 
-        // Adicionar dias de finalização
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
+        if (evento.finalizationStartDate && evento.finalizationEndDate && (!evento.desmontagem || evento.desmontagem.length === 0)) {
             const startDate = new Date(evento.finalizationStartDate)
             const endDate = new Date(evento.finalizationEndDate)
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatEventDate(date.toISOString())
-                const hour = date.getHours();
-                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+            
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de finalização inválidas:', evento.finalizationStartDate, evento.finalizationEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    const dayId = `${date.toISOString().split('T')[0]}-desmontagem-diurno`;
 
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (DESMONTAGEM - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
-                    date: dateStr,
-                    type: 'finalization',
-                    period
-                })
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (DESMONTAGEM - Diurno)`,
+                        date: dateStr,
+                        type: 'desmontagem',
+                        period: 'diurno'
+                    })
+                }
             }
         }
 
         // Ordenar dias cronologicamente
         days.sort((a, b) => {
-            const dateA = new Date(a.date.split('/').reverse().join('-'));
-            const dateB = new Date(b.date.split('/').reverse().join('-'));
+            // Extrair a data do ID para ordenação mais confiável
+            const dateA = new Date(a.id.split('-')[0]);
+            const dateB = new Date(b.id.split('-')[0]);
+            
+            if (dateA.getTime() === dateB.getTime()) {
+                // Se for o mesmo dia, ordenar por tipo e período
+                const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
+                const periodOrder = { diurno: 0, noturno: 1 };
+                
+                const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
+                if (typeComparison !== 0) return typeComparison;
+                
+                return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder];
+            }
+            
             return dateA.getTime() - dateB.getTime();
         });
 
@@ -231,14 +278,15 @@ export default function RadiosPage() {
     const getTabColor = useCallback((type: string, isActive: boolean) => {
         if (isActive) {
             switch (type) {
+                case 'montagem':
                 case 'setup':
                     return 'border-orange-500 text-orange-600 bg-orange-50'
+                case 'evento':
                 case 'event':
-                    return 'border-blue-500 text-blue-600 bg-blue-50'
-                case 'teardown':
-                    return 'border-red-500 text-red-600 bg-red-50'
                 case 'preparation':
                     return 'border-blue-500 text-blue-600 bg-blue-50'
+                case 'desmontagem':
+                case 'teardown':
                 case 'finalization':
                     return 'border-red-500 text-red-600 bg-red-50'
                 default:
@@ -246,14 +294,15 @@ export default function RadiosPage() {
             }
         } else {
             switch (type) {
+                case 'montagem':
                 case 'setup':
                     return 'hover:text-orange-700 hover:border-orange-300'
+                case 'evento':
                 case 'event':
-                    return 'hover:text-blue-700 hover:border-blue-300'
-                case 'teardown':
-                    return 'hover:text-red-700 hover:border-red-300'
                 case 'preparation':
                     return 'hover:text-blue-700 hover:border-blue-300'
+                case 'desmontagem':
+                case 'teardown':
                 case 'finalization':
                     return 'hover:text-red-700 hover:border-red-300'
                 default:
@@ -442,9 +491,36 @@ export default function RadiosPage() {
         }
 
         try {
+            // Extrair informações do shift ID
+            const parseShiftId = (shiftId: string) => {
+                const parts = shiftId.split('-');
+                if (parts.length >= 5) {
+                    return {
+                        workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
+                        workStage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
+                        workPeriod: parts[4] as 'diurno' | 'noturno'
+                    };
+                }
+                return {
+                    workDate: selectedDay,
+                    workStage: 'evento' as const,
+                    workPeriod: 'diurno' as const
+                };
+            };
+
+            const shiftInfo = parseShiftId(selectedDay);
+            
+            // Converter data para formato brasileiro (DD/MM/YYYY)
+            const eventDayFormatted = formatEventDate(shiftInfo.workDate);
+
             await createAssignmentMutation.mutateAsync({
                 event_id: eventId,
-                event_day: selectedDay,
+                event_day: eventDayFormatted, // Formato DD/MM/YYYY (10 chars)
+                // Novos campos do modelo de turnos
+                shiftId: selectedDay,
+                workDate: shiftInfo.workDate,
+                workStage: shiftInfo.workStage,
+                workPeriod: shiftInfo.workPeriod,
                 assigned_to: newAssignmentForm.assigned_to.trim(),
                 contact: newAssignmentForm.contact?.trim() || undefined,
                 radio_codes: newAssignmentForm.radio_codes,
@@ -452,11 +528,11 @@ export default function RadiosPage() {
                 assigned_by: 'Sistema'
             })
 
-            toast.success('Retirada criada com sucesso!')
+            toast.success('Atribuição criada com sucesso!')
             setIsNewAssignmentModalOpen(false)
         } catch (error) {
-            console.error('Erro ao criar Retirada:', error)
-            toast.error('Erro ao criar Retirada')
+            console.error('Erro ao criar atribuição:', error)
+            toast.error('Erro ao criar atribuição')
         }
     }
 
@@ -684,7 +760,7 @@ export default function RadiosPage() {
                                 className="bg-purple-600 hover:bg-purple-700 text-white"
                             >
                                 <Plus className="w-4 h-4 mr-2" />
-                                Nova Retirada
+                                Nova Atribuição
                             </Button>
 
                             <Button
@@ -738,7 +814,10 @@ export default function RadiosPage() {
                     <div className="border-b border-gray-200 bg-white rounded-t-lg">
                         <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
                             {getEventDays().map((day) => {
-                                const assignmentsInDay = allAssignments.filter(a => a.event_day === day.id).length
+                                // Extrair a data do day.id (formato: YYYY-MM-DD-stage-period)
+                                const dayDate = day.id.split('-').slice(0, 3).join('-'); // YYYY-MM-DD
+                                const dayFormatted = formatEventDate(dayDate + 'T00:00:00'); // Converter para DD/MM/YYYY
+                                const assignmentsInDay = allAssignments.filter(a => a.event_day === dayFormatted).length
                                 const isActive = selectedDay === day.id
 
                                 return (
@@ -759,11 +838,9 @@ export default function RadiosPage() {
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <span className="text-xs opacity-75">
-                                                    {day.type === 'setup' ? 'MONTAGEM' :
-                                                        day.type === 'event' ? 'EVENTO' :
-                                                            day.type === 'teardown' ? 'DESMONTAGEM' :
-                                                                day.type === 'preparation' ? 'EVENTO' :
-                                                                    day.type === 'finalization' ? 'DESMONTAGEM' :
+                                                    {day.type === 'montagem' || day.type === 'setup' ? 'MONTAGEM' :
+                                                        day.type === 'evento' || day.type === 'event' || day.type === 'preparation' ? 'EVENTO' :
+                                                            day.type === 'desmontagem' || day.type === 'teardown' || day.type === 'finalization' ? 'DESMONTAGEM' :
                                                                         'EVENTO'}
                                                 </span>
                                                 {day.period && (
@@ -819,7 +896,7 @@ export default function RadiosPage() {
                             <tbody className="bg-white divide-y divide-gray-100">
                                 {assignmentsLoading ? (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                                             <div className="flex flex-col items-center">
                                                 <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mb-2"></div>
                                                 <p>Carregando atribuições...</p>
@@ -828,14 +905,14 @@ export default function RadiosPage() {
                                     </tr>
                                 ) : filteredAssignments.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                                             <div className="flex flex-col items-center">
                                                 <Radio className="w-8 h-8 text-gray-400 mb-2" />
                                                 <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                    {selectedDay ? `Nenhuma Retirada encontrada para ${selectedDay}` : 'Selecione um dia'}
+                                                    {selectedDay ? `Nenhuma atribuição encontrada para ${selectedDay}` : 'Selecione um dia'}
                                                 </p>
                                                 <p className="text-sm text-gray-500">
-                                                    {selectedDay ? 'Crie uma nova Retirada para este dia' : 'Escolha um dia do evento para ver as atribuições'}
+                                                    {selectedDay ? 'Crie uma nova atribuição de rádios para este dia' : 'Escolha um dia do evento para ver as atribuições'}
                                                 </p>
                                             </div>
                                         </td>
@@ -946,9 +1023,9 @@ export default function RadiosPage() {
                 <AlertDialog open={isNewAssignmentModalOpen} onOpenChange={setIsNewAssignmentModalOpen} >
                     <AlertDialogContent className="max-w-md bg-white text-gray-800">
                         <AlertDialogHeader>
-                            <AlertDialogTitle>Nova Retirada de Rádios</AlertDialogTitle>
+                            <AlertDialogTitle>Nova Atribuição de Rádios</AlertDialogTitle>
                             <AlertDialogDescription>
-                                Atribuir rádios para {selectedDay}
+                                Atribuir rádios para o período de {selectedDay}
                             </AlertDialogDescription>
                         </AlertDialogHeader>
 
@@ -1033,7 +1110,7 @@ export default function RadiosPage() {
                                 disabled={!newAssignmentForm.assigned_to.trim() || newAssignmentForm.radio_codes.length === 0}
                                 className="bg-purple-600 hover:bg-purple-700"
                             >
-                                Criar Retirada
+                                Criar Atribuição
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
@@ -1393,7 +1470,7 @@ export default function RadiosPage() {
 
                         <div className="space-y-4 py-4">
                             <div className="bg-gray-50 p-4 rounded-lg">
-                                <h4 className="text-sm font-medium text-gray-700 mb-2">Informações da Retirada:</h4>
+                                <h4 className="text-sm font-medium text-gray-700 mb-2">Informações da Atribuição:</h4>
                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                     <div>
                                         <span className="font-medium">Pessoa/Empresa:</span> {selectedAssignment?.assigned_to}
@@ -1402,7 +1479,7 @@ export default function RadiosPage() {
                                         <span className="font-medium">Status:</span> {getStatusBadge(selectedAssignment?.status || '')}
                                     </div>
                                     <div>
-                                        <span className="font-medium">Data de Retirada:</span> {selectedAssignment?.assigned_at ? formatEventDate(selectedAssignment.assigned_at) : '-'}
+                                        <span className="font-medium">Data de Atribuição:</span> {selectedAssignment?.assigned_at ? formatEventDate(selectedAssignment.assigned_at) : '-'}
                                     </div>
                                     <div>
                                         <span className="font-medium">Rádios Atuais:</span> {selectedAssignment?.radio_codes.join(', ') || '-'}
@@ -1417,7 +1494,7 @@ export default function RadiosPage() {
                                     <div className="border-l-4 border-blue-500 pl-4 py-2 bg-blue-50 rounded-r-lg">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <div className="font-medium text-blue-800">Retirada Inicial</div>
+                                                <div className="font-medium text-blue-800">Atribuição Inicial</div>
                                                 <div className="text-sm text-blue-600">
                                                     {selectedAssignment?.assigned_at ? formatEventDate(selectedAssignment.assigned_at) : '-'}
                                                 </div>
@@ -1425,7 +1502,7 @@ export default function RadiosPage() {
                                                     Rádios atribuídos: {selectedAssignment?.radio_codes.join(', ')}
                                                 </div>
                                             </div>
-                                            <Badge className="bg-blue-100 text-blue-800">Retirada</Badge>
+                                            <Badge className="bg-blue-100 text-blue-800">Atribuição</Badge>
                                         </div>
                                     </div>
 

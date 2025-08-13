@@ -461,7 +461,7 @@ export default function CoordenadoresPage() {
 
                 {/* Modal Criar Coordenador */}
                 <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                    <DialogContent>
+                    <DialogContent className=" bg-white text-gray-800">
                         <DialogHeader>
                             <DialogTitle>Criar Novo Coordenador</DialogTitle>
                             <DialogDescription>
@@ -538,7 +538,7 @@ export default function CoordenadoresPage() {
 
                 {/* Modal Atribuir Coordenador */}
                 <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-                    <DialogContent>
+                    <DialogContent className="bg-white text-gray-800">
                         <DialogHeader>
                             <DialogTitle>Atribuir Coordenador Existente</DialogTitle>
                             <DialogDescription>

@@ -273,7 +273,10 @@ const ParticipantRow = React.memo<{
                 )}
 
                 <DropdownMenuItem asChild>
-                  <EventParticipantEditDialog participant={participant} />
+                  <EventParticipantEditDialog 
+                    participant={participant}
+                    currentShiftId={data.currentSelectedDay}
+                  />
                 </DropdownMenuItem>
 
                 <DropdownMenuItem
@@ -367,7 +370,31 @@ const VirtualizedParticipantsTable: React.FC<
               <User className="w-8 h-8 text-gray-400" />
             </div>
             <p className="text-lg font-semibold text-gray-700 mb-2">
-              Nenhum participante encontrado para {currentSelectedDay}
+              Nenhum participante encontrado para {(() => {
+                // Função para extrair informações do shift ID para display mais amigável
+                const parseShiftForDisplay = (shiftId: string) => {
+                  const parts = shiftId.split('-');
+                  if (parts.length >= 5) {
+                    const year = parts[0];
+                    const month = parts[1];
+                    const day = parts[2];
+                    const stage = parts[3];
+                    const period = parts[4] as 'diurno' | 'noturno';
+                    
+                    const date = new Date(`${year}-${month}-${day}`);
+                    const dateFormatted = date.toLocaleDateString('pt-BR');
+                    const stageLabel = stage === 'montagem' ? 'Montagem' :
+                                     stage === 'evento' ? 'Evento' :
+                                     stage === 'desmontagem' ? 'Desmontagem' : stage;
+                    const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+                    
+                    return `${dateFormatted} (${stageLabel} - ${periodLabel})`;
+                  }
+                  return shiftId;
+                };
+                
+                return parseShiftForDisplay(currentSelectedDay);
+              })()}
             </p>
             <p className="text-sm text-gray-500">
               Adicione participantes com dias de trabalho definidos ou ajuste os

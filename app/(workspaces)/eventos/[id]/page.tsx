@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/prefer-as-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
@@ -29,11 +30,15 @@ import {
 } from '@/features/eventos/api/mutation/use-check-operations'
 import { useDeleteEventAttendance } from '@/features/eventos/api/mutation/use-delete-event-attendance'
 import { useDeleteEventParticipant } from '@/features/eventos/api/mutation/use-delete-event-participant'
+import { useDeleteParticipantFromShift } from '@/features/eventos/api/mutation/use-delete-participant-from-shift'
+import { useDeleteParticipantAllShifts } from '@/features/eventos/api/mutation/use-delete-participant-all-shifts'
 import { useUpdateEventParticipant } from '@/features/eventos/api/mutation/use-update-event-participant'
 import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coordenadores-by-event'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/use-event-attendance'
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
+import { useEventParticipantsGrouped, GroupedParticipant } from '@/features/eventos/api/query/use-event-participants-grouped'
+import { useEventParticipantsByShift } from '@/features/eventos/api/query/use-event-participants-by-shift'
 import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
 // TODO: Substituir por useEventById para melhor performance
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
@@ -54,6 +59,8 @@ import {
     UserCog,
     Users,
     X,
+    Sun,
+    Moon,
 } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import React, { useCallback, useMemo, useState } from 'react'
@@ -73,12 +80,31 @@ export default function EventoDetalhesPage() {
     const router = useRouter()
     const queryClient = useQueryClient()
 
+    // Estados básicos que são usados em hooks
+    const [selectedDay, setSelectedDay] = useState<string>('')
+    const [viewMode, setViewMode] = useState<'grouped' | 'shift'>('shift')
+
     // Queries React Query
     const { data: participantsData = [], isLoading: participantsLoading } =
         useEventParticipantsByEvent({ eventId: String(params.id) })
 
+    // Nova query para participantes agrupados
+    const { data: groupedParticipantsData = [], isLoading: groupedParticipantsLoading } =
+        useEventParticipantsGrouped({ eventId: String(params.id) })
+
+    // Query para participantes por turno específico
+    const { data: shiftParticipantsData = [], isLoading: shiftParticipantsLoading } =
+        useEventParticipantsByShift({
+            eventId: String(params.id),
+            shiftId: selectedDay,
+        })
+
     const { mutate: deleteParticipant, isPending: isDeleting } =
         useDeleteEventParticipant()
+    const { mutate: deleteFromShift, isPending: isDeletingFromShift } =
+        useDeleteParticipantFromShift()
+    const { mutate: deleteAllShifts, isPending: isDeletingAllShifts } =
+        useDeleteParticipantAllShifts()
     const { data: credentials } = useCredentials({ eventId: String(params.id) })
     // Hooks para dados adicionais (otimização: só carregam quando necessário)
     const { data: coordenadores = [], isLoading: coordenadoresLoading } =
@@ -99,7 +125,10 @@ export default function EventoDetalhesPage() {
 
     const [deletingParticipant, setDeletingParticipant] =
         useState<EventParticipant | null>(null)
-    const [selectedDay, setSelectedDay] = useState<string>('')
+    const [deletingParticipantHash, setDeletingParticipantHash] =
+        useState<string | null>(null)
+    const [deleteMode, setDeleteMode] =
+        useState<'shift' | 'all'>('shift')
     const [replicatingStaff, setReplicatingStaff] = useState<string | null>(null)
     const [showReplicateDialog, setShowReplicateDialog] = useState(false)
     const [replicateSourceDay, setReplicateSourceDay] = useState<string>('')
@@ -151,21 +180,41 @@ export default function EventoDetalhesPage() {
 
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
+        console.log('🔧 formatDateForAPI chamada com:', dateStr);
+
         // Se já está no formato dd-mm-yyyy, retorna como está
         if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) {
+            console.log('✅ Já está no formato correto DD-MM-YYYY:', dateStr);
             return dateStr
+        }
+
+        // Se é um shift ID (formato: YYYY-MM-DD-stage-period), extrair a data
+        if (/^\d{4}-\d{2}-\d{2}-.+-.+$/.test(dateStr)) {
+            const parts = dateStr.split('-');
+            if (parts.length >= 3) {
+                const year = parts[0];
+                const month = parts[1];
+                const day = parts[2];
+                const result = `${day}-${month}-${year}`;
+                console.log('✅ Shift ID convertido de', dateStr, 'para', result);
+                return result;
+            }
         }
 
         // Se está no formato dd/mm/yyyy, converte para dd-mm-yyyy
         if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
             const [day, month, year] = dateStr.split('/')
-            return `${day}-${month}-${year}`
+            const result = `${day}-${month}-${year}`;
+            console.log('✅ DD/MM/YYYY convertido de', dateStr, 'para', result);
+            return result
         }
 
         // Se está no formato yyyy-mm-dd, converte para dd-mm-yyyy
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
             const [year, month, day] = dateStr.split('-')
-            return `${day}-${month}-${year}`
+            const result = `${day}-${month}-${year}`;
+            console.log('✅ YYYY-MM-DD convertido de', dateStr, 'para', result);
+            return result
         }
 
         // Se é uma data JavaScript, converte para dd-mm-yyyy
@@ -175,12 +224,15 @@ export default function EventoDetalhesPage() {
                 const day = date.getDate().toString().padStart(2, '0')
                 const month = (date.getMonth() + 1).toString().padStart(2, '0')
                 const year = date.getFullYear().toString()
-                return `${day}-${month}-${year}`
+                const result = `${day}-${month}-${year}`;
+                console.log('✅ Data JavaScript convertida de', dateStr, 'para', result);
+                return result
             }
         } catch (error) {
-            console.error('Erro ao converter data para API:', dateStr, error)
+            console.error('❌ Erro ao converter data para API:', dateStr, error)
         }
 
+        console.log('⚠️ formatDateForAPI retornando valor original:', dateStr);
         return dateStr
     }, [])
 
@@ -209,7 +261,14 @@ export default function EventoDetalhesPage() {
                 desmontagem: foundEvent.desmontagem,
                 montagemType: typeof foundEvent.montagem,
                 eventoType: typeof foundEvent.evento,
-                desmontagemType: typeof foundEvent.desmontagem
+                desmontagemType: typeof foundEvent.desmontagem,
+                // Campos legacy
+                setupStartDate: foundEvent.setupStartDate,
+                setupEndDate: foundEvent.setupEndDate,
+                preparationStartDate: foundEvent.preparationStartDate,
+                preparationEndDate: foundEvent.preparationEndDate,
+                finalizationStartDate: foundEvent.finalizationStartDate,
+                finalizationEndDate: foundEvent.finalizationEndDate
             })
         }
 
@@ -226,6 +285,17 @@ export default function EventoDetalhesPage() {
         // Se já está no formato dd/mm/yyyy, retorna como está
         if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
             return dateStr
+        }
+
+        // Se é um shift ID (formato: YYYY-MM-DD-stage-period), extrair a data
+        if (/^\d{4}-\d{2}-\d{2}-.+-.+$/.test(dateStr)) {
+            const parts = dateStr.split('-');
+            if (parts.length >= 3) {
+                const year = parts[0];
+                const month = parts[1];
+                const day = parts[2];
+                return `${day}/${month}/${year}`;
+            }
         }
 
         // Se está no formato yyyy-mm-dd, converte para dd/mm/yyyy
@@ -305,34 +375,47 @@ export default function EventoDetalhesPage() {
         return []
     }, [])
 
-    // Função para gerar tabs dos dias do evento
+    // Função para gerar tabs dos dias do evento com suporte a turnos
     const getEventDays = useCallback((): Array<{
         id: string
         label: string
         date: string
         type: string
+        period?: 'diurno' | 'noturno'
     }> => {
-        if (!evento) return []
+        console.log('🔧 getEventDays chamada, evento:', evento)
+
+        if (!evento) {
+            console.log('❌ Evento não encontrado')
+            return []
+        }
 
         const days: Array<{
             id: string
             label: string
             date: string
             type: string
+            period?: 'diurno' | 'noturno'
         }> = []
 
-        // Usar a nova estrutura SimpleEventDay se disponível
+        // Usar a nova estrutura SimpleEventDay se disponível com suporte a turnos
         const montagemData = ensureArray(evento.montagem)
+        console.log('🔧 Processando montagem:', montagemData)
         if (montagemData.length > 0) {
             montagemData.forEach(day => {
-                if (day && day.date) {
+                if (day && day.date && day.period) {
                     try {
                         const dateStr = formatEventDate(day.date)
+                        const dateISO = new Date(day.date).toISOString().split('T')[0]
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno'
+
+                        console.log(`✅ Adicionando montagem: ${dateStr} - ${periodLabel}`)
                         days.push({
-                            id: dateStr,
-                            label: `${dateStr} (MONTAGEM)`,
+                            id: `${dateISO}-montagem-${day.period}`,
+                            label: `${dateStr} (MONTAGEM - ${periodLabel})`,
                             date: dateStr,
-                            type: 'setup',
+                            type: 'montagem',
+                            period: day.period
                         })
                     } catch (error) {
                         console.error('❌ Erro ao processar data da montagem:', day, error)
@@ -340,7 +423,7 @@ export default function EventoDetalhesPage() {
                 }
             })
         } else if (evento.setupStartDate && evento.setupEndDate) {
-            // Fallback para estrutura antiga
+            // Fallback para estrutura antiga com suporte a turnos
             const startDate = new Date(evento.setupStartDate)
             const endDate = new Date(evento.setupEndDate)
             for (
@@ -349,27 +432,42 @@ export default function EventoDetalhesPage() {
                 date.setDate(date.getDate() + 1)
             ) {
                 const dateStr = formatEventDate(date.toISOString())
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (MONTAGEM)`,
-                    date: dateStr,
-                    type: 'setup',
-                })
+                const dateISO = date.toISOString().split('T')[0]
+
+                    // Adicionar ambos os períodos (diurno e noturno) para cada data
+                    ; (['diurno', 'noturno'] as Array<'diurno' | 'noturno'>).forEach((period) => {
+                        const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno'
+                        const periodTyped = period as 'diurno' | 'noturno'
+                        days.push({
+                            id: `${dateISO}-montagem-${periodTyped}`,
+                            label: `${dateStr} (MONTAGEM - ${periodLabel})`,
+                            date: dateStr,
+                            type: 'montagem',
+                            period: periodTyped
+                        })
+                    })
+
             }
         }
 
-        // Adicionar dias de Evento/evento
+        // Adicionar dias de Evento/evento com suporte a turnos
         const eventoData = ensureArray(evento.evento)
+        console.log('🔧 Processando evento:', eventoData)
         if (eventoData.length > 0) {
             eventoData.forEach(day => {
-                if (day && day.date) {
+                if (day && day.date && day.period) {
                     try {
                         const dateStr = formatEventDate(day.date)
+                        const dateISO = new Date(day.date).toISOString().split('T')[0]
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno'
+
+                        console.log(`✅ Adicionando evento: ${dateStr} - ${periodLabel}`)
                         days.push({
-                            id: dateStr,
-                            label: `${dateStr} (EVENTO)`,
+                            id: `${dateISO}-evento-${day.period}`,
+                            label: `${dateStr} (EVENTO - ${periodLabel})`,
                             date: dateStr,
-                            type: 'preparation',
+                            type: 'evento',
+                            period: day.period
                         })
                     } catch (error) {
                         console.error('❌ Erro ao processar data do evento:', day, error)
@@ -377,7 +475,7 @@ export default function EventoDetalhesPage() {
                 }
             })
         } else if (evento.preparationStartDate && evento.preparationEndDate) {
-            // Fallback para estrutura antiga
+            // Fallback para estrutura antiga com suporte a turnos
             const startDate = new Date(evento.preparationStartDate)
             const endDate = new Date(evento.preparationEndDate)
             for (
@@ -386,27 +484,43 @@ export default function EventoDetalhesPage() {
                 date.setDate(date.getDate() + 1)
             ) {
                 const dateStr = formatEventDate(date.toISOString())
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (EVENTO)`,
-                    date: dateStr,
-                    type: 'preparation',
+                const dateISO = date.toISOString().split('T')[0];
+
+                // Adicionar ambos os períodos (diurno e noturno) para cada data
+                (['diurno', 'noturno'] as Array<'diurno' | 'noturno'>).forEach(period => {
+                    const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno'
+
+                    const periodTyped = period as 'diurno' | 'noturno'
+                    days.push({
+                        id: `${dateISO}-evento-${periodTyped}`,
+                        label: `${dateStr} (EVENTO - ${periodTyped === 'diurno' ? 'Diurno' : 'Noturno'})`,
+                        date: dateStr,
+                        type: 'evento',
+                        period: periodTyped
+                    })
+
                 })
             }
         }
 
-        // Adicionar dias de finalização
+        // Adicionar dias de finalização com suporte a turnos
         const desmontagemData = ensureArray(evento.desmontagem)
+        console.log('🔧 Processando desmontagem:', desmontagemData)
         if (desmontagemData.length > 0) {
             desmontagemData.forEach(day => {
-                if (day && day.date) {
+                if (day && day.date && day.period) {
                     try {
                         const dateStr = formatEventDate(day.date)
+                        const dateISO = new Date(day.date).toISOString().split('T')[0]
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno'
+
+                        console.log(`✅ Adicionando desmontagem: ${dateStr} - ${periodLabel}`)
                         days.push({
-                            id: dateStr,
-                            label: `${dateStr} (DESMONTAGEM)`,
+                            id: `${dateISO}-desmontagem-${day.period}`,
+                            label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
                             date: dateStr,
-                            type: 'finalization',
+                            type: 'desmontagem',
+                            period: day.period
                         })
                     } catch (error) {
                         console.error('❌ Erro ao processar data da desmontagem:', day, error)
@@ -414,7 +528,7 @@ export default function EventoDetalhesPage() {
                 }
             })
         } else if (evento.finalizationStartDate && evento.finalizationEndDate) {
-            // Fallback para estrutura antiga
+            // Fallback para estrutura antiga com suporte a turnos
             const startDate = new Date(evento.finalizationStartDate)
             const endDate = new Date(evento.finalizationEndDate)
             for (
@@ -423,62 +537,97 @@ export default function EventoDetalhesPage() {
                 date.setDate(date.getDate() + 1)
             ) {
                 const dateStr = formatEventDate(date.toISOString())
-                days.push({
-                    id: dateStr,
-                    label: `${dateStr} (DESMONTAGEM)`,
-                    date: dateStr,
-                    type: 'finalization',
+                const dateISO = date.toISOString().split('T')[0];
+
+                // Adicionar ambos os períodos (diurno e noturno) para cada data
+                (['diurno', 'noturno'] as const).forEach((period) => {
+                    const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno'
+
+                    days.push({
+                        id: `${dateISO}-finalizacao-${period}`,
+                        label: `${dateStr} (FINALIZAÇÃO - ${periodLabel})`,
+                        date: dateStr,
+                        type: 'finalizacao',
+                        period: period
+                    })
                 })
+
             }
         }
 
+        console.log('🎯 Dias finais gerados:', days)
         return days
     }, [evento, ensureArray])
 
-    // Função para filtrar participantes por dia selecionado
-    const getParticipantesPorDia = useCallback(
-        (dia: string): EventParticipant[] => {
-            return participantsArray.filter((participant: EventParticipant) => {
-                if (!participant.daysWork || participant.daysWork.length === 0) {
-                    return false // Se não tem dias de trabalho definidos, não aparece em nenhum dia específico
-                }
+    // Função para extrair informações do shift ID
+    const parseShiftId = useCallback((shiftId: string) => {
+        // Formato esperado: YYYY-MM-DD-stage-period
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            const year = parts[0];
+            const month = parts[1];
+            const day = parts[2];
+            const stage = parts[3];
+            const period = parts[4] as 'diurno' | 'noturno';
 
-                // Normalizar o dia selecionado
-                const normalizedDia = normalizeDate(dia)
+            return {
+                dateISO: `${year}-${month}-${day}`,
+                dateFormatted: formatEventDate(`${year}-${month}-${day}T00:00:00`),
+                stage,
+                period
+            };
+        }
 
-                // Verificar se algum dos dias de trabalho do participante corresponde ao dia selecionado
-                const hasDay = participant.daysWork.some(workDay => {
-                    const normalizedWorkDay = normalizeDate(workDay)
-                    const matches = normalizedWorkDay === normalizedDia
-                    return matches
-                })
+        // Fallback para formato simples (apenas data)
+        try {
+            const dateFormatted = formatEventDate(shiftId.includes('T') ? shiftId : shiftId + 'T00:00:00');
+            return {
+                dateISO: shiftId,
+                dateFormatted,
+                stage: 'unknown',
+                period: 'diurno' as 'diurno'
+            };
+        } catch (error) {
+            // Se não conseguir fazer parse da data, retornar valor padrão
+            return {
+                dateISO: shiftId,
+                dateFormatted: shiftId,
+                stage: 'unknown',
+                period: 'diurno' as 'diurno'
+            };
+        }
+    }, []);
 
-                return hasDay
-            })
-        },
-        [participantsArray, normalizeDate],
-    )
+    // Função para obter ícone do período
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+        if (period === 'diurno') {
+            return <Sun className="h-3 w-3 text-yellow-500" />;
+        } else if (period === 'noturno') {
+            return <Moon className="h-3 w-3 text-blue-500" />;
+        }
+        return null;
+    }, []);
 
     // Função para obter a cor da tab baseada no tipo de dia
     const getTabColor = useCallback((type: string, isActive: boolean) => {
         if (isActive) {
             switch (type) {
-                case 'setup':
+                case 'montagem':
                     return 'border-yellow-500 text-yellow-600 bg-yellow-50'
-                case 'preparation':
+                case 'evento':
                     return 'border-blue-500 text-blue-600 bg-blue-50'
-                case 'finalization':
+                case 'finalizacao':
                     return 'border-purple-500 text-purple-600 bg-purple-50'
                 default:
                     return 'border-purple-500 text-purple-600 bg-purple-50'
             }
         } else {
             switch (type) {
-                case 'setup':
+                case 'montagem':
                     return 'hover:text-yellow-700 hover:border-yellow-300'
-                case 'preparation':
+                case 'evento':
                     return 'hover:text-blue-700 hover:border-blue-300'
-                case 'finalization':
+                case 'finalizacao':
                     return 'hover:text-purple-700 hover:border-purple-300'
                 default:
                     return 'hover:text-gray-700 hover:border-gray-300'
@@ -539,29 +688,99 @@ export default function EventoDetalhesPage() {
         }
     }, [selectedDay, eventDays])
 
-    // Memoizar participantes do dia para evitar recálculo custoso
+    // Memoizar participantes do dia baseado no modo de visualização
     const participantesDoDia = useMemo(() => {
-        return participantsArray.filter((participant: EventParticipant) => {
-            if (!participant.daysWork || participant.daysWork.length === 0) {
-                return false // Se não tem dias de trabalho definidos, não aparece em nenhum dia específico
-            }
+        if (viewMode === 'shift') {
+            // Modo por turno: usar dados específicos do turno
+            return shiftParticipantsData
+        } else {
+            // Modo agrupado: expandir participantes agrupados para o turno atual
+            const expandedParticipants: EventParticipant[] = []
 
-            // Normalizar o dia selecionado
-            const normalizedDia = normalizeDate(currentSelectedDay)
+            groupedParticipantsData.forEach(group => {
+                // Encontrar o participante do turno atual
+                const currentShiftParticipant = group.shifts.find(shift => (shift as any).shiftId === currentSelectedDay)
 
-            // Verificar se algum dos dias de trabalho do participante corresponde ao dia selecionado
-            const hasDay = participant.daysWork.some(workDay => {
-                const normalizedWorkDay = normalizeDate(workDay)
-                const matches = normalizedWorkDay === normalizedDia
-                return matches
+                if (currentShiftParticipant) {
+                    expandedParticipants.push(currentShiftParticipant)
+                } else {
+                    // Fallback: verificar compatibilidade com daysWork (retrocompatibilidade)
+                    const participant = group.participant
+                    if (participant.daysWork && participant.daysWork.length > 0) {
+                        const hasDay = participant.daysWork.some(workDay => {
+                            if (workDay === currentSelectedDay) {
+                                return true;
+                            }
+                            // Compatibilidade: comparar datas extraídas
+                            const { dateFormatted } = parseShiftId(currentSelectedDay);
+                            const normalizedDia = normalizeDate(dateFormatted);
+                            const normalizedWorkDay = normalizeDate(workDay);
+                            return normalizedWorkDay === normalizedDia;
+                        })
+
+                        if (hasDay) {
+                            expandedParticipants.push(participant)
+                        }
+                    }
+                }
             })
 
-            return hasDay
-        })
-    }, [currentSelectedDay, participantsArray, normalizeDate])
+            return expandedParticipants
+        }
+    }, [viewMode, shiftParticipantsData, groupedParticipantsData, currentSelectedDay, normalizeDate, parseShiftId])
+
+    // Função otimizada para contar participantes por turno
+    const getParticipantsCountByShift = useCallback(
+        (shiftId: string): number => {
+            if (viewMode === 'shift') {
+                // Modo turno: usar API específica para cada turno
+                // Como não podemos fazer query para cada turno no render, usar fallback
+                if (shiftId === currentSelectedDay) {
+                    return shiftParticipantsData.length
+                }
+                // Para outros turnos, usar dados agrupados como estimativa
+                let count = 0;
+                groupedParticipantsData.forEach(group => {
+                    const hasShift = group.shifts.some(shift => (shift as any).shiftId === shiftId)
+                    if (hasShift) count++
+                })
+                return count
+            } else {
+                // Modo agrupado: contar participantes que têm o shift específico
+                let count = 0;
+                groupedParticipantsData.forEach(group => {
+                    const hasShift = group.shifts.some(shift => (shift as any).shiftId === shiftId)
+                    if (hasShift) count++
+                })
+                return count
+            }
+        },
+        [viewMode, currentSelectedDay, shiftParticipantsData, groupedParticipantsData],
+    )
 
     // Credentials array
     const credentialsArray = Array.isArray(credentials) ? credentials : []
+    const empresasArray = Array.isArray(empresas) ? empresas : []
+
+    // Função para filtrar empresas por dia selecionado (similar à lógica do empresas page)
+    const getEmpresasPorDia = useCallback((shiftId: string) => {
+        if (!shiftId || !empresasArray.length) return empresasArray
+
+        // Extrair a data do shift ID
+        const { dateISO } = parseShiftId(shiftId)
+
+        return empresasArray.filter((empresa) => {
+            if (!Array.isArray(empresa.days)) return false
+
+            // Verificar se a empresa trabalha no dia selecionado
+            return empresa.days.includes(dateISO)
+        })
+    }, [empresasArray, parseShiftId])
+
+    // Empresas filtradas por dia
+    const empresasDoDia = useMemo(() => {
+        return getEmpresasPorDia(currentSelectedDay)
+    }, [getEmpresasPorDia, currentSelectedDay])
 
     // Hook otimizado para filtros
     const {
@@ -583,6 +802,11 @@ export default function EventoDetalhesPage() {
         hasCheckOut,
         credentialsArray,
     })
+
+    // Override uniqueEmpresas to show only companies scheduled for the selected day
+    const uniqueEmpresasFiltered = useMemo(() => {
+        return empresasDoDia.map(empresa => empresa.nome).sort()
+    }, [empresasDoDia])
 
     // Memoizar KPIs baseados no dia selecionado para evitar recálculos
     const kpiStats = useMemo(() => {
@@ -703,30 +927,83 @@ export default function EventoDetalhesPage() {
     // Handlers memoizados
     const handleDeleteParticipant = useCallback(
         (participant: EventParticipant) => {
+            // Definir hash do participante
+            const hash = participant.participantHash || `${participant.cpf}_${params.id}`
+
+            // Verificar se o participante tem outros turnos no modo agrupado
+            if (viewMode === 'grouped') {
+                const group = groupedParticipantsData.find(g => g.participantHash === hash)
+                if (group && group.shifts.length > 1) {
+                    setDeleteMode('shift') // Por padrão, remover apenas do turno atual
+                } else {
+                    setDeleteMode('all') // Se só tem um turno, remover completamente
+                }
+            } else {
+                setDeleteMode('shift') // No modo shift, sempre remover do turno
+            }
+
             setDeletingParticipant(participant)
+            setDeletingParticipantHash(hash)
         },
-        [],
+        [viewMode, groupedParticipantsData, params.id],
     )
 
     const confirmDeleteParticipant = () => {
-        if (!deletingParticipant) return
+        if (!deletingParticipant || !deletingParticipantHash) return
 
-        deleteParticipant(
-            {
-                id: deletingParticipant.id,
-                performedBy: 'current-user',
-            },
-            {
-                onSuccess: () => {
-                    toast.success('Participante excluído com sucesso!')
-                    setDeletingParticipant(null)
+        if (deleteMode === 'shift') {
+            // Remover apenas do turno atual
+            console.log('🔄 Removendo participante apenas do turno atual:', currentSelectedDay);
+
+            deleteFromShift(
+                {
+                    eventId: String(params.id),
+                    participantHash: deletingParticipantHash,
+                    shiftId: currentSelectedDay,
+                    performedBy: 'current-user',
                 },
-                onError: error => {
-                    console.error('Erro ao excluir participante:', error)
-                    toast.error('Erro ao excluir participante. Tente novamente.')
+                {
+                    onSuccess: (data) => {
+                        const { dateFormatted, period, stage } = parseShiftId(currentSelectedDay);
+
+                        if (data.remainingShifts > 0) {
+                            toast.success(`Participante removido do turno ${dateFormatted} (${stage} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})! ${data.remainingShifts} turno(s) restante(s).`);
+                        } else {
+                            toast.success(`Participante removido do turno ${dateFormatted} (${stage} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})! Era o último turno.`);
+                        }
+
+                        setDeletingParticipant(null);
+                        setDeletingParticipantHash(null);
+                    },
+                    onError: error => {
+                        console.error('Erro ao remover participante do turno:', error);
+                        toast.error('Erro ao remover participante do turno. Tente novamente.');
+                    },
+                }
+            );
+        } else {
+            // Remover de todos os turnos
+            console.log('🗑️ Removendo participante de todos os turnos');
+
+            deleteAllShifts(
+                {
+                    eventId: String(params.id),
+                    participantHash: deletingParticipantHash,
+                    performedBy: 'current-user',
                 },
-            },
-        )
+                {
+                    onSuccess: (data) => {
+                        toast.success(`Participante removido de todos os ${data.deletedCount} turno(s)!`);
+                        setDeletingParticipant(null);
+                        setDeletingParticipantHash(null);
+                    },
+                    onError: error => {
+                        console.error('Erro ao remover participante de todos os turnos:', error);
+                        toast.error('Erro ao remover participante de todos os turnos. Tente novamente.');
+                    },
+                }
+            );
+        }
     }
 
     // ========== HANDLERS E FUNÇÕES ==========
@@ -816,12 +1093,17 @@ export default function EventoDetalhesPage() {
                 ? formatDateForAPI(selectedDateForAction)
                 : todayFormatted
 
+            // Extrair informações do shift selecionado
+            const { stage, period } = parseShiftId(selectedDateForAction || selectedDay)
+            
             await checkInMutation.mutateAsync({
                 participantId: participantAction.id,
                 date: dateToUse,
                 validatedBy: 'Sistema',
                 performedBy: 'Sistema',
                 notes: `Check-in realizado via painel de eventos - Pulseira: ${codigoPulseira.trim()}`,
+                workPeriod: period,
+                workStage: stage,
             })
 
             // Salvar pulseira no sistema de movement_credentials
@@ -899,12 +1181,17 @@ export default function EventoDetalhesPage() {
                 ? formatDateForAPI(selectedDateForAction)
                 : todayFormatted
 
+            // Extrair informações do shift selecionado
+            const { stage, period } = parseShiftId(selectedDateForAction || selectedDay)
+            
             await checkOutMutation.mutateAsync({
                 participantId: participantAction.id,
                 date: dateToUse,
                 validatedBy: 'Sistema',
                 performedBy: 'Sistema',
                 notes: 'Check-out realizado via painel de eventos',
+                workPeriod: period,
+                workStage: stage,
             })
 
             toast.success('Check-out realizado com sucesso!')
@@ -1008,8 +1295,15 @@ export default function EventoDetalhesPage() {
                 }
             }
 
+            // Exibir contexto do turno na mensagem de sucesso
+            const { dateFormatted, stage, period } = parseShiftId(currentSelectedDay);
+            const stageLabel = stage === 'montagem' ? 'Montagem' :
+                stage === 'evento' ? 'Evento' :
+                    stage === 'desmontagem' ? 'Desmontagem' : stage;
+            const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+
             toast.success(
-                `Atualização concluída: ${successCount} sucessos, ${errorCount} erros`,
+                `Edição em massa concluída para ${dateFormatted} (${stageLabel} - ${periodLabel}): ${successCount} sucessos${errorCount > 0 ? `, ${errorCount} erros` : ''}`,
             )
             setShowBulkEditModal(false)
             setBulkEditData({
@@ -1074,8 +1368,15 @@ export default function EventoDetalhesPage() {
             }
 
             if (successCount > 0) {
+                // Exibir contexto do turno na mensagem de sucesso
+                const { dateFormatted, stage, period } = parseShiftId(currentSelectedDay);
+                const stageLabel = stage === 'montagem' ? 'Montagem' :
+                    stage === 'evento' ? 'Evento' :
+                        stage === 'desmontagem' ? 'Desmontagem' : stage;
+                const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+
                 toast.success(
-                    `${successCount} participantes excluídos com sucesso!`,
+                    `${successCount} participantes excluídos do turno ${dateFormatted} (${stageLabel} - ${periodLabel})!`,
                 )
             }
             if (errorCount > 0) {
@@ -1203,7 +1504,7 @@ export default function EventoDetalhesPage() {
 
         try {
             // Buscar todos os participantes que trabalham no dia atual (origem)
-            const participantsFromCurrentDay = getParticipantesPorDia(selectedDay)
+            const participantsFromCurrentDay = participantesDoDia
 
             console.log('Dia de origem:', selectedDay)
             console.log('Dia de destino:', replicateSourceDay)
@@ -1316,12 +1617,16 @@ export default function EventoDetalhesPage() {
     const isLoading = useMemo(
         () =>
             participantsLoading ||
+            (viewMode === 'grouped' ? groupedParticipantsLoading : shiftParticipantsLoading) ||
             coordenadoresLoading ||
             vagasLoading ||
             empresasLoading ||
             attendanceLoading,
         [
             participantsLoading,
+            groupedParticipantsLoading,
+            shiftParticipantsLoading,
+            viewMode,
             coordenadoresLoading,
             vagasLoading,
             empresasLoading,
@@ -1384,13 +1689,39 @@ export default function EventoDetalhesPage() {
                             )} */}
                         </div>
 
-                        <Button
-                            onClick={() => setShowAdicionarStaffModal(true)}
-                            className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                        >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Adicionar Staff
-                        </Button>
+                        <div className="flex items-center gap-3">
+                            {/* Toggle para modo de visualização */}
+                            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-1">
+                                <button
+                                    onClick={() => setViewMode('grouped')}
+                                    className={`px-3 py-1 rounded text-sm font-medium transition-all ${viewMode === 'grouped'
+                                        ? 'bg-purple-600 text-white shadow-sm'
+                                        : 'text-gray-600 hover:bg-gray-100'
+                                        }`}
+                                >
+                                    <Users className="w-4 h-4 mr-1 inline" />
+                                    Agrupado
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('shift')}
+                                    className={`px-3 py-1 rounded text-sm font-medium transition-all ${viewMode === 'shift'
+                                        ? 'bg-purple-600 text-white shadow-sm'
+                                        : 'text-gray-600 hover:bg-gray-100'
+                                        }`}
+                                >
+                                    <Clock className="w-4 h-4 mr-1 inline" />
+                                    Por Turno
+                                </button>
+                            </div>
+
+                            <Button
+                                onClick={() => setShowAdicionarStaffModal(true)}
+                                className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                            >
+                                <Plus className="w-4 h-4 mr-2" />
+                                Adicionar Staff
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -1478,7 +1809,7 @@ export default function EventoDetalhesPage() {
                         filters={filters}
                         popoverStates={popoverStates}
                         dayStats={dayStats}
-                        uniqueEmpresas={uniqueEmpresas}
+                        uniqueEmpresas={uniqueEmpresasFiltered}
                         uniqueFuncoes={uniqueFuncoes}
                         participantesDoDia={participantesDoDia}
                         filteredParticipants={filteredParticipants}
@@ -1499,9 +1830,7 @@ export default function EventoDetalhesPage() {
                             {/* Container dos tabs sem scroll horizontal */}
                             <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
                                 {eventDays.map(day => {
-                                    const participantesNoDia = getParticipantesPorDia(
-                                        day.id,
-                                    ).length
+                                    const participantesNoDia = getParticipantsCountByShift(day.id)
                                     const isActive = selectedDay === day.id
 
                                     return (
@@ -1516,10 +1845,26 @@ export default function EventoDetalhesPage() {
                                                     )}`
                                                     }`}
                                             >
-                                                <div className="flex flex-col items-center">
-                                                    <span className="text-xs font-medium">
-                                                        {day.label.split(' ')[0]}
-                                                    </span>
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-xs font-medium">
+                                                            {day.label.split(' ')[0]}
+                                                        </span>
+                                                        {getPeriodIcon(day.period)}
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-xs opacity-75">
+                                                            {day.type === 'montagem' ? 'MONTAGEM' :
+                                                                day.type === 'evento' ? 'EVENTO' :
+                                                                    day.type === 'finalizacao' ? 'FINALIZAÇÃO' :
+                                                                        'EVENTO'}
+                                                        </span>
+                                                        {day.period && (
+                                                            <span className="text-xs opacity-60">
+                                                                ({day.period === 'diurno' ? 'D' : 'N'})
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <span className="text-xs opacity-75">
                                                         ({participantesNoDia})
                                                     </span>
@@ -1634,19 +1979,84 @@ export default function EventoDetalhesPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Tem certeza que deseja excluir o participante &quot;
-                            {deletingParticipant?.name}&quot;? Esta ação não pode ser
-                            desfeita.
+                            {deletingParticipant && deletingParticipantHash && (() => {
+                                const { dateFormatted, period, stage } = parseShiftId(currentSelectedDay);
+                                const group = groupedParticipantsData.find(g => g.participantHash === deletingParticipantHash);
+                                const totalShifts = group ? group.shifts.length : 1;
+
+                                if (deleteMode === 'shift' && totalShifts > 1) {
+                                    return (
+                                        <div className="space-y-4">
+                                            <p>
+                                                Remover <strong>{deletingParticipant.name}</strong> apenas do turno atual:
+                                            </p>
+                                            <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                                                <div className="flex items-center gap-2">
+                                                    {getPeriodIcon(period)}
+                                                    <span className="font-medium">
+                                                        {dateFormatted} ({stage.toUpperCase()} - {period === 'diurno' ? 'Diurno' : 'Noturno'})
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-gray-600">
+                                                O participante continuará trabalhando em {totalShifts - 1} outro(s) turno(s).
+                                            </p>
+
+                                            {/* Opção de remover de todos os turnos */}
+                                            <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={deleteMode === 'all'}
+                                                        onChange={(e) => setDeleteMode(e.target.checked ? 'all' : 'shift')}
+                                                        className="rounded border-gray-300"
+                                                    />
+                                                    <span className="text-sm text-yellow-800">
+                                                        Remover de <strong>todos os {totalShifts} turnos</strong> (exclusão completa)
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    );
+                                } else {
+                                    return (
+                                        <div className="space-y-3">
+                                            <p>
+                                                <strong>ATENÇÃO:</strong> {totalShifts === 1
+                                                    ? `Esta é a única participação de ${deletingParticipant.name}.`
+                                                    : `Removendo ${deletingParticipant.name} de todos os ${totalShifts} turnos.`
+                                                }
+                                            </p>
+                                            <div className="bg-red-50 border border-red-200 rounded p-3">
+                                                <div className="flex items-center gap-2">
+                                                    {getPeriodIcon(period)}
+                                                    <span className="font-medium text-red-800">
+                                                        {totalShifts === 1
+                                                            ? `${dateFormatted} (${stage.toUpperCase()} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`
+                                                            : `Todos os ${totalShifts} turnos`
+                                                        }
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-red-600">
+                                                O participante será <strong>completamente excluído</strong> do evento.
+                                            </p>
+                                        </div>
+                                    );
+                                }
+                            })()}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={confirmDeleteParticipant}
-                            disabled={isDeleting}
+                            disabled={isDeleting || isDeletingFromShift || isDeletingAllShifts}
                             className="bg-red-600 hover:bg-red-700"
                         >
-                            {isDeleting ? 'Excluindo...' : 'Excluir'}
+                            {(isDeleting || isDeletingFromShift || isDeletingAllShifts) ? 'Processando...' :
+                                deleteMode === 'shift' ? 'Remover do Turno' : 'Excluir Completamente'
+                            }
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -1952,6 +2362,7 @@ export default function EventoDetalhesPage() {
                 isOpen={showAdicionarStaffModal}
                 onClose={() => setShowAdicionarStaffModal(false)}
                 eventId={String(params.id)}
+                selectedDay={selectedDay}
                 evento={evento}
                 onSuccess={() => {
                     // Recarregar dados se necessário

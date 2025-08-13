@@ -70,10 +70,10 @@ export default function VagasPage() {
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
             if (!eventData) return;
-            
+
             try {
                 let dataArray: any[] = [];
-                
+
                 // Se for string JSON, fazer parse
                 if (typeof eventData === 'string') {
                     dataArray = JSON.parse(eventData);
@@ -90,16 +90,30 @@ export default function VagasPage() {
                 // Processar cada item do array
                 dataArray.forEach(item => {
                     if (item && item.date) {
-                        const formattedDate = formatEventDate(item.date);
-                        const dateISO = new Date(item.date).toISOString().split('T')[0]; // YYYY-MM-DD para ID
+                        // Garantir que a data está no formato correto
                         const dateObj = new Date(item.date);
-                        const hour = dateObj.getHours();
+                        if (isNaN(dateObj.getTime())) {
+                            console.warn(`Data inválida encontrada: ${item.date}`);
+                            return;
+                        }
+
+                        const formattedDate = formatEventDate(dateObj.toISOString());
                         
-                        // Determinar período (diurno: 6h-18h, noturno: 18h-6h)
-                        const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
-                        
+                        // Usar período do item se disponível, senão calcular baseado na hora
+                        let period: 'diurno' | 'noturno';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                            period = item.period;
+                        } else {
+                            // Fallback: calcular baseado na hora
+                            const hour = dateObj.getHours();
+                            period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        }
+
+                        // Criar ID único baseado na data e período
+                        const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
+
                         days.push({
-                            id: dateISO,
+                            id: dayId,
                             label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
                             date: formattedDate,
                             type: stage,
@@ -113,75 +127,96 @@ export default function VagasPage() {
         };
 
         // Processar nova estrutura do evento
-        processEventArray(evento.montagem, 'setup', 'MONTAGEM');
-        processEventArray(evento.evento, 'event', 'EVENTO');
-        processEventArray(evento.desmontagem, 'teardown', 'DESMONTAGEM');
+        processEventArray(evento.montagem, 'montagem', 'MONTAGEM');
+        processEventArray(evento.evento, 'evento', 'EVENTO');
+        processEventArray(evento.desmontagem, 'desmontagem', 'DESMONTAGEM');
 
-        // Fallback para estrutura antiga (manter compatibilidade)
-        // Adicionar dias de montagem
-        if (evento.setupStartDate && evento.setupEndDate) {
+        // Fallback para estrutura antiga (manter compatibilidade) - só usar se não há nova estrutura
+        if (evento.setupStartDate && evento.setupEndDate && (!evento.montagem || evento.montagem.length === 0)) {
             const startDate = new Date(evento.setupStartDate)
             const endDate = new Date(evento.setupEndDate)
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatEventDate(date.toISOString())
-                const dateISO = date.toISOString().split('T')[0] // YYYY-MM-DD
-                const hour = date.getHours();
-                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
-                
-                days.push({
-                    id: dateISO,
-                    label: `${dateStr} (MONTAGEM - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
-                    date: dateStr,
-                    type: 'setup',
-                    period
-                })
+            
+            // Validar datas
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de setup inválidas:', evento.setupStartDate, evento.setupEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    // Para compatibilidade, assumir período diurno para estrutura antiga
+                    const dayId = `${date.toISOString().split('T')[0]}-montagem-diurno`;
+
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (MONTAGEM - Diurno)`,
+                        date: dateStr,
+                        type: 'montagem',
+                        period: 'diurno'
+                    })
+                }
             }
         }
 
-        // Adicionar dias de Evento
-        if (evento.preparationStartDate && evento.preparationEndDate) {
+        if (evento.preparationStartDate && evento.preparationEndDate && (!evento.evento || evento.evento.length === 0)) {
             const startDate = new Date(evento.preparationStartDate)
             const endDate = new Date(evento.preparationEndDate)
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatEventDate(date.toISOString())
-                const dateISO = date.toISOString().split('T')[0] // YYYY-MM-DD
-                const hour = date.getHours();
-                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
-                
-                days.push({
-                    id: dateISO,
-                    label: `${dateStr} (EVENTO - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
-                    date: dateStr,
-                    type: 'preparation',
-                    period
-                })
+            
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de preparação inválidas:', evento.preparationStartDate, evento.preparationEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    const dayId = `${date.toISOString().split('T')[0]}-evento-diurno`;
+
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (EVENTO - Diurno)`,
+                        date: dateStr,
+                        type: 'evento',
+                        period: 'diurno'
+                    })
+                }
             }
         }
 
-        // Adicionar dias de finalização
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
+        if (evento.finalizationStartDate && evento.finalizationEndDate && (!evento.desmontagem || evento.desmontagem.length === 0)) {
             const startDate = new Date(evento.finalizationStartDate)
             const endDate = new Date(evento.finalizationEndDate)
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatEventDate(date.toISOString())
-                const dateISO = date.toISOString().split('T')[0] // YYYY-MM-DD
-                const hour = date.getHours();
-                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
-                
-                days.push({
-                    id: dateISO,
-                    label: `${dateStr} (DESMONTAGEM - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
-                    date: dateStr,
-                    type: 'finalization',
-                    period
-                })
+            
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de finalização inválidas:', evento.finalizationStartDate, evento.finalizationEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    const dayId = `${date.toISOString().split('T')[0]}-desmontagem-diurno`;
+
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (DESMONTAGEM - Diurno)`,
+                        date: dateStr,
+                        type: 'desmontagem',
+                        period: 'diurno'
+                    })
+                }
             }
         }
 
         // Ordenar dias cronologicamente
         days.sort((a, b) => {
-            const dateA = new Date(a.date.split('/').reverse().join('-'));
-            const dateB = new Date(b.date.split('/').reverse().join('-'));
+            // Extrair a data do ID para ordenação mais confiável
+            const dateA = new Date(a.id.split('-')[0]);
+            const dateB = new Date(b.id.split('-')[0]);
+            
+            if (dateA.getTime() === dateB.getTime()) {
+                // Se for o mesmo dia, ordenar por tipo e período
+                const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
+                const periodOrder = { diurno: 0, noturno: 1 };
+                
+                const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
+                if (typeComparison !== 0) return typeComparison;
+                
+                return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder];
+            }
+            
             return dateA.getTime() - dateB.getTime();
         });
 
@@ -193,13 +228,199 @@ export default function VagasPage() {
     const shouldAutoSelectDay = !selectedDay && eventDays.length > 0
     const effectiveSelectedDay = shouldAutoSelectDay ? eventDays[0].id : selectedDay
 
-    const { data: veiculos = [], isLoading, error } = useEventVehiclesByEvent({
+    // Função para extrair informações do shift ID
+    const parseShiftId = useCallback((shiftId: string) => {
+        if (!shiftId) {
+            return {
+                workDate: new Date().toISOString().split('T')[0],
+                workStage: 'evento' as const,
+                workPeriod: 'diurno' as const
+            };
+        }
+
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            // Mapear os tipos do frontend para os valores esperados pelo backend
+            const stageMap: Record<string, 'montagem' | 'evento' | 'desmontagem'> = {
+                'montagem': 'montagem',
+                'evento': 'evento', 
+                'desmontagem': 'desmontagem',
+                'setup': 'montagem',
+                'event': 'evento', 
+                'teardown': 'desmontagem',
+                'preparation': 'evento',
+                'finalization': 'desmontagem'
+            };
+
+            const stage = stageMap[parts[3]];
+            const period = parts[4];
+
+            // Validar que temos valores válidos
+            if (!stage || (period !== 'diurno' && period !== 'noturno')) {
+                console.warn('Valores inválidos no shiftId:', { parts, stage, period });
+                return {
+                    workDate: `${parts[0]}-${parts[1]}-${parts[2]}`,
+                    workStage: 'evento' as const,
+                    workPeriod: 'diurno' as const
+                };
+            }
+
+            return {
+                workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
+                workStage: stage,
+                workPeriod: period as 'diurno' | 'noturno'
+            };
+        }
+        
+        // Se não conseguir parsear, usar valores padrão
+        return {
+            workDate: shiftId.includes('-') ? shiftId.split('-').slice(0, 3).join('-') : shiftId,
+            workStage: 'evento' as const,
+            workPeriod: 'diurno' as const
+        };
+    }, []);
+
+    // Query para buscar todos os veículos do evento (para contadores das abas)
+    const { data: allRawVeiculos = [], isLoading: allVeiculosLoading } = useEventVehiclesByEvent({
         eventId,
-        search: searchTerm,
-        statusFilter: showOnlyActive ? "retirada" : "all",
+        search: "",
+        statusFilter: "all",
         empresaFilter: "all",
-        diaFilter: effectiveSelectedDay || "all"
+        shiftFilter: "all"
     })
+
+    // Para a tabela, usar os mesmos dados sem filtro de shift (filtraremos no frontend)
+    const { data: rawVeiculos = [], isLoading, error } = useEventVehiclesByEvent({
+        eventId,
+        search: "",
+        statusFilter: "all",
+        empresaFilter: "all",
+        shiftFilter: "all" // Buscar todos, filtrar no frontend
+    })
+
+    // Função para normalizar dados dos veículos
+    const normalizeVeiculos = useCallback((veiculosArray: any[]) => {
+        return veiculosArray.map(veiculo => {
+            // Debug temporário - remover após testar
+            console.log('🔍 Normalizando veículo:', {
+                id: veiculo.id,
+                empresa: veiculo.empresa,
+                shiftId: veiculo.shiftId,
+                workStage: veiculo.workStage,
+                workPeriod: veiculo.workPeriod,
+                dia: veiculo.dia
+            });
+
+            // Se já tem campos de turno, verificar consistência e corrigir se necessário
+            if (veiculo.shiftId && veiculo.workDate && veiculo.workStage && veiculo.workPeriod) {
+                // Extrair informações do shiftId para garantir consistência
+                const shiftParts = veiculo.shiftId.split('-');
+                if (shiftParts.length >= 5) {
+                    const shiftDate = `${shiftParts[0]}-${shiftParts[1]}-${shiftParts[2]}`;
+                    const shiftStageFromId = shiftParts[3];
+                    const shiftPeriodFromId = shiftParts[4];
+
+                    // Mapear tipos para garantir consistência
+                    const stageMap: Record<string, 'montagem' | 'evento' | 'desmontagem'> = {
+                        'montagem': 'montagem',
+                        'evento': 'evento', 
+                        'desmontagem': 'desmontagem',
+                        'setup': 'montagem',
+                        'event': 'evento', 
+                        'teardown': 'desmontagem',
+                        'preparation': 'evento',
+                        'finalization': 'desmontagem'
+                    };
+
+                    const normalizedStage = stageMap[shiftStageFromId] || stageMap[veiculo.workStage] || 'evento';
+                    const normalizedPeriod = (shiftPeriodFromId === 'diurno' || shiftPeriodFromId === 'noturno') 
+                        ? shiftPeriodFromId 
+                        : (veiculo.workPeriod === 'diurno' || veiculo.workPeriod === 'noturno') 
+                            ? veiculo.workPeriod 
+                            : 'diurno';
+
+                    // Criar shiftId consistente
+                    const normalizedShiftId = `${shiftDate}-${normalizedStage}-${normalizedPeriod}`;
+
+                    const normalized = {
+                        ...veiculo,
+                        shiftId: normalizedShiftId,
+                        workDate: shiftDate,
+                        workStage: normalizedStage,
+                        workPeriod: normalizedPeriod
+                    };
+
+                    // console.log('✅ Veículo normalizado:', normalized.shiftId);
+
+                    return normalized;
+                }
+
+                // Se não conseguir parsear o shiftId, usar os campos existentes
+                return {
+                    ...veiculo,
+                    workStage: veiculo.workStage || 'evento',
+                    workPeriod: veiculo.workPeriod || 'diurno'
+                };
+            }
+            
+            // Se não tem campos de turno mas tem 'dia', tentar criar campos de turno
+            if (veiculo.dia) {
+                // Tentar encontrar o turno correspondente à data
+                const matchingDay = eventDays.find(day => {
+                    const dayDate = day.id.split('-').slice(0, 3).join('-');
+                    return dayDate === veiculo.dia;
+                });
+                
+                if (matchingDay) {
+                    const shiftInfo = parseShiftId(matchingDay.id);
+                    const normalized = {
+                        ...veiculo,
+                        shiftId: matchingDay.id,
+                        workDate: shiftInfo.workDate,
+                        workStage: shiftInfo.workStage,
+                        workPeriod: shiftInfo.workPeriod
+                    };
+                    
+                    // console.log('📅 Veículo criado do dia:', normalized.shiftId);
+                    return normalized;
+                }
+                
+                // Fallback: criar campos básicos
+                const fallback = {
+                    ...veiculo,
+                    shiftId: `${veiculo.dia}-evento-diurno`,
+                    workDate: veiculo.dia,
+                    workStage: 'evento' as const,
+                    workPeriod: 'diurno' as const
+                };
+                
+                // console.log('🔧 Veículo fallback:', fallback.shiftId);
+                return fallback;
+            }
+            
+            // Se não tem nem dia nem campos de turno, retornar com valores padrão
+            const defaultVeiculo = {
+                ...veiculo,
+                shiftId: '',
+                workDate: new Date().toISOString().split('T')[0],
+                workStage: 'evento' as const,
+                workPeriod: 'diurno' as const
+            };
+            
+            // console.log('⚠️ Veículo padrão:', defaultVeiculo.shiftId);
+            return defaultVeiculo;
+        });
+    }, [eventDays, parseShiftId]);
+
+    // Normalizar dados para a tabela (com filtros aplicados)
+    const veiculos = useMemo(() => {
+        return normalizeVeiculos(rawVeiculos);
+    }, [rawVeiculos, normalizeVeiculos])
+
+    // Normalizar todos os dados para contadores das abas
+    const allVeiculos = useMemo(() => {
+        return normalizeVeiculos(allRawVeiculos);
+    }, [allRawVeiculos, normalizeVeiculos])
 
     // Mutations
     const createVehicleMutation = useCreateEventVehicle()
@@ -211,14 +432,15 @@ export default function VagasPage() {
     const getTabColor = useCallback((type: string, isActive: boolean) => {
         if (isActive) {
             switch (type) {
+                case 'montagem':
                 case 'setup':
                     return 'border-orange-500 text-orange-600 bg-orange-50'
+                case 'evento':
                 case 'event':
-                    return 'border-blue-500 text-blue-600 bg-blue-50'
-                case 'teardown':
-                    return 'border-red-500 text-red-600 bg-red-50'
                 case 'preparation':
                     return 'border-blue-500 text-blue-600 bg-blue-50'
+                case 'desmontagem':
+                case 'teardown':
                 case 'finalization':
                     return 'border-red-500 text-red-600 bg-red-50'
                 default:
@@ -226,14 +448,15 @@ export default function VagasPage() {
             }
         } else {
             switch (type) {
+                case 'montagem':
                 case 'setup':
                     return 'hover:text-orange-700 hover:border-orange-300'
+                case 'evento':
                 case 'event':
-                    return 'hover:text-blue-700 hover:border-blue-300'
-                case 'teardown':
-                    return 'hover:text-red-700 hover:border-red-300'
                 case 'preparation':
                     return 'hover:text-blue-700 hover:border-blue-300'
+                case 'desmontagem':
+                case 'teardown':
                 case 'finalization':
                     return 'hover:text-red-700 hover:border-red-300'
                 default:
@@ -254,7 +477,33 @@ export default function VagasPage() {
 
     // Filtrar veículos
     const filteredVeiculos = useMemo(() => {
+        console.log('🔍 Debug filtro:', {
+            totalVeiculos: veiculos.length,
+            selectedDay,
+            searchTerm,
+            showOnlyActive,
+            primeirosVeiculos: veiculos.slice(0, 2).map(v => ({
+                empresa: v.empresa,
+                shiftId: v.shiftId,
+                retirada: v.retirada
+            }))
+        });
+
         let filtered = veiculos
+
+        // Filtrar por turno selecionado
+        if (selectedDay) {
+            filtered = filtered.filter(veiculo => {
+                const match = veiculo.shiftId === selectedDay;
+                if (!match) {
+                    console.log('❌ Não match:', { veiculoShiftId: veiculo.shiftId, selectedDay });
+                } else {
+                    console.log('✅ Match encontrado:', { veiculoShiftId: veiculo.shiftId, selectedDay });
+                }
+                return match;
+            });
+            console.log('📊 Após filtro por turno:', filtered.length);
+        }
 
         // Filtrar por termo de busca
         if (searchTerm) {
@@ -264,30 +513,38 @@ export default function VagasPage() {
                 (veiculo.modelo?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
                 (veiculo.tipo_de_credencial?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
             )
+            console.log('📊 Após filtro por busca:', filtered.length);
         }
 
         // Filtrar apenas ativos
         if (showOnlyActive) {
             filtered = filtered.filter(veiculo => veiculo.retirada === 'retirada')
+            console.log('📊 Após filtro por ativos:', filtered.length);
         }
 
+        console.log('🎯 Resultado final do filtro:', filtered.length);
         return filtered
-    }, [veiculos, searchTerm, showOnlyActive])
+    }, [veiculos, selectedDay, searchTerm, showOnlyActive])
 
-    // Estatísticas
+    // Estatísticas (usando todos os veículos, não apenas os filtrados)
     const stats = useMemo(() => {
-        const total = veiculos.length
-        const retirados = veiculos.filter(v => v.retirada === 'retirada').length
-        const pendentes = veiculos.filter(v => v.retirada === 'pendente').length
-        const totalDias = Array.from(new Set(veiculos.map(v => v.dia))).length
+        const total = allVeiculos.length
+        const retirados = allVeiculos.filter(v => v.retirada === 'retirada').length
+        const pendentes = allVeiculos.filter(v => v.retirada === 'pendente').length
+        // Contar turnos únicos, com fallback para dias únicos
+        const uniqueIdentifiers = Array.from(new Set(
+            allVeiculos.map(v => v.shiftId || v.dia || 'default')
+                .filter(id => id !== 'default')
+        ));
+        const totalTurnos = uniqueIdentifiers.length;
 
         return {
             total,
             retirados,
             pendentes,
-            totalDias
+            totalTurnos
         }
-    }, [veiculos])
+    }, [allVeiculos])
 
     // Se não há evento, mostrar loading
     if (!evento) {
@@ -336,25 +593,71 @@ export default function VagasPage() {
         setSelectedVeiculoForHistorico(null)
     }
 
+
     const handleSaveVeiculo = async (data: Omit<EventVehicle, 'id' | 'event_id' | 'created_at' | 'updated_at'>) => {
         try {
+            // Usar shiftId do modal ou selectedDay como fallback
+            const finalShiftId = data.shiftId || selectedDay || effectiveSelectedDay;
+            
+            // Extrair informações do shift para o modelo de turno
+            const shiftInfo = parseShiftId(finalShiftId);
+            
+            // Debug: verificar o que está sendo gerado
+            console.log('🔍 Debug handleSaveVeiculo:', {
+                finalShiftId,
+                shiftInfo,
+                selectedDay,
+                effectiveSelectedDay,
+                dataShiftId: data.shiftId,
+                workStageType: typeof shiftInfo.workStage,
+                workStageValue: shiftInfo.workStage,
+                allowedValues: ['montagem', 'evento', 'desmontagem']
+            });
+
+            // Validar valores antes de criar o payload
+            const allowedStages = ['montagem', 'evento', 'desmontagem'];
+            const allowedPeriods = ['diurno', 'noturno'];
+            
+            if (!allowedStages.includes(shiftInfo.workStage)) {
+                console.error('❌ workStage inválido:', shiftInfo.workStage);
+                toast.error(`Erro: workStage inválido: ${shiftInfo.workStage}`);
+                return;
+            }
+            
+            if (!allowedPeriods.includes(shiftInfo.workPeriod)) {
+                console.error('❌ workPeriod inválido:', shiftInfo.workPeriod);
+                toast.error(`Erro: workPeriod inválido: ${shiftInfo.workPeriod}`);
+                return;
+            }
+
+            const vehicleData = {
+                empresa: data.empresa,
+                modelo: data.modelo,
+                placa: data.placa,
+                tipo_de_credencial: data.tipo_de_credencial,
+                retirada: data.retirada,
+                // Novos campos do modelo de turno
+                shiftId: finalShiftId,
+                workDate: shiftInfo.workDate,
+                workStage: shiftInfo.workStage,
+                workPeriod: shiftInfo.workPeriod
+            };
+
+            // Debug: verificar dados antes de enviar
+            console.log('📤 Dados enviados para backend:', vehicleData);
+
             if (isEditing && editingVeiculo) {
                 await updateVehicleMutation.mutateAsync({
                     id: editingVeiculo.id,
-                    data: {
-                        empresa: data.empresa,
-                        modelo: data.modelo,
-                        placa: data.placa,
-                        tipo_de_credencial: data.tipo_de_credencial,
-                        retirada: data.retirada,
-                        dia: data.dia
-                    }
+                    data: vehicleData
                 })
             } else {
-                await createVehicleMutation.mutateAsync({
+                const payloadToSend = {
                     eventId,
-                    ...data
-                })
+                    ...vehicleData
+                };
+                console.log('📤 Payload completo para criação:', payloadToSend);
+                await createVehicleMutation.mutateAsync(payloadToSend)
             }
             // Fechar modal após sucesso
             handleCloseModal()
@@ -507,7 +810,10 @@ export default function VagasPage() {
                     <div className="border-b border-gray-200 bg-white rounded-t-lg">
                         <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
                             {getEventDays().map((day) => {
-                                const veiculosInDay = veiculos.filter(v => v.dia === day.id).length
+                                // Filtrar veículos pelo shiftId completo usando TODOS os veículos
+                                const veiculosInDay = allVeiculos.filter(v => {
+                                    return v.shiftId === day.id;
+                                }).length
                                 const isActive = selectedDay === day.id
 
                                 return (
@@ -528,12 +834,10 @@ export default function VagasPage() {
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <span className="text-xs opacity-75">
-                                                    {day.type === 'setup' ? 'MONTAGEM' : 
-                                                     day.type === 'event' ? 'EVENTO' :
-                                                     day.type === 'teardown' ? 'DESMONTAGEM' :
-                                                     day.type === 'preparation' ? 'EVENTO' :
-                                                     day.type === 'finalization' ? 'DESMONTAGEM' : 
-                                                     'EVENTO'}
+                                                    {day.type === 'montagem' || day.type === 'setup' ? 'MONTAGEM' :
+                                                        day.type === 'evento' || day.type === 'event' || day.type === 'preparation' ? 'EVENTO' :
+                                                            day.type === 'desmontagem' || day.type === 'teardown' || day.type === 'finalization' ? 'DESMONTAGEM' :
+                                                                        'EVENTO'}
                                                 </span>
                                                 {day.period && (
                                                     <span className="text-xs opacity-60">
@@ -542,7 +846,11 @@ export default function VagasPage() {
                                                 )}
                                             </div>
                                             <span className="text-xs opacity-75">
-                                                ({veiculosInDay})
+                                                {allVeiculosLoading ? (
+                                                    <span className="inline-block w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></span>
+                                                ) : (
+                                                    `(${veiculosInDay})`
+                                                )}
                                             </span>
                                         </div>
                                     </button>
@@ -574,7 +882,7 @@ export default function VagasPage() {
                                         Status
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
-                                        Dia
+                                        Turno
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                                         Ações
@@ -597,10 +905,10 @@ export default function VagasPage() {
                                             <div className="flex flex-col items-center">
                                                 <Car className="w-8 h-8 text-gray-400 mb-2" />
                                                 <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                    {selectedDay ? `Nenhum veículo encontrado para ${formatEventDate(selectedDay + 'T00:00:00')}` : 'Selecione uma data'}
+                                                    {selectedDay ? `Nenhum veículo encontrado para este turno` : 'Selecione um turno'}
                                                 </p>
                                                 <p className="text-sm text-gray-500">
-                                                    {selectedDay ? 'Registre uma nova retirada para esta data' : 'Escolha uma data do evento para ver os veículos'}
+                                                    {selectedDay ? 'Registre uma nova retirada para este turno' : 'Escolha um turno do evento para ver os veículos'}
                                                 </p>
                                             </div>
                                         </td>
@@ -631,9 +939,33 @@ export default function VagasPage() {
                                                 {getStatusBadge(veiculo.retirada)}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                <div className="flex items-center gap-1">
-                                                    <Calendar className="h-4 w-4 text-gray-400" />
-                                                    {formatEventDate(veiculo.dia + 'T00:00:00')}
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <Calendar className="h-4 w-4 text-gray-400" />
+                                                        {veiculo.workDate ? formatEventDate(veiculo.workDate + 'T00:00:00') : formatEventDate(veiculo.dia + 'T00:00:00')}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                            veiculo.workStage === 'montagem' ? 'bg-orange-100 text-orange-700' :
+                                                            veiculo.workStage === 'evento' ? 'bg-blue-100 text-blue-700' :
+                                                            veiculo.workStage === 'desmontagem' ? 'bg-red-100 text-red-700' :
+                                                            'bg-gray-100 text-gray-700'
+                                                        }`}>
+                                                            {veiculo.workStage?.toUpperCase() || 'EVENTO'}
+                                                        </span>
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                            veiculo.workPeriod === 'diurno' ? 'bg-yellow-100 text-yellow-700' :
+                                                            veiculo.workPeriod === 'noturno' ? 'bg-blue-100 text-blue-700' :
+                                                            'bg-gray-100 text-gray-700'
+                                                        }`}>
+                                                            {veiculo.workPeriod ? veiculo.workPeriod.toUpperCase() : 'DIURNO'}
+                                                        </span>
+                                                        {veiculo.shiftId && (
+                                                            <span className="text-xs text-gray-500 font-mono">
+                                                                {veiculo.shiftId}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

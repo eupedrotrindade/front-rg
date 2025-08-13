@@ -26,6 +26,8 @@ export * from "./use-credentials";
 // Event Participants queries
 export { useEventParticipants } from "./use-event-participants";
 export { useEventParticipantsByEvent } from "./use-event-participants-by-event";
+export { useEventParticipantsGrouped, type GroupedParticipant } from "./use-event-participants-grouped";
+export { useEventParticipantsByShift } from "./use-event-participants-by-shift";
 
 // Event Staff queries
 export { useEventStaff } from "./use-event-staff";

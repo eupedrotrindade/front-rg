@@ -9,7 +9,7 @@ interface UseEventVehiclesByEventParams {
   sortOrder?: "asc" | "desc";
   statusFilter?: "all" | "retirada" | "pendente";
   empresaFilter?: string;
-  diaFilter?: string;
+  shiftFilter?: string;
 }
 
 export const useEventVehiclesByEvent = ({
@@ -19,7 +19,7 @@ export const useEventVehiclesByEvent = ({
   sortOrder = "asc",
   statusFilter = "all",
   empresaFilter,
-  diaFilter,
+  shiftFilter,
 }: UseEventVehiclesByEventParams) => {
   const {
     data: allVehicles = [],
@@ -50,9 +50,21 @@ export const useEventVehiclesByEvent = ({
           if (vehicle.empresa !== empresaFilter) return false;
         }
 
-        // Filtro por dia
-        if (diaFilter && diaFilter !== "all") {
-          if (vehicle.dia !== diaFilter) return false;
+        // Filtro por turno (com compatibilidade para campo 'dia')
+        if (shiftFilter && shiftFilter !== "all") {
+          // Se tem shiftId, usar ele
+          if (vehicle.shiftId) {
+            if (vehicle.shiftId !== shiftFilter) return false;
+          } 
+          // Fallback: usar campo 'dia' se disponível
+          else if (vehicle.dia) {
+            const shiftDate = shiftFilter.split('-').slice(0, 3).join('-'); // Extrair YYYY-MM-DD
+            if (vehicle.dia !== shiftDate) return false;
+          }
+          // Se não tem nem shiftId nem dia, filtrar fora
+          else {
+            return false;
+          }
         }
 
         return true;

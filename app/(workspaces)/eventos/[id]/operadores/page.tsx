@@ -914,16 +914,7 @@ export default function OperadoresPage() {
                             <Users className="h-4 w-4" />
                             Operadores ({operadores.length})
                         </TabsTrigger>
-                        <TabsTrigger
-                            value="todos-operadores"
-                            className={`flex items-center justify-center p-4 gap-2 rounded-md transition-colors
-                                data-[state=active]:bg-[#610e5c] data-[state=active]:text-white
-                                focus:bg-[#610e5c] focus:text-white
-                            `}
-                        >
-                            <UserPlus className="h-4 w-4" />
-                            Todos os Operadores ({allOperators.length})
-                        </TabsTrigger>
+
                         <TabsTrigger
                             value="acoes"
                             className={`flex items-center justify-center p-4 gap-2 rounded-md transition-colors
@@ -1054,116 +1045,7 @@ export default function OperadoresPage() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="todos-operadores" className="space-y-6">
-                        {/* Filtros para Todos os Operadores */}
-                        <div className="bg-white rounded-lg shadow-sm border p-4">
-                            <div className="flex flex-wrap gap-4">
-                                <div className="flex-1 min-w-[200px]">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Buscar operadores
-                                    </label>
-                                    <Input
-                                        placeholder="Digite o nome ou CPF..."
-                                        value={allOperatorsSearch}
-                                        onChange={(e) => setAllOperatorsSearch(e.target.value)}
-                                    />
-                                </div>
-                                <div className="flex items-end">
-                                    <Button onClick={abrirAtribuirOperadores} variant="outline">
-                                        <UserPlus className="h-4 w-4 mr-2" />
-                                        Atribuir ao Evento
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Cards de Todos os Operadores */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {filteredAllOperators.length > 0 ? (
-                                filteredAllOperators.map((operador) => {
-                                    const isAssignedToEvent = operadores.some(op => op.id === operador.id)
-                                    const eventAssignments = operador.id_events ? operador.id_events.split(',').filter(Boolean) : []
-
-                                    return (
-                                        <div key={operador.id} className={`bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition-shadow ${isAssignedToEvent ? 'ring-2 ring-blue-200' : ''}`}>
-                                            <div className="flex items-start justify-between mb-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isAssignedToEvent ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                                                        <span className={`text-lg font-medium ${isAssignedToEvent ? 'text-blue-600' : 'text-gray-600'}`}>
-                                                            {getInitials(operador.nome)}
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="font-semibold text-gray-900">{capitalizeWords(operador.nome)}</h3>
-                                                        <p className="text-sm text-gray-600">{formatCPF(operador.cpf)}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col gap-1">
-                                                    {isAssignedToEvent && (
-                                                        <Badge variant="outline" className="text-blue-600 border-blue-200 text-xs">
-                                                            Atribuído
-                                                        </Badge>
-                                                    )}
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                            setSelectedOperators([operador.id])
-                                                            setAssignDialogOpen(true)
-                                                        }}
-                                                    >
-                                                        <UserPlus className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-sm text-gray-600">Status:</span>
-                                                    <Badge variant="outline" className={isAssignedToEvent ? "text-green-600 border-green-200" : "text-gray-500 border-gray-200"}>
-                                                        {isAssignedToEvent ? "Atribuído ao Evento" : "Disponível"}
-                                                    </Badge>
-                                                </div>
-
-                                                {eventAssignments.length > 0 && (
-                                                    <div className="space-y-1">
-                                                        <span className="text-sm text-gray-600">Eventos Atribuídos:</span>
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {eventAssignments.slice(0, 2).map((assignment: string, index: number) => {
-                                                                const [eventIdFromAssignment, date] = assignment.split(':')
-                                                                return (
-                                                                    <Badge key={index} variant="outline" className="text-xs text-[#610e5c] border-[#610e5c]">
-                                                                        {eventIdFromAssignment === eventId ? `${formatDatePtBr(date)}` : eventIdFromAssignment}
-                                                                    </Badge>
-                                                                )
-                                                            })}
-                                                            {eventAssignments.length > 2 && (
-                                                                <Badge variant="outline" className="text-xs text-gray-600 border-gray-200">
-                                                                    +{eventAssignments.length - 2} mais
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )
-                                })
-                            ) : (
-                                <div className="col-span-full text-center py-12">
-                                    <div className="text-gray-400 mb-4">
-                                        <Users className="h-16 w-16 mx-auto" />
-                                    </div>
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                        {allOperatorsSearch ? 'Nenhum operador encontrado' : 'Nenhum operador disponível'}
-                                    </h3>
-                                    <p className="text-gray-500">
-                                        {allOperatorsSearch ? 'Tente ajustar os filtros de busca' : 'Crie operadores para começar'}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </TabsContent>
 
                     <TabsContent value="acoes" className="space-y-6">
                         {/* Filtros para Ações */}

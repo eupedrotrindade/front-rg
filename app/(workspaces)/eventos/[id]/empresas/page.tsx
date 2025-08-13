@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink, Sun, Moon } from "lucide-react"
+import Link from "next/link"
 import { toast } from "sonner"
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas"
 import { useCreateEmpresa, useDeleteEmpresa, useUpdateEmpresa } from "@/features/eventos/api/mutation"
@@ -21,10 +22,9 @@ import { formatEventDate } from "@/lib/utils"
 
 export default function EmpresasPage() {
     const [searchTerm, setSearchTerm] = useState("")
-    const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
     const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null)
-    const [selectedDate, setSelectedDate] = useState<string>("")
+    const [selectedDay, setSelectedDay] = useState<string>("")
     const [formData, setFormData] = useState<CreateEmpresaRequest>({
         nome: "",
         id_evento: "",
@@ -33,27 +33,29 @@ export default function EmpresasPage() {
 
     // Hooks
     const eventId = useParams().id as string
-    const { data: empresas = [] } = useEmpresasByEvent(eventId)
+
+    // Single query strategy - we'll use frontend filtering like estacionamento
+    const { data: rawEmpresas = [], isLoading, error } = useEmpresasByEvent(eventId)
+
     const { data: eventos = [] } = useEventos()
-    const createEmpresaMutation = useCreateEmpresa()
     const updateEmpresaMutation = useUpdateEmpresa()
     const deleteEmpresaMutation = useDeleteEmpresa()
 
     const { data: event } = useEventos({ id: eventId })
 
-    // Função para calcular os dias do evento com período
-    const getEventDays = (event: Event): { label: string; value: string; periodo: string; diurnoNoturno?: 'diurno' | 'noturno' }[] => {
+    // Função para gerar dias do evento usando nova estrutura SimpleEventDay
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
         if (!event) return []
 
-        const days: { label: string; value: string; periodo: string; diurnoNoturno?: 'diurno' | 'noturno' }[] = []
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = []
 
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
             if (!eventData) return;
-            
+
             try {
                 let dataArray: any[] = [];
-                
+
                 // Se for string JSON, fazer parse
                 if (typeof eventData === 'string') {
                     dataArray = JSON.parse(eventData);
@@ -70,19 +72,34 @@ export default function EmpresasPage() {
                 // Processar cada item do array
                 dataArray.forEach(item => {
                     if (item && item.date) {
-                        const formattedDate = formatEventDate(item.date);
+                        // Garantir que a data está no formato correto
                         const dateObj = new Date(item.date);
-                        const hour = dateObj.getHours();
-                        const value = dateObj.toISOString().slice(0, 10); // YYYY-MM-DD
+                        if (isNaN(dateObj.getTime())) {
+                            console.warn(`Data inválida encontrada: ${item.date}`);
+                            return;
+                        }
+
+                        const formattedDate = formatEventDate(dateObj.toISOString());
                         
-                        // Determinar período (diurno: 6h-18h, noturno: 18h-6h)
-                        const diurnoNoturno = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
-                        
+                        // Usar período do item se disponível, senão calcular baseado na hora
+                        let period: 'diurno' | 'noturno';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                            period = item.period;
+                        } else {
+                            // Fallback: calcular baseado na hora
+                            const hour = dateObj.getHours();
+                            period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        }
+
+                        // Criar ID único baseado na data e período
+                        const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
+
                         days.push({
-                            label: `${formattedDate} - ${stageName} - ${diurnoNoturno === 'diurno' ? 'Diurno' : 'Noturno'}`,
-                            value,
-                            periodo: stage,
-                            diurnoNoturno
+                            id: dayId,
+                            label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
+                            date: formattedDate,
+                            type: stage,
+                            period
                         });
                     }
                 });
@@ -92,180 +109,317 @@ export default function EmpresasPage() {
         };
 
         // Processar nova estrutura do evento
-        processEventArray(event.montagem, 'montagem', 'MONTAGEM');
-        processEventArray(event.evento, 'evento', 'EVENTO');
-        processEventArray(event.desmontagem, 'desmontagem', 'DESMONTAGEM');
+        if ('montagem' in event) {
+            processEventArray((event as any).montagem, 'montagem', 'MONTAGEM');
+        }
+        if ('evento' in event) {
+            processEventArray((event as any).evento, 'evento', 'EVENTO');
+        }
+        if ('desmontagem' in event) {
+            processEventArray((event as any).desmontagem, 'desmontagem', 'DESMONTAGEM');
+        }
 
-        // Fallback para estrutura antiga (manter compatibilidade)
-        if (!event.startDate || !event.endDate) return days;
+        // Fallback para estrutura antiga (manter compatibilidade) - só usar se não há nova estrutura
+        if ('setupStartDate' in event && 'setupEndDate' in event && event.setupStartDate && event.setupEndDate && 
+            (!('montagem' in event) || !(event as any).montagem || (event as any).montagem.length === 0)) {
+            const startDate = new Date(event.setupStartDate)
+            const endDate = new Date(event.setupEndDate)
 
-        // Parse datas dos períodos da estrutura antiga
-        const parse = (d?: string) => d ? new Date(d) : undefined
-        const setupStart = parse(event.setupStartDate)
-        const setupEnd = parse(event.setupEndDate)
-        const prepStart = parse(event.preparationStartDate)
-        const prepEnd = parse(event.preparationEndDate)
-        const finalStart = parse(event.finalizationStartDate)
-        const finalEnd = parse(event.finalizationEndDate)
+            // Validar datas
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de setup inválidas:', event.setupStartDate, event.setupEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    // Para compatibilidade, assumir período diurno para estrutura antiga
+                    const dayId = `${date.toISOString().split('T')[0]}-montagem-diurno`;
 
-        for (let d = new Date(event.startDate); d <= new Date(event.endDate); d.setDate(d.getDate() + 1)) {
-            const dateStr = formatEventDate(d.toISOString())
-            const value = d.toISOString().slice(0, 10) // YYYY-MM-DD
-            const hour = d.getHours();
-            const diurnoNoturno = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
-
-            // Descobre o período
-            let periodo = ''
-            if (setupStart && setupEnd && d >= setupStart && d <= setupEnd) {
-                periodo = 'montagem'
-            } else if (prepStart && prepEnd && d >= prepStart && d <= prepEnd) {
-                periodo = 'evento'
-            } else if (finalStart && finalEnd && d >= finalStart && d <= finalEnd) {
-                periodo = 'desmontagem'
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (MONTAGEM - Diurno)`,
+                        date: dateStr,
+                        type: 'montagem',
+                        period: 'diurno'
+                    })
+                }
             }
+        }
 
-            // Só adiciona se não foi adicionado pela nova estrutura
-            const existingDay = days.find(day => day.value === value);
-            if (!existingDay) {
-                days.push({
-                    label: `${dateStr} - ${periodo} - ${diurnoNoturno === 'diurno' ? 'Diurno' : 'Noturno'}`,
-                    value,
-                    periodo,
-                    diurnoNoturno
-                })
+        if ('preparationStartDate' in event && 'preparationEndDate' in event && event.preparationStartDate && event.preparationEndDate && 
+            (!('evento' in event) || !(event as any).evento || (event as any).evento.length === 0)) {
+            const startDate = new Date(event.preparationStartDate)
+            const endDate = new Date(event.preparationEndDate)
+
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de preparação inválidas:', event.preparationStartDate, event.preparationEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    const dayId = `${date.toISOString().split('T')[0]}-evento-diurno`;
+
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (EVENTO - Diurno)`,
+                        date: dateStr,
+                        type: 'evento',
+                        period: 'diurno'
+                    })
+                }
+            }
+        }
+
+        if ('finalizationStartDate' in event && 'finalizationEndDate' in event && event.finalizationStartDate && event.finalizationEndDate && 
+            (!('desmontagem' in event) || !(event as any).desmontagem || (event as any).desmontagem.length === 0)) {
+            const startDate = new Date(event.finalizationStartDate)
+            const endDate = new Date(event.finalizationEndDate)
+
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.warn('Datas de finalização inválidas:', event.finalizationStartDate, event.finalizationEndDate);
+            } else {
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    const dateStr = formatEventDate(date.toISOString())
+                    const dayId = `${date.toISOString().split('T')[0]}-desmontagem-diurno`;
+
+                    days.push({
+                        id: dayId,
+                        label: `${dateStr} (DESMONTAGEM - Diurno)`,
+                        date: dateStr,
+                        type: 'desmontagem',
+                        period: 'diurno'
+                    })
+                }
             }
         }
 
         // Ordenar dias cronologicamente
         days.sort((a, b) => {
-            const dateA = new Date(a.value);
-            const dateB = new Date(b.value);
+            // Extrair a data do ID para ordenação mais confiável
+            const dateA = new Date(a.id.split('-')[0]);
+            const dateB = new Date(b.id.split('-')[0]);
+
+            if (dateA.getTime() === dateB.getTime()) {
+                // Se for o mesmo dia, ordenar por tipo e período
+                const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
+                const periodOrder = { diurno: 0, noturno: 1 };
+
+                const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
+                if (typeComparison !== 0) return typeComparison;
+
+                return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder];
+            }
+
             return dateA.getTime() - dateB.getTime();
         });
 
         return days
-    }
+    }, [event])
+
+    // Auto-selecionar primeiro dia se nenhum estiver selecionado
+    const eventDays = getEventDays()
+    const shouldAutoSelectDay = !selectedDay && eventDays.length > 0
+    const effectiveSelectedDay = shouldAutoSelectDay ? eventDays[0].id : selectedDay
+
+    // Função para extrair informações do shift ID
+    const parseShiftId = useCallback((shiftId: string) => {
+        if (!shiftId) {
+            return {
+                workDate: new Date().toISOString().split('T')[0],
+                workStage: 'evento' as const,
+                workPeriod: 'diurno' as const
+            };
+        }
+
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            // Mapear os tipos do frontend para os valores esperados pelo backend
+            const stageMap: Record<string, 'montagem' | 'evento' | 'desmontagem'> = {
+                'montagem': 'montagem',
+                'evento': 'evento',
+                'desmontagem': 'desmontagem',
+                'setup': 'montagem',
+                'event': 'evento',
+                'teardown': 'desmontagem',
+                'preparation': 'evento',
+                'finalization': 'desmontagem'
+            };
+
+            const stage = stageMap[parts[3]];
+            const period = parts[4];
+
+            // Validar que temos valores válidos
+            if (!stage || (period !== 'diurno' && period !== 'noturno')) {
+                console.warn('Valores inválidos no shiftId:', { parts, stage, period });
+                return {
+                    workDate: `${parts[0]}-${parts[1]}-${parts[2]}`,
+                    workStage: 'evento' as const,
+                    workPeriod: 'diurno' as const
+                };
+            }
+
+            return {
+                workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
+                workStage: stage,
+                workPeriod: period as 'diurno' | 'noturno'
+            };
+        }
+
+        // Se não conseguir parsear, usar valores padrão
+        return {
+            workDate: shiftId.includes('-') ? shiftId.split('-').slice(0, 3).join('-') : shiftId,
+            workStage: 'evento' as const,
+            workPeriod: 'diurno' as const
+        };
+    }, []);
+
+    // Normalizar dados das empresas (novo modelo - cada registro é um shift individual)
+    const normalizeEmpresas = useCallback((empresasArray: any[]) => {
+        console.log('🔍 Normalizando empresas (modelo individual):', empresasArray.length);
+        
+        // No novo modelo, cada empresa já representa um shift específico
+        // Não precisamos mais de shiftData, pois os campos estão diretamente na empresa
+        return empresasArray.map(empresa => {
+            // Verificar se tem campos de turno individuais
+            if (empresa.shiftId && empresa.workDate && empresa.workStage && empresa.workPeriod) {
+                return empresa; // Já está no formato correto
+            }
+
+            // Fallback para compatibilidade (empresas antigas sem campos individuais)
+            return {
+                ...empresa,
+                shiftId: empresa.shiftId || '',
+                workDate: empresa.workDate || '',
+                workStage: empresa.workStage || 'evento',
+                workPeriod: empresa.workPeriod || 'diurno'
+            };
+        });
+    }, []);
+
+    // Normalizar todos os dados (único dataset)
+    const allEmpresas = useMemo(() => {
+        return normalizeEmpresas(rawEmpresas ?? []);
+    }, [rawEmpresas, normalizeEmpresas])
+
+    // Para filtros da tabela, usar os mesmos dados normalizados
+    const empresas = allEmpresas
 
     // Dias disponíveis baseado no evento atual
     const availableDays = useMemo(() => {
-        if (!event || Array.isArray(event)) return []
+        return eventDays;
+    }, [eventDays])
 
-        return getEventDays(event)
-    }, [event])
-
-    // Organizar empresas por data
-    const empresasByDate = useMemo(() => {
-        if (!event || Array.isArray(event) || !empresas) return {}
-
-        const days = getEventDays(event)
+    // Organizar empresas por shiftId (modelo individual - cada empresa é um shift)
+    const empresasByShift = useMemo(() => {
         const grouped: Record<string, Empresa[]> = {}
 
-        // Inicializar todas as datas
-        days.forEach(day => {
-            grouped[day.value] = []
+        // Inicializar todas as shifts
+        eventDays.forEach(day => {
+            grouped[day.id] = []
         })
 
-        // Agrupar empresas por data
+        // Agrupar empresas por shiftId usando campos individuais
         empresas.forEach(empresa => {
-            if (Array.isArray(empresa.days)) {
-                empresa.days.forEach(day => {
-                    if (grouped[day]) {
-                        grouped[day].push(empresa)
-                    }
-                })
+            if (empresa.shiftId && grouped[empresa.shiftId]) {
+                grouped[empresa.shiftId].push(empresa)
             }
         })
 
-        // Ordenar empresas alfabeticamente em cada data
-        Object.keys(grouped).forEach(date => {
-            grouped[date].sort((a, b) => a.nome.localeCompare(b.nome))
+        // Ordenar empresas alfabeticamente em cada shift
+        Object.keys(grouped).forEach(shiftId => {
+            grouped[shiftId].sort((a, b) => a.nome.localeCompare(b.nome))
         })
 
         return grouped
-    }, [empresas, event])
+    }, [empresas, eventDays])
 
     // Filtrar empresas por termo de pesquisa
-    const filteredEmpresasByDate = useMemo(() => {
-        if (!searchTerm) return empresasByDate
+    const filteredEmpresasByShift = useMemo(() => {
+        if (!searchTerm) return empresasByShift
 
         const filtered: Record<string, Empresa[]> = {}
 
-        Object.keys(empresasByDate).forEach(date => {
-            const filteredEmpresas = empresasByDate[date].filter(empresa =>
+        Object.keys(empresasByShift).forEach(shiftId => {
+            const filteredEmpresas = empresasByShift[shiftId].filter(empresa =>
                 empresa.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (empresa.id_evento && empresa.id_evento.includes(searchTerm)) ||
                 (Array.isArray(empresa.days) && empresa.days.some((day: string) => day.toLowerCase().includes(searchTerm.toLowerCase())))
             )
 
             if (filteredEmpresas.length > 0) {
-                filtered[date] = filteredEmpresas
+                filtered[shiftId] = filteredEmpresas
             }
         })
 
         return filtered
-    }, [empresasByDate, searchTerm])
+    }, [empresasByShift, searchTerm])
 
-    // Datas disponíveis para o menu
-    const availableDates = useMemo(() => {
-        if (!event || Array.isArray(event)) return []
+    // Datas disponíveis para o menu (mesmo que availableDays)
+    const availableDates = availableDays
 
-        return getEventDays(event)
-    }, [event])
-
-    // Estatísticas
+    // Estatísticas (no novo modelo cada registro é um shift individual)
     const stats = useMemo(() => {
-        if (!empresas) {
+        if (!allEmpresas) {
             return {
                 total: 0,
                 configuradas: 0,
                 parcialmenteConfiguradas: 0,
-                naoConfiguradas: 0
+                naoConfiguradas: 0,
+                uniqueEmpresas: 0
             }
         }
 
-        const total = empresas.length
-        const configuradas = empresas.filter(e => e.id_evento && Array.isArray(e.days) && e.days.length > 0).length
-        const parcialmenteConfiguradas = empresas.filter(e => (e.id_evento || (Array.isArray(e.days) && e.days.length > 0)) && !(e.id_evento && Array.isArray(e.days) && e.days.length > 0)).length
-        const naoConfiguradas = empresas.filter(e => !e.id_evento && (!Array.isArray(e.days) || e.days.length === 0)).length
+        // No novo modelo, cada record é um shift de uma empresa
+        const total = allEmpresas.length
+        
+        // Empresas únicas (agrupar por nome)
+        const uniqueEmpresasSet = new Set(allEmpresas.map(e => e.nome))
+        const uniqueEmpresas = uniqueEmpresasSet.size
+        
+        // Uma empresa é considerada configurada se tem campos de shift individuais
+        const configuradas = allEmpresas.filter(e => 
+            e.shiftId && e.workDate && e.workStage && e.workPeriod
+        ).length
+        
+        const parcialmenteConfiguradas = allEmpresas.filter(e => 
+            e.id_evento && (!e.shiftId || !e.workDate || !e.workStage || !e.workPeriod)
+        ).length
+        
+        const naoConfiguradas = allEmpresas.filter(e => 
+            !e.id_evento && (!e.shiftId || !e.workDate || !e.workStage || !e.workPeriod)
+        ).length
 
         return {
             total,
             configuradas,
             parcialmenteConfiguradas,
-            naoConfiguradas
+            naoConfiguradas,
+            uniqueEmpresas
         }
-    }, [empresas])
+    }, [allEmpresas])
 
-    const handleCreateEmpresa = async (e: React.FormEvent) => {
-        e.preventDefault()
-        try {
-            // Garantir que sempre inclui o eventId atual
-            const empresaData = {
-                ...formData,
-                id_evento: eventId
-            }
-            console.log('🏢 Criando empresa:', empresaData)
-            await createEmpresaMutation.mutateAsync(empresaData)
-            setIsCreateDialogOpen(false)
-            resetForm()
-            toast.success("Empresa criada com sucesso!")
-        } catch (error) {
-            console.error("Erro ao criar empresa:", error)
-            toast.error("Erro ao criar empresa")
-        }
-    }
 
     const handleUpdateEmpresa = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!selectedEmpresa) return
         try {
+            // Com o novo modelo individual, precisamos atualizar apenas os campos básicos
+            // A lógica de shifts individuais é tratada na criação de novas empresas
+            const empresaData = {
+                nome: formData.nome,
+                id_evento: formData.id_evento,
+                days: formData.days
+            }
+
             await updateEmpresaMutation.mutateAsync({
                 id: selectedEmpresa.id,
-                data: formData
+                data: empresaData
             })
             setIsEditDialogOpen(false)
             setSelectedEmpresa(null)
-            resetForm()
+            setFormData({
+                nome: "",
+                id_evento: eventId,
+                days: []
+            })
             toast.success("Empresa atualizada com sucesso!")
         } catch (error) {
             console.error("Erro ao atualizar empresa:", error)
@@ -300,13 +454,6 @@ export default function EmpresasPage() {
             ? ""
             : event?.name || ""
 
-    const resetForm = () => {
-        setFormData({
-            nome: "",
-            id_evento: eventId,
-            days: []
-        })
-    }
 
     // Função para gerar token de acesso público
     // O token contém: empresaId:eventId:timestamp
@@ -340,55 +487,66 @@ export default function EmpresasPage() {
         }
     }, [eventId])
 
-    // Selecionar primeira data por padrão
+    // Selecionar primeiro dia por padrão
     React.useEffect(() => {
-        if (availableDates.length > 0 && !selectedDate) {
-            setSelectedDate(availableDates[0].value)
+        if (availableDates.length > 0 && !selectedDay) {
+            setSelectedDay(availableDates[0].id)
         }
-    }, [availableDates, selectedDate])
+    }, [availableDates, selectedDay])
 
-    // Função para obter cor da tab baseada no período
-    const getTabColor = (periodo: string, isActive: boolean) => {
+    // Função para obter cor da tab baseada no tipo
+    const getTabColor = useCallback((type: string, isActive: boolean) => {
         if (isActive) {
-            switch (periodo) {
+            switch (type) {
                 case 'montagem':
+                case 'setup':
                     return 'border-orange-500 text-orange-600 bg-orange-50'
                 case 'evento':
+                case 'event':
+                case 'preparation':
                     return 'border-blue-500 text-blue-600 bg-blue-50'
                 case 'desmontagem':
+                case 'teardown':
+                case 'finalization':
                     return 'border-red-500 text-red-600 bg-red-50'
                 default:
                     return 'border-gray-500 text-gray-600 bg-gray-50'
             }
         } else {
-            switch (periodo) {
+            switch (type) {
                 case 'montagem':
+                case 'setup':
                     return 'hover:text-orange-700 hover:border-orange-300'
                 case 'evento':
+                case 'event':
+                case 'preparation':
                     return 'hover:text-blue-700 hover:border-blue-300'
                 case 'desmontagem':
+                case 'teardown':
+                case 'finalization':
                     return 'hover:text-red-700 hover:border-red-300'
                 default:
                     return 'hover:text-gray-700 hover:border-gray-300'
             }
         }
-    }
+    }, [])
 
     // Função para obter ícone do período
-    const getPeriodIcon = (diurnoNoturno?: 'diurno' | 'noturno') => {
-        if (diurnoNoturno === 'diurno') {
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+        if (period === 'diurno') {
             return <Sun className="h-3 w-3 text-yellow-500" />;
-        } else if (diurnoNoturno === 'noturno') {
+        } else if (period === 'noturno') {
             return <Moon className="h-3 w-3 text-blue-500" />;
         }
         return null;
-    }
+    }, [])
 
-    // Função para obter status badge
+    // Função para obter status badge (modelo individual)
     const getStatusBadge = (empresa: Empresa) => {
-        if (empresa.id_evento && Array.isArray(empresa.days) && empresa.days.length > 0) {
+        // Com o novo modelo individual, verificar se tem campos de shift
+        if (empresa.shiftId && empresa.workDate && empresa.workStage && empresa.workPeriod) {
             return <Badge className="bg-green-100 text-green-800">Configurado</Badge>
-        } else if (empresa.id_evento || (Array.isArray(empresa.days) && empresa.days.length > 0)) {
+        } else if (empresa.id_evento) {
             return <Badge className="bg-yellow-100 text-yellow-800">Parcial</Badge>
         } else {
             return <Badge className="bg-gray-100 text-gray-800">Não configurado</Badge>
@@ -414,8 +572,9 @@ export default function EmpresasPage() {
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm opacity-90">Total de Empresas</p>
-                                    <p className="text-3xl font-bold">{stats.total}</p>
+                                    <p className="text-sm opacity-90">Empresas Únicas</p>
+                                    <p className="text-3xl font-bold">{stats.uniqueEmpresas}</p>
+                                    <p className="text-xs opacity-75">{stats.total} turnos totais</p>
                                 </div>
                                 <Building className="h-8 w-8 opacity-80" />
                             </div>
@@ -463,20 +622,12 @@ export default function EmpresasPage() {
                 <div className="mb-8">
                     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                         <div className="flex flex-wrap gap-3">
-                            <Button
-                                onClick={() => {
-                                    setFormData({
-                                        nome: "",
-                                        id_evento: eventId,
-                                        days: []
-                                    })
-                                    setIsCreateDialogOpen(true)
-                                }}
-                                className="bg-purple-600 hover:bg-purple-700 text-white"
-                            >
-                                <Plus className="w-4 h-4 mr-2" />
-                                Nova Empresa
-                            </Button>
+                            <Link href={`/eventos/${eventId}/empresas/create`}>
+                                <Button className="bg-purple-600 hover:bg-purple-700 text-white">
+                                    <Plus className="w-4 h-4 mr-2" />
+                                    Nova Empresa
+                                </Button>
+                            </Link>
 
                             <Input
                                 type="text"
@@ -493,38 +644,48 @@ export default function EmpresasPage() {
                 <div className="mb-8">
                     <div className="border-b border-gray-200 bg-white rounded-t-lg">
                         <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
-                            {availableDates.map((date) => {
-                                const empresasInDay = empresasByDate[date.value]?.length || 0
-                                const isActive = selectedDate === date.value
+                            {availableDates.map((day) => {
+                                // Filtrar empresas pelo shiftId usando campos individuais
+                                const empresasInDay = allEmpresas.filter(empresa => {
+                                    return empresa.shiftId === day.id;
+                                }).length
+                                const isActive = selectedDay === day.id
 
                                 return (
                                     <button
-                                        key={date.value}
-                                        onClick={() => setSelectedDate(date.value)}
+                                        key={day.id}
+                                        onClick={() => setSelectedDay(day.id)}
                                         className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
-                                            ? getTabColor(date.periodo, true)
-                                            : `border-transparent text-gray-500 ${getTabColor(date.periodo, false)}`
+                                            ? getTabColor(day.type, true)
+                                            : `border-transparent text-gray-500 ${getTabColor(day.type, false)}`
                                             }`}
                                     >
                                         <div className="flex flex-col items-center gap-1">
                                             <div className="flex items-center gap-1">
                                                 <span className="text-xs font-medium">
-                                                    {date.label.split(' - ')[0]}
+                                                    {day.label.split(' ')[0]}
                                                 </span>
-                                                {getPeriodIcon(date.diurnoNoturno)}
+                                                {getPeriodIcon(day.period)}
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <span className="text-xs opacity-75">
-                                                    {date.periodo.toUpperCase()}
+                                                    {day.type === 'montagem' ? 'MONTAGEM' :
+                                                        day.type === 'evento' ? 'EVENTO' :
+                                                            day.type === 'desmontagem' ? 'DESMONTAGEM' :
+                                                                'EVENTO'}
                                                 </span>
-                                                {date.diurnoNoturno && (
+                                                {day.period && (
                                                     <span className="text-xs opacity-60">
-                                                        ({date.diurnoNoturno === 'diurno' ? 'D' : 'N'})
+                                                        ({day.period === 'diurno' ? 'D' : 'N'})
                                                     </span>
                                                 )}
                                             </div>
                                             <span className="text-xs opacity-75">
-                                                ({empresasInDay})
+                                                {isLoading ? (
+                                                    <span className="inline-block w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></span>
+                                                ) : (
+                                                    `(${empresasInDay})`
+                                                )}
                                             </span>
                                         </div>
                                     </button>
@@ -558,8 +719,17 @@ export default function EmpresasPage() {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-100">
-                                {filteredEmpresasByDate[selectedDate]?.length > 0 ? (
-                                    filteredEmpresasByDate[selectedDate].map((empresa) => (
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                                            <div className="flex flex-col items-center">
+                                                <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mb-2"></div>
+                                                <p>Carregando empresas...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : filteredEmpresasByShift[selectedDay]?.length > 0 ? (
+                                    filteredEmpresasByShift[selectedDay].map((empresa) => (
                                         <tr key={empresa.id} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
@@ -578,32 +748,20 @@ export default function EmpresasPage() {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex flex-wrap gap-1">
-                                                    {Array.isArray(empresa.days) && empresa.days.length > 0 ? (
-                                                        empresa.days.slice(0, 3).map((day, index) => {
-                                                            const dateStr = formatEventDate(day + 'T00:00:00')
-
-                                                            // Encontrar o período da data
-                                                            const availableDate = availableDates.find(d => d.value === day)
-                                                            const periodo = availableDate?.periodo || ''
-                                                            const diurnoNoturno = availableDate?.diurnoNoturno || ''
-
-                                                            return (
-                                                                <Badge
-                                                                    key={index}
-                                                                    variant="secondary"
-                                                                    className="text-xs bg-purple-50 text-purple-700 border-purple-200"
-                                                                >
-                                                                    {dateStr} - {periodo.toUpperCase()} - {diurnoNoturno === 'diurno' ? 'Diurno' : 'Noturno'}
-                                                                </Badge>
-                                                            )
-                                                        })
+                                                    {empresa.shiftId && empresa.workDate && empresa.workStage && empresa.workPeriod ? (
+                                                        <div className="flex flex-col gap-1">
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="text-xs bg-purple-50 text-purple-700 border-purple-200"
+                                                            >
+                                                                {formatEventDate(empresa.workDate + 'T00:00:00')} - {empresa.workStage?.toUpperCase()} - {empresa.workPeriod === 'diurno' ? 'Diurno' : 'Noturno'}
+                                                            </Badge>
+                                                            <div className="text-xs text-gray-500 font-mono">
+                                                                {empresa.shiftId}
+                                                            </div>
+                                                        </div>
                                                     ) : (
-                                                        <span className="text-sm text-gray-400 italic">Nenhum</span>
-                                                    )}
-                                                    {Array.isArray(empresa.days) && empresa.days.length > 3 && (
-                                                        <Badge variant="secondary" className="text-xs">
-                                                            +{empresa.days.length - 3}
-                                                        </Badge>
+                                                        <span className="text-sm text-gray-400 italic">Não configurado</span>
                                                     )}
                                                 </div>
                                             </td>
@@ -658,10 +816,10 @@ export default function EmpresasPage() {
                                             <div className="flex flex-col items-center">
                                                 <Building className="w-8 h-8 text-gray-400 mb-2" />
                                                 <p className="text-lg font-semibold text-gray-700 mb-2">
-                                                    {selectedDate ? `Nenhuma empresa encontrada para ${availableDates.find(d => d.value === selectedDate)?.label || selectedDate}` : 'Selecione um dia'}
+                                                    {selectedDay ? `Nenhuma empresa encontrada para este turno` : 'Selecione um turno'}
                                                 </p>
                                                 <p className="text-sm text-gray-500">
-                                                    {selectedDate ? 'Crie uma nova empresa para este dia' : 'Escolha um dia do evento para ver as empresas'}
+                                                    {selectedDay ? 'Crie uma nova empresa para este turno' : 'Escolha um turno do evento para ver as empresas'}
                                                 </p>
                                             </div>
                                         </td>
@@ -672,90 +830,6 @@ export default function EmpresasPage() {
                     </div>
                 </div>
 
-                {/* Dialog de Criação */}
-                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900">
-                        <DialogHeader>
-                            <DialogTitle>Criar Nova Empresa</DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleCreateEmpresa} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Nome da Empresa *
-                                </label>
-                                <Input
-                                    type="text"
-                                    value={formData.nome}
-                                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                                    placeholder="Digite o nome da empresa"
-                                    required
-                                />
-                            </div>
-
-                            <div className="bg-blue-50 p-3 rounded-lg">
-                                <p className="text-sm text-blue-800">
-                                    <strong>Evento:</strong> {eventName || 'Carregando...'}
-                                </p>
-                                <p className="text-xs text-blue-600 mt-1">
-                                    A empresa será criada para este evento automaticamente
-                                </p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Dias de Trabalho
-                                </label>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3">
-                                    {availableDays.map((day) => (
-                                        <Button
-                                            key={day.value}
-                                            type="button"
-                                            variant={(formData.days || []).includes(day.value) ? "default" : "outline"}
-                                            size="sm"
-                                            onClick={() => {
-                                                const currentDays = formData.days || []
-                                                const newDays = currentDays.includes(day.value)
-                                                    ? currentDays.filter(d => d !== day.value)
-                                                    : [...currentDays, day.value]
-                                                setFormData({ ...formData, days: newDays })
-                                            }}
-                                            className="text-xs"
-                                        >
-                                            {day.label}
-                                        </Button>
-                                    ))}
-                                </div>
-                                {(formData.days || []).length > 0 && (
-                                    <div className="mt-2">
-                                        <p className="text-sm text-gray-600">
-                                            Dias selecionados: {(formData.days || []).length}
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex justify-end gap-2 pt-4">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => {
-                                        setIsCreateDialogOpen(false)
-                                        resetForm()
-                                    }}
-                                >
-                                    Cancelar
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    disabled={!formData.nome || createEmpresaMutation.isPending}
-                                    className="bg-purple-600 hover:bg-purple-700"
-                                >
-                                    {createEmpresaMutation.isPending ? "Criando..." : "Criar Empresa"}
-                                </Button>
-                            </div>
-                        </form>
-                    </DialogContent>
-                </Dialog>
 
                 {/* Dialog de Edição */}
                 <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -805,15 +879,15 @@ export default function EmpresasPage() {
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3">
                                     {availableDays.map((day) => (
                                         <Button
-                                            key={day.value}
+                                            key={day.id}
                                             type="button"
-                                            variant={(formData.days || []).includes(day.value) ? "default" : "outline"}
+                                            variant={(formData.days || []).includes(day.id) ? "default" : "outline"}
                                             size="sm"
                                             onClick={() => {
                                                 const currentDays = formData.days || []
-                                                const newDays = currentDays.includes(day.value)
-                                                    ? currentDays.filter(d => d !== day.value)
-                                                    : [...currentDays, day.value]
+                                                const newDays = currentDays.includes(day.id)
+                                                    ? currentDays.filter(d => d !== day.id)
+                                                    : [...currentDays, day.id]
                                                 setFormData({ ...formData, days: newDays })
                                             }}
                                             className="text-xs"
@@ -838,7 +912,11 @@ export default function EmpresasPage() {
                                     onClick={() => {
                                         setIsEditDialogOpen(false)
                                         setSelectedEmpresa(null)
-                                        resetForm()
+                                        setFormData({
+                                            nome: "",
+                                            id_evento: eventId,
+                                            days: []
+                                        })
                                     }}
                                 >
                                     Cancelar

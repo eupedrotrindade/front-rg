@@ -35,7 +35,7 @@ export default function ModalHistoricoVeiculo({ isOpen, onClose, veiculo }: Moda
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl bg-white text-gray-800">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Car className="h-5 w-5" />

@@ -189,6 +189,61 @@ export type EventParticipant = {
   documentPhoto?: string;
   validatedBy?: string;
   daysWork?: string[];
+  // Novos campos para sistema de turnos
+  participantHash?: string;
+  shiftId?: string;
+  workDate?: string;
+  workStage?: "montagem" | "evento" | "desmontagem";
+  workPeriod?: "diurno" | "noturno";
+};
+
+// Tipos para sistema de turnos
+export type ShiftParticipant = EventParticipant & {
+  shiftId: string;
+  workDate: string;
+  workStage: "montagem" | "evento" | "desmontagem";
+  workPeriod: "diurno" | "noturno";
+};
+
+export type GroupedParticipant = {
+  participantHash: string;
+  participant: EventParticipant;
+  shifts: ShiftParticipant[];
+  totalShifts: number;
+};
+
+export type ShiftInfo = {
+  shiftId: string;
+  date: string;
+  stage: "montagem" | "evento" | "desmontagem";
+  period: "diurno" | "noturno";
+  participantCount: number;
+};
+
+// Tipos para operações específicas de turnos
+export type DeleteParticipantFromShiftRequest = {
+  eventId: string;
+  participantHash: string;
+  shiftId: string;
+  performedBy: string;
+};
+
+export type DeleteParticipantFromShiftResponse = {
+  message: string;
+  deleted: boolean;
+  remainingShifts: number;
+};
+
+export type DeleteParticipantAllShiftsRequest = {
+  eventId: string;
+  participantHash: string;
+  performedBy: string;
+};
+
+export type DeleteParticipantAllShiftsResponse = {
+  message: string;
+  deleted: boolean;
+  deletedCount: number;
 };
 
 export type Coordenador = {
@@ -296,6 +351,12 @@ export type CreateEventParticipantRequest = {
   documentPhoto?: string;
   validatedBy?: string;
   daysWork?: string[];
+  // Campos para sistema de turnos
+  participantHash?: string;
+  shiftId?: string;
+  workDate?: string;
+  workStage?: "montagem" | "evento" | "desmontagem";
+  workPeriod?: "diurno" | "noturno";
 };
 
 // Tipos para respostas da API
@@ -336,6 +397,11 @@ export type Empresa = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  // Novos campos individuais para sistema de turnos
+  shiftId?: string;
+  workDate?: string;
+  workStage?: "montagem" | "evento" | "desmontagem";
+  workPeriod?: "diurno" | "noturno";
 };
 
 export type CreateEmpresaRequest = {
@@ -351,6 +417,11 @@ export type CreateEmpresaRequest = {
   cep?: string;
   responsavel?: string;
   observacoes?: string;
+  // Novos campos individuais para sistema de turnos
+  shiftId?: string;
+  workDate?: string;
+  workStage?: "montagem" | "evento" | "desmontagem";
+  workPeriod?: "diurno" | "noturno";
 };
 
 export type UpdateEmpresaRequest = Partial<CreateEmpresaRequest>;
@@ -480,4 +551,50 @@ export interface ApproveImportRequestRequest {
 export interface RejectImportRequestRequest {
   approvedBy: string;
   reason: string;
+}
+
+// Tipos para respostas da API específicas para turnos
+export interface EventParticipantsByShiftResponse {
+  data: EventParticipant[];
+  total: number;
+  page?: number;
+  limit?: number;
+  shiftInfo?: ShiftInfo;
+}
+
+export interface EventParticipantsGroupedResponse {
+  data: GroupedParticipant[];
+  total: number;
+  stats?: {
+    totalParticipants: number;
+    totalShifts: number;
+    averageShiftsPerParticipant: number;
+  };
+}
+
+// Tipos para estatísticas por turno
+export interface ShiftStats {
+  shiftId: string;
+  date: string;
+  stage: "montagem" | "evento" | "desmontagem";
+  period: "diurno" | "noturno";
+  totalParticipants: number;
+  checkedIn: number;
+  checkedOut: number;
+  active: number;
+  credentialBreakdown: Record<
+    string,
+    {
+      total: number;
+      checkedIn: number;
+      credentialName: string;
+      color: string;
+    }
+  >;
+}
+
+export interface EventShiftsOverview {
+  eventId: string;
+  totalShifts: number;
+  shifts: ShiftStats[];
 }

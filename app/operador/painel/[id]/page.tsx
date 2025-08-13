@@ -52,6 +52,7 @@ import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/u
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
 import type { EventParticipant } from '@/features/eventos/types'
 import apiClient from '@/lib/api-client'
+import { formatEventDate } from '@/lib/utils'
 
 import {
   Calendar,
@@ -62,9 +63,11 @@ import {
   Download,
   Filter,
   Loader2,
+  Moon,
   Plus,
   RefreshCw,
   Search,
+  Sun,
   Upload,
   User,
   X,
@@ -293,15 +296,69 @@ export default function Painel() {
   const checkInMutation = useCheckIn()
   const checkOutMutation = useCheckOut()
 
+  // Função para converter data para formato da API (dd-mm-yyyy) - copiada do events panel
+  const formatDateForAPI = useCallback((dateStr: string): string => {
+    console.log('🔧 formatDateForAPI chamada com:', dateStr);
+
+    // Se já está no formato dd-mm-yyyy, retorna como está
+    if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) {
+      console.log('✅ Já está no formato correto DD-MM-YYYY:', dateStr);
+      return dateStr
+    }
+
+    // Se é um shift ID (formato: YYYY-MM-DD-stage-period), extrair a data
+    if (/^\d{4}-\d{2}-\d{2}-.+-.+$/.test(dateStr)) {
+      const parts = dateStr.split('-');
+      if (parts.length >= 3) {
+        const year = parts[0];
+        const month = parts[1];
+        const day = parts[2];
+        const result = `${day}-${month}-${year}`;
+        console.log('✅ Shift ID convertido de', dateStr, 'para', result);
+        return result;
+      }
+    }
+
+    // Se está no formato dd/mm/yyyy, converte para dd-mm-yyyy
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      const [day, month, year] = dateStr.split('/')
+      const result = `${day}-${month}-${year}`;
+      console.log('✅ DD/MM/YYYY convertido de', dateStr, 'para', result);
+      return result
+    }
+
+    // Se está no formato yyyy-mm-dd, converte para dd-mm-yyyy
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-')
+      const result = `${day}-${month}-${year}`;
+      console.log('✅ YYYY-MM-DD convertido de', dateStr, 'para', result);
+      return result
+    }
+
+    // Se é uma data JavaScript, converte para dd-mm-yyyy
+    try {
+      const date = new Date(dateStr)
+      if (!isNaN(date.getTime())) {
+        const day = date.getDate().toString().padStart(2, '0')
+        const month = (date.getMonth() + 1).toString().padStart(2, '0')
+        const year = date.getFullYear().toString()
+        const result = `${day}-${month}-${year}`;
+        console.log('✅ Data JavaScript convertida de', dateStr, 'para', result);
+        return result
+      }
+    } catch (error) {
+      console.error('❌ Erro ao converter data para API:', dateStr, error)
+    }
+
+    console.log('⚠️ formatDateForAPI retornando valor original:', dateStr);
+    return dateStr
+  }, [])
+
   // Hook para buscar status de presença por evento e data
   const { data: attendanceData, refetch: refetchAttendance } =
     useEventAttendanceByEventAndDate(
       params?.id as string,
-      selectedDay
-        ? (selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay)
-          .split('/')
-          .join('-')
-        : new Date().toLocaleDateString('pt-BR').split('/').join('-'),
+      formatDateForAPI(selectedDay),
     )
 
   // Hooks de otimização de performance
@@ -425,29 +482,17 @@ export default function Painel() {
 
       if (isNaN(inputDate.getTime())) return false
 
-      const eventPeriods = [
-        {
-          start: evento.setupStartDate,
-          end: evento.setupEndDate,
-          type: 'setup',
-        },
-        {
-          start: evento.preparationStartDate,
-          end: evento.preparationEndDate,
-          type: 'preparation',
-        },
-        {
-          start: evento.finalizationStartDate,
-          end: evento.finalizationEndDate,
-          type: 'finalization',
-        },
+      // Usar os arrays montagem, evento, desmontagem
+      const allEventDates = [
+        ...(evento.montagem || []).map(item => new Date(item.date)),
+        ...(evento.evento || []).map(item => new Date(item.date)),
+        ...(evento.desmontagem || []).map(item => new Date(item.date))
       ]
 
-      return eventPeriods.some(period => {
-        if (!period.start || !period.end) return false
-        const startDate = new Date(period.start)
-        const endDate = new Date(period.end)
-        return inputDate >= startDate && inputDate <= endDate
+      return allEventDates.some(eventDate => {
+        eventDate.setHours(0, 0, 0, 0)
+        inputDate.setHours(0, 0, 0, 0)
+        return inputDate.getTime() === eventDate.getTime()
       })
     },
     [evento],
@@ -499,67 +544,133 @@ export default function Painel() {
     if (!evento || Array.isArray(evento)) return 'Carregando...'
 
     const periods = []
-    const hasSetup = evento.setupStartDate && evento.setupEndDate
-    const hasPreparation =
-      evento.preparationStartDate && evento.preparationEndDate
-    const hasFinalization =
-      evento.finalizationStartDate && evento.finalizationEndDate
 
-    if (hasSetup && evento.setupStartDate && evento.setupEndDate) {
-      periods.push(
-        `Montagem: ${new Date(evento.setupStartDate).toLocaleDateString(
-          'pt-BR',
-        )} - ${new Date(evento.setupEndDate).toLocaleDateString('pt-BR')}`,
-      )
+    // Processar montagem
+    if (evento.montagem && evento.montagem.length > 0) {
+      const dates = evento.montagem.map(item => new Date(item.date).toLocaleDateString('pt-BR'))
+      const uniqueDates = [...new Set(dates)].sort()
+      if (uniqueDates.length === 1) {
+        periods.push(`Montagem: ${uniqueDates[0]}`)
+      } else {
+        periods.push(`Montagem: ${uniqueDates[0]} - ${uniqueDates[uniqueDates.length - 1]}`)
+      }
     }
-    if (
-      hasPreparation &&
-      evento.preparationStartDate &&
-      evento.preparationEndDate
-    ) {
-      const startDate = new Date(evento.preparationStartDate)
-      const endDate = new Date(evento.preparationEndDate)
 
-      // Remover horário para evitar problemas de timezone
-      startDate.setHours(0, 0, 0, 0)
-      endDate.setHours(0, 0, 0, 0)
+    // Processar evento
+    if (evento.evento && evento.evento.length > 0) {
+      const dates = evento.evento.map(item => new Date(item.date).toLocaleDateString('pt-BR'))
+      const uniqueDates = [...new Set(dates)].sort()
+      const hasSetup = evento.montagem && evento.montagem.length > 0
+      const hasFinalization = evento.desmontagem && evento.desmontagem.length > 0
+      const eventLabel = !hasSetup && !hasFinalization ? 'Dia do Evento' : 'Evento'
 
-      periods.push(
-        `Evento: ${new Date(startDate).toLocaleDateString(
-          'pt-BR',
-        )} - ${new Date(endDate).toLocaleDateString('pt-BR')}`,
-      )
+      if (uniqueDates.length === 1) {
+        periods.push(`${eventLabel}: ${uniqueDates[0]}`)
+      } else {
+        periods.push(`${eventLabel}: ${uniqueDates[0]} - ${uniqueDates[uniqueDates.length - 1]}`)
+      }
     }
-    if (
-      hasFinalization &&
-      evento.finalizationStartDate &&
-      evento.finalizationEndDate
-    ) {
-      periods.push(
-        `Desmontagem: ${new Date(
-          evento.finalizationStartDate,
-        ).toLocaleDateString('pt-BR')} - ${new Date(
-          evento.finalizationEndDate,
-        ).toLocaleDateString('pt-BR')}`,
-      )
+
+    // Processar desmontagem
+    if (evento.desmontagem && evento.desmontagem.length > 0) {
+      const dates = evento.desmontagem.map(item => new Date(item.date).toLocaleDateString('pt-BR'))
+      const uniqueDates = [...new Set(dates)].sort()
+      if (uniqueDates.length === 1) {
+        periods.push(`Desmontagem: ${uniqueDates[0]}`)
+      } else {
+        periods.push(`Desmontagem: ${uniqueDates[0]} - ${uniqueDates[uniqueDates.length - 1]}`)
+      }
     }
 
     if (periods.length === 0) {
       return 'Nenhum período definido'
     }
 
-    if (periods.length === 1 && hasPreparation) {
-      return `${periods[0]} (apenas dia do evento)`
-    }
-
     return periods.join(' | ')
   }, [evento])
+
+  // Função para normalizar formato de data - baseada no eventos/[id]/page.tsx
+  const normalizeDate = useCallback((dateStr: string): string => {
+    // Se já está no formato dd/mm/yyyy, retorna como está
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      return dateStr
+    }
+
+    // Se é um shift ID (formato: YYYY-MM-DD-stage-period), extrair a data
+    if (/^\d{4}-\d{2}-\d{2}-.+-.+$/.test(dateStr)) {
+      const parts = dateStr.split('-');
+      if (parts.length >= 3) {
+        const year = parts[0];
+        const month = parts[1];
+        const day = parts[2];
+        return `${day}/${month}/${year}`;
+      }
+    }
+
+    // Se está no formato yyyy-mm-dd, converte para dd/mm/yyyy
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-')
+      return `${day}/${month}/${year}`
+    }
+
+    // Se é uma data JavaScript, converte para dd/mm/yyyy
+    try {
+      const date = new Date(dateStr)
+      if (!isNaN(date.getTime())) {
+        return formatEventDate(dateStr)
+      }
+    } catch (error) {
+      console.error('Erro ao converter data:', dateStr, error)
+    }
+
+    return dateStr
+  }, [])
+
+  // Função para extrair informações do shift ID - baseada no eventos/[id]/page.tsx
+  const parseShiftId = useCallback((shiftId: string) => {
+    // Formato esperado: YYYY-MM-DD-stage-period
+    const parts = shiftId.split('-');
+    if (parts.length >= 5) {
+      const year = parts[0];
+      const month = parts[1];
+      const day = parts[2];
+      const stage = parts[3];
+      const period = parts[4] as 'diurno' | 'noturno';
+
+      return {
+        dateISO: `${year}-${month}-${day}`,
+        dateFormatted: formatEventDate(`${year}-${month}-${day}T00:00:00`),
+        stage,
+        period
+      };
+    }
+
+    // Fallback para formato simples (apenas data)
+    try {
+      const dateFormatted = formatEventDate(shiftId.includes('T') ? shiftId : shiftId + 'T00:00:00');
+      return {
+        dateISO: shiftId,
+        dateFormatted,
+        stage: 'unknown',
+        period: 'diurno' as 'diurno'
+      };
+    } catch (error) {
+      // Se não conseguir fazer parse da data, retornar valor padrão
+      return {
+        dateISO: shiftId,
+        dateFormatted: shiftId,
+        stage: 'unknown',
+        period: 'diurno' as 'diurno'
+      };
+    }
+  }, []);
 
   const getEventDays = useCallback((): Array<{
     id: string
     label: string
     date: string
     type: string
+    period?: 'diurno' | 'noturno'
   }> => {
     if (!evento || Array.isArray(evento)) return []
 
@@ -568,103 +679,99 @@ export default function Painel() {
       label: string
       date: string
       type: string
+      period?: 'diurno' | 'noturno'
     }> = []
-    const hasSetup = evento.setupStartDate && evento.setupEndDate
-    const hasPreparation =
-      evento.preparationStartDate && evento.preparationEndDate
-    const hasFinalization =
-      evento.finalizationStartDate && evento.finalizationEndDate
 
+    // Usar os arrays montagem, evento, desmontagem do JSON
 
-    // Removido a aba "TODOS" - não adiciona mais o 'all'
-
-    if (hasSetup && evento.setupStartDate && evento.setupEndDate) {
-      // Corrigir problema de timezone - tratar como data local
-      const startDateStr = evento.setupStartDate
-      const endDateStr = evento.setupEndDate
-
-      // Criar datas no timezone local
-      const startDate = new Date(startDateStr)
-      const endDate = new Date(endDateStr)
-
-
-      for (
-        let date = new Date(startDate);
-        date <= endDate;
-        date.setDate(date.getDate() + 1)
-      ) {
+    // Processar montagem
+    if (evento.montagem && Array.isArray(evento.montagem)) {
+      console.log('🔧 Processando montagem:', evento.montagem)
+      evento.montagem.forEach((item: { date: string; period: 'diurno' | 'noturno' }) => {
+        // Usar a data ISO diretamente sem conversões desnecessárias
+        const isoDate = item.date // YYYY-MM-DD
+        const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
         const dateStr = date.toLocaleDateString('pt-BR')
+
+        const dayId = `${isoDate}-montagem-${item.period}`
+        console.log('✅ Adicionando montagem:', { dayId, dateStr, item })
+
         days.push({
-          id: `${dateStr}`,
-          label: `${dateStr} (MONTAGEM)`,
+          id: dayId,
+          label: `${dateStr} (MONTAGEM - ${item.period.toUpperCase()})`,
           date: dateStr,
           type: 'setup',
+          period: item.period,
         })
-      }
+      })
     }
 
-    if (
-      hasPreparation &&
-      evento.preparationStartDate &&
-      evento.preparationEndDate
-    ) {
-      // Corrigir problema de timezone - tratar como data local
-      const startDateStr = evento.preparationStartDate
-      const endDateStr = evento.preparationEndDate
+    // Processar evento
+    if (evento.evento && Array.isArray(evento.evento)) {
+      console.log('🔧 Processando evento:', evento.evento)
+      const hasSetup = evento.montagem && evento.montagem.length > 0
+      const hasFinalization = evento.desmontagem && evento.desmontagem.length > 0
+      const isOnlyEventDay = !hasSetup && !hasFinalization
+      const eventLabel = isOnlyEventDay ? 'DIA DO EVENTO' : 'EVENTO'
 
-      // Criar datas no timezone local
-      const startDate = new Date(startDateStr)
-      const endDate = new Date(endDateStr)
-
-
-      for (
-        let date = new Date(startDate);
-        date <= endDate;
-        date.setDate(date.getDate() + 1)
-      ) {
+      evento.evento.forEach((item: { date: string; period: 'diurno' | 'noturno' }) => {
+        // Usar a data ISO diretamente sem conversões desnecessárias
+        const isoDate = item.date // YYYY-MM-DD
+        const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
         const dateStr = date.toLocaleDateString('pt-BR')
-        const isOnlyEventDay = !hasSetup && !hasFinalization
+
+        const dayId = `${isoDate}-evento-${item.period}`
+        console.log('✅ Adicionando evento:', { dayId, dateStr, item })
+
         days.push({
-          id: `${dateStr}`,
-          label: isOnlyEventDay
-            ? `${dateStr} (DIA DO EVENTO)`
-            : `${dateStr} (EVENTO)`,
+          id: dayId,
+          label: `${dateStr} (${eventLabel} - ${item.period.toUpperCase()})`,
           date: dateStr,
           type: 'preparation',
+          period: item.period,
         })
-      }
+      })
     }
 
-    if (
-      hasFinalization &&
-      evento.finalizationStartDate &&
-      evento.finalizationEndDate
-    ) {
-      // Corrigir problema de timezone - tratar como data local
-      const startDateStr = evento.finalizationStartDate
-      const endDateStr = evento.finalizationEndDate
-
-      // Criar datas no timezone local
-      const startDate = new Date(startDateStr)
-      const endDate = new Date(endDateStr)
-
-
-      for (
-        let date = new Date(startDate);
-        date <= endDate;
-        date.setDate(date.getDate() + 1)
-      ) {
+    // Processar desmontagem
+    if (evento.desmontagem && Array.isArray(evento.desmontagem)) {
+      console.log('🔧 Processando desmontagem:', evento.desmontagem)
+      evento.desmontagem.forEach((item: { date: string; period: 'diurno' | 'noturno' }) => {
+        // Usar a data ISO diretamente sem conversões desnecessárias
+        const isoDate = item.date // YYYY-MM-DD
+        const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
         const dateStr = date.toLocaleDateString('pt-BR')
+
+        const dayId = `${isoDate}-desmontagem-${item.period}`
+        console.log('✅ Adicionando desmontagem:', { dayId, dateStr, item })
+
         days.push({
-          id: `${dateStr}`,
-          label: `${dateStr} (DESMONTAGEM)`,
+          id: dayId,
+          label: `${dateStr} (DESMONTAGEM - ${item.period.toUpperCase()})`,
           date: dateStr,
           type: 'finalization',
+          period: item.period,
         })
-      }
+      })
     }
 
-    return days
+    // Ordenar por data e período
+    const sortedDays = days.sort((a, b) => {
+      const dateA = new Date(a.date.split('/').reverse().join('-'))
+      const dateB = new Date(b.date.split('/').reverse().join('-'))
+
+      if (dateA.getTime() === dateB.getTime()) {
+        // Se mesma data, ordenar por período (diurno primeiro)
+        if (a.period === 'diurno' && b.period === 'noturno') return -1
+        if (a.period === 'noturno' && b.period === 'diurno') return 1
+        return 0
+      }
+
+      return dateA.getTime() - dateB.getTime()
+    })
+
+    console.log('🎯 Dias gerados pelo getEventDays:', sortedDays)
+    return sortedDays
   }, [evento])
 
   const getColaboradoresPorDia = useCallback(
@@ -673,18 +780,54 @@ export default function Painel() {
         return participantsData || [] // Fallback seguro
       }
 
-      // Extrair apenas a data do ID (remover prefixo se existir)
-      const dataDia = dia.includes('_') ? dia.split('_')[1] : dia
+      console.log('🔧 getColaboradoresPorDia chamada com dia:', dia)
+      console.log('🔍 Participantes disponíveis:', participantsData?.length || 0)
 
-      return (participantsData || []).filter((colab: EventParticipant) => {
-        if (!colab.daysWork || colab.daysWork.length === 0) {
+      // Usar apenas shiftId para filtrar participantes
+      const filtered = (participantsData || []).filter((colab: EventParticipant) => {
+        console.log('🔍 Analisando participante:', colab.name, {
+          shiftId: colab.shiftId
+        })
+
+        // Verificar se tem shiftId
+        if (!colab.shiftId) {
+          console.log('❌ Participante sem shiftId:', colab.name)
           return false
         }
-        return colab.daysWork.includes(dataDia)
+
+        // Verificação por shiftId exato
+        if (colab.shiftId === dia) {
+          console.log('✅ Match por shiftId:', colab.name, colab.shiftId)
+          return true
+        }
+
+        console.log('❌ Participante não trabalha neste turno:', colab.name)
+        return false
       })
+
+      console.log(`🎯 Filtrados ${filtered.length} participantes para o turno:`, dia)
+      return filtered
     },
     [participantsData],
   )
+
+  // Função para contar participantes por turno - baseada no eventos/[id]/page.tsx
+  const getParticipantsCountByShift = useCallback(
+    (shiftId: string): number => {
+      return getColaboradoresPorDia(shiftId).length
+    },
+    [getColaboradoresPorDia],
+  )
+
+  // Função para obter ícone do período - baseada no eventos/[id]/page.tsx
+  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+    if (period === 'diurno') {
+      return <Sun className="h-3 w-3 text-yellow-500" />
+    } else if (period === 'noturno') {
+      return <Moon className="h-3 w-3 text-blue-500" />
+    }
+    return null
+  }, [])
 
   // Função simples sem useCallback
   const scrollToLeft = () => {
@@ -747,55 +890,44 @@ export default function Painel() {
         finalization: [] as string[],
       }
 
-      const hasSetup = evento.setupStartDate && evento.setupEndDate
-      const hasPreparation =
-        evento.preparationStartDate && evento.preparationEndDate
-      const hasFinalization =
-        evento.finalizationStartDate && evento.finalizationEndDate
-
       participant.daysWork.forEach(day => {
         const dayDate = new Date(day.split('/').reverse().join('-'))
         dayDate.setHours(0, 0, 0, 0)
 
-        if (hasSetup && evento.setupStartDate && evento.setupEndDate) {
-          const startDate = new Date(evento.setupStartDate)
-          const endDate = new Date(evento.setupEndDate)
-          startDate.setHours(0, 0, 0, 0)
-          endDate.setHours(0, 0, 0, 0)
-
-          if (dayDate >= startDate && dayDate <= endDate) {
+        // Verificar montagem
+        if (evento.montagem && evento.montagem.length > 0) {
+          const isSetupDay = evento.montagem.some(item => {
+            const itemDate = new Date(item.date)
+            itemDate.setHours(0, 0, 0, 0)
+            return dayDate.getTime() === itemDate.getTime()
+          })
+          if (isSetupDay) {
             categorized.setup.push(day)
             return
           }
         }
 
-        if (
-          hasPreparation &&
-          evento.preparationStartDate &&
-          evento.preparationEndDate
-        ) {
-          const startDate = new Date(evento.preparationStartDate)
-          const endDate = new Date(evento.preparationEndDate)
-          startDate.setHours(0, 0, 0, 0)
-          endDate.setHours(0, 0, 0, 0)
-
-          if (dayDate >= startDate && dayDate <= endDate) {
+        // Verificar evento
+        if (evento.evento && evento.evento.length > 0) {
+          const isEventDay = evento.evento.some(item => {
+            const itemDate = new Date(item.date)
+            itemDate.setHours(0, 0, 0, 0)
+            return dayDate.getTime() === itemDate.getTime()
+          })
+          if (isEventDay) {
             categorized.preparation.push(day)
             return
           }
         }
 
-        if (
-          hasFinalization &&
-          evento.finalizationStartDate &&
-          evento.finalizationEndDate
-        ) {
-          const startDate = new Date(evento.finalizationStartDate)
-          const endDate = new Date(evento.finalizationEndDate)
-          startDate.setHours(0, 0, 0, 0)
-          endDate.setHours(0, 0, 0, 0)
-
-          if (dayDate >= startDate && dayDate <= endDate) {
+        // Verificar desmontagem
+        if (evento.desmontagem && evento.desmontagem.length > 0) {
+          const isFinalizationDay = evento.desmontagem.some(item => {
+            const itemDate = new Date(item.date)
+            itemDate.setHours(0, 0, 0, 0)
+            return dayDate.getTime() === itemDate.getTime()
+          })
+          if (isFinalizationDay) {
             categorized.finalization.push(day)
             return
           }
@@ -814,72 +946,45 @@ export default function Painel() {
       const availableDates: string[] = []
 
       if (phase) {
-        let startDate: string | undefined
-        let endDate: string | undefined
+        let phaseItems: { date: string; period: string }[] = []
 
         switch (phase) {
           case 'preparacao':
-            startDate = evento.preparationStartDate
-            endDate = evento.preparationEndDate
+            phaseItems = evento.evento || []
             break
           case 'montagem':
-            startDate = evento.setupStartDate
-            endDate = evento.setupEndDate
+            phaseItems = evento.montagem || []
             break
           case 'finalizacao':
-            startDate = evento.finalizationStartDate
-            endDate = evento.finalizationEndDate
+            phaseItems = evento.desmontagem || []
             break
           default:
             return []
         }
 
-        if (startDate && endDate) {
-          const start = new Date(startDate)
-          const end = new Date(endDate)
-          start.setHours(0, 0, 0, 0)
-          end.setHours(0, 0, 0, 0)
-          const currentDate = new Date(start)
-
-          while (currentDate <= end) {
-            const formattedDate = currentDate.toLocaleDateString('pt-BR')
+        phaseItems.forEach(item => {
+          const date = new Date(item.date)
+          const formattedDate = date.toLocaleDateString('pt-BR')
+          if (!availableDates.includes(formattedDate)) {
             availableDates.push(formattedDate)
-            currentDate.setDate(currentDate.getDate() + 1)
           }
-        }
+        })
 
         return availableDates.sort()
       }
 
-      const periods = []
+      // Retornar todas as datas disponíveis de todos os períodos
+      const allItems = [
+        ...(evento.montagem || []),
+        ...(evento.evento || []),
+        ...(evento.desmontagem || [])
+      ]
 
-      if (evento.setupStartDate && evento.setupEndDate) {
-        periods.push({ start: evento.setupStartDate, end: evento.setupEndDate })
-      }
-      if (evento.preparationStartDate && evento.preparationEndDate) {
-        periods.push({
-          start: evento.preparationStartDate,
-          end: evento.preparationEndDate,
-        })
-      }
-      if (evento.finalizationStartDate && evento.finalizationEndDate) {
-        periods.push({
-          start: evento.finalizationStartDate,
-          end: evento.finalizationEndDate,
-        })
-      }
-
-      periods.forEach(period => {
-        const startDate = new Date(period.start)
-        const endDate = new Date(period.end)
-        startDate.setHours(0, 0, 0, 0)
-        endDate.setHours(0, 0, 0, 0)
-        const currentDate = new Date(startDate)
-
-        while (currentDate <= endDate) {
-          const formattedDate = currentDate.toLocaleDateString('pt-BR')
+      allItems.forEach(item => {
+        const date = new Date(item.date)
+        const formattedDate = date.toLocaleDateString('pt-BR')
+        if (!availableDates.includes(formattedDate)) {
           availableDates.push(formattedDate)
-          currentDate.setDate(currentDate.getDate() + 1)
         }
       })
 
@@ -891,9 +996,9 @@ export default function Painel() {
   const hasDefinedPeriods = useCallback((): boolean => {
     if (!evento || Array.isArray(evento)) return false
     return (
-      !!(evento.setupStartDate && evento.setupEndDate) ||
-      !!(evento.preparationStartDate && evento.preparationEndDate) ||
-      !!(evento.finalizationStartDate && evento.finalizationEndDate)
+      (evento.montagem && evento.montagem.length > 0) ||
+      (evento.evento && evento.evento.length > 0) ||
+      (evento.desmontagem && evento.desmontagem.length > 0)
     )
   }, [evento])
 
@@ -1015,14 +1120,9 @@ export default function Painel() {
 
   // Função para determinar qual botão mostrar
   const getBotaoAcao = (colaborador: EventParticipant) => {
-    // Extrair apenas a data do selectedDay (remover prefixo se existir)
-    const dataDia = selectedDay.includes('_')
-      ? selectedDay.split('_')[1]
-      : selectedDay
-
-    // Verificar se o colaborador trabalha nesta data
-    if (!colaborador.daysWork || !colaborador.daysWork.includes(dataDia)) {
-      return null // Não trabalha nesta data
+    // Verificar se o colaborador trabalha neste turno usando shiftId
+    if (!colaborador.shiftId || colaborador.shiftId !== selectedDay) {
+      return null // Não trabalha neste turno
     }
 
     // Verificar status de presença para esta data
@@ -1539,7 +1639,7 @@ export default function Painel() {
   const handleBuscaOtimizada = (valor: string) => {
     // 1. ATUALIZAÇÃO IMEDIATA DO VALOR VISUAL (zero lag)
     setFiltro(prev => ({ ...prev, nome: valor }))
-    
+
     // 2. LIMPAR TIMEOUT ANTERIOR
     if (searchDebounce) {
       clearTimeout(searchDebounce)
@@ -2147,9 +2247,12 @@ export default function Painel() {
       const todayFormatted = `${day}-${month}-${year}`
 
       const dateToUse = selectedDateForAction
-        ? selectedDateForAction
+        ? formatDateForAPI(selectedDateForAction)
         : todayFormatted
 
+
+      // Extrair informações do shift selecionado
+      const { stage, period } = parseShiftId(selectedDateForAction || selectedDay)
 
       await checkInMutation.mutateAsync({
         participantId: participantAction.id,
@@ -2157,6 +2260,8 @@ export default function Painel() {
         validatedBy: operadorInfo.nome,
         performedBy: operadorInfo.nome,
         notes: `Check-in realizado via painel do operador - Pulseira: ${codigoPulseira.trim()}`,
+        workPeriod: period,
+        workStage: stage,
       })
 
       // Salvar pulseira no sistema de movement_credentials
@@ -2232,8 +2337,11 @@ export default function Painel() {
       const todayFormatted = `${day}-${month}-${year}`
 
       const dateToUse = selectedDateForAction
-        ? selectedDateForAction
+        ? formatDateForAPI(selectedDateForAction)
         : todayFormatted
+
+      // Extrair informações do shift selecionado
+      const { stage, period } = parseShiftId(selectedDateForAction || selectedDay)
 
       await checkOutMutation.mutateAsync({
         participantId: participantAction.id,
@@ -2241,6 +2349,8 @@ export default function Painel() {
         validatedBy: operadorInfo.nome,
         performedBy: operadorInfo.nome,
         notes: 'Check-out realizado via painel do operador',
+        workPeriod: period,
+        workStage: stage,
       })
 
       // Atualizar estado local imediatamente
@@ -2423,19 +2533,7 @@ export default function Painel() {
                     Adicionar Staff
                   </Button>
 
-                  {/* 📊 BOTÃO IMPORTAR PRESENÇAS */}
-                  <Button
-                    onClick={() => {
-                      if (operadorLogado) {
-                        window.open(`/operador/importacao-presencas/${eventId}`, '_blank')
-                      }
-                    }}
-                    className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                    disabled={loading || !operadorLogado}
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    Importar Presenças
-                  </Button>
+
                 </div>
 
 
@@ -2672,79 +2770,60 @@ export default function Painel() {
               </div>
             </div>
 
-            {/* Tabs dos dias do evento com carrossel */}
-            <div className="mb-8">
-              <div className="border-b border-gray-200 bg-white rounded-t-lg relative">
-                {/* Botão de navegação esquerda */}
-                <button
-                  onClick={scrollToLeft}
-                  className="absolute left-0 top-0 bottom-0 z-10 flex items-center justify-center w-8 bg-white border-r border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors duration-200"
-                >
-                  <svg
-                    className="w-4 h-4 text-gray-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 19l-7-7 7-7"
-                    />
-                  </svg>
-                </button>
+            {/* Tabs dos dias do evento */}
+            {getDiasDisponiveisParaOperador().length > 0 && (
+              <div className="mb-8">
+                <div className="border-b border-gray-200 bg-white rounded-t-lg relative">
+                  {/* Container dos tabs sem scroll horizontal */}
+                  <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
+                    {getDiasDisponiveisParaOperador().map(day => {
+                      const participantesNoDia = getParticipantsCountByShift(day.id)
+                      const isActive = selectedDay === day.id
 
-                {/* Container dos tabs com scroll */}
-                <nav
-                  ref={tabsContainerRef}
-                  className="-mb-px flex space-x-2 px-6 overflow-x-auto scrollbar-hide"
-                >
-                  {getDiasDisponiveisParaOperador().map(day => {
-                    const colaboradoresNoDia = getColaboradoresPorDia(
-                      day.id,
-                    ).length
-                    const isActive = selectedDay === day.id
-
-                    return (
-                      <button
-                        key={day.id}
-                        onClick={() => setSelectedDay(day.id)}
-                        className={`border-b-2 py-3 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
-                          ? getTabColor(day.type, true)
-                          : `border-transparent text-gray-500 ${getTabColor(
-                            day.type,
-                            false,
-                          )}`
-                          }`}
-                      >
-                        {day.label} ({colaboradoresNoDia})
-                      </button>
-                    )
-                  })}
-                </nav>
-
-                {/* Botão de navegação direita */}
-                <button
-                  onClick={scrollToRight}
-                  className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center w-8 bg-white border-l border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors duration-200"
-                >
-                  <svg
-                    className="w-4 h-4 text-gray-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </button>
+                      return (
+                        <div key={day.id} className="flex items-center gap-2">
+                          <button
+                            onClick={() => setSelectedDay(day.id)}
+                            className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
+                              ? getTabColor(day.type, true)
+                              : `border-transparent text-gray-500 ${getTabColor(
+                                day.type,
+                                false,
+                              )}`
+                              }`}
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs font-medium">
+                                  {day.label.split(' ')[0]}
+                                </span>
+                                {getPeriodIcon(day.period)}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs opacity-75">
+                                  {day.type === 'setup' ? 'MONTAGEM' :
+                                    day.type === 'preparation' ? 'EVENTO' :
+                                      day.type === 'finalization' ? 'DESMONTAGEM' :
+                                        'EVENTO'}
+                                </span>
+                                {day.period && (
+                                  <span className="text-xs opacity-60">
+                                    ({day.period === 'diurno' ? 'D' : 'N'})
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs opacity-75">
+                                ({participantesNoDia})
+                              </span>
+                            </div>
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </nav>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Table */}
             <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
@@ -2769,18 +2848,18 @@ export default function Painel() {
                         <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`}>
                           <div className="flex items-center justify-between">
                             <span>Nome</span>
-                            {/* <ExcelColumnFilter
-                            values={columnUniqueValues.nome}
-                            selectedValues={columnFilters.nome}
-                            onSelectionChange={values =>
-                              handleColumnFilterChange('nome', values)
-                            }
-                            onSortTable={direction =>
-                              handleColumnSort('name', direction)
-                            }
-                            columnTitle="Nome"
-                            isActive={columnFilters.nome.length > 0}
-                          /> */}
+                            <ExcelColumnFilter
+                              values={columnUniqueValues.nome}
+                              selectedValues={columnFilters.nome}
+                              onSelectionChange={values =>
+                                handleColumnFilterChange('nome', values)
+                              }
+                              onSortTable={direction =>
+                                handleColumnSort('name', direction)
+                              }
+                              columnTitle="Nome"
+                              isActive={columnFilters.nome.length > 0}
+                            />
                           </div>
                         </TableHead>
 
@@ -2789,18 +2868,18 @@ export default function Painel() {
                           <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                             <div className="flex items-center justify-between">
                               <span>CPF</span>
-                              {/* <ExcelColumnFilter
-                              values={columnUniqueValues.cpf}
-                              selectedValues={columnFilters.cpf}
-                              onSelectionChange={values =>
-                                handleColumnFilterChange('cpf', values)
-                              }
-                              onSortTable={direction =>
-                                handleColumnSort('cpf', direction)
-                              }
-                              columnTitle="CPF"
-                              isActive={columnFilters.cpf.length > 0}
-                            /> */}
+                              <ExcelColumnFilter
+                                values={columnUniqueValues.cpf}
+                                selectedValues={columnFilters.cpf}
+                                onSelectionChange={values =>
+                                  handleColumnFilterChange('cpf', values)
+                                }
+                                onSortTable={direction =>
+                                  handleColumnSort('cpf', direction)
+                                }
+                                columnTitle="CPF"
+                                isActive={columnFilters.cpf.length > 0}
+                              />
                             </div>
                           </TableHead>
                         )}
@@ -2950,16 +3029,7 @@ export default function Painel() {
                               height: `${virtualRow.size}px`,
                               transform: `translateY(${virtualRow.start}px)`,
                             }}
-                            className={`border-b border-gray-100 hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 ${selectedDay &&
-                              colab.daysWork &&
-                              colab.daysWork.includes(
-                                selectedDay.includes('_')
-                                  ? selectedDay.split('_')[1]
-                                  : selectedDay,
-                              )
-                              ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500'
-                              : 'bg-white'
-                              }`}
+                            className={` border-gray-300 hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 bg-white border-b shadow-md`}
                             onClick={() => abrirPopup(colab)}
                           >
                             <div className="flex items-center min-h-full">
@@ -3009,7 +3079,7 @@ export default function Painel() {
                               )}
 
                               {/* Ação - sempre visível e sticky à direita */}
-                              <div className={`flex-none whitespace-nowrap text-sm font-medium sticky right-0 bg-white border-l border-gray-100 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
+                              <div className={`flex-none whitespace-nowrap text-sm font-medium sticky right-0 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
                                 <div
                                   className="flex space-x-2"
                                   onClick={e => e.stopPropagation()}
@@ -3037,6 +3107,9 @@ export default function Painel() {
                                       <Clock className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
                                       {isMobileTable ? 'Out' : 'Check-out'}
                                     </Button>
+                                  )}
+                                  {botaoTipo === null && (
+                                    <p className='text-emerald-700'>CONCLUIDO</p>
                                   )}
                                 </div>
                               </div>

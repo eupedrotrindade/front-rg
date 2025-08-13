@@ -16,7 +16,7 @@ interface ModalNovoVeiculoProps {
   onSave: (data: Omit<EventVehicle, 'id' | 'event_id' | 'created_at' | 'updated_at'>) => Promise<void>
   veiculo?: EventVehicle | null
   isEditing?: boolean
-  eventDays?: Array<{ id: string; label: string; date: string; type: string }>
+  eventDays?: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }>
   selectedDay?: string
 }
 
@@ -35,11 +35,28 @@ export default function ModalNovoVeiculo({
     placa: "",
     tipo_de_credencial: "",
     retirada: "pendente" as const,
-    dia: new Date().toISOString().split('T')[0]
+    shiftId: selectedDay || (eventDays.length > 0 ? eventDays[0].id : "")
   })
   const [isLoading, setIsLoading] = useState(false)
   const [hasCopies, setHasCopies] = useState(false)
   const [copiesCount, setCopiesCount] = useState(1)
+
+  // Função para converter shift ID para data ISO (compatibilidade com novo sistema)
+  const parseShiftIdToDate = (shiftId: string): string => {
+    if (shiftId && shiftId.includes('-')) {
+      const parts = shiftId.split('-');
+      // Se tem 5 ou mais partes, é um shift ID (YYYY-MM-DD-stage-period)
+      if (parts.length >= 5) {
+        return `${parts[0]}-${parts[1]}-${parts[2]}`;
+      }
+      // Se tem 3 partes, já é uma data ISO (YYYY-MM-DD)
+      if (parts.length === 3) {
+        return shiftId;
+      }
+    }
+    // Se já é uma data normal ou string simples, retornar como está
+    return shiftId;
+  }
 
   useEffect(() => {
     if (veiculo && isEditing) {
@@ -49,7 +66,7 @@ export default function ModalNovoVeiculo({
         placa: veiculo.placa || "",
         tipo_de_credencial: veiculo.tipo_de_credencial || "",
         retirada: veiculo.retirada,
-        dia: veiculo.dia
+        shiftId: veiculo.shiftId || ""
       })
     } else {
       setFormData({
@@ -58,7 +75,7 @@ export default function ModalNovoVeiculo({
         placa: "",
         tipo_de_credencial: "",
         retirada: "pendente" as const,
-        dia: selectedDay || (eventDays.length > 0 ? eventDays[0].id : new Date().toISOString().split('T')[0])
+        shiftId: selectedDay || (eventDays.length > 0 ? eventDays[0].id : "")
       })
     }
 
@@ -83,8 +100,8 @@ export default function ModalNovoVeiculo({
       return
     }
 
-    if (!formData.dia) {
-      toast.error("Por favor, selecione um dia do evento")
+    if (!formData.shiftId) {
+      toast.error("Por favor, selecione um turno do evento")
       return
     }
 
@@ -210,20 +227,20 @@ export default function ModalNovoVeiculo({
 
             {/* Coluna Direita */}
             <div className="space-y-4">
-              {/* Dia - Obrigatório */}
+              {/* Turno - Obrigatório */}
               <div>
-                <Label htmlFor="dia" className="block text-sm font-medium text-gray-700 mb-2">
+                <Label htmlFor="shiftId" className="block text-sm font-medium text-gray-700 mb-2">
                   <Calendar className="inline w-4 h-4 mr-2" />
-                  Dia do Evento * <span className="text-red-500">(Obrigatório)</span>
+                  Turno do Evento * <span className="text-red-500">(Obrigatório)</span>
                 </Label>
                 <select
-                  id="dia"
-                  value={formData.dia}
-                  onChange={(e) => handleInputChange("dia", e.target.value)}
+                  id="shiftId"
+                  value={formData.shiftId}
+                  onChange={(e) => handleInputChange("shiftId", e.target.value)}
                   className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   disabled={isLoading}
                 >
-                  <option value="">Selecione um dia do evento</option>
+                  <option value="">Selecione um turno do evento</option>
                   {eventDays.map((day) => (
                     <option key={day.id} value={day.id}>
                       {day.label}

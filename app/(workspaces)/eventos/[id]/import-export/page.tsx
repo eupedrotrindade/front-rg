@@ -32,6 +32,8 @@ import {
     Plus,
     Settings,
     Palette,
+    Sun,
+    Moon,
 } from "lucide-react"
 import * as XLSX from "xlsx"
 import { toast } from "sonner"
@@ -46,6 +48,7 @@ import type { EventParticipantSchema } from "@/features/eventos/schemas"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { formatEventDate } from "@/lib/utils"
 
 interface ImportProgress {
     total: number
@@ -194,10 +197,10 @@ export default function ImportExportPage() {
 
     const formatDocumentForStorage = (document: string): string => {
         if (!document) return "00000000000"
-        
+
         const cleaned = unformatDocument(document)
         if (cleaned.length === 0) return "00000000000"
-        
+
         if (cleaned.length === 11) {
             // Se tem 11 dígitos, é CPF - manter como está
             return cleaned
@@ -211,38 +214,79 @@ export default function ImportExportPage() {
         const errors: string[] = []
         const warnings: string[] = []
 
-        if (!data.nome || data.nome.toString().trim().length < 2) {
-            errors.push("Nome é obrigatório e deve ter pelo menos 2 caracteres")
+        // Validação detalhada do nome
+        if (!data.nome) {
+            errors.push("❌ CAMPO OBRIGATÓRIO: Nome não foi informado ou está em branco")
+        } else if (data.nome.toString().trim().length < 2) {
+            errors.push(`❌ NOME INVÁLIDO: "${data.nome}" tem apenas ${data.nome.toString().trim().length} caractere(s), mínimo são 2`)
+        } else if (data.nome.toString().trim().length > 100) {
+            errors.push(`❌ NOME MUITO LONGO: "${data.nome}" tem ${data.nome.toString().trim().length} caracteres, máximo são 100`)
         }
 
-        if (!data.empresa || data.empresa.toString().trim().length < 2) {
-            errors.push("Empresa é obrigatória e deve ter pelo menos 2 caracteres")
+        // Validação detalhada da empresa
+        if (!data.empresa) {
+            errors.push("❌ CAMPO OBRIGATÓRIO: Empresa não foi informada ou está em branco")
+        } else if (data.empresa.toString().trim().length < 2) {
+            errors.push(`❌ EMPRESA INVÁLIDA: "${data.empresa}" tem apenas ${data.empresa.toString().trim().length} caractere(s), mínimo são 2`)
+        } else if (data.empresa.toString().trim().length > 100) {
+            errors.push(`❌ EMPRESA MUITO LONGA: "${data.empresa}" tem ${data.empresa.toString().trim().length} caracteres, máximo são 100`)
         }
 
-        if (!data.funcao || data.funcao.toString().trim().length < 2) {
-            errors.push("Função é obrigatória e deve ter pelo menos 2 caracteres")
+        // Validação detalhada da função
+        if (!data.funcao) {
+            errors.push("❌ CAMPO OBRIGATÓRIO: Função não foi informada ou está em branco")
+        } else if (data.funcao.toString().trim().length < 2) {
+            errors.push(`❌ FUNÇÃO INVÁLIDA: "${data.funcao}" tem apenas ${data.funcao.toString().trim().length} caractere(s), mínimo são 2`)
+        } else if (data.funcao.toString().trim().length > 100) {
+            errors.push(`❌ FUNÇÃO MUITO LONGA: "${data.funcao}" tem ${data.funcao.toString().trim().length} caracteres, máximo são 100`)
         }
 
-        // Simplified document validation - accept any document in CPF or RG column
+        // Validação de credencial (se fornecida)
+        if (data.credencial && data.credencial.toString().trim().length > 0) {
+            if (data.credencial.toString().trim().length < 2) {
+                errors.push(`❌ CREDENCIAL INVÁLIDA: "${data.credencial}" tem apenas ${data.credencial.toString().trim().length} caractere(s), mínimo são 2`)
+            } else if (data.credencial.toString().trim().length > 100) {
+                errors.push(`❌ CREDENCIAL MUITO LONGA: "${data.credencial}" tem ${data.credencial.toString().trim().length} caracteres, máximo são 100`)
+            }
+        }
+
+        // Validação simplificada de documento - aceita qualquer valor nas colunas CPF ou RG
         let hasDocument = false
+        let documentInfo = []
 
-        // Check CPF column - accept any value
+        // Verificar coluna CPF
         if (data.cpf && data.cpf.toString().trim() !== "") {
             hasDocument = true
+            documentInfo.push(`CPF: ${data.cpf}`)
         }
 
-        // Check RG column - accept any value
+        // Verificar coluna RG
         if (data.rg && data.rg.toString().trim() !== "") {
             hasDocument = true
+            documentInfo.push(`RG: ${data.rg}`)
         }
 
-        // Allow participants without any document but show warning
+        // Permitir participantes sem documento mas mostrar aviso
         if (!hasDocument) {
-            warnings.push("Participante sem documento - será processado mesmo assim")
+            warnings.push(`⚠️ SEM DOCUMENTO: ${data.nome || 'Nome não informado'} não possui CPF nem RG preenchido - será processado mesmo assim`)
+        } else {
+            warnings.push(`✅ DOCUMENTO OK: ${documentInfo.join(', ')}`)
         }
+
+        // Validação adicional de caracteres especiais problemáticos
+        const fieldsToCheck = ['nome', 'empresa', 'funcao', 'credencial']
+        fieldsToCheck.forEach(field => {
+            if (data[field]) {
+                const value = data[field].toString()
+                const problematicChars = value.match(/[^\w\sÀ-ÿ\-\.]/g)
+                if (problematicChars) {
+                    warnings.push(`⚠️ CARACTERES ESPECIAIS em ${field.toUpperCase()}: "${problematicChars.join('')}" podem causar problemas`)
+                }
+            }
+        })
 
         return {
-            isValid: errors.length === 0, // Only block on actual errors, not missing documents
+            isValid: errors.length === 0, // Bloquear apenas em erros reais
             errors,
             warnings,
         }
@@ -254,6 +298,14 @@ export default function ImportExportPage() {
     }
 
     const normalizeCompanyName = (name: string): string => {
+        return name.toString().trim().toUpperCase()
+    }
+
+    const normalizeStaffName = (name: string): string => {
+        return name.toString().trim().toUpperCase()
+    }
+
+    const normalizeFunctionName = (name: string): string => {
         return name.toString().trim().toUpperCase()
     }
 
@@ -276,8 +328,8 @@ export default function ImportExportPage() {
             const normalizedName = normalizeCredentialName(name)
             const daysWorks =
                 selectedEventDates.length > 0
-                    ? selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR"))
-                    : [new Date().toLocaleDateString("pt-BR")]
+                    ? selectedEventDates.map((date) => formatEventDate(date + 'T00:00:00'))
+                    : [formatEventDate(new Date().toISOString())]
 
             const credentialData: CreateCredentialRequest = {
                 nome: normalizedName,
@@ -724,7 +776,7 @@ export default function ImportExportPage() {
                                 documentPhoto: row.documentPhoto || undefined,
                                 validatedBy: row.validatedBy || undefined,
                                 daysWork: selectedEventDates
-                                    ? selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR"))
+                                    ? selectedEventDates.map((date) => formatEventDate(date + 'T00:00:00'))
                                     : undefined,
                             }
 
@@ -939,22 +991,28 @@ export default function ImportExportPage() {
         try {
             const result = await importParticipants(processedData.data.map((item) => ({
                 eventId: eventId,
-                name: item.nome,
+                name: normalizeStaffName(item.nome), // Normalizar nome para maiúsculas
                 cpf: item.cpf,
-                role: item.funcao,
-                company: item.empresa,
+                role: normalizeFunctionName(item.funcao), // Normalizar função para maiúsculas
+                company: normalizeCompanyName(item.empresa), // Normalizar empresa para maiúsculas
                 credentialId: item.credencial,
-                daysWork: selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR")),
+                daysWork: selectedEventDates.map((shiftId) => {
+                    const { dateISO } = parseShiftId(shiftId);
+                    return formatEventDate(dateISO + 'T00:00:00');
+                }),
             })))
             setImportResult({
                 success: processedData.data.map((item) => ({
                     eventId: eventId,
-                    name: item.nome,
+                    name: normalizeStaffName(item.nome), // Normalizar nome para maiúsculas
                     cpf: item.cpf,
-                    role: item.funcao,
-                    company: item.empresa,
+                    role: normalizeFunctionName(item.funcao), // Normalizar função para maiúsculas
+                    company: normalizeCompanyName(item.empresa), // Normalizar empresa para maiúsculas
                     credentialId: item.credencial,
-                    daysWork: selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR")),
+                    daysWork: selectedEventDates.map((shiftId) => {
+                        const { dateISO } = parseShiftId(shiftId);
+                        return formatEventDate(dateISO + 'T00:00:00');
+                    }),
                 })),
                 errors: processedData.errors,
                 duplicates: processedData.duplicates,
@@ -999,7 +1057,27 @@ export default function ImportExportPage() {
         }
     }, [])
 
-    // Export function
+    // Helper function to calculate work time
+    const calculateWorkTime = (checkIn: string | null, checkOut: string | null): string => {
+        if (!checkIn || !checkOut) return "";
+
+        try {
+            const checkInTime = new Date(checkIn);
+            const checkOutTime = new Date(checkOut);
+
+            if (checkInTime >= checkOutTime) return "";
+
+            const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+            return `${diffHours}h ${diffMinutes}min`;
+        } catch (error) {
+            return "";
+        }
+    }
+
+    // Export function with complete data
     const exportParticipants = async () => {
         setIsExporting(true)
         try {
@@ -1008,22 +1086,52 @@ export default function ImportExportPage() {
                 CPF: p.cpf,
                 Empresa: p.company,
                 Função: p.role,
+
                 Email: p.email || "",
                 Telefone: p.phone || "",
-                Observações: p.notes || "",
                 Dias_Trabalho: p.daysWork?.join(", ") || "",
-                Check_in: p.checkIn || "",
-                Check_out: p.checkOut || "",
+                Check_in: p.checkIn ? formatEventDate(p.checkIn) : "",
+                Horario_Check_in: p.checkIn ? new Date(p.checkIn).toLocaleTimeString('pt-BR') : "",
+                Check_out: p.checkOut ? formatEventDate(p.checkOut) : "",
+                Horario_Check_out: p.checkOut ? new Date(p.checkOut).toLocaleTimeString('pt-BR') : "",
+                Tempo_Trabalho: calculateWorkTime(p.checkIn ?? null, p.checkOut ?? null),
+                Status_Presenca: p.checkIn ? (p.checkOut ? "COMPLETO" : "PRESENTE") : "AUSENTE",
                 Validado_Por: p.validatedBy || "",
-                Data_Criação: (p as any).created_at || "",
+                Observações: p.notes || "",
+                Data_Criação: (p as any).created_at ? formatEventDate((p as any).created_at) : "",
+                Ultima_Atualizacao: (p as any).updated_at ? formatEventDate((p as any).updated_at) : "",
             }))
 
             const ws = XLSX.utils.json_to_sheet(exportData)
+
+            // Definir largura das colunas para melhor visualização
+            const wscols = [
+                { wch: 25 }, // Nome
+                { wch: 15 }, // CPF
+                { wch: 20 }, // Empresa
+                { wch: 15 }, // Função
+                { wch: 25 }, // Email
+                { wch: 15 }, // Telefone
+                { wch: 30 }, // Dias Trabalho
+                { wch: 12 }, // Check-in
+                { wch: 12 }, // Horário Check-in
+                { wch: 12 }, // Check-out
+                { wch: 12 }, // Horário Check-out
+                { wch: 15 }, // Tempo Trabalho
+                { wch: 12 }, // Status Presença
+                { wch: 15 }, // Validado Por
+                { wch: 30 }, // Observações
+                { wch: 12 }, // Data Criação
+                { wch: 12 }, // Última Atualização
+            ];
+            ws['!cols'] = wscols;
+
             const wb = XLSX.utils.book_new()
             XLSX.utils.book_append_sheet(wb, ws, "Participantes")
-            XLSX.writeFile(wb, `participantes-evento-${eventId}-${new Date().toISOString().split("T")[0]}.xlsx`)
-            toast.success("Exportação concluída com sucesso!")
+            XLSX.writeFile(wb, `participantes-completo-${eventId}-${new Date().toISOString().split("T")[0]}.xlsx`)
+            toast.success("Exportação completa concluída com sucesso!")
         } catch (error) {
+            console.error("Erro na exportação:", error);
             toast.error("Erro ao exportar dados")
         } finally {
             setIsExporting(false)
@@ -1046,21 +1154,232 @@ export default function ImportExportPage() {
         XLSX.writeFile(wb, `modelo-participantes-${eventId}-${new Date().toISOString().split("T")[0]}.xlsx`)
     }
 
-    // Date functions
+    // Date functions - Agora suporta múltiplos turnos no mesmo dia
     const getEventDates = () => {
         if (!evento) return []
-        const dates: string[] = []
+        const dateShifts: Array<{ 
+            id: string;
+            dateISO: string; 
+            stage: string; 
+            period: 'diurno' | 'noturno'; 
+            hour: number;
+            displayLabel: string;
+        }> = []
+
+        // Função helper para processar arrays de dados do evento (nova estrutura)
+        const processEventArray = (eventData: any, stageName: string) => {
+            if (!eventData) return;
+
+            try {
+                let dataArray: any[] = [];
+
+                // Se for string JSON, fazer parse
+                if (typeof eventData === 'string') {
+                    dataArray = JSON.parse(eventData);
+                }
+                // Se já for array, usar diretamente
+                else if (Array.isArray(eventData)) {
+                    dataArray = eventData;
+                }
+                // Se não for nem string nem array, sair
+                else {
+                    return;
+                }
+
+                // Processar cada item do array
+                dataArray.forEach(item => {
+                    if (item && item.date) {
+                        const dateISO = new Date(item.date).toISOString().split("T")[0];
+                        const hour = new Date(item.date).getHours();
+                        const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        const formattedDate = formatEventDate(item.date);
+                        const stageUpper = stageName.toUpperCase();
+                        const periodLabel = period === 'diurno' ? 'DIURNO' : 'NOTURNO';
+                        
+                        const shift = {
+                            id: `${dateISO}-${stage}-${period}`,
+                            dateISO,
+                            stage,
+                            period,
+                            hour,
+                            displayLabel: `${formattedDate} (${stageUpper} - ${periodLabel})`
+                        };
+
+                        // Evitar duplicatas exatas
+                        const exists = dateShifts.find(s => s.id === shift.id);
+                        if (!exists) {
+                            dateShifts.push(shift);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.warn(`Erro ao processar dados do evento para stage ${stageName}:`, error);
+            }
+        };
+
+        // Processar nova estrutura do evento
+        processEventArray(evento.montagem, 'montagem');
+        processEventArray(evento.evento, 'evento');
+        processEventArray(evento.desmontagem, 'desmontagem');
+
+        // Fallback para estrutura antiga - criar turnos diurno E noturno para cada dia
         if (evento.preparationStartDate && evento.preparationEndDate) {
             const startDate = new Date(evento.preparationStartDate)
             const endDate = new Date(evento.preparationEndDate)
             const currentDate = new Date(startDate)
             while (currentDate <= endDate) {
-                dates.push(currentDate.toISOString().split("T")[0])
+                const dateISO = currentDate.toISOString().split("T")[0];
+                const formattedDate = formatEventDate(dateISO + 'T00:00:00');
+                
+                // Criar ambos os turnos
+                const diurnoId = `${dateISO}-preparation-diurno`;
+                const noturnoId = `${dateISO}-preparation-noturno`;
+                
+                if (!dateShifts.find(s => s.id === diurnoId)) {
+                    dateShifts.push({
+                        id: diurnoId,
+                        dateISO,
+                        stage: 'preparation',
+                        period: 'diurno',
+                        hour: 8,
+                        displayLabel: `${formattedDate} (EVENTO - DIURNO)`
+                    });
+                }
+                
+                if (!dateShifts.find(s => s.id === noturnoId)) {
+                    dateShifts.push({
+                        id: noturnoId,
+                        dateISO,
+                        stage: 'preparation',
+                        period: 'noturno',
+                        hour: 20,
+                        displayLabel: `${formattedDate} (EVENTO - NOTURNO)`
+                    });
+                }
+                
                 currentDate.setDate(currentDate.getDate() + 1)
             }
         }
-        return dates
+
+        if (evento.setupStartDate && evento.setupEndDate) {
+            const startDate = new Date(evento.setupStartDate);
+            const endDate = new Date(evento.setupEndDate);
+            const currentDate = new Date(startDate);
+            while (currentDate <= endDate) {
+                const dateISO = currentDate.toISOString().split("T")[0];
+                const formattedDate = formatEventDate(dateISO + 'T00:00:00');
+                
+                const diurnoId = `${dateISO}-setup-diurno`;
+                const noturnoId = `${dateISO}-setup-noturno`;
+                
+                if (!dateShifts.find(s => s.id === diurnoId)) {
+                    dateShifts.push({
+                        id: diurnoId,
+                        dateISO,
+                        stage: 'setup',
+                        period: 'diurno',
+                        hour: 8,
+                        displayLabel: `${formattedDate} (MONTAGEM - DIURNO)`
+                    });
+                }
+                
+                if (!dateShifts.find(s => s.id === noturnoId)) {
+                    dateShifts.push({
+                        id: noturnoId,
+                        dateISO,
+                        stage: 'setup',
+                        period: 'noturno',
+                        hour: 20,
+                        displayLabel: `${formattedDate} (MONTAGEM - NOTURNO)`
+                    });
+                }
+                
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+        }
+
+        if (evento.finalizationStartDate && evento.finalizationEndDate) {
+            const startDate = new Date(evento.finalizationStartDate);
+            const endDate = new Date(evento.finalizationEndDate);
+            const currentDate = new Date(startDate);
+            while (currentDate <= endDate) {
+                const dateISO = currentDate.toISOString().split("T")[0];
+                const formattedDate = formatEventDate(dateISO + 'T00:00:00');
+                
+                const diurnoId = `${dateISO}-finalization-diurno`;
+                const noturnoId = `${dateISO}-finalization-noturno`;
+                
+                if (!dateShifts.find(s => s.id === diurnoId)) {
+                    dateShifts.push({
+                        id: diurnoId,
+                        dateISO,
+                        stage: 'finalization',
+                        period: 'diurno',
+                        hour: 8,
+                        displayLabel: `${formattedDate} (DESMONTAGEM - DIURNO)`
+                    });
+                }
+                
+                if (!dateShifts.find(s => s.id === noturnoId)) {
+                    dateShifts.push({
+                        id: noturnoId,
+                        dateISO,
+                        stage: 'finalization',
+                        period: 'noturno',
+                        hour: 20,
+                        displayLabel: `${formattedDate} (DESMONTAGEM - NOTURNO)`
+                    });
+                }
+                
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+        }
+
+        // Ordenar cronologicamente e por período (diurno antes de noturno)
+        dateShifts.sort((a, b) => {
+            if (a.dateISO !== b.dateISO) {
+                return a.dateISO.localeCompare(b.dateISO);
+            }
+            if (a.stage !== b.stage) {
+                const stageOrder = { 'montagem': 1, 'evento': 2, 'desmontagem': 3 };
+                return (stageOrder[a.stage as keyof typeof stageOrder] || 2) - (stageOrder[b.stage as keyof typeof stageOrder] || 2);
+            }
+            // Diurno vem antes de noturno no mesmo dia e estágio
+            return a.period === 'diurno' ? -1 : 1;
+        });
+
+        // Retornar apenas os IDs únicos que incluem o turno
+        return dateShifts.map(shift => shift.id);
     }
+
+    // Função para extrair informações do ID do turno
+    const parseShiftId = (shiftId: string) => {
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            const dateISO = `${parts[0]}-${parts[1]}-${parts[2]}`;
+            const stage = parts[3];
+            const period = parts[4] as 'diurno' | 'noturno';
+            return { dateISO, stage, period };
+        }
+        // Fallback para IDs antigos
+        return { dateISO: shiftId, stage: 'evento', period: 'diurno' as 'diurno' | 'noturno' };
+    };
+
+    // Função para obter informações de exibição de um turno
+    const getShiftDisplayInfo = (shiftId: string) => {
+        const { dateISO, stage, period } = parseShiftId(shiftId);
+        const formattedDate = formatEventDate(dateISO + 'T00:00:00');
+        const stageUpper = stage.toUpperCase();
+        const periodLabel = period === 'diurno' ? 'DIURNO' : 'NOTURNO';
+        
+        return {
+            dateISO,
+            stage,
+            period,
+            formattedDate,
+            displayLabel: `${formattedDate} (${stageUpper} - ${periodLabel})`
+        };
+    };
 
     const handleDateSelect = (date: string) => {
         setSelectedEventDates((prev) => {
@@ -1083,27 +1402,58 @@ export default function ImportExportPage() {
     }
 
     const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString("pt-BR", {
-            weekday: "short",
-            day: "2-digit",
-            month: "short",
-        })
+        // Use formatEventDate for consistent timezone-safe formatting
+        const fullDate = formatEventDate(dateString + 'T00:00:00');
+
+        // Extract day number for display
+        const date = new Date(dateString + 'T12:00:00'); // Use noon to avoid timezone issues
+        const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" });
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = date.toLocaleDateString("pt-BR", { month: "short" });
+
+        return `${weekday}, ${day} ${month}`;
     }
 
     const getDayNumber = (dateString: string) => {
-        return new Date(dateString).getDate()
+        // Use noon to avoid timezone issues when getting day number
+        return new Date(dateString + 'T12:00:00').getDate();
     }
 
     const groupDatesByMonth = (dates: string[]) => {
         const groups: { [key: string]: string[] } = {}
         dates.forEach((date) => {
-            const monthKey = new Date(date).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+            // Use consistent date formatting for month grouping
+            const date_obj = new Date(date + 'T12:00:00'); // Use noon to avoid timezone issues
+            const monthKey = date_obj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
             if (!groups[monthKey]) {
                 groups[monthKey] = []
             }
             groups[monthKey].push(date)
         })
         return groups
+    }
+
+    // A função getDateInfo não é mais necessária pois as informações estão nos IDs dos turnos
+
+    // Função para obter ícone do período
+    const getPeriodIcon = (period: 'diurno' | 'noturno') => {
+        return period === 'diurno' ?
+            <Sun className="h-3 w-3 text-yellow-500" /> :
+            <Moon className="h-3 w-3 text-blue-500" />;
+    }
+
+    // Função para obter cor do estágio
+    const getStageColor = (stage: string) => {
+        switch (stage) {
+            case 'MONTAGEM':
+                return 'text-orange-600';
+            case 'EVENTO':
+                return 'text-blue-600';
+            case 'DESMONTAGEM':
+                return 'text-red-600';
+            default:
+                return 'text-gray-600';
+        }
     }
 
     // Step indicator component
@@ -1301,7 +1651,7 @@ export default function ImportExportPage() {
 
                                         {/* Calendar */}
                                         <div className="space-y-6">
-                                            {Object.entries(groupDatesByMonth(getEventDates())).map(([month, dates]) => (
+                                            {Object.entries(groupDatesByMonth(getEventDates())).map(([month, shiftIds]) => (
                                                 <div key={month} className="border border-gray-200 rounded-lg p-4">
                                                     <h3 className="text-lg font-semibold text-gray-900 mb-4">{month}</h3>
                                                     <div className="grid grid-cols-7 gap-2">
@@ -1311,25 +1661,46 @@ export default function ImportExportPage() {
                                                                 {day}
                                                             </div>
                                                         ))}
-                                                        {/* Days */}
-                                                        {dates.map((date) => {
-                                                            const isSelected = selectedEventDates.includes(date)
-                                                            const isToday = date === new Date().toISOString().split("T")[0]
+                                                        {/* Shift buttons - Agora suporta múltiplos turnos por dia */}
+                                                        {shiftIds.map((shiftId) => {
+                                                            const isSelected = selectedEventDates.includes(shiftId)
+                                                            const shiftInfo = getShiftDisplayInfo(shiftId)
+                                                            const { dateISO, stage, period } = parseShiftId(shiftId)
+                                                            const isToday = dateISO === new Date().toISOString().split("T")[0]
+
                                                             return (
                                                                 <button
-                                                                    key={date}
-                                                                    onClick={() => handleDateSelect(date)}
+                                                                    key={shiftId}
+                                                                    onClick={() => handleDateSelect(shiftId)}
                                                                     className={`
-                                                                        relative p-3 rounded-lg text-center transition-all duration-200
+                                                                        relative p-2 rounded-lg text-center transition-all duration-200 min-h-[85px]
                                                                         ${isSelected
                                                                             ? "bg-blue-600 text-white shadow-md"
-                                                                            : "bg-gray-50 hover:bg-gray-100 text-gray-700"
+                                                                            : "bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200"
                                                                         }
                                                                         ${isToday ? "ring-2 ring-blue-300" : ""}
                                                                     `}
+                                                                    title={shiftInfo.displayLabel}
                                                                 >
-                                                                    <div className="text-sm font-medium">{getDayNumber(date)}</div>
-                                                                    {isSelected && <Check className="w-4 h-4 absolute top-1 right-1" />}
+                                                                    <div className="flex flex-col items-center gap-1 h-full justify-center">
+                                                                        <div className="text-lg font-bold">{getDayNumber(shiftId)}</div>
+                                                                        <div className={`text-xs font-medium ${isSelected ? 'text-white' : getStageColor(stage.toUpperCase())}`}>
+                                                                            {stage.toUpperCase()}
+                                                                        </div>
+                                                                        <div className="flex items-center justify-center">
+                                                                            {isSelected ? (
+                                                                                period === 'diurno' ?
+                                                                                    <Sun className="h-3 w-3 text-yellow-200" /> :
+                                                                                    <Moon className="h-3 w-3 text-blue-200" />
+                                                                            ) : (
+                                                                                getPeriodIcon(period)
+                                                                            )}
+                                                                        </div>
+                                                                        <div className={`text-xs ${isSelected ? 'text-white' : 'text-gray-500'}`}>
+                                                                            {period === 'diurno' ? 'D' : 'N'}
+                                                                        </div>
+                                                                    </div>
+                                                                    {isSelected && <Check className="w-3 h-3 absolute top-1 right-1" />}
                                                                 </button>
                                                             )
                                                         })}
@@ -1341,16 +1712,22 @@ export default function ImportExportPage() {
                                         {/* Selected dates */}
                                         {selectedEventDates.length > 0 && (
                                             <div className="mt-6">
-                                                <h4 className="text-sm font-medium text-gray-700 mb-3">Datas Selecionadas:</h4>
+                                                <h4 className="text-sm font-medium text-gray-700 mb-3">Turnos Selecionados:</h4>
                                                 <div className="flex flex-wrap gap-2">
-                                                    {selectedEventDates.map((date) => (
-                                                        <Badge key={date} variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">
-                                                            {formatDate(date)}
-                                                            <button onClick={() => handleDateSelect(date)} className="ml-2 hover:text-blue-600">
-                                                                <X className="w-3 h-3" />
-                                                            </button>
-                                                        </Badge>
-                                                    ))}
+                                                    {selectedEventDates.map((shiftId) => {
+                                                        const shiftInfo = getShiftDisplayInfo(shiftId);
+                                                        const { stage, period } = parseShiftId(shiftId);
+                                                        return (
+                                                            <Badge key={shiftId} variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 flex items-center gap-1">
+                                                                <span>{formatDate(shiftId)}</span>
+                                                                <span className="text-xs">({stage.toUpperCase()} - {period.toUpperCase()})</span>
+                                                                {getPeriodIcon(period)}
+                                                                <button onClick={() => handleDateSelect(shiftId)} className="ml-1 hover:text-blue-600">
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </Badge>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         )}
@@ -1744,7 +2121,7 @@ export default function ImportExportPage() {
                                                     <p>• Evento: {evento?.name}</p>
                                                     <p>
                                                         • Dias de trabalho:{" "}
-                                                        {selectedEventDates.map((date) => new Date(date).toLocaleDateString("pt-BR")).join(", ")}
+                                                        {selectedEventDates.map((date) => formatEventDate(date + 'T00:00:00')).join(", ")}
                                                     </p>
                                                     <p>• Atribuição automática baseada na função do participante</p>
                                                 </div>
@@ -2154,7 +2531,7 @@ export default function ImportExportPage() {
                 ) : (
                     // Export Tab
                     <div className="space-y-6">
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-4 gap-4">
                             <Card>
                                 <CardContent className="p-4 text-center">
                                     <Users className="w-8 h-8 mx-auto text-blue-600 mb-2" />
@@ -2171,9 +2548,16 @@ export default function ImportExportPage() {
                             </Card>
                             <Card>
                                 <CardContent className="p-4 text-center">
-                                    <CheckCircle className="w-8 h-8 mx-auto text-purple-600 mb-2" />
+                                    <CheckCircle className="w-8 h-8 mx-auto text-green-600 mb-2" />
                                     <div className="text-2xl font-bold">{participants.filter((p) => p.checkIn).length}</div>
                                     <div className="text-sm text-gray-600">Com Check-in</div>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardContent className="p-4 text-center">
+                                    <CheckCircle className="w-8 h-8 mx-auto text-purple-600 mb-2" />
+                                    <div className="text-2xl font-bold">{participants.filter((p) => p.checkIn && p.checkOut).length}</div>
+                                    <div className="text-sm text-gray-600">Check-in/out Completo</div>
                                 </CardContent>
                             </Card>
                         </div>
@@ -2182,39 +2566,73 @@ export default function ImportExportPage() {
                             <Button
                                 onClick={exportParticipants}
                                 disabled={isExporting || participants.length === 0}
-                                className="w-full bg-green-600 hover:bg-green-700"
+                                className="w-full bg-green-600 hover:bg-green-700 text-lg py-6"
                             >
                                 {isExporting ? (
                                     <>
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        Exportando...
+                                        <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+                                        Exportando dados completos...
                                     </>
                                 ) : (
                                     <>
-                                        <Download className="w-4 h-4 mr-2" />
-                                        Exportar Todos os Participantes ({participants.length})
+                                        <Download className="w-5 h-5 mr-3" />
+                                        Exportar Relatório Completo ({participants.length} participantes)
                                     </>
                                 )}
-                            </Button>
-                            <Separator />
-                            <Button onClick={downloadTemplate} variant="outline" className="w-full bg-transparent">
-                                <FileText className="w-4 h-4 mr-2" />
-                                Baixar Modelo de Importação
                             </Button>
                         </div>
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Informações da Exportação</CardTitle>
+                                <CardTitle className="flex items-center gap-2">
+                                    <FileSpreadsheet className="h-5 w-5 text-green-600" />
+                                    Relatório de Exportação Completo
+                                </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="space-y-2 text-sm text-gray-600">
-                                    <p>• A exportação inclui todos os dados dos participantes</p>
-                                    <p>• Formato: Excel (.xlsx)</p>
-                                    <p>
-                                        • Nome do arquivo: participantes-evento-{eventId}-{new Date().toISOString().split("T")[0]}.xlsx
-                                    </p>
-                                    <p>• Dados incluídos: nome, CPF, empresa, função, email, telefone, dias de trabalho, etc.</p>
+                                <div className="space-y-3 text-sm text-gray-700">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <h4 className="font-semibold text-gray-800 mb-2">📊 Dados Básicos:</h4>
+                                            <ul className="space-y-1">
+                                                <li>• Nome, CPF, Empresa</li>
+                                                <li>• Função, Credencial</li>
+                                                <li>• Email, Telefone</li>
+                                                <li>• Dias de Trabalho</li>
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-semibold text-gray-800 mb-2">⏰ Controle de Presença:</h4>
+                                            <ul className="space-y-1">
+                                                <li>• Código da Pulseira</li>
+                                                <li>• Data e Horário de Check-in</li>
+                                                <li>• Data e Horário de Check-out</li>
+                                                <li>• Tempo Total de Trabalho</li>
+                                                <li>• Status de Presença</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div className="pt-3 border-t">
+                                        <h4 className="font-semibold text-gray-800 mb-2">📋 Informações Adicionais:</h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <ul className="space-y-1">
+                                                <li>• Validado Por</li>
+                                                <li>• Observações</li>
+                                            </ul>
+                                            <ul className="space-y-1">
+                                                <li>• Data de Criação</li>
+                                                <li>• Última Atualização</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div className="pt-3 border-t bg-blue-50 p-3 rounded">
+                                        <p className="text-blue-800 font-medium">
+                                            📁 Nome do arquivo: participantes-completo-{eventId}-{new Date().toISOString().split("T")[0]}.xlsx
+                                        </p>
+                                        <p className="text-blue-700 text-xs mt-1">
+                                            Formato: Excel (.xlsx) com colunas otimizadas e dados completos de presença
+                                        </p>
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>

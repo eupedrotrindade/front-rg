@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, BarChart3, Building, Calendar, TrendingUp, Users, Clock, Activity, MapPin, CalendarDays, UserCheck } from 'lucide-react'
+import { ArrowLeft, BarChart3, Building, Calendar, TrendingUp, Users, Clock, Activity, MapPin, CalendarDays, UserCheck, Sun, Moon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useMemo, useCallback } from 'react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
@@ -101,11 +101,11 @@ export default function EventDashboardPage() {
         return dateStr;
     }, []);
 
-    // Função para gerar tabs dos dias do evento usando nova estrutura
-    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string }> => {
+    // Função para gerar tabs dos dias do evento usando nova estrutura com suporte a turnos
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
         if (!evento) return [];
 
-        const days: Array<{ id: string; label: string; date: string; type: string }> = [];
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = [];
 
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
@@ -131,12 +131,27 @@ export default function EventDashboardPage() {
                 dataArray.forEach(item => {
                     if (item && item.date) {
                         const formattedDate = formatEventDate(item.date);
+                        const dateISO = new Date(item.date).toISOString().split('T')[0]; // YYYY-MM-DD para ID
+                        
+                        // Usar período do item se disponível, senão calcular baseado na hora
+                        let period: 'diurno' | 'noturno';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                            period = item.period;
+                        } else {
+                            // Fallback: calcular baseado na hora
+                            const dateObj = new Date(item.date);
+                            const hour = dateObj.getHours();
+                            period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        }
+                        
+                        const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
                         
                         days.push({
-                            id: formattedDate,
-                            label: `${formattedDate} (${stageName})`,
+                            id: `${dateISO}-${stage}-${period}`, // ID único incluindo o turno
+                            label: `${formattedDate} (${stageName} - ${periodLabel})`,
                             date: formattedDate,
-                            type: stage
+                            type: stage,
+                            period
                         });
                     }
                 });
@@ -146,49 +161,73 @@ export default function EventDashboardPage() {
         };
 
         // Processar nova estrutura do evento
-        processEventArray(evento.montagem, 'setup', 'MONTAGEM');
-        processEventArray(evento.evento, 'event', 'EVENTO');
-        processEventArray(evento.desmontagem, 'teardown', 'DESMONTAGEM');
+        console.log('🔍 Processando evento no dashboard:', {
+            montagem: evento.montagem,
+            evento: evento.evento,
+            desmontagem: evento.desmontagem
+        });
+        
+        processEventArray(evento.montagem, 'montagem', 'MONTAGEM');
+        processEventArray(evento.evento, 'evento', 'EVENTO');
+        processEventArray(evento.desmontagem, 'desmontagem', 'DESMONTAGEM');
 
-        // Fallback para estrutura antiga (manter compatibilidade)
-        if (evento.setupStartDate && evento.setupEndDate) {
+        // Fallback para estrutura antiga (manter compatibilidade) - só usar se não há nova estrutura
+        if (evento.setupStartDate && evento.setupEndDate && (!evento.montagem || evento.montagem.length === 0)) {
             const startDate = new Date(evento.setupStartDate);
             const endDate = new Date(evento.setupEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
                 const dateStr = formatEventDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+                const hour = date.getHours();
+                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+                
                 days.push({
-                    id: dateStr,
-                    label: `${dateStr} (MONTAGEM)`,
+                    id: `${dateISO}-montagem-${period}`,
+                    label: `${dateStr} (MONTAGEM - ${periodLabel})`,
                     date: dateStr,
-                    type: 'setup'
+                    type: 'montagem',
+                    period
                 });
             }
         }
 
-        if (evento.preparationStartDate && evento.preparationEndDate) {
+        if (evento.preparationStartDate && evento.preparationEndDate && (!evento.evento || evento.evento.length === 0)) {
             const startDate = new Date(evento.preparationStartDate);
             const endDate = new Date(evento.preparationEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
                 const dateStr = formatEventDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+                const hour = date.getHours();
+                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+                
                 days.push({
-                    id: dateStr,
-                    label: `${dateStr} (EVENTO)`,
+                    id: `${dateISO}-evento-${period}`,
+                    label: `${dateStr} (EVENTO - ${periodLabel})`,
                     date: dateStr,
-                    type: 'preparation'
+                    type: 'evento',
+                    period
                 });
             }
         }
 
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
+        if (evento.finalizationStartDate && evento.finalizationEndDate && (!evento.desmontagem || evento.desmontagem.length === 0)) {
             const startDate = new Date(evento.finalizationStartDate);
             const endDate = new Date(evento.finalizationEndDate);
             for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
                 const dateStr = formatEventDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+                const hour = date.getHours();
+                const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+                
                 days.push({
-                    id: dateStr,
-                    label: `${dateStr} (DESMONTAGEM)`,
+                    id: `${dateISO}-desmontagem-${period}`,
+                    label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
                     date: dateStr,
-                    type: 'finalization'
+                    type: 'desmontagem',
+                    period
                 });
             }
         }
@@ -200,19 +239,51 @@ export default function EventDashboardPage() {
             return dateA.getTime() - dateB.getTime();
         });
 
+        console.log('📅 Dias gerados no dashboard:', days);
         return days;
     }, [evento]);
 
-    // Função para filtrar participantes por dia selecionado
+    // Função para extrair informações do shift ID
+    const parseShiftId = useCallback((shiftId: string) => {
+        // Formato esperado: YYYY-MM-DD-stage-period
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            const year = parts[0];
+            const month = parts[1];
+            const day = parts[2];
+            const stage = parts[3];
+            const period = parts[4] as 'diurno' | 'noturno';
+            
+            return {
+                dateISO: `${year}-${month}-${day}`,
+                dateFormatted: formatEventDate(`${year}-${month}-${day}T00:00:00`),
+                stage,
+                period
+            };
+        }
+        
+        // Fallback para formato simples (apenas data)
+        return {
+            dateISO: shiftId,
+            dateFormatted: formatEventDate(shiftId + 'T00:00:00'),
+            stage: 'unknown',
+            period: 'diurno' as 'diurno'
+        };
+    }, []);
+
+    // Função para filtrar participantes por dia selecionado (com suporte a turnos)
     const getParticipantesPorDia = useCallback((dia: string) => {
         if (!dia) return participantsArray;
+
+        // Extrair a data do shift ID
+        const { dateFormatted } = parseShiftId(dia);
 
         return participantsArray.filter((participant: any) => {
             if (!participant.daysWork || participant.daysWork.length === 0) {
                 return false;
             }
 
-            const normalizedDia = normalizeDate(dia);
+            const normalizedDia = normalizeDate(dateFormatted);
             const hasDay = participant.daysWork.some((workDay: string) => {
                 const normalizedWorkDay = normalizeDate(workDay);
                 return normalizedWorkDay === normalizedDia;
@@ -220,20 +291,23 @@ export default function EventDashboardPage() {
 
             return hasDay;
         });
-    }, [participantsArray, normalizeDate]);
+    }, [participantsArray, normalizeDate, parseShiftId]);
 
-    // Função para verificar se o participante já fez check-in no dia selecionado
+    // Função para verificar se o participante já fez check-in no dia selecionado (com suporte a turnos)
     const hasCheckIn = useCallback((participantId: string, date: string): boolean => {
         if (!attendanceData || attendanceData.length === 0) return false;
 
-        const normalizedDate = normalizeDate(date);
+        // Extrair a data do shift ID se necessário
+        const { dateFormatted } = parseShiftId(date);
+        const normalizedDate = normalizeDate(dateFormatted);
+        
         return attendanceData.some((attendance: any) => {
             const normalizedAttendanceDate = normalizeDate(attendance.date);
             return attendance.participantId === participantId &&
                 attendance.checkIn !== null &&
                 normalizedAttendanceDate === normalizedDate;
         });
-    }, [attendanceData, normalizeDate]);
+    }, [attendanceData, normalizeDate, parseShiftId]);
 
     // KPIs baseados no dia selecionado
     const participantesDoDia = getParticipantesPorDia(selectedDay)
@@ -311,6 +385,16 @@ export default function EventDashboardPage() {
 
     const credentialStats = getCredentialStats();
     const companySummary = getCompanySummary();
+
+    // Função para obter ícone do período
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+        if (period === 'diurno') {
+            return <Sun className="h-4 w-4 text-yellow-500" />;
+        } else if (period === 'noturno') {
+            return <Moon className="h-4 w-4 text-blue-500" />;
+        }
+        return null;
+    }, []);
 
     // Preparar dados para a lista virtualizada
     const dashboardItems = useMemo(() => {
@@ -422,7 +506,10 @@ export default function EventDashboardPage() {
                             <SelectContent>
                                 {eventDays.map((day) => (
                                     <SelectItem key={day.id} value={day.id}>
-                                        {day.label}
+                                        <div className="flex items-center gap-2">
+                                            <span>{day.label}</span>
+                                            {getPeriodIcon(day.period)}
+                                        </div>
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -493,8 +580,13 @@ export default function EventDashboardPage() {
                                     <CardContent className="p-6">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-orange-600 text-sm font-medium">Empresas</p>
-                                                <p className="text-3xl font-bold text-orange-900">{empresasArray.length}</p>
+                                                <p className="text-orange-600 text-sm font-medium">Empresas Únicas</p>
+                                                <p className="text-3xl font-bold text-orange-900">
+                                                    {new Set(empresasArray.map(e => e.nome)).size}
+                                                </p>
+                                                <p className="text-xs text-orange-600">
+                                                    {empresasArray.length} turnos totais
+                                                </p>
                                             </div>
                                             <Building className="w-8 h-8 text-orange-600" />
                                         </div>
@@ -508,7 +600,14 @@ export default function EventDashboardPage() {
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <TrendingUp className="w-5 h-5 text-blue-600" />
-                                    Progresso de Check-in - {selectedDay}
+                                    Progresso de Check-in - {selectedDay ? (() => {
+                                        const dayInfo = eventDays.find(d => d.id === selectedDay);
+                                        return dayInfo ? dayInfo.label : selectedDay;
+                                    })() : 'Selecione um dia'}
+                                    {selectedDay && (() => {
+                                        const dayInfo = eventDays.find(d => d.id === selectedDay);
+                                        return dayInfo ? getPeriodIcon(dayInfo.period) : null;
+                                    })()}
                                 </h2>
                                 <div className="flex items-center gap-2 text-sm text-gray-600">
                                     <span>Total: {dashboardItems.reduce((sum, item) => sum + item.checkedIn, 0)}/{dashboardItems.reduce((sum, item) => sum + item.total, 0)} presentes</span>
@@ -516,8 +615,7 @@ export default function EventDashboardPage() {
                             </div>
 
                             <Tabs defaultValue="credentials" className="w-full">
-                                <TabsList className="grid w-full grid-cols-3 bg-gray-100 p-1 rounded-lg">
-
+                                <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg">
                                     <TabsTrigger
                                         value="credentials"
                                         className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-3 py-2 text-sm font-medium transition-colors"
@@ -533,14 +631,6 @@ export default function EventDashboardPage() {
                                         Empresas ({companyItems.length})
                                     </TabsTrigger>
                                 </TabsList>
-
-                                <TabsContent value="all" className="mt-4">
-                                    <VirtualizedDashboardList
-                                        items={dashboardItems}
-                                        height={600}
-                                        itemHeight={100}
-                                    />
-                                </TabsContent>
 
                                 <TabsContent value="credentials" className="mt-4">
                                     <VirtualizedDashboardList
