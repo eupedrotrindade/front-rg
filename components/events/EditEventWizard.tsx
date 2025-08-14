@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useUpdateEvento } from '@/features/eventos/api/mutation/use-update-evento';
 import { Event } from '@/features/eventos/types';
-import { SimpleEventDay } from '@/types/simple-event-days';
+import { SimpleEventDay } from '@/public/types/simple-event-days';
 
 // Step Components - reutilizando os mesmos do CreateEventWizard
 import { BasicInfoStep } from './steps/BasicInfoStep';

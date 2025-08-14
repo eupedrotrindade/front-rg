@@ -4,6 +4,7 @@ import React, { useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, Clock } from 'lucide-react';
 import SimpleEventDaysManager from '@/components/event-days/SimpleEventDaysManager';
+import { SimpleEventDay } from '@/public/types/simple-event-days';
 
 interface DateTimeStepProps {
   data: Record<string, unknown>;
@@ -12,9 +13,9 @@ interface DateTimeStepProps {
 }
 
 export function DateTimeStep({ data, updateData, onValidationChange }: DateTimeStepProps) {
-  const datetimeData = data.datetime || { montagem: [], evento: [], desmontagem: [] };
+  const datetimeData = (data.datetime as { montagem: SimpleEventDay[]; evento: SimpleEventDay[]; desmontagem: SimpleEventDay[] }) || { montagem: [], evento: [], desmontagem: [] };
 
-  const handleEventDaysChange = useCallback((days: { montagem: unknown[]; evento: unknown[]; desmontagem: unknown[] }) => {
+  const handleEventDaysChange = useCallback((days: { montagem: SimpleEventDay[]; evento: SimpleEventDay[]; desmontagem: SimpleEventDay[] }) => {
     updateData('datetime', days);
   }, [updateData]);
 

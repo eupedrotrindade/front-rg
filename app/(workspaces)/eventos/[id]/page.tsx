@@ -765,7 +765,7 @@ export default function EventoDetalhesPage() {
 
     // Credentials array
     const credentialsArray = Array.isArray(credentials) ? credentials : []
-    const empresasArray = Array.isArray(empresas) ? empresas : []
+    const empresasArray = useMemo(() => Array.isArray(empresas) ? empresas : [], [empresas])
 
     // Função para filtrar empresas por dia selecionado (similar à lógica do empresas page)
     const getEmpresasPorDia = useCallback((shiftId: string) => {

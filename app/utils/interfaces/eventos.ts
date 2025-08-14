@@ -1,3 +1,5 @@
+import { SimpleEventDay } from "@/public/types/simple-event-days";
+
 export type EventStatus = "active" | "closed" | "canceled" | "draft";
 export type EventVisibility = "public" | "private" | "restricted";
 export type EventPermission = "admin" | "manager" | "editor" | "viewer";

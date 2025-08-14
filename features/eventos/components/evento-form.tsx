@@ -24,7 +24,8 @@ import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
 import { fetchGalleryImages, type FileObject } from '@/features/gallery/components/gallery-dashboard'
 import EventDaysManager from '@/components/event-days/EventDaysManager'
-import { EventDay } from '@/types/event-days'
+import { EventDay } from '@/public/types/event-days'
+import { SimpleEventDay } from '@/public/types/simple-event-days'
 
 interface EventoFormProps {
     defaultValues?: Partial<EventoSchema>
@@ -40,9 +41,18 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
         evento: SimpleEventDay[];
         desmontagem: SimpleEventDay[];
     }>({
-        montagem: defaultValues?.montagem || [],
-        evento: defaultValues?.evento || [],
-        desmontagem: defaultValues?.desmontagem || []
+        montagem: defaultValues?.montagem?.map(day => ({
+            date: day.date,
+            period: 'diurno' as const
+        })) || [],
+        evento: defaultValues?.evento?.map(day => ({
+            date: day.date,
+            period: 'diurno' as const
+        })) || [],
+        desmontagem: defaultValues?.desmontagem?.map(day => ({
+            date: day.date,
+            period: 'diurno' as const
+        })) || []
     });
 
     const form = useForm<FieldValues>({
@@ -66,13 +76,26 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
         }
 
         // Incluir os dias do evento no data e garantir que startDate/endDate sejam strings
+        // Converter SimpleEventDay de volta para EventDay para compatibilidade com o schema
         const formDataWithEventDays = {
             ...data,
             startDate: data.startDate || '',
             endDate: data.endDate || '',
-            montagem: eventDays.montagem,
-            evento: eventDays.evento,
-            desmontagem: eventDays.desmontagem,
+            montagem: eventDays.montagem.map(day => ({
+                date: day.date,
+                start: true,
+                end: false
+            })),
+            evento: eventDays.evento.map(day => ({
+                date: day.date,
+                start: true,
+                end: false
+            })),
+            desmontagem: eventDays.desmontagem.map(day => ({
+                date: day.date,
+                start: true,
+                end: false
+            }))
         };
 
         onSubmit(formDataWithEventDays as EventoSchema)

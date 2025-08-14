@@ -725,7 +725,7 @@ export default function PublicEmpresaPage() {
         }
 
         return filtered
-    }, [participantsByDay, searchTerm, filtros, ordenacao])
+    }, [participantsByDay, searchTerm, filtros, ordenacao, participantsAttendanceStatus])
 
     // Obter valores únicos para filtros
     const uniqueValues = React.useMemo(() => {

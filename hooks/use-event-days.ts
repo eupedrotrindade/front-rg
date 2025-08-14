@@ -5,7 +5,8 @@ import {
   EventDayRange,
   LegacyEventDates,
   EventWithFlexibleDays,
-} from "@/types/event-days";
+} from "@/public/types/event-days";
+import { SimpleEventDay } from "@/public/types/simple-event-days";
 
 export interface UseEventDaysReturn {
   // State
@@ -89,7 +90,12 @@ export function useEventDays(
   // Action creators
   const addEventDay = useCallback((phase: EventPhase, day: EventDay) => {
     const setter = getSetterForPhase(phase);
-    setter((prev) => [...prev, day]);
+    // Convert EventDay to SimpleEventDay
+    const simpleDay: SimpleEventDay = {
+      date: day.date,
+      period: 'diurno' as const
+    };
+    setter((prev) => [...prev, simpleDay]);
   }, []);
 
   const removeEventDay = useCallback((phase: EventPhase, index: number) => {
@@ -100,7 +106,12 @@ export function useEventDays(
   const updateEventDay = useCallback(
     (phase: EventPhase, index: number, day: EventDay) => {
       const setter = getSetterForPhase(phase);
-      setter((prev) => prev.map((item, i) => (i === index ? day : item)));
+      // Convert EventDay to SimpleEventDay
+      const simpleDay: SimpleEventDay = {
+        date: day.date,
+        period: 'diurno' as const
+      };
+      setter((prev) => prev.map((item, i) => (i === index ? simpleDay : item)));
     },
     []
   );
@@ -209,16 +220,16 @@ export function useEventDays(
       }
     });
 
-    // Check for logical start/end combinations
+    // Check for valid period values
     [
       { phase: "montagem", days: montagem },
       { phase: "evento", days: evento },
       { phase: "desmontagem", days: desmontagem },
     ].forEach(({ phase, days }) => {
       days.forEach((day, index) => {
-        if (!day.start && !day.end) {
+        if (!day.period || (day.period !== 'diurno' && day.period !== 'noturno')) {
           errors.push(
-            `Dia ${day.date} na fase ${phase} deve ser marcado como início ou fim (ou ambos)`
+            `Dia ${day.date} na fase ${phase} deve ter um período válido (diurno ou noturno)`
           );
         }
       });
@@ -409,15 +420,13 @@ function convertLegacyToEventDays(legacy: LegacyEventDates): {
     ) {
       result.montagem.push({
         date: dateToISODateTime(date),
-        start: date.getTime() === startDate.getTime(),
-        end: date.getTime() === endDate.getTime(),
+        period: 'diurno' as const,
       });
     }
   } else if (legacy.setupDate) {
     result.montagem.push({
       date: dateToISODateTime(new Date(legacy.setupDate)),
-      start: true,
-      end: true,
+      period: 'diurno' as const,
     });
   }
 
@@ -432,15 +441,13 @@ function convertLegacyToEventDays(legacy: LegacyEventDates): {
     ) {
       result.evento.push({
         date: dateToISODateTime(date),
-        start: date.getTime() === startDate.getTime(),
-        end: date.getTime() === endDate.getTime(),
+        period: 'diurno' as const,
       });
     }
   } else if (legacy.preparationDate) {
     result.evento.push({
       date: dateToISODateTime(new Date(legacy.preparationDate)),
-      start: true,
-      end: true,
+      period: 'diurno' as const,
     });
   }
 
@@ -455,15 +462,13 @@ function convertLegacyToEventDays(legacy: LegacyEventDates): {
     ) {
       result.desmontagem.push({
         date: dateToISODateTime(date),
-        start: date.getTime() === startDate.getTime(),
-        end: date.getTime() === endDate.getTime(),
+        period: 'diurno' as const,
       });
     }
   } else if (legacy.finalizationDate) {
     result.desmontagem.push({
       date: dateToISODateTime(new Date(legacy.finalizationDate)),
-      start: true,
-      end: true,
+      period: 'diurno' as const,
     });
   }
 

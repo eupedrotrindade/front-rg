@@ -133,9 +133,9 @@ export default function RadiosPage() {
     const createMultipleRadiosMutation = useCreateMultipleRadios()
 
     // Dados processados
-    const assignments = assignmentsData?.data || []
+    const assignments = useMemo(() => assignmentsData?.data || [], [assignmentsData?.data])
     const allAssignments = allAssignmentsData?.data || [] // Todas as atribuições para contadores
-    const availableRadios = availableRadiosData?.data || []
+    const availableRadios = useMemo(() => availableRadiosData?.data || [], [availableRadiosData?.data])
 
     // Filtrar rádios disponíveis com busca
     const filteredAvailableRadios = useMemo(() => {
@@ -603,11 +603,6 @@ export default function RadiosPage() {
             await createAssignmentMutation.mutateAsync({
                 event_id: eventId,
                 event_day: eventDayFormatted, // Formato DD/MM/YYYY (10 chars)
-                // Novos campos do modelo de turnos
-                shiftId: selectedDay,
-                workDate: shiftInfo.workDate,
-                workStage: shiftInfo.workStage,
-                workPeriod: shiftInfo.workPeriod,
                 assigned_to: newAssignmentForm.assigned_to.trim(),
                 company: newAssignmentForm.company?.trim() || undefined,
                 contact: newAssignmentForm.contact?.trim() || undefined,

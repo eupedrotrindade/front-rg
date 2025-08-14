@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import EventoForm from "./evento-form"
 import { useCreateEvento } from "@/features/eventos/api/mutation/use-create-evento"
 import { EventoSchema } from "@/features/eventos/schemas"
+import { CreateEventRequest } from "@/features/eventos/types"
+import { SimpleEventDay } from "@/public/types/simple-event-days"
 import { useState } from "react"
 import { toast } from "sonner"
 import { Plus } from 'lucide-react'
@@ -15,7 +17,25 @@ const EventoCreateDialog = () => {
     const { mutate: createEvento, isPending } = useCreateEvento()
 
     const handleSubmit = (data: EventoSchema) => {
-        createEvento(data, {
+        // Garantir que startDate e endDate tenham valores padrão
+        // Converter EventDay para SimpleEventDay
+        const convertToSimpleEventDay = (eventDays: Array<{ date: string; start: boolean; end: boolean }>): SimpleEventDay[] => {
+            return eventDays.map(day => ({
+                date: day.date,
+                period: 'diurno' as const
+            }));
+        };
+        
+        const eventData: CreateEventRequest = {
+            ...data,
+            startDate: data.startDate || '',
+            endDate: data.endDate || '',
+            montagem: convertToSimpleEventDay(data.montagem),
+            evento: convertToSimpleEventDay(data.evento),
+            desmontagem: convertToSimpleEventDay(data.desmontagem)
+        };
+        
+        createEvento(eventData, {
             onSuccess: () => {
                 toast.success("Evento criado com sucesso!")
                 setOpen(false)

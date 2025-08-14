@@ -38,6 +38,11 @@ export const useCreateCredentialSimple = ({
       cor: color,
       id_events: eventId,
       days_works: finalDaysWorks,
+      // Propriedades obrigatórias do shift - usando valores padrão
+      shiftId: finalDaysWorks[0] || `${new Date().toISOString().split('T')[0]}-evento-diurno`,
+      workDate: new Date().toISOString().split('T')[0],
+      workStage: 'evento' as const,
+      workPeriod: 'diurno' as const,
       isActive: true,
       isDistributed: false,
     };

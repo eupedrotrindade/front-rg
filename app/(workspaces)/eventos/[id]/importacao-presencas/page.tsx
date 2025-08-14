@@ -465,7 +465,7 @@ export default function ImportacaoPresencas() {
     toast.success(
       `Importação concluída! ✅ ${successCount} sucessos, ❌ ${errorCount} erros, ⚠️ ${warningCount} avisos, ⏭️ ${skippedCount} pulados`
     )
-  }, [importedData, findParticipantByExactMatch, eventId, processingConfig])
+  }, [importedData, findParticipantByExactMatch, eventId, processingConfig, isPaused, participantsData.length])
 
   // ⚙️ COMPONENTE DE CONFIGURAÇÃO
   const ConfigSection = () => (

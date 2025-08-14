@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Tipos para a nova estrutura flexível de dias de evento
+import { SimpleEventDay } from "./simple-event-days";
 
 export interface EventDay {
   date: string; // formato: "2025-08-11T10:00:00" (ISO datetime)

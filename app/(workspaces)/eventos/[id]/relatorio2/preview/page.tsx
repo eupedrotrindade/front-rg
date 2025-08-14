@@ -59,11 +59,11 @@ export default function PdfPreviewPage() {
 
         const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = []
 
-        const processEventArray = (eventData: any, stage: string, stageName: string) => {
+        const processEventArray = (eventData: unknown, stage: string, stageName: string) => {
             if (!eventData) return
 
             try {
-                let dataArray: any[] = []
+                let dataArray: Array<{ date?: string; period?: 'diurno' | 'noturno' }> = []
 
                 if (typeof eventData === 'string') {
                     dataArray = JSON.parse(eventData)
@@ -138,8 +138,8 @@ export default function PdfPreviewPage() {
     const previewData = generatePreviewData()
 
     // Dividir dados por páginas baseado nos pageBreaks
-    const pages: any[][] = []
-    let currentPageItems: any[] = []
+    const pages: Array<Array<{ type?: string; data?: string; pageBreak?: boolean; shiftDate?: string; shiftStage?: string; shiftPeriod?: string; checkInCount?: number; totalCount?: number; color?: string }>> = []
+    let currentPageItems: Array<{ type?: string; data?: string; pageBreak?: boolean; shiftDate?: string; shiftStage?: string; shiftPeriod?: string; checkInCount?: number; totalCount?: number; color?: string }> = []
 
     previewData.forEach((item, index) => {
         if (item.pageBreak && currentPageItems.length > 0) {
@@ -177,7 +177,7 @@ export default function PdfPreviewPage() {
         window.print()
     }
 
-    const renderPreviewItem = (item: any, index: number) => {
+    const renderPreviewItem = (item: { type?: string; data?: string; pageBreak?: boolean; shiftDate?: string; shiftStage?: string; shiftPeriod?: string; checkInCount?: number; totalCount?: number; color?: string }, index: number) => {
         switch (item.type) {
             case 'SHIFT_HEADER':
                 return (

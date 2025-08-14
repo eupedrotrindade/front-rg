@@ -113,7 +113,7 @@ const generateEventShifts = (event: Event): { [key: string]: string[] } => {
     if (Object.values(shiftsByStage).flat().length === 0) {
         console.log('⚠️ [CredentialForm] Usando fallback para estrutura antiga');
         
-        const addFallbackShifts = (startDate: string, endDate: string, stage: string) => {
+        const addFallbackShifts = (startDate: string | undefined, endDate: string | undefined, stage: string) => {
             if (!startDate || !endDate) return;
             const start = new Date(startDate);
             const end = new Date(endDate);
@@ -428,11 +428,16 @@ export const CredentialForm = ({
         }
         
         // Extrair informações de shift do primeiro shift selecionado (principal)
-        let mainShiftInfo = {
+        let mainShiftInfo: {
+            shiftId: string;
+            workDate: string;
+            workStage: 'montagem' | 'evento' | 'desmontagem';
+            workPeriod: 'diurno' | 'noturno';
+        } = {
             shiftId: '',
             workDate: '',
-            workStage: 'evento' as const,
-            workPeriod: 'diurno' as const
+            workStage: 'evento',
+            workPeriod: 'diurno'
         };
         
         if (shiftsToSubmit.length > 0) {

@@ -727,7 +727,7 @@ export default function ImportExportPage() {
     }
 
     // Process Excel file
-    const processExcelFile = async (file: File): Promise<ProcessedData> => {
+    const processExcelFile = useCallback(async (file: File): Promise<ProcessedData> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader()
             reader.onload = async (e) => {
@@ -927,7 +927,7 @@ export default function ImportExportPage() {
             reader.onerror = () => reject(new Error("Erro ao ler arquivo"))
             reader.readAsArrayBuffer(file)
         })
-    }
+    }, [participants, eventId, findCredentialByName, findCompanyByName, formatDocumentForStorage])
 
     // Import participants with optimized batch processing
     const importParticipants = async (participants: CreateEventParticipantRequest[]) => {
@@ -1021,7 +1021,7 @@ export default function ImportExportPage() {
     }
 
     // Step handlers
-    const handleFileUpload = async (file: File) => {
+    const handleFileUpload = useCallback(async (file: File) => {
         if (!file.name.match(/\.(xlsx|xls)$/)) {
             toast.error("Por favor, selecione um arquivo Excel (.xlsx ou .xls)")
             return
@@ -1040,7 +1040,7 @@ export default function ImportExportPage() {
         } finally {
             setIsProcessing(false)
         }
-    }
+    }, [processExcelFile])
 
     const handleNextStep = () => {
         if (currentStep === "preview") {
@@ -1161,7 +1161,7 @@ export default function ImportExportPage() {
         if (e.dataTransfer.files && e.dataTransfer.files[0]) {
             await handleFileUpload(e.dataTransfer.files[0])
         }
-    }, [])
+    }, [handleFileUpload])
 
     // Helper function to calculate work time
     const calculateWorkTime = (checkIn: string | null, checkOut: string | null): string => {

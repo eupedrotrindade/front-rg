@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Trash2, Plus, Calendar, AlertCircle, Sun, Moon } from 'lucide-react';
-import { SimpleEventDay, EventPhase } from '@/types/simple-event-days';
+import { SimpleEventDay, EventPhase } from '@/public/types/simple-event-days';
 
 interface SimpleEventDaysManagerProps {
   initialData?: {

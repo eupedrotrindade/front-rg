@@ -14,9 +14,9 @@ import { renderTimeViewClock } from '@mui/x-date-pickers/timeViewRenderers';
 import { DemoContainer } from '@mui/x-date-pickers/internals/demo';
 import dayjs, { Dayjs } from 'dayjs';
 import 'dayjs/locale/pt-br';
-import { EventDay, EventPhase } from '@/types/event-days';
+import { EventDay, EventPhase } from '@/public/types/event-days';
 import { useEventDays } from '@/hooks/use-event-days';
-import { SimpleEventDay } from '@/types/simple-event-days';
+import { SimpleEventDay } from '@/public/types/simple-event-days';
 
 interface EventDaysManagerProps {
   initialData?: {
@@ -63,10 +63,12 @@ export default function EventDaysManager({ initialData, onChange, className = ''
   const [newDayForm, setNewDayForm] = useState<{
     phase: EventPhase | '';
     date: string;
+    period: 'diurno' | 'noturno';
     selectedGroup: string;
   }>({
     phase: '',
     date: '',
+    period: 'diurno',
     selectedGroup: ''
   });
 
@@ -114,30 +116,23 @@ export default function EventDaysManager({ initialData, onChange, className = ''
     }
   }, [eventDays.montagem, eventDays.evento, eventDays.desmontagem, onChange]);
 
-  // Helper functions for idSync generation
+  // Helper functions for idSync generation (disabled for SimpleEventDay compatibility)
   const generateNextGroupId = (phase: EventPhase): string => {
-    const syncedPeriods = eventDays.getSyncedPeriods(phase);
-    const existingNumbers = Object.keys(syncedPeriods)
-      .filter(id => id.startsWith(`${phase}-`))
-      .map(id => parseInt(id.split('-')[1]) || 0)
-      .filter(num => !isNaN(num));
-
-    const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
-    return `${phase}-${maxNumber + 1}`;
+    // This function is not compatible with SimpleEventDay structure
+    return `${phase}-1`;
   };
 
   const getExistingGroups = (phase: EventPhase): string[] => {
-    const syncedPeriods = eventDays.getSyncedPeriods(phase);
-    return Object.keys(syncedPeriods).filter(id => id.startsWith(`${phase}-`));
+    // This function is not compatible with SimpleEventDay structure
+    return [];
   };
 
   const getGroupStatus = (phase: EventPhase, groupId: string): { hasStart: boolean; hasEnd: boolean } => {
-    const existingDays = eventDays.getDaysByPhase(phase);
-    const groupDays = existingDays.filter(day => day.idSync === groupId);
-
+    // This function is not compatible with SimpleEventDay structure
+    // TODO: Implement for SimpleEventDay or remove if not needed
     return {
-      hasStart: groupDays.some(day => day.start),
-      hasEnd: groupDays.some(day => day.end)
+      hasStart: false,
+      hasEnd: false
     };
   };
 
@@ -156,69 +151,45 @@ export default function EventDaysManager({ initialData, onChange, className = ''
       idSync = newDayForm.selectedGroup;
     }
 
-    // Determine start/end automatically based on existing dates in the period
-    const existingDays = eventDays.getDaysByPhase(newDayForm.phase as EventPhase);
-    const groupDays = existingDays.filter(day => day.idSync === idSync);
-    const newDate = new Date(newDayForm.date);
-
-    let start = false;
-    let end = false;
-
-    if (groupDays.length === 0) {
-      // First day in period - mark as start
-      start = true;
-    } else {
-      // Check if this should be start or end based on chronological order
-      const groupDates = groupDays.map(day => new Date(day.date)).sort((a, b) => a.getTime() - b.getTime());
-      const earliestDate = groupDates[0];
-      const latestDate = groupDates[groupDates.length - 1];
-
-      if (newDate < earliestDate) {
-        // New date is earlier than all existing dates - make it start
-        start = true;
-        // Update existing earliest date to not be start anymore
-        const earliestDay = groupDays.find(day => new Date(day.date).getTime() === earliestDate.getTime());
-        if (earliestDay) {
-          const dayIndex = existingDays.indexOf(earliestDay);
-          eventDays.updateEventDay(newDayForm.phase as EventPhase, dayIndex, {
-            ...earliestDay,
-            start: false
-          });
-        }
-      } else if (newDate > latestDate) {
-        // New date is later than all existing dates - make it end
-        end = true;
-        // Update existing latest date to not be end anymore
-        const latestDay = groupDays.find(day => new Date(day.date).getTime() === latestDate.getTime());
-        if (latestDay) {
-          const dayIndex = existingDays.indexOf(latestDay);
-          eventDays.updateEventDay(newDayForm.phase as EventPhase, dayIndex, {
-            ...latestDay,
-            end: false
-          });
-        }
-      }
-      // If date is between existing dates, it's neither start nor end
-    }
-
-    // If there's only one other day and this is the second, make this one end and keep the other as start
-    if (groupDays.length === 1) {
-      end = true;
-    }
-
-    const newDay: EventDay = {
+    // Create a simple day with date and period
+    const newSimpleDay: SimpleEventDay = {
       date: newDayForm.date,
-      start: start,
-      end: end,
-      idSync: idSync
+      period: newDayForm.period || 'diurno' // Default to 'diurno' if not specified
     };
 
-    eventDays.addEventDay(newDayForm.phase as EventPhase, newDay);
+    // For SimpleEventDay, we need to use the correct add method
+    // Since useEventDays hook expects EventDay for addEventDay, we'll call it differently
+    // We'll add the day to the phase array directly
+    const currentPhase = newDayForm.phase as EventPhase;
+    const currentDays = eventDays.getDaysByPhase(currentPhase);
+    const updatedDays = [...currentDays, newSimpleDay];
+    
+    // Update the phase with new array
+    if (currentPhase === 'montagem') {
+      eventDays.setAllDays({ 
+        montagem: updatedDays, 
+        evento: eventDays.evento, 
+        desmontagem: eventDays.desmontagem 
+      });
+    } else if (currentPhase === 'evento') {
+      eventDays.setAllDays({ 
+        montagem: eventDays.montagem, 
+        evento: updatedDays, 
+        desmontagem: eventDays.desmontagem 
+      });
+    } else if (currentPhase === 'desmontagem') {
+      eventDays.setAllDays({ 
+        montagem: eventDays.montagem, 
+        evento: eventDays.evento, 
+        desmontagem: updatedDays 
+      });
+    }
 
     // Reset form
     setNewDayForm({
       phase: '',
       date: '',
+      period: 'diurno',
       selectedGroup: ''
     });
     setSelectedDate(null);
@@ -394,15 +365,12 @@ export default function EventDaysManager({ initialData, onChange, className = ''
                   <AlertDescription className="text-xs">
                     {(() => {
                       const existingDays = eventDays.getDaysByPhase(newDayForm.phase as EventPhase);
-                      const groupDays = existingDays.filter(day => day.idSync === newDayForm.selectedGroup);
-                      const dayCount = groupDays.length;
+                      const dayCount = existingDays.length;
 
                       if (dayCount === 0) {
-                        return '💡 Este será o primeiro dia do período (automaticamente marcado como início).';
-                      } else if (dayCount === 1) {
-                        return '✨ Este será o segundo dia do período. O sistema determinará início/fim pela ordem cronológica.';
+                        return '💡 Este será o primeiro dia desta fase.';
                       } else {
-                        return `📅 Este período já tem ${dayCount} dias. A nova data será posicionada cronologicamente.`;
+                        return '✨ Adicionando mais um dia a esta fase.';
                       }
                     })()}
                   </AlertDescription>
@@ -495,16 +463,9 @@ export default function EventDaysManager({ initialData, onChange, className = ''
                                 <div className="flex-1">
                                   <span className="font-medium">{formatDateTimeDisplay(day.date)}</span>
                                   <div className="flex flex-wrap gap-2 mt-1">
-                                    {day.start && (
-                                      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
-                                        Início
-                                      </span>
-                                    )}
-                                    {day.end && (
-                                      <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
-                                        Fim
-                                      </span>
-                                    )}
+                                    <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                                      {day.period === 'diurno' ? 'Diurno' : 'Noturno'}
+                                    </span>
                                   </div>
                                 </div>
 

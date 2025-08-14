@@ -33,11 +33,11 @@ const generateEventShifts = (event: Event): { [key: string]: string[] } => {
 
   if (!event) return shiftsByStage
 
-  const processEventArray = (eventData: any, stage: string) => {
+  const processEventArray = (eventData: unknown, stage: string) => {
     if (!eventData) return
     
     try {
-      let dataArray: any[] = []
+      let dataArray: Array<{ date?: string; period?: string }> = []
       
       if (typeof eventData === 'string') {
         dataArray = JSON.parse(eventData)
@@ -188,7 +188,16 @@ export default function CreateCredentialPage() {
   const event = Array.isArray(eventData) ? null : eventData as Event
 
   // 🎯 **Form Setup**
-  const { register, handleSubmit, formState: { errors, isValid }, setValue, watch, trigger } = useForm<CreateCredentialRequest>({
+  type FormData = {
+    nome: string;
+    cor: string;
+    id_events: string;
+    days_works: string[];
+    isActive?: boolean;
+    isDistributed?: boolean;
+  }
+  
+  const { register, handleSubmit, formState: { errors, isValid }, setValue, watch, trigger } = useForm<FormData>({
     resolver: zodResolver(credentialSchema),
     defaultValues: {
       nome: "",
@@ -229,13 +238,18 @@ export default function CreateCredentialPage() {
   React.useEffect(() => {
     const watchedNome = watch("nome")
     if (watchedNome && selectedShifts.length > 0) {
-      const formData = {
+      const formData: CreateCredentialRequest = {
         nome: watchedNome,
         days_works: selectedShifts,
         id_events: eventId,
         cor: selectedColor,
         isActive: true,
-        isDistributed: false
+        isDistributed: false,
+        // Add required fields for the type
+        shiftId: '',
+        workDate: '',
+        workStage: 'evento',
+        workPeriod: 'diurno'
       }
 
       const duplicateCheck = checkDuplicateCredentials(existingCredentials, formData)
@@ -243,10 +257,10 @@ export default function CreateCredentialPage() {
     } else {
       setDuplicateError("")
     }
-  }, [watch("nome"), selectedShifts, existingCredentials, eventId, selectedColor])
+  }, [watch, selectedShifts, existingCredentials, eventId, selectedColor])
 
   // 🚀 **Form Submission**
-  const handleFormSubmit = async (data: CreateCredentialRequest) => {
+  const handleFormSubmit = async (data: FormData) => {
     let shiftsToSubmit = selectedShifts.filter(shift => shift && shift.trim().length > 0)
     
     // Fallback for events without specific shifts
@@ -258,11 +272,16 @@ export default function CreateCredentialPage() {
     }
     
     // Extract main shift info
-    let mainShiftInfo = {
+    let mainShiftInfo: {
+      shiftId: string;
+      workDate: string;
+      workStage: 'montagem' | 'evento' | 'desmontagem';
+      workPeriod: 'diurno' | 'noturno';
+    } = {
       shiftId: '',
       workDate: '',
-      workStage: 'evento' as const,
-      workPeriod: 'diurno' as const
+      workStage: 'evento',
+      workPeriod: 'diurno'
     }
     
     if (shiftsToSubmit.length > 0) {

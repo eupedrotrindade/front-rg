@@ -28,7 +28,7 @@ const eventTypes = [
 ];
 
 export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInfoStepProps) {
-  const basicData = data.basic || {};
+  const basicData = (data.basic as Record<string, unknown>) || {};
 
   const handleInputChange = (field: string, value: string) => {
     const updatedData = { ...basicData, [field]: value };
@@ -50,7 +50,7 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
             <Input
               id="eventName"
               placeholder="Digite o nome do evento"
-              value={basicData.name || ''}
+              value={(basicData.name as string) || ''}
               onChange={(e) => handleInputChange('name', e.target.value)}
               className="h-11"
             />
@@ -70,7 +70,7 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
               </Label>
             </div>
             <Select
-              value={basicData.type || ''}
+              value={(basicData.type as string) || ''}
               onValueChange={(value) => handleInputChange('type', value)}
             >
               <SelectTrigger className="h-11">
@@ -103,7 +103,7 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
           <Textarea
             id="eventDescription"
             placeholder="Descreva seu evento, objetivos, público-alvo e informações relevantes..."
-            value={basicData.description || ''}
+            value={(basicData.description as string) || ''}
             onChange={(e) => handleInputChange('description', e.target.value)}
             className="min-h-[120px] resize-none"
           />
@@ -114,7 +114,7 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
       </Card>
 
       {/* Preview Card */}
-      {basicData.name && (
+      {(basicData.name as string) && (
         <Card className="bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200">
           <CardContent className="p-4">
             <div className="flex items-center space-x-2 mb-3">
@@ -122,14 +122,14 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
               <span className="text-sm font-medium text-purple-800">Preview</span>
             </div>
             <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-gray-900">{basicData.name}</h3>
-              {basicData.type && (
+              <h3 className="text-lg font-semibold text-gray-900">{basicData.name as string}</h3>
+              {(basicData.type as string) && (
                 <span className="inline-block px-3 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full">
-                  {eventTypes.find(t => t.value === basicData.type)?.label}
+                  {eventTypes.find(t => t.value === (basicData.type as string))?.label}
                 </span>
               )}
-              {basicData.description && (
-                <p className="text-sm text-gray-600 line-clamp-3">{basicData.description}</p>
+              {(basicData.description as string) && (
+                <p className="text-sm text-gray-600 line-clamp-3">{basicData.description as string}</p>
               )}
             </div>
           </CardContent>

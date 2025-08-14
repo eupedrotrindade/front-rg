@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
-import { Event } from '../types';
+import { Event, CreateEventRequest } from '../types';
 import EventoCreateDialog from './evento-create-dialog';
 import EventoEditDialog from './evento-edit-dialog';
 import DeleteConfirmationDialog from './delete-confirmation-dialog';
@@ -189,7 +189,7 @@ const EventosDashboard = () => {
                 if (qrCodeTemplateValue === 'Padrão') qrCodeTemplate = "default";
                 else if (qrCodeTemplateValue === 'Personalizado') qrCodeTemplate = "custom";
 
-                const eventData = {
+                const eventData: CreateEventRequest = {
                     name: String(row['Nome'] || ''),
                     type: String(row['Tipo'] || ''),
                     status,
@@ -205,6 +205,10 @@ const EventosDashboard = () => {
                     categories: String(row['Categorias'] || '').split(',').map(cat => cat.trim()).filter(Boolean),
                     qrCodeTemplate,
                     isActive: row['Ativo'] === 'Sim',
+                    // Adicionar campos obrigatórios de dias do evento
+                    montagem: [],
+                    evento: [],
+                    desmontagem: []
                 };
 
                 await createEventoMutation.mutateAsync(eventData);

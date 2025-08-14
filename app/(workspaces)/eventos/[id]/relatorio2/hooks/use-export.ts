@@ -375,7 +375,7 @@ export function useExport({
 
       return formattedData;
     },
-    [parseShiftInfo]
+    [parseShiftInfo, eventDays]
   );
 
   // Export all participants
@@ -440,36 +440,7 @@ export function useExport({
             funcao: "all_functions",
             status: "",
             tipoCredencial: "all_credentials",
-          },
-          // Metadados para formatação PDF aprimorada
-          pdfFormatting: {
-            companyHeaders: true, // Cabeçalhos de empresa com contadores
-            alphabeticalOrder: true, // Ordenação alfabética de empresas e staff
-            smartPageBreaks: true, // Quebras inteligentes de página
-            checkInCounters: true, // Contadores de check-in por empresa
-            shiftDivisions: true, // Sempre dividir por turno
-            shiftHeaders: true, // Headers proeminentes de turno
-            centerCompanyNames: true, // Centralizar nomes das empresas
-            centerCompanyHeaders: true, // Centralizar texto dos cabeçalhos das empresas
-            centerShiftHeaders: true, // Centralizar cabeçalhos de turno
-            summaryWithCounters: true, // Resumo final com contadores
-            timestampOnLastPage: true, // Timestamp na última página
-            shiftPageBreaks: selectedDay === "all", // Quebra de página entre turnos quando "TODOS"
-            // === ESPECIFICAÇÕES DO RESUMO FINAL ===
-            lastPageSummary: {
-              enabled: true,
-              forceNewPage: true, // COM quebra de página - página separada para o resumo
-              textColor: "#610E5C", // Cor específica solicitada
-              fontSize: "14px",
-              fontWeight: "bold",
-              textAlign: "center",
-              marginTop: "50px", // Margem maior em página separada
-              showTotalRecords: true, // Mostrar total de registros
-              showCheckInCount: true, // Mostrar quantos fizeram check-in
-              format:
-                "Total de registros: {total} | Check-ins realizados: {checkins} de {total}",
-            },
-          },
+          }
         },
         {
           onSuccess: () => {
@@ -542,36 +513,7 @@ export function useExport({
             funcao: "all_functions",
             status: "",
             tipoCredencial: "all_credentials",
-          },
-          // Metadados para formatação PDF aprimorada
-          pdfFormatting: {
-            companyHeaders: true, // Cabeçalhos de empresa com contadores
-            alphabeticalOrder: true, // Ordenação alfabética de empresas e staff
-            smartPageBreaks: true, // Quebras inteligentes de página
-            checkInCounters: true, // Contadores de check-in por empresa
-            shiftDivisions: true, // Sempre dividir por turno
-            shiftHeaders: true, // Headers proeminentes de turno
-            centerCompanyNames: true, // Centralizar nomes das empresas
-            centerCompanyHeaders: true, // Centralizar texto dos cabeçalhos das empresas
-            centerShiftHeaders: true, // Centralizar cabeçalhos de turno
-            summaryWithCounters: true, // Resumo final com contadores
-            timestampOnLastPage: true, // Timestamp na última página
-            shiftPageBreaks: selectedDay === "all", // Quebra de página entre turnos quando "TODOS"
-            // === ESPECIFICAÇÕES DO RESUMO FINAL ===
-            lastPageSummary: {
-              enabled: true,
-              forceNewPage: true, // COM quebra de página - página separada para o resumo
-              textColor: "#610E5C", // Cor específica solicitada
-              fontSize: "14px",
-              fontWeight: "bold",
-              textAlign: "center",
-              marginTop: "50px", // Margem maior em página separada
-              showTotalRecords: true, // Mostrar total de registros
-              showCheckInCount: true, // Mostrar quantos fizeram check-in
-              format:
-                "Total de registros: {total} | Check-ins realizados: {checkins} de {total}",
-            },
-          },
+          }
         },
         {
           onSuccess: () => {

@@ -14,7 +14,7 @@ interface LocationStepProps {
 }
 
 export function LocationStep({ data, updateData, onValidationChange }: LocationStepProps) {
-  const locationData = data.location || {};
+  const locationData = (data.location as Record<string, unknown>) || {};
 
   const handleInputChange = (field: string, value: string) => {
     const updatedData = { ...locationData, [field]: value };
@@ -55,7 +55,7 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
             <Input
               id="address"
               placeholder="Rua, número, bairro..."
-              value={locationData.address || ''}
+              value={(locationData.address as string) || ''}
               onChange={(e) => handleInputChange('address', e.target.value)}
               className="h-11"
             />
@@ -75,7 +75,7 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
               <Input
                 id="city"
                 placeholder="Nome da cidade"
-                value={locationData.city || ''}
+                value={(locationData.city as string) || ''}
                 onChange={(e) => handleInputChange('city', e.target.value)}
                 className="h-10"
               />
@@ -90,7 +90,7 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
               <Input
                 id="state"
                 placeholder="UF"
-                value={locationData.state || ''}
+                value={(locationData.state as string) || ''}
                 onChange={(e) => handleInputChange('state', e.target.value)}
                 className="h-10"
                 maxLength={2}
@@ -106,7 +106,7 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
               <Input
                 id="zipCode"
                 placeholder="00000-000"
-                value={locationData.zipCode || ''}
+                value={(locationData.zipCode as string) || ''}
                 onChange={(e) => handleInputChange('zipCode', e.target.value)}
                 className="h-10"
                 maxLength={9}
@@ -127,7 +127,7 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
             <Textarea
               id="additionalInfo"
               placeholder="Pontos de referência, instruções de acesso, estacionamento, transporte público..."
-              value={locationData.additionalInfo || ''}
+              value={(locationData.additionalInfo as string) || ''}
               onChange={(e) => handleInputChange('additionalInfo', e.target.value)}
               className="min-h-[100px] resize-none"
             />
@@ -139,7 +139,7 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
       </div>
 
       {/* Location Preview */}
-      {(locationData.address || locationData.city) && (
+      {((locationData.address as string) || (locationData.city as string)) && (
         <Card className="bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200">
           <CardContent className="p-4">
             <div className="flex items-center space-x-2 mb-3">
@@ -147,17 +147,17 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
               <span className="text-sm font-medium text-purple-800">Preview do Endereço</span>
             </div>
             <div className="space-y-2">
-              {locationData.address && (
-                <div className="font-medium text-gray-900">{locationData.address}</div>
+              {(locationData.address as string) && (
+                <div className="font-medium text-gray-900">{locationData.address as string}</div>
               )}
               <div className="flex items-center space-x-2 text-gray-700">
-                {locationData.city && <span>{locationData.city}</span>}
-                {locationData.state && <span>- {locationData.state.toUpperCase()}</span>}
-                {locationData.zipCode && <span>• {locationData.zipCode}</span>}
+                {(locationData.city as string) && <span>{locationData.city as string}</span>}
+                {(locationData.state as string) && <span>- {(locationData.state as string).toUpperCase()}</span>}
+                {(locationData.zipCode as string) && <span>• {locationData.zipCode as string}</span>}
               </div>
-              {locationData.additionalInfo && (
+              {(locationData.additionalInfo as string) && (
                 <div className="text-sm text-gray-600 mt-2 p-2 bg-white rounded border-l-4 border-purple-200">
-                  <strong>Informações adicionais:</strong> {locationData.additionalInfo}
+                  <strong>Informações adicionais:</strong> {locationData.additionalInfo as string}
                 </div>
               )}
             </div>

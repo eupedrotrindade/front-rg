@@ -55,6 +55,11 @@ const CreateCredentialDialog = ({
             cor: formData.cor,
             id_events: eventId,
             days_works: daysWorks,
+            // Propriedades obrigatórias do shift - usando valores padrão
+            shiftId: daysWorks[0] || `${getCurrentDateBR()}-evento-diurno`,
+            workDate: getCurrentDateBR(),
+            workStage: 'evento' as const,
+            workPeriod: 'diurno' as const,
             isActive: true,
             isDistributed: false
         }

@@ -6,6 +6,7 @@ import EventoForm from "./evento-form";
 import { useUpdateEvento } from "@/features/eventos/api/mutation/use-update-evento";
 import { EventoSchema } from "@/features/eventos/schemas";
 import { Event } from "@/features/eventos/types";
+import { SimpleEventDay } from "@/public/types/simple-event-days";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Edit } from "lucide-react";
@@ -22,7 +23,24 @@ const EventoEditDialog = ({ evento, children, onClose }: EventoEditDialogProps) 
     const { mutate: updateEvento, isPending } = useUpdateEvento();
 
     const handleSubmit = (data: EventoSchema) => {
-        updateEvento({ id: evento.id, ...data }, {
+        // Converter EventDay para SimpleEventDay
+        const convertToSimpleEventDay = (eventDays: Array<{ date: string; start: boolean; end: boolean }>): SimpleEventDay[] => {
+            return eventDays.map(day => ({
+                date: day.date,
+                period: 'diurno' as const
+            }));
+        };
+        
+        const eventData = {
+            ...data,
+            startDate: data.startDate || '',
+            endDate: data.endDate || '',
+            montagem: convertToSimpleEventDay(data.montagem),
+            evento: convertToSimpleEventDay(data.evento),
+            desmontagem: convertToSimpleEventDay(data.desmontagem)
+        };
+        
+        updateEvento({ id: evento.id, ...eventData }, {
             onSuccess: () => {
                 toast.success("Evento atualizado com sucesso!");
                 setOpen(false);
@@ -63,7 +81,25 @@ const EventoEditDialog = ({ evento, children, onClose }: EventoEditDialogProps) 
                     onSubmit={handleSubmit}
                     loading={isPending}
                     isEditing={true}
-                    defaultValues={evento}
+                    defaultValues={{
+                        ...evento,
+                        // Converter SimpleEventDay para EventDay com propriedades start/end
+                        montagem: evento.montagem.map(day => ({
+                            date: day.date,
+                            start: true,
+                            end: false
+                        })),
+                        evento: evento.evento.map(day => ({
+                            date: day.date,
+                            start: true,
+                            end: false
+                        })),
+                        desmontagem: evento.desmontagem.map(day => ({
+                            date: day.date,
+                            start: true,
+                            end: false
+                        }))
+                    }}
                 />
             </DialogContent>
         </Dialog>

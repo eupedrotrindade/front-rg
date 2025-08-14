@@ -40,8 +40,8 @@ export default function EventDashboardPage() {
         ? eventos.find((e) => String(e.id) === String(params.id))
         : undefined
 
-    const participantsArray = Array.isArray(participantsData) ? participantsData : []
-    const credentialsArray = Array.isArray(credentials) ? credentials : []
+    const participantsArray = useMemo(() => Array.isArray(participantsData) ? participantsData : [], [participantsData])
+    const credentialsArray = useMemo(() => Array.isArray(credentials) ? credentials : [], [credentials])
     const empresasArray = Array.isArray(empresas) ? empresas : []
 
     // Função para converter data para formato da API (dd-mm-yyyy)

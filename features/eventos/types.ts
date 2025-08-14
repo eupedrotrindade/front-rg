@@ -1,5 +1,5 @@
-import { EventDay } from "@/types/event-days";
-import { SimpleEventDay } from "@/types/simple-event-days";
+import { EventDay } from "@/public/types/event-days";
+import { SimpleEventDay } from "@/public/types/simple-event-days";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type Event = {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,7 +35,7 @@ export default function ModalTrocaPulseira({
     const [loadingCheckIn, setLoadingCheckIn] = useState(false)
 
     // Verificar status de check-in do participante
-    const checkParticipantCheckIn = async () => {
+    const checkParticipantCheckIn = useCallback(async () => {
         if (!participant) return
 
         setLoadingCheckIn(true)
@@ -65,7 +65,7 @@ export default function ModalTrocaPulseira({
         } finally {
             setLoadingCheckIn(false)
         }
-    }
+    }, [participant, eventId])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -95,7 +95,7 @@ export default function ModalTrocaPulseira({
         }
     }
 
-    const loadCurrentMovement = async () => {
+    const loadCurrentMovement = useCallback(async () => {
         if (!participant) return
 
         setLoadingHistory(true)
@@ -107,7 +107,7 @@ export default function ModalTrocaPulseira({
         } finally {
             setLoadingHistory(false)
         }
-    }
+    }, [participant, eventId])
 
     // Carregar dados quando o modal abrir
     useEffect(() => {
@@ -115,7 +115,7 @@ export default function ModalTrocaPulseira({
             loadCurrentMovement()
             checkParticipantCheckIn()
         }
-    }, [isOpen, participant])
+    }, [isOpen, participant, checkParticipantCheckIn, loadCurrentMovement])
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
