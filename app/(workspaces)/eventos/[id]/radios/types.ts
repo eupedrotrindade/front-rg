@@ -4,7 +4,8 @@ export interface RadioAssignment {
   id: string;
   event_id: string;
   event_day: string; // formato: dd/mm/yyyy
-  assigned_to: string;
+  assigned_to: string; // Nome da pessoa
+  company?: string; // Empresa (opcional)
   contact?: string;
   radio_codes: string[];
   status: "ativo" | "devolvido" | "parcial";
@@ -12,6 +13,11 @@ export interface RadioAssignment {
   assigned_at: string;
   returned_at?: string;
   notes?: string;
+  withdrawal_code?: string; // Código de retirada único
+  shiftId?: string;
+  workDate?: string;
+  workStage?: "montagem" | "evento" | "desmontagem";
+  workPeriod?: "diurno" | "noturno";
   created_at: string;
   updated_at: string;
 }
@@ -36,10 +42,12 @@ export interface CreateRadioAssignmentData {
   event_id: string;
   event_day: string;
   assigned_to: string;
+  company?: string;
   contact?: string;
   radio_codes: string[];
   assigned_by?: string;
   notes?: string;
+  withdrawal_code?: string;
 }
 
 export interface UpdateRadioAssignmentData {
@@ -107,10 +115,12 @@ export interface RadioAssignmentDisplay extends RadioAssignment {
 
 // Tipos para formulários
 export interface NewAssignmentForm {
-  assigned_to: string;
+  assigned_to: string; // Nome da pessoa
+  company?: string; // Empresa (opcional)
   contact?: string;
   radio_codes: string[];
   notes?: string;
+  withdrawal_code?: string; // Código de retirada único
 }
 
 export interface PartialReturnForm {

@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Calendar, MapPin, Clock, Settings, ImageIcon, DoorOpen, MoreVertical, Edit, Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import EventoCreateDialog from "@/features/eventos/components/evento-create-dialog"
 import EventoEditDialog from "@/features/eventos/components/evento-edit-dialog"
 import Image from "next/image"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -17,8 +16,8 @@ import { useDeleteEvento } from "@/features/eventos/api/mutation/use-delete-even
 import { toast } from "sonner"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import HeaderWorkspace from "@/components/layout/header-work"
-import { EventDay } from '@/types/event-days'
-import { SimpleEventDay } from "@/types/simple-event-days"
+import { SimpleEventDay } from "@/public/types/simple-event-days"
+
 
 const EventosPage = () => {
     const { data: eventos, isLoading } = useEventos()
@@ -171,53 +170,47 @@ const EventosPage = () => {
                 </div>
 
                 {/* Grid de Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {/* Card de Criação */}
-                    <EventoCreateDialog />
+                    <Card className="cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 border-2 border-dashed border-purple-300 bg-purple-50 hover:bg-purple-100 group" onClick={() => { window.location.href = `${window.origin}/eventos/criar` }}>
+                        <CardContent className="flex flex-col items-center justify-center p-8 min-h-[500px] ">
+                            <div className="rounded-full bg-purple-600 p-4 mb-6 group-hover:scale-110 transition-transform">
+                                <Plus className="h-8 w-8 text-white" />
+                            </div>
+                            <h3 className="font-bold text-xl mb-3 text-gray-800">Criar Novo Evento</h3>
+                            <p className="text-sm text-gray-600 text-center leading-relaxed">
+                                Comece um novo projeto e configure seu workspace personalizado
+                            </p>
+                        </CardContent>
+                    </Card>
 
                     {/* Cards dos Eventos */}
                     {hasEventos &&
                         eventos.map((evento) => {
                             const statusConfig = getStatusConfig(evento.status)
                             return (
-                                <Card
+                                <div
                                     key={evento.id}
-                                    className="cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 group bg-white border-0 shadow-md hover:shadow-purple-200/50 overflow-hidden"
+                                    className="bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl group cursor-pointer"
                                     onClick={() => handleEventClick(evento)}
                                 >
-                                    {/* Banner/Header do Card */}
-                                    <div className="relative h-32 bg-gradient-to-r from-purple-400 via-purple-500 to-blue-500 overflow-hidden">
-                                        {evento.bannerUrl ? (
-                                            <div className="w-full h-full flex items-center justify-center bg-white">
-                                                <Image
-                                                    src={evento.bannerUrl}
-                                                    alt={evento.name}
-                                                    className="object-contain group-hover:scale-110 transition-transform duration-300"
-                                                    width={128}
-                                                    height={128}
-                                                />
-                                            </div>
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center">
-                                                <ImageIcon className="h-12 w-12 text-white/70" />
-                                            </div>
-                                        )}
-                                        <div className="absolute top-3 right-3 flex items-center gap-2">
-                                            <Badge className={`${statusConfig.className} border font-medium bg-emerald-300 text-emerald-900`}>{statusConfig.label}</Badge>
+                                    {/* Área da imagem com fundo roxo */}
+                                    <div className="relative bg-transparent aspect-square p-8">
+                                        <div className="absolute top-4 right-4">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="h-8 w-8 p-0 bg-white  text-black border-0"
+                                                        className="h-8 w-8 p-0 bg-purple-800 backdrop-blur-sm text-black border-0 "
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
-                                                        <MoreVertical className="h-4 w-4" />
+                                                        <MoreVertical className="h-4 w-4" color="white" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-40">
+                                                <DropdownMenuContent align="end" className="w-40 border border-gray-200 bg-white">
                                                     <DropdownMenuItem
-                                                        className="cursor-pointer bg-white"
+                                                        className="cursor-pointer "
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             router.push(`/eventos/${evento.id}/editar`);
@@ -227,7 +220,7 @@ const EventosPage = () => {
                                                         Editar
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem
-                                                        className="cursor-pointer bg-red-500 text-white "
+                                                        className="cursor-pointer bg-red-500 text-white rounded-md"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             handleDeleteEvent(evento);
@@ -239,131 +232,73 @@ const EventosPage = () => {
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </div>
-                                        {evento.totalDays && (
-                                            <div className="absolute top-3 left-3">
-                                                <Badge className="bg-white text-black border-white/30">{evento.totalDays} dias</Badge>
-                                            </div>
-                                        )}
-                                    </div>
 
-                                    <CardHeader className="pb-3">
-                                        <CardTitle className="line-clamp-2 group-hover:text-purple-600 transition-colors text-lg">
-                                            {evento.name}
-                                        </CardTitle>
-                                        {evento.description && (
-                                            <CardDescription className="line-clamp-2 text-sm">{evento.description}</CardDescription>
-                                        )}
-                                    </CardHeader>
-
-                                    <CardContent className="space-y-4">
-                                        {/* Informações principais */}
-                                        <div className="space-y-3">
-                                            {evento.venue && (
-                                                <div className="flex items-center gap-2 text-sm text-gray-600">
-                                                    <MapPin className="h-4 w-4 text-purple-500 flex-shrink-0" />
-                                                    <span className="truncate font-medium">{evento.venue}</span>
+                                        <div className="w-full h-full flex items-center justify-center">
+                                            {evento.bannerUrl ? (
+                                                <Image
+                                                    src={evento.bannerUrl}
+                                                    alt={evento.name}
+                                                    width={400}
+                                                    height={400}
+                                                    className="object-contain max-w-full max-h-full rounded-md"
+                                                />
+                                            ) : (
+                                                <div className="text-center">
+                                                    <ImageIcon className="h-16 w-16 text-black/70 mx-auto mb-2" />
+                                                    <span className="text-black/70 text-sm">Sem imagem</span>
                                                 </div>
                                             )}
-
-
                                         </div>
 
-                                        {/* Seção de Datas - Suporta nova e antiga estrutura */}
-                                        {(() => {
-                                            const eventDays = getEventDaysDisplay(evento);
+                                        {/* Hashtag no topo */}
+                                        <div className="absolute top-4 left-4">
+                                            <span className="text-purple-700 text-sm font-semibold">#RGFazAcontecer!</span>
+                                        </div>
 
-                                            return (
-                                                <div className="space-y-2 pt-2 border-t border-gray-100">
-                                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cronograma</h4>
-
-                                                    {eventDays ? (
-                                                        // Nova estrutura flexível
-                                                        <>
-                                                            {eventDays.montagem && eventDays.montagem.length > 0 && (
-                                                                <div className="flex items-center gap-2 text-sm">
-                                                                    <Settings className="h-3 w-3 text-orange-500 flex-shrink-0" />
-                                                                    <span className="text-gray-700 font-medium">Montagem:</span>
-                                                                    <span className="text-gray-600 text-xs">
-                                                                        {formatEventDays(eventDays.montagem)}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                            {eventDays.evento && eventDays.evento.length > 0 && (
-                                                                <div className="flex items-center gap-2 text-sm">
-                                                                    <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                                                                    <span className="text-gray-700 font-medium">Evento:</span>
-                                                                    <span className="text-gray-600 text-xs">
-                                                                        {formatEventDays(eventDays.evento)}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                            {eventDays.desmontagem && eventDays.desmontagem.length > 0 && (
-                                                                <div className="flex items-center gap-2 text-sm">
-                                                                    <DoorOpen className="h-3 w-3 text-red-500 flex-shrink-0" />
-                                                                    <span className="text-gray-700 font-medium">Desmontagem:</span>
-                                                                    <span className="text-gray-600 text-xs">
-                                                                        {formatEventDays(eventDays.desmontagem)}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                        </>
-                                                    ) : (
-                                                        // Fallback para estrutura antiga
-                                                        <>
-                                                            {(evento.setupStartDate || evento.setupEndDate) && (
-                                                                <div className="flex items-center gap-2 text-sm">
-                                                                    <Settings className="h-3 w-3 text-orange-500 flex-shrink-0" />
-                                                                    <span className="text-gray-700 font-medium">Montagem:</span>
-                                                                    <span className="text-gray-600 text-xs">
-                                                                        {formatDateRange(evento.setupStartDate, evento.setupEndDate)}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                            {(evento.preparationStartDate || evento.preparationEndDate) && (
-                                                                <div className="flex items-center gap-2 text-sm">
-                                                                    <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                                                                    <span className="text-gray-700 font-medium">Evento:</span>
-                                                                    <span className="text-gray-600 text-xs">
-                                                                        {formatDateRange(evento.preparationStartDate, evento.preparationEndDate)}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                            {(evento.finalizationStartDate || evento.finalizationEndDate) && (
-                                                                <div className="flex items-center gap-2 text-sm">
-                                                                    <DoorOpen className="h-3 w-3 text-red-500 flex-shrink-0" />
-                                                                    <span className="text-gray-700 font-medium">Desmontagem:</span>
-                                                                    <span className="text-gray-600 text-xs">
-                                                                        {formatDateRange(evento.finalizationStartDate, evento.finalizationEndDate)}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                        </>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
-
-                                        {/* Categorias */}
-                                        {evento.categories && evento.categories.length > 0 && (
-                                            <div className="flex flex-wrap gap-1 pt-2">
-                                                {evento.categories.slice(0, 2).map((category, index) => (
-                                                    <Badge
-                                                        key={index}
-                                                        variant="secondary"
-                                                        className="text-xs bg-purple-100 text-purple-700 hover:bg-purple-200"
-                                                    >
-                                                        {category}
-                                                    </Badge>
-                                                ))}
-                                                {evento.categories.length > 2 && (
-                                                    <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
-                                                        +{evento.categories.length - 2}
-                                                    </Badge>
-                                                )}
+                                        {/* Logo RG no canto inferior direito */}
+                                        <div className="absolute bottom-4 right-4">
+                                            <div className="bg-white rounded-full px-3 py-1">
+                                                <span className="text-purple-700 text-xs font-bold">RG</span>
                                             </div>
-                                        )}
-                                    </CardContent>
-                                </Card>
+                                        </div>
+                                    </div>
+
+                                    {/* Conteúdo inferior */}
+                                    <div className="p-6 text-center">
+                                        {/* Título */}
+                                        <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">
+                                            {evento.name}
+                                        </h3>
+
+                                        {/* Data */}
+                                        <div className="flex items-center justify-center gap-2 text-gray-500 text-sm mb-4">
+                                            <Calendar className="h-4 w-4" />
+                                            <span>
+                                                {(() => {
+                                                    const eventDays = getEventDaysDisplay(evento);
+                                                    if (eventDays?.evento && eventDays.evento.length > 0) {
+                                                        return formatEventDays(eventDays.evento);
+                                                    }
+                                                    if (evento.preparationStartDate) {
+                                                        return formatDate(evento.preparationStartDate);
+                                                    }
+                                                    return 'Data a definir';
+                                                })()}
+                                            </span>
+                                        </div>
+
+                                        {/* Botão */}
+                                        <Button
+                                            className="bg-purple-700 hover:bg-purple-800 text-white px-8 py-2 rounded-full"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEventClick(evento);
+                                            }}
+                                        >
+                                            Acessar
+                                        </Button>
+                                    </div>
+                                </div>
                             )
                         })}
                 </div>

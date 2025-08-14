@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ChevronLeft, ChevronRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useUpdateEvento } from '@/features/eventos/api/mutation/use-update-evento';
@@ -291,6 +291,18 @@ export function EditEventWizard({ event }: EditEventWizardProps) {
 
   return (
     <div className="space-y-6">
+      {/* Header with Back Button */}
+      <div className="flex items-center justify-between mb-4">
+        <Button
+          variant="outline"
+          onClick={() => router.push('/eventos')}
+          className="flex items-center space-x-2 text-gray-600 hover:text-gray-800"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Voltar aos Eventos</span>
+        </Button>
+      </div>
+
       {/* Progress Bar */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-sm text-gray-600">

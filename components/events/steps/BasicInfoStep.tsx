@@ -9,8 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { FileText, Type, Tag } from 'lucide-react';
 
 interface BasicInfoStepProps {
-  data: any;
-  updateData: (stepKey: string, data: any) => void;
+  data: Record<string, unknown>;
+  updateData: (stepKey: string, data: Record<string, unknown>) => void;
   onValidationChange?: (isValid: boolean) => void;
 }
 

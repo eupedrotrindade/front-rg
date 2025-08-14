@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Clock, User, Plus, Check, X, RotateCcw, Car, Download, Upload, History, Package, Sun, Moon } from 'lucide-react'
+import { Calendar, Clock, User, Plus, Check, X, RotateCcw, Car, Download, Upload, History, Package, Sun, Moon, FileDown } from 'lucide-react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import { formatEventDate } from '@/lib/utils'
@@ -17,6 +17,7 @@ import { useCreateEventVehicle, useUpdateEventVehicle, useDeleteEventVehicle, us
 import { EventVehicle } from '@/features/eventos/actions/create-event-vehicle'
 import ModalNovoVeiculo from '@/components/operador/modalNovoVeiculo'
 import ModalHistoricoVeiculo from '@/components/operador/modalHistoricoVeiculo'
+import { useExcelExportImport } from '@/hooks/use-excel-export-import'
 
 export default function VagasPage() {
     const params = useParams()
@@ -33,6 +34,9 @@ export default function VagasPage() {
     const [isEditing, setIsEditing] = useState(false)
     const [isHistoricoModalOpen, setIsHistoricoModalOpen] = useState(false)
     const [selectedVeiculoForHistorico, setSelectedVeiculoForHistorico] = useState<EventVehicle | null>(null)
+
+    // Hook para exportar/importar Excel
+    const { exportToExcel, importFromExcel, isExporting, isImporting } = useExcelExportImport()
 
     // Queries
     const { data: eventos = [] } = useEventos()
@@ -708,6 +712,134 @@ export default function VagasPage() {
         }
     }
 
+    // Funções de importar/exportar
+    const handleExportVeiculos = async () => {
+        try {
+            // Preparar dados para exportação
+            const exportData = filteredVeiculos.map(veiculo => ({
+                'Empresa': veiculo.empresa || '',
+                'Modelo': veiculo.modelo || '',
+                'Placa': veiculo.placa || '',
+                'Tipo de Credencial': veiculo.tipo_de_credencial || '',
+                'Status': veiculo.retirada === 'retirada' ? 'Retirada' : 'Pendente',
+                'Data': veiculo.workDate ? formatEventDate(veiculo.workDate + 'T00:00:00') : '',
+                'Etapa': veiculo.workStage?.toUpperCase() || '',
+                'Período': veiculo.workPeriod?.toUpperCase() || '',
+                'Turno ID': veiculo.shiftId || ''
+            }));
+
+            await exportToExcel(exportData, {
+                filename: `veiculos_${evento?.name || 'evento'}_${selectedDay ? eventDays.find(d => d.id === selectedDay)?.label || selectedDay : 'todos'}`,
+                sheetName: 'Veículos'
+            });
+        } catch (error) {
+            console.error('Erro ao exportar veículos:', error);
+            toast.error('Erro ao exportar veículos');
+        }
+    };
+
+    const handleDownloadTemplate = async () => {
+        try {
+            // Template com exemplo de dados para facilitar preenchimento
+            const templateData = [
+                {
+                    'Empresa': 'Exemplo Ltda',
+                    'Modelo': 'Civic',
+                    'Placa': 'ABC-1234',
+                    'Tipo de Credencial': 'Temporária',
+                    'Status': 'Pendente',
+                    'Data': formatEventDate(new Date().toISOString()),
+                    'Etapa': 'EVENTO',
+                    'Período': 'DIURNO'
+                }
+            ];
+
+            await exportToExcel(templateData, {
+                filename: 'template_veiculos',
+                sheetName: 'Template'
+            });
+        } catch (error) {
+            console.error('Erro ao gerar template:', error);
+            toast.error('Erro ao gerar template');
+        }
+    };
+
+    const handleImportVeiculos = async (file: File) => {
+        try {
+            await importFromExcel(file, async (data) => {
+                // Processar dados importados
+                let successCount = 0;
+                let errorCount = 0;
+
+                for (const row of data) {
+                    try {
+                        // Mapear campos do Excel para o formato esperado
+                        const vehicleData = {
+                            empresa: String(row['Empresa'] || ''),
+                            modelo: String(row['Modelo'] || ''),
+                            placa: String(row['Placa'] || ''),
+                            tipo_de_credencial: String(row['Tipo de Credencial'] || ''),
+                            retirada: row['Status'] === 'Retirada' ? 'retirada' as const : 'pendente' as const,
+                            shiftId: selectedDay || effectiveSelectedDay, // Usar turno selecionado
+                            workDate: parseShiftId(selectedDay || effectiveSelectedDay).workDate,
+                            workStage: parseShiftId(selectedDay || effectiveSelectedDay).workStage,
+                            workPeriod: parseShiftId(selectedDay || effectiveSelectedDay).workPeriod
+                        };
+
+                        // Validar dados obrigatórios
+                        if (!vehicleData.empresa && !vehicleData.placa) {
+                            console.warn('Linha ignorada: empresa ou placa obrigatória', row);
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Criar veículo
+                        await createVehicleMutation.mutateAsync({
+                            eventId,
+                            ...vehicleData
+                        });
+
+                        successCount++;
+                    } catch (error) {
+                        console.error('Erro ao importar linha:', row, error);
+                        errorCount++;
+                    }
+                }
+
+                // Mostrar resultado
+                if (successCount > 0) {
+                    toast.success(`${successCount} veículo(s) importado(s) com sucesso!`);
+                }
+                if (errorCount > 0) {
+                    toast.warning(`${errorCount} linha(s) com erro foram ignoradas.`);
+                }
+            });
+        } catch (error) {
+            console.error('Erro na importação:', error);
+            toast.error('Erro ao importar arquivo');
+        }
+    };
+
+    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            // Validar tipo de arquivo
+            const validTypes = [
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-excel'
+            ];
+            
+            if (!validTypes.includes(file.type)) {
+                toast.error('Por favor, selecione um arquivo Excel (.xlsx ou .xls)');
+                return;
+            }
+
+            handleImportVeiculos(file);
+        }
+        // Limpar input para permitir selecionar o mesmo arquivo novamente
+        event.target.value = '';
+    };
+
     return (
         <EventLayout eventId={eventId} eventName={evento.name}>
             <div className="p-8">
@@ -765,21 +897,42 @@ export default function VagasPage() {
                             </Button>
 
                             <Button
-                                onClick={() => toast.info("Funcionalidade de exportação será implementada")}
+                                onClick={handleExportVeiculos}
+                                disabled={isExporting || filteredVeiculos.length === 0}
                                 variant="outline"
                                 className="border-green-500 text-green-600 hover:bg-green-50"
                             >
                                 <Download className="w-4 h-4 mr-2" />
-                                Exportar
+                                {isExporting ? 'Exportando...' : 'Exportar'}
                             </Button>
 
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    onChange={handleFileSelect}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    disabled={isImporting || !selectedDay}
+                                    id="import-file"
+                                />
+                                <Button
+                                    variant="outline"
+                                    disabled={isImporting || !selectedDay}
+                                    className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                                >
+                                    <Upload className="w-4 h-4 mr-2" />
+                                    {isImporting ? 'Importando...' : 'Importar'}
+                                </Button>
+                            </div>
+
                             <Button
-                                onClick={() => toast.info("Funcionalidade de importação será implementada")}
+                                onClick={handleDownloadTemplate}
+                                disabled={isExporting}
                                 variant="outline"
-                                className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                                className="border-orange-500 text-orange-600 hover:bg-orange-50"
                             >
-                                <Upload className="w-4 h-4 mr-2" />
-                                Importar
+                                <FileDown className="w-4 h-4 mr-2" />
+                                Baixar Modelo
                             </Button>
 
                             <Input

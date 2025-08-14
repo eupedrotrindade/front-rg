@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 interface ModalDevTotalProps {
     isOpen: boolean;
     setIsOpen: (open: boolean) => void;

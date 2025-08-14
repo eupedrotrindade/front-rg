@@ -171,25 +171,66 @@ export function useReportData({
 
   // === FILTER DATA ===
   const filterData = useCallback(
-    (filters: { empresa?: string; status?: string; attendance?: string }) => {
+    (filters: { 
+      empresa?: string; 
+      day?: string; 
+      reportType?: string; 
+      credentialType?: string; 
+      function?: string 
+    }) => {
       let filtered = syncedParticipants;
 
+      // Filter by company (applies to most report types)
       if (filters.empresa && filters.empresa !== "all") {
         filtered = filtered.filter((p) => p.empresa === filters.empresa);
       }
 
-      if (filters.status && filters.status !== "all") {
-        filtered = filtered.filter((p) => p.status === filters.status);
+      // Filter by credential type (when applicable)
+      if (filters.credentialType && filters.credentialType !== "all") {
+        filtered = filtered.filter((p) => p.tipoPulseira === filters.credentialType);
       }
 
-      if (filters.attendance && filters.attendance !== "all") {
-        if (filters.attendance === "attended") {
-          // Participants who have either check-in or check-out
-          filtered = filtered.filter((p) => p.checkIn !== "-" || p.checkOut !== "-");
-        } else if (filters.attendance === "not_attended") {
-          // Participants who have neither check-in nor check-out
-          filtered = filtered.filter((p) => p.checkIn === "-" && p.checkOut === "-");
+      // Filter by function/role (when applicable)
+      if (filters.function && filters.function !== "all") {
+        filtered = filtered.filter((p) => p.funcao === filters.function);
+      }
+
+      // Apply report type specific filters
+      if (filters.reportType && filters.reportType !== "geral") {
+        switch (filters.reportType) {
+          case "checkin":
+            // Only participants who have checked in
+            filtered = filtered.filter((p) => p.checkIn !== "-");
+            break;
+          case "checkout":
+            // Only participants who have checked out
+            filtered = filtered.filter((p) => p.checkOut !== "-");
+            break;
+          case "checkout_tempo":
+            // Only participants who have checked out (with time calculation)
+            filtered = filtered.filter((p) => p.checkOut !== "-" && p.tempoTotal !== "00:00");
+            break;
+          case "credencial":
+            // All participants (filter by credential type if specified)
+            // No additional filtering needed here, credential type filter is applied above
+            break;
+          case "cadastrado_por":
+            // All participants (would need additional data for "cadastrado por" field)
+            // For now, show all participants
+            break;
+          case "empresa":
+            // All participants (filter by company if specified)
+            // No additional filtering needed here, company filter is applied above
+            break;
         }
+      }
+
+      // TODO: Implement day/shift filtering when attendance data includes shift information
+      // This will require correlating attendance records with specific shifts
+      if (filters.day && filters.day !== "all") {
+        // For now, return all data as we need to implement shift-based attendance filtering
+        // This should filter attendance records by the specific shift (day, stage, period)
+        console.log("Day filtering not yet implemented for:", filters.day);
       }
 
       return filtered;

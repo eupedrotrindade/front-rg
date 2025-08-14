@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useQuery } from "@tanstack/react-query";
 import { EventParticipant } from "@/features/eventos/types";
-import { apiClient } from '@/lib/api-client';
+import { apiClient } from "@/lib/api-client";
 
 interface UseEventParticipantsByShiftParams {
   eventId: string;
@@ -18,7 +19,10 @@ export const useEventParticipantsByShift = ({
   sortOrder = "asc",
 }: UseEventParticipantsByShiftParams) => {
   return useQuery<EventParticipant[]>({
-    queryKey: ["event-participants-by-shift", { eventId, shiftId, search, sortBy, sortOrder }],
+    queryKey: [
+      "event-participants-by-shift",
+      { eventId, shiftId, search, sortBy, sortOrder },
+    ],
     queryFn: async () => {
       try {
         const params: Record<string, any> = {};
@@ -29,12 +33,20 @@ export const useEventParticipantsByShift = ({
         const { data } = await apiClient.get<{
           data: EventParticipant[];
           total: number;
-        }>(`/event-participants/event/${eventId}/shift/${encodeURIComponent(shiftId)}`, { params });
+        }>(
+          `/event-participants/event/${eventId}/shift/${encodeURIComponent(
+            shiftId
+          )}`,
+          { params }
+        );
 
-        console.log(`🔍 Participantes encontrados para evento ${eventId} no turno ${shiftId}:`, data?.data?.length || 0);
+        console.log(
+          `🔍 Participantes encontrados para evento ${eventId} no turno ${shiftId}:`,
+          data?.data?.length || 0
+        );
 
         // Verificar se a resposta tem a estrutura esperada
-        if (data && typeof data === 'object' && 'data' in data) {
+        if (data && typeof data === "object" && "data" in data) {
           return Array.isArray(data.data) ? data.data : [];
         }
 
@@ -49,8 +61,8 @@ export const useEventParticipantsByShift = ({
           console.log(`Nenhum participante encontrado para o turno ${shiftId}`);
           return [];
         }
-        console.error('Erro ao buscar participantes por turno:', error);
-        throw new Error('Erro interno do servidor');
+        console.error("Erro ao buscar participantes por turno:", error);
+        throw new Error("Erro interno do servidor");
       }
     },
     enabled: !!eventId && !!shiftId,

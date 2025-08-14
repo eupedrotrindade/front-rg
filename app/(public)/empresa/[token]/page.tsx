@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import React, { useState, useEffect } from "react"
@@ -8,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Building, Users, Calendar, MapPin, Phone, Mail, User, Clock, CheckCircle, XCircle, Upload, FileSpreadsheet, Download, AlertCircle, Loader2, FileText, Check, X, AlertTriangle, Search, Filter, ChevronDown } from "lucide-react"
+import { Building, Users, Calendar, MapPin, Phone, Mail, User, Clock, CheckCircle, XCircle, Upload, FileSpreadsheet, Download, AlertCircle, Loader2, FileText, Check, X, AlertTriangle, Search, Filter, ChevronDown, Sun, Moon } from "lucide-react"
 import { toast } from "sonner"
 import { useParams } from "next/navigation"
 import { getEmpresa } from "@/features/eventos/actions/get-empresas"
@@ -22,7 +23,7 @@ import { useClerk } from "@clerk/nextjs"
 import * as XLSX from "xlsx"
 import { useEventParticipantsByEvent } from "@/features/eventos/api/query/use-event-participants-by-event"
 import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credentials-by-event"
-import { useEventAttendanceByEventAndDate } from "@/features/eventos/api/query/use-event-attendance"
+import { useEventAttendanceByEventAndDate, useEventAttendanceByShift } from "@/features/eventos/api/query/use-event-attendance"
 import { useExportPDF } from "@/features/eventos/api/mutation/use-export-pdf"
 import { useExportXLSX } from "@/features/eventos/api/mutation/use-export-xlsx"
 import { ColumnSelectionDialog, type ExportConfig } from "./components/column-selection-dialog"
@@ -188,14 +189,47 @@ export default function PublicEmpresaPage() {
         }
     }
 
-    // Hook para buscar dados de presença por evento e data
-    const { data: attendanceData, refetch: refetchAttendance } =
-        useEventAttendanceByEventAndDate(
-            eventId,
-            selectedDay
-                ? formatDateForAPI(selectedDay.includes('_') ? selectedDay.split('_')[1] : selectedDay)
-                : formatDateForAPI(new Date().toLocaleDateString('pt-BR')),
-        )
+    // Função para extrair informações do shift ID
+    const parseShiftId = React.useCallback((shiftId: string) => {
+        // Formato esperado: YYYY-MM-DD-stage-period
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            const year = parts[0];
+            const month = parts[1];
+            const day = parts[2];
+            const stage = parts[3];
+            const period = parts[4] as 'diurno' | 'noturno';
+
+            return {
+                dateISO: `${year}-${month}-${day}`,
+                dateFormatted: formatDate(`${year}-${month}-${day}T00:00:00`),
+                stage,
+                period
+            };
+        }
+
+        // Fallback para formato simples (apenas data)
+        return {
+            dateISO: shiftId,
+            dateFormatted: formatDate(shiftId + 'T00:00:00'),
+            stage: 'evento',
+            period: 'diurno' as const
+        };
+    }, []);
+
+    // Extrair informações do turno selecionado
+    const shiftInfo = React.useMemo(() => {
+        if (!selectedDay) return null;
+        return parseShiftId(selectedDay);
+    }, [selectedDay, parseShiftId]);
+
+    // Hook para buscar dados de presença por turno específico
+    const { data: attendanceData, refetch: refetchAttendance } = useEventAttendanceByShift(
+        eventId,
+        shiftInfo ? shiftInfo.dateISO.split('-').reverse().join('-') : '', // Converter para dd-mm-yyyy
+        shiftInfo ? shiftInfo.stage : '',
+        shiftInfo ? shiftInfo.period : ''
+    );
 
     // Preparar dados para exportação
     const prepareExportData = () => {
@@ -326,10 +360,8 @@ export default function PublicEmpresaPage() {
             }
             setEvent(eventData)
 
-            // Selecionar primeiro dia por padrão
-            if (empresaData.days && empresaData.days.length > 0) {
-                setSelectedDay(empresaData.days[0])
-            }
+            // Auto-selecionar primeiro turno quando os dados do evento estiverem carregados
+            // A seleção será feita após o evento ser carregado
 
         } catch (error) {
             console.error("Erro ao buscar dados:", error)
@@ -416,6 +448,150 @@ export default function PublicEmpresaPage() {
         })
     }
 
+    // Função para gerar dias do evento usando nova estrutura
+    const getEventDays = React.useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
+        if (!event) return [];
+
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = [];
+
+        // Função helper para processar arrays de dados do evento (nova estrutura)
+        const processEventArray = (eventData: any, stage: string, stageName: string) => {
+            if (!eventData) return;
+
+            try {
+                let dataArray: any[] = [];
+
+                // Se for string JSON, fazer parse
+                if (typeof eventData === 'string') {
+                    dataArray = JSON.parse(eventData);
+                }
+                // Se já for array, usar diretamente
+                else if (Array.isArray(eventData)) {
+                    dataArray = eventData;
+                }
+                // Se não for nem string nem array, sair
+                else {
+                    return;
+                }
+
+                // Processar cada item do array
+                dataArray.forEach(item => {
+                    if (item && item.date) {
+                        const formattedDate = formatDate(item.date);
+                        const dateISO = new Date(item.date).toISOString().split('T')[0]; // YYYY-MM-DD para ID
+
+                        // Usar período do item se disponível, senão calcular baseado na hora
+                        let period: 'diurno' | 'noturno';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                            period = item.period;
+                        } else {
+                            // Fallback: calcular baseado na hora
+                            const dateObj = new Date(item.date);
+                            const hour = dateObj.getHours();
+                            period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                        }
+
+                        const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+
+                        days.push({
+                            id: `${dateISO}-${stage}-${period}`, // ID único incluindo o turno
+                            label: `${formattedDate} (${stageName} - ${periodLabel})`,
+                            date: formattedDate,
+                            type: stage,
+                            period
+                        });
+                    }
+                });
+            } catch (error) {
+                console.warn(`Erro ao processar dados do evento para stage ${stage}:`, error);
+            }
+        };
+
+        // Processar nova estrutura do evento
+        if (event.montagem) processEventArray(event.montagem, 'montagem', 'MONTAGEM');
+        if (event.evento) processEventArray(event.evento, 'evento', 'EVENTO');
+        if (event.desmontagem) processEventArray(event.desmontagem, 'desmontagem', 'DESMONTAGEM');
+
+        // Fallback para estrutura antiga (manter compatibilidade)
+        if (event.setupStartDate && event.setupEndDate && (!event.montagem || (Array.isArray(event.montagem) && event.montagem.length === 0))) {
+            const startDate = new Date(event.setupStartDate);
+            const endDate = new Date(event.setupEndDate);
+            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                const dateStr = formatDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+
+                days.push({
+                    id: `${dateISO}-montagem-diurno`,
+                    label: `${dateStr} (MONTAGEM - Diurno)`,
+                    date: dateStr,
+                    type: 'montagem',
+                    period: 'diurno'
+                });
+            }
+        }
+
+        if (event.preparationStartDate && event.preparationEndDate && (!event.evento || (Array.isArray(event.evento) && event.evento.length === 0))) {
+            const startDate = new Date(event.preparationStartDate);
+            const endDate = new Date(event.preparationEndDate);
+            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                const dateStr = formatDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+
+                days.push({
+                    id: `${dateISO}-evento-diurno`,
+                    label: `${dateStr} (EVENTO - Diurno)`,
+                    date: dateStr,
+                    type: 'evento',
+                    period: 'diurno'
+                });
+            }
+        }
+
+        if (event.finalizationStartDate && event.finalizationEndDate && (!event.desmontagem || (Array.isArray(event.desmontagem) && event.desmontagem.length === 0))) {
+            const startDate = new Date(event.finalizationStartDate);
+            const endDate = new Date(event.finalizationEndDate);
+            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                const dateStr = formatDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+
+                days.push({
+                    id: `${dateISO}-desmontagem-diurno`,
+                    label: `${dateStr} (DESMONTAGEM - Diurno)`,
+                    date: dateStr,
+                    type: 'desmontagem',
+                    period: 'diurno'
+                });
+            }
+        }
+
+        // Ordenar dias cronologicamente
+        days.sort((a, b) => {
+            const dateA = new Date(a.date.split('/').reverse().join('-'));
+            const dateB = new Date(b.date.split('/').reverse().join('-'));
+            return dateA.getTime() - dateB.getTime();
+        });
+
+        return days;
+    }, [event]);
+
+    // Função para obter ícone do período
+    const getPeriodIcon = React.useCallback((period?: 'diurno' | 'noturno') => {
+        if (period === 'diurno') {
+            return <Sun className="h-4 w-4 text-yellow-500" />;
+        } else if (period === 'noturno') {
+            return <Moon className="h-4 w-4 text-blue-500" />;
+        }
+        return null;
+    }, []);
+
+    // Auto-selecionar primeiro turno se não houver seleção
+    const eventDays = getEventDays();
+    React.useEffect(() => {
+        if (!selectedDay && eventDays.length > 0) {
+            setSelectedDay(eventDays[0].id);
+        }
+    }, [selectedDay, eventDays]);
+
     // Função para obter período do dia
     const getDayPeriod = (day: string) => {
         if (!event) return ''
@@ -472,11 +648,10 @@ export default function PublicEmpresaPage() {
             return participants
         }
 
-        // Converter selectedDay para formato brasileiro se necessário
-        const selectedDayBr = selectedDay.includes('/') ? selectedDay : convertIsoToBrazilian(selectedDay)
-
+        // Filtrar participantes que trabalham no turno selecionado
         const filtered = participants.filter(p => {
-            return p.daysWork?.includes(selectedDayBr)
+            // Verificar se o participante trabalha neste turno específico usando shiftId
+            return p.daysWork?.includes(selectedDay);
         })
 
         return filtered
@@ -1053,38 +1228,55 @@ export default function PublicEmpresaPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Dias de Trabalho */}
+                        {/* Turnos de Trabalho */}
                         <Card className="mt-6">
                             <CardHeader>
                                 <CardTitle className="flex items-center space-x-2">
                                     <Calendar className="h-5 w-5" />
-                                    <span>Dias de Trabalho</span>
+                                    <span>Turnos de Trabalho</span>
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-2">
-                                    {empresa.days && empresa.days.length > 0 ? (
-                                        empresa.days.map((day, index) => (
+                                    {eventDays.length > 0 ? (
+                                        eventDays.map((day) => (
                                             <div
-                                                key={index}
-                                                className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedDay === day
+                                                key={day.id}
+                                                className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedDay === day.id
                                                     ? 'border-purple-500 bg-purple-50'
                                                     : 'border-gray-200 hover:border-purple-300'
                                                     }`}
-                                                onClick={() => setSelectedDay(day)}
+                                                onClick={() => setSelectedDay(day.id)}
                                             >
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-sm font-medium text-gray-900">
-                                                        {formatDate(day)}
-                                                    </span>
-                                                    <Badge variant="secondary" className="text-xs">
-                                                        {getDayPeriod(day)}
-                                                    </Badge>
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-sm font-medium text-gray-900">
+                                                            {day.date}
+                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className={`text-xs ${day.type === 'montagem' ? 'bg-orange-100 text-orange-800' :
+                                                                        day.type === 'evento' ? 'bg-blue-100 text-blue-800' :
+                                                                            day.type === 'desmontagem' ? 'bg-red-100 text-red-800' :
+                                                                                'bg-gray-100 text-gray-800'
+                                                                    }`}
+                                                            >
+                                                                {day.type.toUpperCase()}
+                                                            </Badge>
+                                                            <div className="flex items-center gap-1">
+                                                                {getPeriodIcon(day.period)}
+                                                                <span className="text-xs text-gray-600">
+                                                                    {day.period === 'diurno' ? 'Diurno' : 'Noturno'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))
                                     ) : (
-                                        <p className="text-sm text-gray-500 italic">Nenhum dia configurado</p>
+                                        <p className="text-sm text-gray-500 italic">Nenhum turno configurado</p>
                                     )}
                                 </div>
                             </CardContent>
@@ -1118,9 +1310,9 @@ export default function PublicEmpresaPage() {
                                         <CardTitle className="flex items-center space-x-2">
                                             <Users className="h-5 w-5" />
                                             <span>Colaboradores</span>
-                                            {selectedDay && (
+                                            {selectedDay && shiftInfo && (
                                                 <Badge variant="outline" className="ml-2">
-                                                    {formatDate(selectedDay)} - {getDayPeriod(selectedDay)}
+                                                    {shiftInfo.dateFormatted} - {shiftInfo.stage.toUpperCase()} - {shiftInfo.period === 'diurno' ? 'Diurno' : 'Noturno'}
                                                 </Badge>
                                             )}
                                             {isClerkUser && (
@@ -1210,9 +1402,9 @@ export default function PublicEmpresaPage() {
                                                                 </div>
                                                                 <div className="text-center p-4 bg-white rounded-lg shadow-sm">
                                                                     <div className="text-2xl font-bold text-blue-600">
-                                                                        {empresa.days?.length || 0}
+                                                                        {eventDays.length}
                                                                     </div>
-                                                                    <div className="text-sm text-gray-600">Dias de Trabalho</div>
+                                                                    <div className="text-sm text-gray-600">Turnos de Trabalho</div>
                                                                 </div>
                                                                 <div className="text-center p-4 bg-white rounded-lg shadow-sm">
                                                                     <div className="text-2xl font-bold text-green-600">
@@ -1736,7 +1928,7 @@ export default function PublicEmpresaPage() {
                                 <div>
                                     <h1 className="text-xl font-bold text-gray-900">{empresa?.nome} - Colaboradores</h1>
                                     <p className="text-gray-600 text-sm">
-                                        {selectedDay ? `${formatDate(selectedDay)} - ${getDayPeriod(selectedDay)}` : 'Todos os colaboradores'}
+                                        {selectedDay && shiftInfo ? `${shiftInfo.dateFormatted} - ${shiftInfo.stage.toUpperCase()} - ${shiftInfo.period === 'diurno' ? 'Diurno' : 'Noturno'}` : 'Todos os colaboradores'}
                                     </p>
                                 </div>
                             </div>

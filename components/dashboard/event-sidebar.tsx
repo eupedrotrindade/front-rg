@@ -108,13 +108,12 @@ const EventSidebar = ({
             href: `/eventos/${eventId}/relatorio2`,
             icon: BarChart3,
             description: 'Relatórios e análises'
-        },
-        {
-            name: 'Configurações',
-            href: `/eventos/${eventId}/configuracoes`,
-            icon: Settings,
-            description: 'Configurações do evento'
-        }
+        }        // {
+        //     name: 'Configurações',
+        //     href: `/eventos/${eventId}/configuracoes`,
+        //     icon: Settings,
+        //     description: 'Configurações do evento'
+        // }
     ]
 
     const isActiveRoute = (href: string) => {

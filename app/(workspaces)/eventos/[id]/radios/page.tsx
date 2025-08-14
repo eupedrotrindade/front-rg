@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Calendar, Clock, User, Search, Plus, Check, X, RotateCcw, RefreshCw, Users, Radio, Download, Upload, Sun, Moon } from 'lucide-react'
+import { Calendar, Clock, User, Search, Plus, Check, X, RotateCcw, RefreshCw, Users, Radio, Download, Upload, Sun, Moon, Settings } from 'lucide-react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import { formatEventDate } from '@/lib/utils'
@@ -26,6 +26,7 @@ import {
 } from '@/features/radio/api'
 import { RadioAssignment, NewAssignmentForm, PartialReturnForm, ExchangeForm } from './types'
 import ImportRadiosModal from './components/ImportRadiosModal'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 export default function RadiosPage() {
     const params = useParams()
@@ -35,6 +36,7 @@ export default function RadiosPage() {
     const [selectedDay, setSelectedDay] = useState<string>('')
     const [searchTerm, setSearchTerm] = useState('')
     const [showOnlyActive, setShowOnlyActive] = useState(false)
+    const [radioSearchTerm, setRadioSearchTerm] = useState('')
 
     // Estados para modais
     const [isNewAssignmentModalOpen, setIsNewAssignmentModalOpen] = useState(false)
@@ -47,10 +49,12 @@ export default function RadiosPage() {
 
     // Estados para formulários
     const [newAssignmentForm, setNewAssignmentForm] = useState<NewAssignmentForm>({
-        assigned_to: '',
+        assigned_to: '', // Nome da pessoa
+        company: '', // Empresa (opcional)
         contact: '',
         radio_codes: [],
-        notes: ''
+        notes: '',
+        withdrawal_code: '' // Código de retirada
     })
 
     const [partialReturnForm, setPartialReturnForm] = useState<PartialReturnForm>({
@@ -69,7 +73,8 @@ export default function RadiosPage() {
         quantity: 1,
         radio_codes: [] as string[],
         quickStart: '',
-        quickEnd: ''
+        quickEnd: '',
+        selectedTurns: selectedDay ? [selectedDay] : [] as string[] // Turnos selecionados para criação
     })
 
     // Queries
@@ -93,7 +98,27 @@ export default function RadiosPage() {
     // Query para buscar todas as atribuições do evento (para contadores)
     const { data: allAssignmentsData, isLoading: allAssignmentsLoading } = useAllRadioAssignments(eventId)
 
-    const { data: availableRadiosData, isLoading: availableRadiosLoading } = useAvailableRadios(eventId)
+    // Extrair estágio do dia selecionado
+    const selectedStage = useMemo(() => {
+        if (!selectedDay) return undefined;
+        const parts = selectedDay.split('-');
+        return parts.length >= 4 ? parts[3] : undefined; // Posição 3 contém o estágio
+    }, [selectedDay]);
+
+    // Extrair estágios dos turnos selecionados no formulário de criação
+    const createRadioStages = useMemo(() => {
+        if (!createRadioForm.selectedTurns || createRadioForm.selectedTurns.length === 0) return [];
+
+        const stages = createRadioForm.selectedTurns.map(turn => {
+            const parts = turn.split('-');
+            return parts.length >= 4 ? parts[3] : null;
+        }).filter(stage => stage !== null);
+
+        // Retornar apenas estágios únicos
+        return [...new Set(stages)];
+    }, [createRadioForm.selectedTurns]);
+
+    const { data: availableRadiosData, isLoading: availableRadiosLoading } = useAvailableRadios(eventId, selectedStage)
 
     // Hook para histórico de operações
     const { data: operationsData, isLoading: operationsLoading } = useRadioOperations(
@@ -111,6 +136,15 @@ export default function RadiosPage() {
     const assignments = assignmentsData?.data || []
     const allAssignments = allAssignmentsData?.data || [] // Todas as atribuições para contadores
     const availableRadios = availableRadiosData?.data || []
+
+    // Filtrar rádios disponíveis com busca
+    const filteredAvailableRadios = useMemo(() => {
+        if (!radioSearchTerm) return availableRadios
+
+        return availableRadios.filter(radio =>
+            radio.toLowerCase().includes(radioSearchTerm.toLowerCase())
+        )
+    }, [availableRadios, radioSearchTerm])
 
     // Função para gerar dias do evento
     const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
@@ -149,7 +183,7 @@ export default function RadiosPage() {
                         }
 
                         const formattedDate = formatEventDate(dateObj.toISOString());
-                        
+
                         // Usar período do item se disponível, senão calcular baseado na hora
                         let period: 'diurno' | 'noturno';
                         if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
@@ -186,7 +220,7 @@ export default function RadiosPage() {
         if (evento.setupStartDate && evento.setupEndDate && (!evento.montagem || evento.montagem.length === 0)) {
             const startDate = new Date(evento.setupStartDate)
             const endDate = new Date(evento.setupEndDate)
-            
+
             // Validar datas
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 console.warn('Datas de setup inválidas:', evento.setupStartDate, evento.setupEndDate);
@@ -210,7 +244,7 @@ export default function RadiosPage() {
         if (evento.preparationStartDate && evento.preparationEndDate && (!evento.evento || evento.evento.length === 0)) {
             const startDate = new Date(evento.preparationStartDate)
             const endDate = new Date(evento.preparationEndDate)
-            
+
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 console.warn('Datas de preparação inválidas:', evento.preparationStartDate, evento.preparationEndDate);
             } else {
@@ -232,7 +266,7 @@ export default function RadiosPage() {
         if (evento.finalizationStartDate && evento.finalizationEndDate && (!evento.desmontagem || evento.desmontagem.length === 0)) {
             const startDate = new Date(evento.finalizationStartDate)
             const endDate = new Date(evento.finalizationEndDate)
-            
+
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 console.warn('Datas de finalização inválidas:', evento.finalizationStartDate, evento.finalizationEndDate);
             } else {
@@ -256,18 +290,18 @@ export default function RadiosPage() {
             // Extrair a data do ID para ordenação mais confiável
             const dateA = new Date(a.id.split('-')[0]);
             const dateB = new Date(b.id.split('-')[0]);
-            
+
             if (dateA.getTime() === dateB.getTime()) {
                 // Se for o mesmo dia, ordenar por tipo e período
                 const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
                 const periodOrder = { diurno: 0, noturno: 1 };
-                
+
                 const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
                 if (typeComparison !== 0) return typeComparison;
-                
+
                 return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder];
             }
-            
+
             return dateA.getTime() - dateB.getTime();
         });
 
@@ -363,13 +397,65 @@ export default function RadiosPage() {
         }
     }, [assignments])
 
+    // Função para gerar código de retirada único
+    const generateWithdrawalCode = () => {
+        // Gerar código de 4 dígitos (1000-9999) para evitar conflito com números de rádios
+        return Math.floor(1000 + Math.random() * 9000).toString()
+    }
+
+    // Função para exportar relatório em PDF
+    const handleExportPDF = (period?: 'montagem' | 'evento' | 'desmontagem') => {
+        let dataToExport = allAssignments
+
+        if (period) {
+            // Filtrar por período específico
+            dataToExport = allAssignments.filter(assignment => {
+                // Verificar se o assignment pertence ao período especificado
+                // Isso depende de como o período está armazenado no banco
+                return assignment.workStage === period
+            })
+        }
+
+        if (dataToExport.length === 0) {
+            toast.error(`Nenhuma atribuição encontrada${period ? ` para ${period.toUpperCase()}` : ''}`)
+            return
+        }
+
+        // Criar conteúdo do PDF
+        const pdfContent = {
+            title: `Relatório de Rádios - ${evento?.name || 'Evento'}`,
+            subtitle: period ? `Período: ${period.toUpperCase()}` : 'Todos os Períodos',
+            date: new Date().toLocaleDateString('pt-BR'),
+            data: dataToExport.map(assignment => ({
+                withdrawal_code: assignment.withdrawal_code || 'N/A',
+                assigned_to: assignment.assigned_to,
+                company: assignment.company || '-',
+                contact: assignment.contact || '-',
+                radio_codes: assignment.radio_codes.join(', '),
+                status: assignment.status,
+                assigned_at: formatEventDate(assignment.assigned_at),
+                returned_at: assignment.returned_at ? formatEventDate(assignment.returned_at) : '-',
+                notes: assignment.notes || '-'
+            }))
+        }
+
+        // Aqui você implementaria a geração do PDF
+        // Por enquanto, mostrar uma mensagem
+        toast.success(`Exportando ${dataToExport.length} registros...`)
+
+        // TODO: Implementar geração de PDF com jsPDF ou similar
+        console.log('PDF Content:', pdfContent)
+    }
+
     // Handlers para modais
     const openNewAssignmentModal = () => {
         setNewAssignmentForm({
-            assigned_to: '',
+            assigned_to: '', // Nome da pessoa
+            company: '', // Empresa (opcional)
             contact: '',
             radio_codes: [],
-            notes: ''
+            notes: '',
+            withdrawal_code: generateWithdrawalCode()
         })
         setIsNewAssignmentModalOpen(true)
     }
@@ -380,7 +466,8 @@ export default function RadiosPage() {
             quantity: 1,
             radio_codes: [],
             quickStart: '',
-            quickEnd: ''
+            quickEnd: '',
+            selectedTurns: selectedDay ? [selectedDay] : [] // Definir o turno atual como padrão
         })
         setIsCreateRadioModalOpen(true)
     }
@@ -509,7 +596,7 @@ export default function RadiosPage() {
             };
 
             const shiftInfo = parseShiftId(selectedDay);
-            
+
             // Converter data para formato brasileiro (DD/MM/YYYY)
             const eventDayFormatted = formatEventDate(shiftInfo.workDate);
 
@@ -522,9 +609,11 @@ export default function RadiosPage() {
                 workStage: shiftInfo.workStage,
                 workPeriod: shiftInfo.workPeriod,
                 assigned_to: newAssignmentForm.assigned_to.trim(),
+                company: newAssignmentForm.company?.trim() || undefined,
                 contact: newAssignmentForm.contact?.trim() || undefined,
                 radio_codes: newAssignmentForm.radio_codes,
                 notes: newAssignmentForm.notes?.trim() || undefined,
+                withdrawal_code: newAssignmentForm.withdrawal_code,
                 assigned_by: 'Sistema'
             })
 
@@ -656,16 +745,42 @@ export default function RadiosPage() {
             return
         }
 
+        if (createRadioStages.length === 0) {
+            toast.error('Selecione pelo menos um turno para definir o estágio dos rádios')
+            return
+        }
+
         try {
-            // Criar rádios baseado nos chips
-            const radiosToCreate = createRadioForm.radio_codes.map(radioCode => ({
-                event_id: eventId,
-                radio_code: radioCode,
-                status: 'disponivel'
-            }))
+            // Criar rádios para cada estágio selecionado
+            const radiosToCreate: Array<{
+                event_id: string;
+                radio_code: string;
+                status: string;
+                stage: string;
+            }> = []
+
+            createRadioStages.forEach(stage => {
+                createRadioForm.radio_codes.forEach(radioCode => {
+                    // Adicionar sufixo do estágio ao código do rádio se mais de um estágio
+                    const finalRadioCode = createRadioStages.length > 1
+                        ? `${radioCode}-${stage.toUpperCase()}`
+                        : radioCode
+
+                    radiosToCreate.push({
+                        event_id: eventId,
+                        radio_code: finalRadioCode,
+                        status: 'disponivel',
+                        stage: stage
+                    })
+                })
+            })
 
             await createMultipleRadiosMutation.mutateAsync({ radios: radiosToCreate })
 
+            const totalRadios = radiosToCreate.length
+            const stagesText = createRadioStages.join(', ').toUpperCase()
+
+            toast.success(`${totalRadios} rádio(s) criado(s) para os estágios: ${stagesText}`)
             setIsCreateRadioModalOpen(false)
         } catch (error) {
             console.error('Erro ao criar rádios:', error)
@@ -801,10 +916,32 @@ export default function RadiosPage() {
                                 <span className="text-sm text-gray-600">Apenas ativos</span>
                             </label>
 
-                            <Button variant="outline" size="sm">
-                                <Download className="w-4 h-4 mr-2" />
-                                Exportar
-                            </Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm">
+                                        <Download className="w-4 h-4 mr-2" />
+                                        Exportar PDF
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuItem onClick={() => handleExportPDF()}>
+                                        <Download className="w-4 h-4 mr-2" />
+                                        Relatório Geral
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleExportPDF('montagem')}>
+                                        <Settings className="w-4 h-4 mr-2" />
+                                        Apenas Montagem
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleExportPDF('evento')}>
+                                        <Clock className="w-4 h-4 mr-2" />
+                                        Apenas Evento
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleExportPDF('desmontagem')}>
+                                        <X className="w-4 h-4 mr-2" />
+                                        Apenas Desmontagem
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </div>
                 </div>
@@ -841,7 +978,7 @@ export default function RadiosPage() {
                                                     {day.type === 'montagem' || day.type === 'setup' ? 'MONTAGEM' :
                                                         day.type === 'evento' || day.type === 'event' || day.type === 'preparation' ? 'EVENTO' :
                                                             day.type === 'desmontagem' || day.type === 'teardown' || day.type === 'finalization' ? 'DESMONTAGEM' :
-                                                                        'EVENTO'}
+                                                                'EVENTO'}
                                                 </span>
                                                 {day.period && (
                                                     <span className="text-xs opacity-60">
@@ -871,6 +1008,9 @@ export default function RadiosPage() {
                             <thead className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
                                 <tr>
                                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                                        Código
+                                    </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                                         Pessoa/Empresa
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
@@ -896,7 +1036,7 @@ export default function RadiosPage() {
                             <tbody className="bg-white divide-y divide-gray-100">
                                 {assignmentsLoading ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                                        <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                                             <div className="flex flex-col items-center">
                                                 <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mb-2"></div>
                                                 <p>Carregando atribuições...</p>
@@ -905,7 +1045,7 @@ export default function RadiosPage() {
                                     </tr>
                                 ) : filteredAssignments.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                                        <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                                             <div className="flex flex-col items-center">
                                                 <Radio className="w-8 h-8 text-gray-400 mb-2" />
                                                 <p className="text-lg font-semibold text-gray-700 mb-2">
@@ -920,21 +1060,35 @@ export default function RadiosPage() {
                                 ) : (
                                     filteredAssignments.map((assignment) => (
                                         <tr key={assignment.id} className="hover:bg-gray-50">
+                                            {/* Código de Retirada */}
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="font-mono text-lg font-bold text-purple-600">
+                                                    #{assignment.withdrawal_code || 'N/A'}
+                                                </div>
+                                            </td>
+
+                                            {/* Pessoa/Empresa */}
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
-
-                                                    <div className="ml-4">
+                                                    <div>
                                                         <div className="text-sm font-medium text-gray-900">
                                                             {assignment.assigned_to}
                                                         </div>
+                                                        {assignment.company && (
+                                                            <div className="text-sm text-gray-600">
+                                                                {assignment.company}
+                                                            </div>
+                                                        )}
                                                         {assignment.notes && (
-                                                            <div className="text-sm text-gray-500">
+                                                            <div className="text-xs text-gray-500 mt-1">
                                                                 {assignment.notes}
                                                             </div>
                                                         )}
                                                     </div>
                                                 </div>
                                             </td>
+
+                                            {/* Contato */}
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                 {assignment.contact || '-'}
                                             </td>
@@ -1025,19 +1179,59 @@ export default function RadiosPage() {
                         <AlertDialogHeader>
                             <AlertDialogTitle>Nova Atribuição de Rádios</AlertDialogTitle>
                             <AlertDialogDescription>
-                                Atribuir rádios para o período de {selectedDay}
+                                Atribuir rádios do estágio {selectedStage?.toUpperCase()} para o período de {selectedDay}
                             </AlertDialogDescription>
                         </AlertDialogHeader>
 
                         <div className="space-y-4 py-4">
+                            {/* Código de Retirada */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Nome/Empresa *
+                                    Código de Retirada
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        value={newAssignmentForm.withdrawal_code}
+                                        readOnly
+                                        className="font-mono text-lg font-bold text-center bg-gray-50"
+                                        placeholder="0000"
+                                    />
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setNewAssignmentForm(prev => ({
+                                            ...prev,
+                                            withdrawal_code: generateWithdrawalCode()
+                                        }))}
+                                    >
+                                        <RefreshCw className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Código único para controle e comprovante de retirada
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Nome da Pessoa *
                                 </label>
                                 <Input
                                     value={newAssignmentForm.assigned_to}
                                     onChange={(e) => setNewAssignmentForm(prev => ({ ...prev, assigned_to: e.target.value }))}
-                                    placeholder="Nome da pessoa ou empresa"
+                                    placeholder="Nome completo da pessoa"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Empresa (Opcional)
+                                </label>
+                                <Input
+                                    value={newAssignmentForm.company}
+                                    onChange={(e) => setNewAssignmentForm(prev => ({ ...prev, company: e.target.value }))}
+                                    placeholder="Nome da empresa"
                                 />
                             </div>
 
@@ -1053,18 +1247,46 @@ export default function RadiosPage() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Rádios Disponíveis
-                                </label>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Rádios Disponíveis ({filteredAvailableRadios.length} de {availableRadios.length} para {selectedStage?.toUpperCase()})
+                                    </label>
+                                </div>
+
+                                {/* Buscador de Rádios */}
+                                <div className="mb-3">
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                        <Input
+                                            value={radioSearchTerm}
+                                            onChange={(e) => setRadioSearchTerm(e.target.value)}
+                                            placeholder="Buscar número do rádio..."
+                                            className="pl-10 text-sm"
+                                        />
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Digite o número do rádio para filtrar rapidamente
+                                    </p>
+                                </div>
+
                                 <div className="max-h-40 overflow-y-auto border rounded-md p-2">
                                     {availableRadiosLoading ? (
                                         <p className="text-sm text-gray-500">Carregando rádios...</p>
-                                    ) : availableRadios.length === 0 ? (
-                                        <p className="text-sm text-gray-500">Nenhum rádio disponível</p>
+                                    ) : filteredAvailableRadios.length === 0 ? (
+                                        <div className="text-sm text-gray-500 text-center py-2">
+                                            {radioSearchTerm ? (
+                                                <p>Nenhum rádio encontrado para &quot;{radioSearchTerm}&quot;</p>
+                                            ) : (
+                                                <>
+                                                    <p>Nenhum rádio disponível para o estágio {selectedStage?.toUpperCase()}</p>
+                                                    <p className="text-xs mt-1">Crie rádios específicos para este estágio primeiro</p>
+                                                </>
+                                            )}
+                                        </div>
                                     ) : (
                                         <div className="space-y-2">
-                                            {availableRadios.map((radio) => (
-                                                <label key={radio} className="flex items-center gap-2">
+                                            {filteredAvailableRadios.map((radio) => (
+                                                <label key={radio} className="flex items-center gap-2 hover:bg-gray-50 p-1 rounded">
                                                     <input
                                                         type="checkbox"
                                                         checked={newAssignmentForm.radio_codes.includes(radio)}
@@ -1083,12 +1305,21 @@ export default function RadiosPage() {
                                                         }}
                                                         className="rounded"
                                                     />
-                                                    <span className="text-sm">{radio}</span>
+                                                    <span className="text-sm font-mono">{radio}</span>
                                                 </label>
                                             ))}
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Resumo de seleção */}
+                                {newAssignmentForm.radio_codes.length > 0 && (
+                                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                                        <p className="text-xs text-blue-700">
+                                            <strong>{newAssignmentForm.radio_codes.length}</strong> rádio(s) selecionado(s): {newAssignmentForm.radio_codes.join(', ')}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             <div>
@@ -1344,13 +1575,106 @@ export default function RadiosPage() {
 
                 {/* Modal Criar Rádio */}
                 <AlertDialog open={isCreateRadioModalOpen} onOpenChange={setIsCreateRadioModalOpen}>
-                    <AlertDialogContent className="max-w-md bg-white text-gray-800">
+                    <AlertDialogContent className="max-w-xl bg-white text-gray-800">
                         <AlertDialogHeader>
                             <AlertDialogTitle>Criar Novos Rádios</AlertDialogTitle>
                             <AlertDialogDescription>
-                                Adicionar novos rádios disponíveis para o evento
+                                Adicionar novos rádios para os estágios: {createRadioStages.length > 0 ? createRadioStages.join(', ').toUpperCase() : 'Selecione um ou mais turnos'}
                             </AlertDialogDescription>
                         </AlertDialogHeader>
+
+                        {/* Seleção de Turno */}
+                        <div className="space-y-4 py-4">
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Selecionar Turnos para Criação dos Rádios (múltipla seleção)
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                                const allDayIds = getEventDays().map(day => day.id);
+                                                setCreateRadioForm(prev => ({
+                                                    ...prev,
+                                                    selectedTurns: allDayIds
+                                                }));
+                                            }}
+                                            className="text-xs h-6 px-2"
+                                        >
+                                            Todos
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                                setCreateRadioForm(prev => ({
+                                                    ...prev,
+                                                    selectedTurns: []
+                                                }));
+                                            }}
+                                            className="text-xs h-6 px-2"
+                                        >
+                                            Limpar
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="max-h-40 overflow-y-auto border rounded-md p-2 bg-gray-50">
+                                    <div className="space-y-2">
+                                        {getEventDays().map((day) => {
+                                            const isSelected = createRadioForm.selectedTurns.includes(day.id);
+                                            return (
+                                                <label key={day.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setCreateRadioForm(prev => ({
+                                                                    ...prev,
+                                                                    selectedTurns: [...prev.selectedTurns, day.id]
+                                                                }))
+                                                            } else {
+                                                                setCreateRadioForm(prev => ({
+                                                                    ...prev,
+                                                                    selectedTurns: prev.selectedTurns.filter(id => id !== day.id)
+                                                                }))
+                                                            }
+                                                        }}
+                                                        className="rounded"
+                                                    />
+                                                    <div className="flex items-center gap-2 text-sm">
+                                                        {getPeriodIcon(day.period)}
+                                                        <span className={`font-medium ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>
+                                                            {day.label}
+                                                        </span>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                {createRadioStages.length > 0 && (
+                                    <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                                        <p className="text-xs text-green-600">
+                                            ✓ <strong>{createRadioForm.selectedTurns.length}</strong> turno(s) selecionado(s)
+                                        </p>
+                                        <p className="text-xs text-green-700 mt-1">
+                                            📋 Rádios serão criados para os estágios: <strong>{createRadioStages.join(', ').toUpperCase()}</strong>
+                                        </p>
+                                        {createRadioStages.length > 1 && (
+                                            <p className="text-xs text-blue-600 mt-1">
+                                                ℹ️ Códigos terão sufixo do estágio (ex: &quot;001-MONTAGEM&quot;, &quot;001-EVENTO&quot;)
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
                         <div className="border-t pt-4">
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Criação Rápida
@@ -1442,10 +1766,10 @@ export default function RadiosPage() {
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
                             <AlertDialogAction
                                 onClick={handleCreateRadio}
-                                disabled={createRadioForm.radio_codes.length === 0}
+                                disabled={createRadioForm.radio_codes.length === 0 || createRadioStages.length === 0}
                                 className="bg-green-600 hover:bg-green-700"
                             >
-                                Criar {createRadioForm.radio_codes.length} Rádio(s)
+                                Criar {createRadioForm.radio_codes.length * createRadioStages.length} Rádio(s)
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>

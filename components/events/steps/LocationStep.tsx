@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MapPin, Building, Info } from 'lucide-react';
 
 interface LocationStepProps {
-  data: any;
-  updateData: (stepKey: string, data: any) => void;
+  data: Record<string, unknown>;
+  updateData: (stepKey: string, data: Record<string, unknown>) => void;
   onValidationChange?: (isValid: boolean) => void;
 }
 

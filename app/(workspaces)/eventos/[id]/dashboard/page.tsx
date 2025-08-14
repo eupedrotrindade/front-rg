@@ -4,16 +4,17 @@
 import { useParams } from 'next/navigation'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
-import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/use-event-attendance'
+import { useEventAttendanceByEventAndDate, useEventAttendanceByShift } from '@/features/eventos/api/query/use-event-attendance'
 import { useCredentials } from '@/features/eventos/api/query'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, BarChart3, Building, Calendar, TrendingUp, Users, Clock, Activity, MapPin, CalendarDays, UserCheck, Sun, Moon } from 'lucide-react'
+import { ArrowLeft, BarChart3, Building, Calendar, TrendingUp, Users, Clock, Activity, MapPin, CalendarDays, UserCheck, Sun, Moon, Search, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import VirtualizedDashboardList from '@/components/virtualized-dashboard/VirtualizedDashboardList'
 import '@/styles/virtualized-dashboard.css'
@@ -32,6 +33,8 @@ export default function EventDashboardPage() {
     const { data: empresas = [], isLoading: empresasLoading } = useEmpresasByEvent(String(params.id))
 
     const [selectedDay, setSelectedDay] = useState<string>('')
+    const [credentialFilter, setCredentialFilter] = useState<string>('')
+    const [companyFilter, setCompanyFilter] = useState<string>('')
 
     const evento = Array.isArray(eventos)
         ? eventos.find((e) => String(e.id) === String(params.id))
@@ -72,10 +75,46 @@ export default function EventDashboardPage() {
         return dateStr;
     }, []);
 
-    // Hook para buscar dados de attendance do dia selecionado
-    const { data: attendanceData = [], isLoading: attendanceLoading } = useEventAttendanceByEventAndDate(
+    // Função para extrair informações do shift ID
+    const parseShiftId = useCallback((shiftId: string) => {
+        // Formato esperado: YYYY-MM-DD-stage-period
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            const year = parts[0];
+            const month = parts[1];
+            const day = parts[2];
+            const stage = parts[3];
+            const period = parts[4] as 'diurno' | 'noturno';
+            
+            return {
+                dateISO: `${year}-${month}-${day}`,
+                dateFormatted: formatEventDate(`${year}-${month}-${day}T00:00:00`),
+                stage,
+                period
+            };
+        }
+        
+        // Fallback para formato simples (apenas data)
+        return {
+            dateISO: shiftId,
+            dateFormatted: formatEventDate(shiftId + 'T00:00:00'),
+            stage: 'unknown',
+            period: 'diurno' as const
+        };
+    }, []);
+
+    // Extrair informações do turno selecionado
+    const shiftInfo = useMemo(() => {
+        if (!selectedDay) return null;
+        return parseShiftId(selectedDay);
+    }, [selectedDay, parseShiftId]);
+
+    // Hook para buscar dados de attendance do turno selecionado
+    const { data: attendanceData = [], isLoading: attendanceLoading } = useEventAttendanceByShift(
         String(params.id),
-        formatDateForAPI(selectedDay)
+        shiftInfo ? formatDateForAPI(shiftInfo.dateISO) : '',
+        shiftInfo ? shiftInfo.stage : '',
+        shiftInfo ? shiftInfo.period : ''
     )
 
     // Função para normalizar formato de data
@@ -243,74 +282,47 @@ export default function EventDashboardPage() {
         return days;
     }, [evento]);
 
-    // Função para extrair informações do shift ID
-    const parseShiftId = useCallback((shiftId: string) => {
-        // Formato esperado: YYYY-MM-DD-stage-period
-        const parts = shiftId.split('-');
-        if (parts.length >= 5) {
-            const year = parts[0];
-            const month = parts[1];
-            const day = parts[2];
-            const stage = parts[3];
-            const period = parts[4] as 'diurno' | 'noturno';
-            
-            return {
-                dateISO: `${year}-${month}-${day}`,
-                dateFormatted: formatEventDate(`${year}-${month}-${day}T00:00:00`),
-                stage,
-                period
-            };
-        }
-        
-        // Fallback para formato simples (apenas data)
-        return {
-            dateISO: shiftId,
-            dateFormatted: formatEventDate(shiftId + 'T00:00:00'),
-            stage: 'unknown',
-            period: 'diurno' as 'diurno'
-        };
-    }, []);
-
-    // Função para filtrar participantes por dia selecionado (com suporte a turnos)
-    const getParticipantesPorDia = useCallback((dia: string) => {
-        if (!dia) return participantsArray;
-
-        // Extrair a data do shift ID
-        const { dateFormatted } = parseShiftId(dia);
+    // Função para filtrar participantes por turno selecionado (com suporte a turnos completos)
+    const getParticipantesPorDia = useCallback((shiftId: string) => {
+        if (!shiftId) return participantsArray;
 
         return participantsArray.filter((participant: any) => {
             if (!participant.daysWork || participant.daysWork.length === 0) {
                 return false;
             }
 
-            const normalizedDia = normalizeDate(dateFormatted);
-            const hasDay = participant.daysWork.some((workDay: string) => {
-                const normalizedWorkDay = normalizeDate(workDay);
-                return normalizedWorkDay === normalizedDia;
-            });
-
-            return hasDay;
+            // Verificar se o participante trabalha neste turno específico
+            return participant.daysWork.includes(shiftId);
         });
-    }, [participantsArray, normalizeDate, parseShiftId]);
+    }, [participantsArray]);
 
-    // Função para verificar se o participante já fez check-in no dia selecionado (com suporte a turnos)
-    const hasCheckIn = useCallback((participantId: string, date: string): boolean => {
+    // Função para verificar se o participante já fez check-in no turno selecionado
+    const hasCheckIn = useCallback((participantId: string, shiftId: string): boolean => {
         if (!attendanceData || attendanceData.length === 0) return false;
 
-        // Extrair a data do shift ID se necessário
-        const { dateFormatted } = parseShiftId(date);
-        const normalizedDate = normalizeDate(dateFormatted);
-        
+        // Como agora buscamos attendance específico por turno, 
+        // verificamos apenas se existe check-in para este participante
         return attendanceData.some((attendance: any) => {
-            const normalizedAttendanceDate = normalizeDate(attendance.date);
             return attendance.participantId === participantId &&
-                attendance.checkIn !== null &&
-                normalizedAttendanceDate === normalizedDate;
+                attendance.checkIn !== null;
         });
-    }, [attendanceData, normalizeDate, parseShiftId]);
+    }, [attendanceData]);
 
-    // KPIs baseados no dia selecionado
+    // KPIs baseados no turno selecionado
     const participantesDoDia = getParticipantesPorDia(selectedDay)
+
+    // Debug: Log para verificar se está funcionando corretamente
+    useEffect(() => {
+        if (selectedDay && shiftInfo) {
+            console.log('🔍 Dashboard Debug:', {
+                selectedDay,
+                shiftInfo,
+                participantesDoDia: participantesDoDia.length,
+                attendanceData: attendanceData.length,
+                totalCheckedIn: participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length
+            });
+        }
+    }, [selectedDay, shiftInfo, participantesDoDia, attendanceData, hasCheckIn]);
 
     // Calcular estatísticas por credencial
     const getCredentialStats = useCallback(() => {
@@ -451,9 +463,24 @@ export default function EventDashboardPage() {
         return items
     }, [credentialStats, companySummary])
 
-    // Separar itens por tipo
-    const credentialItems = dashboardItems.filter(item => item.type === 'credential')
-    const companyItems = dashboardItems.filter(item => item.type === 'company')
+    // Separar itens por tipo e aplicar filtros
+    const credentialItems = useMemo(() => {
+        return dashboardItems
+            .filter(item => item.type === 'credential')
+            .filter(item => 
+                credentialFilter === '' || 
+                item.name.toLowerCase().includes(credentialFilter.toLowerCase())
+            )
+    }, [dashboardItems, credentialFilter])
+
+    const companyItems = useMemo(() => {
+        return dashboardItems
+            .filter(item => item.type === 'company')
+            .filter(item => 
+                companyFilter === '' || 
+                item.name.toLowerCase().includes(companyFilter.toLowerCase())
+            )
+    }, [dashboardItems, companyFilter])
 
     const isLoading = participantsLoading || empresasLoading || attendanceLoading;
 
@@ -633,6 +660,25 @@ export default function EventDashboardPage() {
                                 </TabsList>
 
                                 <TabsContent value="credentials" className="mt-4">
+                                    <div className="mb-4">
+                                        <div className="relative max-w-sm">
+                                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                            <Input
+                                                placeholder="Filtrar credenciais..."
+                                                value={credentialFilter}
+                                                onChange={(e) => setCredentialFilter(e.target.value)}
+                                                className="pl-10 pr-8"
+                                            />
+                                            {credentialFilter && (
+                                                <button
+                                                    onClick={() => setCredentialFilter('')}
+                                                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
                                     <VirtualizedDashboardList
                                         items={credentialItems}
                                         height={600}
@@ -641,6 +687,25 @@ export default function EventDashboardPage() {
                                 </TabsContent>
 
                                 <TabsContent value="companies" className="mt-4">
+                                    <div className="mb-4">
+                                        <div className="relative max-w-sm">
+                                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                            <Input
+                                                placeholder="Filtrar empresas..."
+                                                value={companyFilter}
+                                                onChange={(e) => setCompanyFilter(e.target.value)}
+                                                className="pl-10 pr-8"
+                                            />
+                                            {companyFilter && (
+                                                <button
+                                                    onClick={() => setCompanyFilter('')}
+                                                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
                                     <VirtualizedDashboardList
                                         items={companyItems}
                                         height={600}

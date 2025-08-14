@@ -10,6 +10,8 @@ export const getEventAttendance = async (params?: {
   eventId?: string;
   participantId?: string;
   date?: string;
+  workStage?: string;
+  workPeriod?: string;
   page?: number;
   limit?: number;
 }): Promise<EventAttendanceListResponse> => {
@@ -20,6 +22,8 @@ export const getEventAttendance = async (params?: {
     if (params?.participantId)
       queryParams.append("participantId", params.participantId);
     if (params?.date) queryParams.append("date", params.date);
+    if (params?.workStage) queryParams.append("workStage", params.workStage);
+    if (params?.workPeriod) queryParams.append("workPeriod", params.workPeriod);
     if (params?.page) queryParams.append("page", params.page.toString());
     if (params?.limit) {
       queryParams.append("limit", params.limit.toString());
@@ -82,6 +86,28 @@ export const getEventAttendanceByEventAndDate = async (
     return response.data;
   } catch (error) {
     console.error("Erro ao buscar checks por evento e data:", error);
+    throw error;
+  }
+};
+
+// Função para buscar checks por turno específico (evento, data, stage e período)
+export const getEventAttendanceByShift = async (
+  eventId: string,
+  date: string,
+  workStage: string,
+  workPeriod: string
+): Promise<EventAttendance[]> => {
+  try {
+    const response = await getEventAttendance({
+      eventId,
+      date,
+      workStage,
+      workPeriod,
+      // Sem limite para buscar todos os registros
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao buscar checks por turno:", error);
     throw error;
   }
 };

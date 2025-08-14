@@ -124,17 +124,17 @@ export default function CreateEmpresaPage() {
         };
 
         // Processar cada etapa do evento (usando campos corretos)
-        if (event?.montagem) {
+        if (!Array.isArray(event) && event?.montagem) {
             console.log('🔄 Processando montagem...');
             processEventArray(event.montagem, 'montagem', 'Montagem');
         }
 
-        if (event?.evento) {
+        if (!Array.isArray(event) && event?.evento) {
             console.log('🔄 Processando evento...');
             processEventArray(event.evento, 'evento', 'Evento');
         }
 
-        if (event?.desmontagem) {
+        if (!Array.isArray(event) && event?.desmontagem) {
             console.log('🔄 Processando desmontagem...');
             processEventArray(event.desmontagem, 'desmontagem', 'Desmontagem');
         }
@@ -189,7 +189,7 @@ export default function CreateEmpresaPage() {
             // Criar uma empresa para cada turno selecionado
             const empresasToCreate = formData.days?.map((day, index) => {
                 const availableDay = availableDays.find(d => d.id === day)
-                
+
                 // Para resolver o problema de CNPJ unique constraint:
                 // Remover completamente o campo CNPJ se estiver vazio para evitar conflito
                 const empresaDataBase: any = {

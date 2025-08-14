@@ -35,6 +35,7 @@ export const useCreateMultipleRadios = () => {
         event_id: string;
         radio_code: string;
         status?: string;
+        stage?: string;
       }>;
     }) => {
       const response = await apiClient.post("/radios/create", data);

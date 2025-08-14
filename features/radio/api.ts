@@ -16,12 +16,18 @@ import {
 // QUERIES
 // ========================================
 
-// Buscar rádios disponíveis por evento
-export const useAvailableRadios = (eventId: string) => {
+// Buscar rádios disponíveis por evento e estágio
+export const useAvailableRadios = (eventId: string, stage?: string) => {
   return useQuery({
-    queryKey: ["available-radios", eventId],
+    queryKey: ["available-radios", eventId, stage],
     queryFn: async (): Promise<AvailableRadiosResponse> => {
-      const response = await apiClient.get(`/radios/available/${eventId}`);
+      const params = new URLSearchParams();
+      if (stage) params.append("stage", stage);
+      
+      const queryString = params.toString();
+      const url = `/radios/available/${eventId}${queryString ? `?${queryString}` : ''}`;
+      
+      const response = await apiClient.get(url);
       return response.data;
     },
     enabled: !!eventId,

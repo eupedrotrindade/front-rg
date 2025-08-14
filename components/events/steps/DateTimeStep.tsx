@@ -6,15 +6,15 @@ import { Calendar, Clock } from 'lucide-react';
 import SimpleEventDaysManager from '@/components/event-days/SimpleEventDaysManager';
 
 interface DateTimeStepProps {
-  data: any;
-  updateData: (stepKey: string, data: any) => void;
+  data: Record<string, unknown>;
+  updateData: (stepKey: string, data: Record<string, unknown>) => void;
   onValidationChange?: (isValid: boolean) => void;
 }
 
 export function DateTimeStep({ data, updateData, onValidationChange }: DateTimeStepProps) {
   const datetimeData = data.datetime || { montagem: [], evento: [], desmontagem: [] };
 
-  const handleEventDaysChange = useCallback((days: { montagem: any[]; evento: any[]; desmontagem: any[] }) => {
+  const handleEventDaysChange = useCallback((days: { montagem: unknown[]; evento: unknown[]; desmontagem: unknown[] }) => {
     updateData('datetime', days);
   }, [updateData]);
 

@@ -1,6 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
 'use client'
 
@@ -58,6 +57,8 @@ import {
   Calendar,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   CreditCard,
   Download,
@@ -652,7 +653,7 @@ export default function Painel() {
         dateISO: shiftId,
         dateFormatted,
         stage: 'unknown',
-        period: 'diurno' as 'diurno'
+        period: 'diurno' as const
       };
     } catch (error) {
       // Se não conseguir fazer parse da data, retornar valor padrão
@@ -660,7 +661,7 @@ export default function Painel() {
         dateISO: shiftId,
         dateFormatted: shiftId,
         stage: 'unknown',
-        period: 'diurno' as 'diurno'
+        period: 'diurno' as const
       };
     }
   }, []);
@@ -1118,6 +1119,50 @@ export default function Painel() {
     }
   }
 
+  // Função utilitária para obter a cor da credencial do participante
+  const getCredencialCor = (colab: EventParticipant): string => {
+    const credentialSelected = credential.find(w => w.id === colab.credentialId)
+    if (credentialSelected && credentialSelected.cor) {
+      return credentialSelected.cor
+    } else {
+      return '#9333ea' // cor purple padrão
+    }
+  }
+
+  // Função para determinar se o texto deve ser branco ou preto baseado na cor de fundo
+  const getContrastingTextColor = (backgroundColor: string): string => {
+    // Remove o # se existir
+    const hex = backgroundColor.replace('#', '')
+
+    // Converte para RGB
+    const r = parseInt(hex.substr(0, 2), 16)
+    const g = parseInt(hex.substr(2, 2), 16)
+    const b = parseInt(hex.substr(4, 2), 16)
+
+    // Calcula a luminância
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+
+    // Retorna branco para cores escuras e preto para cores claras
+    return luminance < 0.5 ? '#ffffff' : '#000000'
+  }
+
+  // Função para determinar se a cor é muito clara e precisa de borda
+  const needsBorder = (backgroundColor: string): boolean => {
+    // Remove o # se existir
+    const hex = backgroundColor.replace('#', '')
+
+    // Converte para RGB
+    const r = parseInt(hex.substr(0, 2), 16)
+    const g = parseInt(hex.substr(2, 2), 16)
+    const b = parseInt(hex.substr(4, 2), 16)
+
+    // Calcula a luminância
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+
+    // Se a luminância for muito alta (cor muito clara), precisa de borda
+    return luminance > 0.9
+  }
+
   // Função para determinar qual botão mostrar
   const getBotaoAcao = (colaborador: EventParticipant) => {
     // Verificar se o colaborador trabalha neste turno usando shiftId
@@ -1455,7 +1500,47 @@ export default function Painel() {
     }
   }, [selectedDay, participantsData, credential]) // Dependências necessárias
 
+  // Função para obter todos os dias disponíveis nas tabs (navegação sequencial)
+  const getDaysOfSameStage = useCallback((currentShiftId: string) => {
+    if (!currentShiftId || currentShiftId === 'all') return []
+    
+    // Retornar TODOS os dias disponíveis nas tabs, ordenados cronologicamente
+    return getDiasDisponiveisParaOperador()
+      .sort((a, b) => a.id.localeCompare(b.id))
+  }, [getDiasDisponiveisParaOperador])
 
+  // Função para navegar para o dia anterior do mesmo estágio
+  const goToPreviousDay = useCallback(() => {
+    const sameStageDays = getDaysOfSameStage(selectedDay)
+    const currentIndex = sameStageDays.findIndex(day => day.id === selectedDay)
+    
+    if (currentIndex > 0) {
+      setSelectedDay(sameStageDays[currentIndex - 1].id)
+    }
+  }, [selectedDay, getDaysOfSameStage])
+
+  // Função para navegar para o próximo dia do mesmo estágio
+  const goToNextDay = useCallback(() => {
+    const sameStageDays = getDaysOfSameStage(selectedDay)
+    const currentIndex = sameStageDays.findIndex(day => day.id === selectedDay)
+    
+    if (currentIndex < sameStageDays.length - 1) {
+      setSelectedDay(sameStageDays[currentIndex + 1].id)
+    }
+  }, [selectedDay, getDaysOfSameStage])
+
+  // Função para verificar se há dia anterior/próximo disponível
+  const canNavigateToPrevious = useMemo(() => {
+    const sameStageDays = getDaysOfSameStage(selectedDay)
+    const currentIndex = sameStageDays.findIndex(day => day.id === selectedDay)
+    return currentIndex > 0
+  }, [selectedDay, getDaysOfSameStage])
+
+  const canNavigateToNext = useMemo(() => {
+    const sameStageDays = getDaysOfSameStage(selectedDay)
+    const currentIndex = sameStageDays.findIndex(day => day.id === selectedDay)
+    return currentIndex < sameStageDays.length - 1
+  }, [selectedDay, getDaysOfSameStage])
 
   // TODOS OS useEffect POR ÚLTIMO
   useEffect(() => {
@@ -2406,6 +2491,64 @@ export default function Painel() {
       .toUpperCase()
       .slice(0, 2)
 
+  // Função para formatar o dia selecionado
+  const formatSelectedDay = (selectedDay: string): string => {
+    if (!selectedDay || selectedDay === 'all') {
+      return ''
+    }
+
+    try {
+      // Formato esperado: YYYY-MM-DD-stage-period
+      const parts = selectedDay.split('-')
+      if (parts.length >= 5) {
+        const year = parts[0]
+        const month = parts[1]
+        const day = parts[2]
+        const stage = parts[3]
+        const period = parts[4]
+
+        // Formatar data
+        const date = new Date(`${year}-${month}-${day}`)
+        const dateStr = date.toLocaleDateString('pt-BR')
+
+        // Mapear estágios
+        const stageMap: { [key: string]: string } = {
+          'montagem': 'Montagem',
+          'evento': 'Evento',
+          'desmontagem': 'Desmontagem'
+        }
+
+        // Mapear períodos
+        const periodMap: { [key: string]: string } = {
+          'diurno': 'Diurno',
+          'noturno': 'Noturno'
+        }
+
+        const stageName = stageMap[stage] || stage
+        const periodName = periodMap[period] || period
+
+        // Calcular qual dia é sequencialmente através de todos os dias disponíveis
+        let dayNumber = 1
+        const availableDays = getDiasDisponiveisParaOperador()
+        
+        // Ordenar todos os dias disponíveis por data (ordem cronológica)
+        const sortedDays = availableDays.sort((a, b) => a.id.localeCompare(b.id))
+        
+        // Encontrar a posição do dia atual na sequência completa
+        const currentIndex = sortedDays.findIndex(day => day.id === selectedDay)
+        if (currentIndex !== -1) {
+          dayNumber = currentIndex + 1
+        }
+
+        return `(${dateStr} - ${stageName} ${dayNumber}º Dia - ${periodName})`
+      }
+    } catch (error) {
+      console.warn('Erro ao formatar dia selecionado:', error)
+    }
+
+    return selectedDay
+  }
+
   return (
     <div className="min-h-screen bg-fuchsia-100">
       {preLoading && (
@@ -2457,11 +2600,6 @@ export default function Painel() {
                   <div className="text-sm text-gray-600">
                     <span className="font-medium">{unifiedData.total}</span>{' '}
                     colaboradores
-                    {selectedDay && (
-                      <span className="text-xs text-gray-500 ml-1">
-                        (dia {selectedDay})
-                      </span>
-                    )}
                     {(searchTerm.trim() || filtro.nome.trim()) && (
                       <span className="text-xs text-blue-600 ml-2">
                         🔍 Filtrado
@@ -2498,6 +2636,45 @@ export default function Painel() {
                         Otimizar
                       </Button>
                     )}
+                    
+                    {/* Exibir dia selecionado formatado com navegação */}
+                    {selectedDay && selectedDay !== 'all' && (
+                      <div className="flex items-center gap-2">
+                        {/* Botão dia anterior */}
+                        <button
+                          onClick={goToPreviousDay}
+                          disabled={!canNavigateToPrevious}
+                          className={`p-1 rounded-full transition-colors ${
+                            canNavigateToPrevious
+                              ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-100'
+                              : 'text-gray-300 cursor-not-allowed'
+                          }`}
+                          title="Dia anterior do mesmo estágio"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        {/* Badge do dia atual */}
+                        <div className="text-xs text-purple-600 font-medium bg-purple-50 px-3 py-1 rounded-full border border-purple-200">
+                          {formatSelectedDay(selectedDay)}
+                        </div>
+
+                        {/* Botão próximo dia */}
+                        <button
+                          onClick={goToNextDay}
+                          disabled={!canNavigateToNext}
+                          className={`p-1 rounded-full transition-colors ${
+                            canNavigateToNext
+                              ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-100'
+                              : 'text-gray-300 cursor-not-allowed'
+                          }`}
+                          title="Próximo dia do mesmo estágio"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                    
                     <Button
                       onClick={sair}
                       variant="outline"
@@ -2557,7 +2734,7 @@ export default function Painel() {
             <div className="mb-8">
               <div className="flex flex-col lg:flex-row gap-4">
                 {/* Search Bar */}
-                <div className="relative flex-1 max-w-md">
+                <div className="relative flex-1 max-w-md bg-white">
                   <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 transition-colors duration-200 ${isSearching ? 'text-orange-500 animate-pulse' :
                     (searchTerm.trim() || filtro.nome.trim()) ? 'text-blue-500' : 'text-gray-400'
                     }`} />
@@ -2611,7 +2788,7 @@ export default function Painel() {
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[180px] p-0">
+                    <PopoverContent className="w-[180px] p-0  bg-white border-gray-200">
                       <Command>
                         <CommandInput className='bg-white' placeholder="Buscar empresa..." />
                         <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
@@ -2663,7 +2840,7 @@ export default function Painel() {
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[160px] p-0">
+                    <PopoverContent className="w-[160px] p-0 bg-white border-gray-200">
                       <Command>
                         <CommandInput className='bg-white' placeholder="Buscar função..." />
                         <CommandEmpty>Nenhuma função encontrada.</CommandEmpty>
@@ -2715,7 +2892,7 @@ export default function Painel() {
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[170px] p-0">
+                    <PopoverContent className="w-[170px] p-0 bg-white border-gray-200">
                       <Command>
                         <CommandInput className='bg-white' placeholder="Buscar credencial..." />
                         <CommandEmpty>Nenhuma credencial encontrada.</CommandEmpty>
@@ -3072,7 +3249,14 @@ export default function Painel() {
                               {/* Credencial - esconder em mobile */}
                               {!isMobileTable && (
                                 <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                  <span
+                                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                    style={{
+                                      backgroundColor: getCredencialCor(colab),
+                                      color: getContrastingTextColor(getCredencialCor(colab)),
+                                      border: needsBorder(getCredencialCor(colab)) ? '1px solid #d1d5db' : 'none'
+                                    }}
+                                  >
                                     {getCredencial(colab)}
                                   </span>
                                 </div>
@@ -3208,9 +3392,16 @@ export default function Painel() {
                           <p className="text-xs font-medium text-gray-500 uppercase">
                             Credencial
                           </p>
-                          <p className="text-gray-900">
+                          <span
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                            style={{
+                              backgroundColor: getCredencialCor(selectedParticipant),
+                              color: getContrastingTextColor(getCredencialCor(selectedParticipant)),
+                              border: needsBorder(getCredencialCor(selectedParticipant)) ? '1px solid #d1d5db' : 'none'
+                            }}
+                          >
                             {getCredencial(selectedParticipant)}
-                          </p>
+                          </span>
                         </div>
                         <div className="p-3 bg-white rounded-lg border border-gray-200">
                           <p className="text-xs font-medium text-gray-500 uppercase">
@@ -3380,9 +3571,20 @@ export default function Painel() {
                       <p className="text-sm text-gray-600 mt-1">
                         {participantAction.role}
                       </p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Tipo de Credencial: {getCredencial(participantAction)}
-                      </p>
+                      <div className="text-sm text-gray-600 mt-1">
+                        <div className="flex items-center justify-center gap-2">
+                          <span>Tipo de Credencial:</span>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-3 h-3 rounded-full border-2 border-black"
+                              style={{ backgroundColor: getCredencialCor(participantAction) }}
+                            />
+                            <span className="text-gray-900 font-medium">
+                              {getCredencial(participantAction)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                       {selectedDateForAction &&
                         selectedDateForAction !== 'all' && (
                           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -3475,9 +3677,19 @@ export default function Painel() {
                       <p className="text-sm text-gray-600 mt-1">
                         {participantAction.role}
                       </p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Tipo de Credencial: {getCredencial(participantAction)}
-                      </p>
+                      <div className="text-sm text-gray-600 mt-1">
+                        Tipo de Credencial:
+                        <span
+                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2"
+                          style={{
+                            backgroundColor: getCredencialCor(participantAction),
+                            color: getContrastingTextColor(getCredencialCor(participantAction)),
+                            border: needsBorder(getCredencialCor(participantAction)) ? '1px solid #d1d5db' : 'none'
+                          }}
+                        >
+                          {getCredencial(participantAction)}
+                        </span>
+                      </div>
                       {selectedDateForAction &&
                         selectedDateForAction !== 'all' && (
                           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -3540,7 +3752,7 @@ export default function Painel() {
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-3">
                     <CreditCard className="w-5 h-5 text-blue-600" />
-                    {editingWristbandId ? 'Alterar Credencial e Pulseira' : 'Trocar Credencial'}
+                    {editingWristbandId ? 'Alterar Credencial e Pulseira' : 'Trocar Pulseira'}
                   </DialogTitle>
                   <DialogDescription>
                     {editingWristbandId ? 'Altere o tipo de credencial e/ou código da pulseira' : 'Busque e selecione um participante para trocar a credencial'}
@@ -3697,7 +3909,16 @@ export default function Painel() {
                               </div>
                               <div className="col-span-2">
                                 <span className="text-gray-500">Credencial atual:</span>
-                                <p className="text-gray-900 font-semibold">{getCredencial(selectedParticipant)}</p>
+                                <span
+                                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2"
+                                  style={{
+                                    backgroundColor: getCredencialCor(selectedParticipant),
+                                    color: getContrastingTextColor(getCredencialCor(selectedParticipant)),
+                                    border: needsBorder(getCredencialCor(selectedParticipant)) ? '1px solid #d1d5db' : 'none'
+                                  }}
+                                >
+                                  {getCredencial(selectedParticipant)}
+                                </span>
                               </div>
                               <div>
                                 <span className="text-gray-500">Status:</span>

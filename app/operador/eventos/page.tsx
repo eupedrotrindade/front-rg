@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
 import { useState, useEffect } from "react"
@@ -8,7 +7,7 @@ import Link from "next/link"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Calendar, LogOut, User, AlertCircle, RefreshCw } from "lucide-react"
+import { Calendar, LogOut, User, AlertCircle, RefreshCw, ImageIcon } from "lucide-react"
 
 const getOperatorFromStorage = () => {
     if (typeof window === "undefined") return null
@@ -339,38 +338,65 @@ const OperadorEventosPage = () => {
                                 </div>
                             ) : (
                                 eventosOperador.map((evento) => (
-                                    <Card
+                                    <div
                                         key={evento.id}
-                                        className="hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-0 shadow-lg"
+                                        className="bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl group"
                                     >
-                                        <CardHeader className="p-0">
-                                            <div className="relative h-48 w-full">
-                                                <Image
-                                                    src={evento.bannerUrl || "/placeholder.svg?height=192&width=384&text=Evento"}
-                                                    alt={evento.name}
-                                                    className="w-full h-full object-cover rounded-t-lg"
-                                                    width={384}
-                                                    height={192}
-                                                />
+                                        {/* Área da imagem com fundo rosa/pink */}
+                                        <div className="relative bg-transparent aspect-square p-8">
+                                            <div className="w-full h-full flex items-center justify-center">
+                                                {evento.bannerUrl ? (
+                                                    <Image
+                                                        src={evento.bannerUrl}
+                                                        alt={evento.name}
+                                                        width={400}
+                                                        height={400}
+                                                        className="object-contain max-w-full max-h-full rounded-md"
+                                                    />
+                                                ) : (
+                                                    <div className="text-center">
+                                                        <ImageIcon className="h-16 w-16 text-black/70 mx-auto mb-2" />
+                                                        <span className="text-black/70 text-sm">Sem imagem</span>
+                                                    </div>
+                                                )}
                                             </div>
-                                        </CardHeader>
-                                        <CardContent className="p-6">
-                                            <CardTitle className="text-xl font-bold text-gray-900 mb-3 line-clamp-2">{evento.name}</CardTitle>
 
-                                            {evento.startDate && (
-                                                <div className="flex items-center gap-2 mb-4 text-gray-600">
-                                                    <Calendar className="w-4 h-4" />
-                                                    <span className="text-sm font-medium">{formatDate(evento.startDate)}</span>
+                                            {/* Hashtag no topo */}
+                                            <div className="absolute top-4 left-4">
+                                                <span className="text-purple-700 text-sm font-semibold">#RGFazAcontecer!</span>
+                                            </div>
+
+                                            {/* Logo RG no canto inferior direito */}
+                                            <div className="absolute bottom-4 right-4">
+                                                <div className="bg-white rounded-full px-3 py-1">
+                                                    <span className="text-purple-700 text-xs font-bold">RG</span>
                                                 </div>
-                                            )}
+                                            </div>
+                                        </div>
 
+                                        {/* Conteúdo inferior */}
+                                        <div className="p-6 text-center">
+                                            {/* Título */}
+                                            <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">
+                                                {evento.name}
+                                            </h3>
+
+                                            {/* Data */}
+                                            <div className="flex items-center justify-center gap-2 text-gray-500 text-sm mb-4">
+                                                <Calendar className="h-4 w-4" />
+                                                <span>
+                                                    {evento.startDate ? formatDate(evento.startDate) : 'Data a definir'}
+                                                </span>
+                                            </div>
+
+                                            {/* Botão */}
                                             <Link href={`/operador/painel/${evento.id}`} className="block">
-                                                <Button className="w-full bg-gradient-to-r from-pink-600 to-pink-700 hover:from-pink-700 hover:to-pink-800 text-white font-semibold py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200">
-                                                    Acessar Evento
+                                                <Button className="bg-purple-700 hover:bg-purple-700 text-white px-8 py-2 rounded-full transition-all duration-200">
+                                                    Acessar
                                                 </Button>
                                             </Link>
-                                        </CardContent>
-                                    </Card>
+                                        </div>
+                                    </div>
                                 ))
                             )}
                         </div>

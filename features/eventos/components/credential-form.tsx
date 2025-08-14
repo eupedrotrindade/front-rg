@@ -14,9 +14,28 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { X, Palette, Wrench, Calendar, Truck } from "lucide-react";
+import { X, Palette, Wrench, Calendar, Truck, Sun, Moon } from "lucide-react";
 import { HexColorPicker } from "react-colorful";
 import { formatEventDate, getCurrentDateBR } from "@/lib/utils";
+
+// Função para extrair informações do shift ID
+const parseShiftId = (shiftId: string) => {
+    const parts = shiftId.split('-');
+    if (parts.length >= 5) {
+        return {
+            workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
+            workStage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
+            workPeriod: parts[4] as 'diurno' | 'noturno'
+        };
+    }
+    // Fallback para dias simples (backward compatibility)
+    const dateISO = shiftId.match(/\d{4}-\d{2}-\d{2}/) ? shiftId : getCurrentDateBR();
+    return {
+        workDate: dateISO,
+        workStage: 'evento' as const,
+        workPeriod: 'diurno' as const
+    };
+};
 
 interface CredentialFormProps {
     credential?: Credential;
@@ -27,32 +46,17 @@ interface CredentialFormProps {
 
 type FormData = CreateCredentialRequest | UpdateCredentialRequest;
 
-const generateEventDays = (event: Event): { [key: string]: string[] } => {
-    const daysByStage: { [key: string]: string[] } = {
-        setup: [],
-        event: [],
-        teardown: []
+// Gerar shift IDs baseados no evento
+const generateEventShifts = (event: Event): { [key: string]: string[] } => {
+    const shiftsByStage: { [key: string]: string[] } = {
+        montagem: [],
+        evento: [],
+        desmontagem: []
     };
 
-    if (!event) return daysByStage;
+    if (!event) return shiftsByStage;
 
-    const formatDate = (dateString: string) => {
-        return formatEventDate(dateString);
-    };
-
-    const addDaysToStage = (startDate: string, endDate: string, stage: string) => {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            const formattedDate = formatDate(d.toISOString());
-            if (!daysByStage[stage].includes(formattedDate)) {
-                daysByStage[stage].push(formattedDate);
-            }
-        }
-    };
-
-    // Função helper para processar arrays de dados do evento
+    // Função helper para processar arrays de dados do evento usando períodos exatos
     const processEventArray = (eventData: any, stage: string) => {
         if (!eventData) return;
         
@@ -72,12 +76,13 @@ const generateEventDays = (event: Event): { [key: string]: string[] } => {
                 return;
             }
 
-            // Processar cada item do array
+            // Processar cada item do array usando exatamente os períodos definidos
             dataArray.forEach(item => {
-                if (item && item.date) {
-                    const formattedDate = formatDate(item.date);
-                    if (!daysByStage[stage].includes(formattedDate)) {
-                        daysByStage[stage].push(formattedDate);
+                if (item && item.date && item.period) {
+                    // ✅ Usar exatamente o período definido no evento
+                    const shiftId = `${item.date}-${stage}-${item.period}`;
+                    if (!shiftsByStage[stage].includes(shiftId)) {
+                        shiftsByStage[stage].push(shiftId);
                     }
                 }
             });
@@ -87,71 +92,95 @@ const generateEventDays = (event: Event): { [key: string]: string[] } => {
     };
 
     // Processar nova estrutura do evento
-    console.log('🔍 Processando dados do evento:', {
+    console.log('🔍 [CredentialForm] Processando dados do evento:', {
         montagem: event.montagem,
         evento: event.evento,
         desmontagem: event.desmontagem
     });
     
-    processEventArray(event.montagem, 'setup');
-    processEventArray(event.evento, 'event');
-    processEventArray(event.desmontagem, 'teardown');
+    processEventArray(event.montagem, 'montagem');
+    processEventArray(event.evento, 'evento');
+    processEventArray(event.desmontagem, 'desmontagem');
     
-    console.log('🔍 Dias gerados:', {
-        setup: daysByStage.setup,
-        event: daysByStage.event,
-        teardown: daysByStage.teardown,
-        total: Object.values(daysByStage).flat().length
+    console.log('✅ [CredentialForm] Shifts gerados:', {
+        montagem: shiftsByStage.montagem,
+        evento: shiftsByStage.evento,
+        desmontagem: shiftsByStage.desmontagem,
+        total: Object.values(shiftsByStage).flat().length
     });
 
-    // Fallback para estrutura antiga (manter compatibilidade)
-    if (event.setupStartDate && event.setupEndDate) {
-        addDaysToStage(event.setupStartDate, event.setupEndDate, 'setup');
-    }
+    // Fallback para estrutura antiga só se não há nova estrutura
+    if (Object.values(shiftsByStage).flat().length === 0) {
+        console.log('⚠️ [CredentialForm] Usando fallback para estrutura antiga');
+        
+        const addFallbackShifts = (startDate: string, endDate: string, stage: string) => {
+            if (!startDate || !endDate) return;
+            const start = new Date(startDate);
+            const end = new Date(endDate);
 
-    if (event.preparationStartDate && event.preparationEndDate) {
-        addDaysToStage(event.preparationStartDate, event.preparationEndDate, 'setup');
-    }
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const dateISO = d.toISOString().split('T')[0];
+                const shiftId = `${dateISO}-${stage}-diurno`;
+                if (!shiftsByStage[stage].includes(shiftId)) {
+                    shiftsByStage[stage].push(shiftId);
+                }
+            }
+        };
 
-    if (event.startDate && event.endDate) {
-        addDaysToStage(event.startDate, event.endDate, 'event');
-    }
-
-    if (event.finalizationStartDate && event.finalizationEndDate) {
-        addDaysToStage(event.finalizationStartDate, event.finalizationEndDate, 'teardown');
+        addFallbackShifts(event.setupStartDate, event.setupEndDate, 'montagem');
+        addFallbackShifts(event.preparationStartDate, event.preparationEndDate, 'montagem'); 
+        addFallbackShifts(event.startDate, event.endDate, 'evento');
+        addFallbackShifts(event.finalizationStartDate, event.finalizationEndDate, 'desmontagem');
     }
 
     // Ordenar cada etapa cronologicamente
-    const sortDates = (a: string, b: string) => {
-        const dateA = new Date(a.split('/').reverse().join('-'));
-        const dateB = new Date(b.split('/').reverse().join('-'));
-        return dateA.getTime() - dateB.getTime();
+    const sortShifts = (a: string, b: string) => {
+        // Extrair data e período dos shift IDs para ordenação
+        const parseShift = (shiftId: string) => {
+            const parts = shiftId.split('-');
+            const date = `${parts[0]}-${parts[1]}-${parts[2]}`;
+            const period = parts[4]; // 'diurno' ou 'noturno'
+            return { date, period };
+        };
+        
+        const shiftA = parseShift(a);
+        const shiftB = parseShift(b);
+        
+        // Primeiro ordenar por data
+        const dateComparison = shiftA.date.localeCompare(shiftB.date);
+        if (dateComparison !== 0) return dateComparison;
+        
+        // Se a data é igual, diurno vem antes de noturno
+        if (shiftA.period === 'diurno' && shiftB.period === 'noturno') return -1;
+        if (shiftA.period === 'noturno' && shiftB.period === 'diurno') return 1;
+        
+        return 0;
     };
 
-    daysByStage.setup.sort(sortDates);
-    daysByStage.event.sort(sortDates);
-    daysByStage.teardown.sort(sortDates);
+    shiftsByStage.montagem.sort(sortShifts);
+    shiftsByStage.evento.sort(sortShifts);
+    shiftsByStage.desmontagem.sort(sortShifts);
 
-    return daysByStage;
+    return shiftsByStage;
 };
 
 const getStageInfo = (stage: string) => {
     switch (stage) {
-        case 'setup':
+        case 'montagem':
             return {
                 name: 'Montagem',
                 icon: Wrench,
                 color: 'text-orange-600',
                 bgColor: 'bg-orange-50'
             };
-        case 'event':
+        case 'evento':
             return {
                 name: 'Evento',
                 icon: Calendar,
                 color: 'text-blue-600',
                 bgColor: 'bg-blue-50'
             };
-        case 'teardown':
+        case 'desmontagem':
             return {
                 name: 'Desmontagem',
                 icon: Truck,
@@ -168,22 +197,51 @@ const getStageInfo = (stage: string) => {
     }
 };
 
-const checkOverlaps = (daysByStage: { [key: string]: string[] }) => {
-    const allDays = Object.values(daysByStage).flat();
-    const uniqueDays = [...new Set(allDays)];
+// Função para extrair informações legíveis de um shift ID
+const getShiftDisplayInfo = (shiftId: string) => {
+    const { workDate, workStage, workPeriod } = parseShiftId(shiftId);
+    const formattedDate = formatEventDate(workDate + 'T00:00:00');
+    const stageInfo = getStageInfo(workStage);
+    const period = workPeriod === 'diurno' ? 'Dia' : 'Noite';
+    
+    return {
+        date: formattedDate,
+        stage: stageInfo.name,
+        period: period,
+        stageInfo
+    };
+};
 
-    if (allDays.length !== uniqueDays.length) {
-        return {
-            hasOverlap: true,
-            message: "Atenção: Existem datas sobrepostas entre as etapas do evento."
-        };
+const checkOverlaps = (shiftsByStage: { [key: string]: string[] }) => {
+    // Para shifts, verificar se há conflitos de horário no mesmo dia
+    const allShifts = Object.values(shiftsByStage).flat();
+    const shiftsByDate: { [key: string]: string[] } = {};
+    
+    allShifts.forEach(shiftId => {
+        const { workDate } = parseShiftId(shiftId);
+        if (!shiftsByDate[workDate]) {
+            shiftsByDate[workDate] = [];
+        }
+        shiftsByDate[workDate].push(shiftId);
+    });
+    
+    // Verificar se há mais de 2 shifts por dia (máximo diurno + noturno)
+    for (const [date, shifts] of Object.entries(shiftsByDate)) {
+        if (shifts.length > 6) { // 3 stages × 2 periods = 6 max shifts por dia
+            return {
+                hasOverlap: true,
+                message: `Atenção: Existem muitos turnos configurados para ${formatEventDate(date + 'T00:00:00')}.`
+            };
+        }
     }
-
+    
     return {
         hasOverlap: false,
         message: ""
     };
 };
+
+// Função removida pois foi integrada acima
 
 const checkDuplicateCredentials = (
     existingCredentials: Credential[],
@@ -273,15 +331,15 @@ export const CredentialForm = ({
         }
     }, [eventId, setValue]);
 
-    // Gerar dias disponíveis baseados no evento
-    const availableDays = event ? generateEventDays(event) : {};
-    const overlapInfo = checkOverlaps(availableDays);
+    // Gerar shifts disponíveis baseados no evento
+    const availableShifts = event ? generateEventShifts(event) : {};
+    const overlapInfo = checkOverlaps(availableShifts);
     
-    // Debug para verificar os dias disponíveis
-    console.log('🔍 Debug availableDays:', {
+    // Debug para verificar os shifts disponíveis
+    console.log('🔍 Debug availableShifts:', {
         event: event,
-        availableDays: availableDays,
-        totalDays: Object.values(availableDays).flat().length,
+        availableShifts: availableShifts,
+        totalShifts: Object.values(availableShifts).flat().length,
         eventStructure: event ? {
             montagem: event.montagem,
             evento: event.evento, 
@@ -293,16 +351,16 @@ export const CredentialForm = ({
     });
 
     useEffect(() => {
-        if (Object.values(availableDays).flat().length > 0 && selectedDays.length === 0 && !credential?.days_works) {
-            // Encontrar o primeiro dia disponível de qualquer etapa
-            const allDays = Object.values(availableDays).flat().filter(day => day !== undefined && day !== null);
-            if (allDays.length > 0) {
-                setSelectedDays([allDays[0]]);
-                setValue("days_works", [allDays[0]]);
-                console.log('🔄 Selecionando primeiro dia disponível:', allDays[0]);
+        if (Object.values(availableShifts).flat().length > 0 && selectedDays.length === 0 && !credential?.days_works) {
+            // Encontrar o primeiro shift disponível de qualquer etapa
+            const allShifts = Object.values(availableShifts).flat().filter(shift => shift !== undefined && shift !== null);
+            if (allShifts.length > 0) {
+                setSelectedDays([allShifts[0]]);
+                setValue("days_works", [allShifts[0]]);
+                console.log('🔄 Selecionando primeiro shift disponível:', allShifts[0]);
             }
         }
-    }, [availableDays, selectedDays.length, credential?.days_works, setValue]);
+    }, [availableShifts, selectedDays.length, credential?.days_works, setValue]);
 
     useEffect(() => {
         if (credential?.days_works) {
@@ -350,60 +408,57 @@ export const CredentialForm = ({
         trigger("cor");
     };
 
-    // Se não há dias disponíveis no evento, permitir criar credencial sem dias específicos
-    const hasAvailableDays = Object.values(availableDays).flat().length > 0;
+    // Se não há shifts disponíveis no evento, permitir criar credencial sem shifts específicos
+    const hasAvailableShifts = Object.values(availableShifts).flat().length > 0;
 
-    // Função para extrair informações do shift ID
-    const parseShiftId = (shiftId: string) => {
-        const parts = shiftId.split('-');
-        if (parts.length >= 5) {
-            return {
-                workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
-                workStage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
-                workPeriod: parts[4] as 'diurno' | 'noturno'
-            };
-        }
-        // Fallback para dias simples (backward compatibility)
-        const dateISO = shiftId.match(/\d{4}-\d{2}-\d{2}/) ? shiftId : getCurrentDateBR();
-        return {
-            workDate: dateISO,
-            workStage: 'evento' as const,
-            workPeriod: 'diurno' as const
-        };
-    };
 
     const handleFormSubmit = async (data: FormData) => {
         // Filtrar valores undefined/null do array de dias selecionados
         let cleanSelectedDays = selectedDays.filter(day => day && day.trim().length > 0);
         
-        // Se não há dias válidos selecionados e não há dias disponíveis no evento, usar data atual
-        let daysToSubmit = cleanSelectedDays;
-        if (cleanSelectedDays.length === 0 && !hasAvailableDays) {
-            daysToSubmit = [getCurrentDateBR()];
-            console.log('🚀 Usando data atual como fallback:', daysToSubmit);
+        // Se não há shifts válidos selecionados e não há shifts disponíveis no evento, usar shift atual
+        let shiftsToSubmit = cleanSelectedDays;
+        if (cleanSelectedDays.length === 0 && !hasAvailableShifts) {
+            // Gerar shift ID para hoje (evento diurno como padrão)
+            const today = getCurrentDateBR();
+            const todayISO = today.split('/').reverse().join('-'); // Converter DD/MM/YYYY para YYYY-MM-DD
+            const defaultShift = `${todayISO}-evento-diurno`;
+            shiftsToSubmit = [defaultShift];
+            console.log('🚀 Usando shift atual como fallback:', shiftsToSubmit);
         }
         
-        // Extrair informações de shift para cada dia selecionado
-        const shiftData = daysToSubmit.map(day => {
-            const shiftInfo = parseShiftId(day);
-            return {
-                shiftId: day,
+        // Extrair informações de shift do primeiro shift selecionado (principal)
+        let mainShiftInfo = {
+            shiftId: '',
+            workDate: '',
+            workStage: 'evento' as const,
+            workPeriod: 'diurno' as const
+        };
+        
+        if (shiftsToSubmit.length > 0) {
+            const firstShift = shiftsToSubmit[0];
+            const shiftInfo = parseShiftId(firstShift);
+            mainShiftInfo = {
+                shiftId: firstShift,
                 workDate: shiftInfo.workDate,
                 workStage: shiftInfo.workStage,
                 workPeriod: shiftInfo.workPeriod
             };
-        });
+        }
         
         const formData = {
             ...data,
-            days_works: daysToSubmit,
+            days_works: shiftsToSubmit,
             cor: selectedColor,
-            // Adicionar dados de shift ao modelo
-            shiftData: shiftData
+            // Adicionar propriedades de shift diretamente
+            shiftId: mainShiftInfo.shiftId,
+            workDate: mainShiftInfo.workDate,
+            workStage: mainShiftInfo.workStage,
+            workPeriod: mainShiftInfo.workPeriod
         };
 
-        // Verificar duplicatas antes de submeter (apenas se há dias para verificar)
-        if (daysToSubmit.length > 0) {
+        // Verificar duplicatas antes de submeter (apenas se há shifts para verificar)
+        if (shiftsToSubmit.length > 0) {
             const duplicateCheck = checkDuplicateCredentials(
                 existingCredentials,
                 formData,
@@ -419,28 +474,28 @@ export const CredentialForm = ({
         onSubmit(formData);
     };
 
-    const validSelectedDays = selectedDays.filter(day => day && day.trim().length > 0);
-    const isFormValid = isValid && (!hasAvailableDays || validSelectedDays.length > 0) && !duplicateError;
+    const validSelectedShifts = selectedDays.filter(shift => shift && shift.trim().length > 0);
+    const isFormValid = isValid && (!hasAvailableShifts || validSelectedShifts.length > 0) && !duplicateError;
 
-    // Revalidar o formulário quando os dias válidos mudarem
+    // Revalidar o formulário quando os shifts válidos mudarem
     React.useEffect(() => {
-        if (validSelectedDays.length > 0) {
-            setValue("days_works", validSelectedDays);
+        if (validSelectedShifts.length > 0) {
+            setValue("days_works", validSelectedShifts);
             trigger("days_works");
         }
-    }, [validSelectedDays.length, setValue, trigger]);
+    }, [validSelectedShifts.length, setValue, trigger]);
     
     // Debug para entender por que o botão não habilita
     console.log('🔍 Debug isFormValid:', {
         isValid: isValid,
         selectedDays: selectedDays,
         selectedDaysLength: selectedDays.length,
-        validSelectedDays: validSelectedDays,
-        validSelectedDaysLength: validSelectedDays.length,
+        validSelectedShifts: validSelectedShifts,
+        validSelectedShiftsLength: validSelectedShifts.length,
         duplicateError: duplicateError,
-        hasAvailableDays: hasAvailableDays,
+        hasAvailableShifts: hasAvailableShifts,
         isFormValid: isFormValid,
-        availableDaysCount: Object.values(availableDays).flat().length,
+        availableShiftsCount: Object.values(availableShifts).flat().length,
         buttonShouldBeEnabled: !isLoading && isFormValid
     });
 
@@ -562,7 +617,7 @@ export const CredentialForm = ({
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Dias de Trabalho</Label>
+                        <Label>Turnos de Trabalho</Label>
                         {overlapInfo.hasOverlap && (
                             <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                                 <p className="text-sm text-yellow-800">
@@ -571,16 +626,16 @@ export const CredentialForm = ({
                             </div>
                         )}
                         <div className="space-y-4">
-                            {Object.keys(availableDays).length === 0 || Object.values(availableDays).flat().length === 0 ? (
+                            {Object.keys(availableShifts).length === 0 || Object.values(availableShifts).flat().length === 0 ? (
                                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                                     <p className="text-sm text-blue-800">
-                                        ℹ️ Nenhum dia específico configurado para este evento. 
-                                        A credencial será criada com a data atual ({getCurrentDateBR()}) como padrão.
+                                        ℹ️ Nenhum turno específico configurado para este evento. 
+                                        A credencial será criada com o turno atual como padrão.
                                     </p>
                                 </div>
                             ) : (
                                 <>
-                                    {Object.entries(availableDays).map(([stage, days]) => {
+                                    {Object.entries(availableShifts).map(([stage, shifts]) => {
                                         const stageInfo = getStageInfo(stage);
                                         const IconComponent = stageInfo.icon;
 
@@ -592,28 +647,49 @@ export const CredentialForm = ({
                                                         {stageInfo.name}
                                                     </h3>
                                                     <span className="text-sm text-gray-500">
-                                                        ({days.length} dia{days.length !== 1 ? 's' : ''})
+                                                        ({shifts.length} turno{shifts.length !== 1 ? 's' : ''})
                                                     </span>
                                                 </div>
-                                                {days.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {days.map((day) => (
-                                                            <Badge
-                                                                key={day}
-                                                                variant={selectedDays.includes(day) ? "default" : "outline"}
-                                                                className={`cursor-pointer ${selectedDays.includes(day) ? "bg-blue-600 text-white hover:bg-blue-700" : ""}`}
-                                                                onClick={() => handleDayToggle(day)}
-                                                            >
-                                                                {day}
-                                                                {selectedDays.includes(day) && (
-                                                                    <X className="ml-1 h-3 w-3" />
-                                                                )}
-                                                            </Badge>
-                                                        ))}
+                                                {shifts.length > 0 ? (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {shifts.map((shiftId) => {
+                                                            const displayInfo = getShiftDisplayInfo(shiftId);
+                                                            const isSelected = selectedDays.includes(shiftId);
+                                                            
+                                                            return (
+                                                                <div
+                                                                    key={shiftId}
+                                                                    className={`p-2 rounded border cursor-pointer transition-colors ${
+                                                                        isSelected 
+                                                                            ? 'bg-blue-100 border-blue-300 text-blue-800'
+                                                                            : 'bg-white border-gray-200 hover:border-gray-300'
+                                                                    }`}
+                                                                    onClick={() => handleDayToggle(shiftId)}
+                                                                >
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div>
+                                                                            <div className="text-sm font-medium">{displayInfo.date}</div>
+                                                                            <div className="flex items-center gap-1 text-xs text-gray-600">
+                                                                                {displayInfo.period === 'Dia' ? 
+                                                                                    <Sun className="h-3 w-3 text-yellow-500" /> : 
+                                                                                    <Moon className="h-3 w-3 text-blue-500" />
+                                                                                }
+                                                                                {displayInfo.period}
+                                                                            </div>
+                                                                        </div>
+                                                                        {isSelected ? (
+                                                                            <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                                                                        ) : (
+                                                                            <div className="w-2 h-2 border border-gray-300 rounded-full" />
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 ) : (
                                                     <p className="text-sm text-gray-500 italic">
-                                                        Nenhum dia configurado para esta etapa
+                                                        Nenhum turno configurado para esta etapa
                                                     </p>
                                                 )}
                                             </div>
@@ -624,7 +700,7 @@ export const CredentialForm = ({
                                     )}
                                     {selectedDays.length === 0 && !errors.days_works && (
                                         <p className="text-sm text-amber-600">
-                                            Selecione pelo menos um dia de trabalho
+                                            Selecione pelo menos um turno de trabalho
                                         </p>
                                     )}
                                 </>
@@ -655,8 +731,8 @@ export const CredentialForm = ({
                 </Button>
                 <Button
                     type="submit"
-                    disabled={isLoading || (!isFormValid && Object.values(availableDays).flat().length === 0)}
-                    className={isLoading || (!isFormValid && Object.values(availableDays).flat().length === 0) ? "opacity-50 cursor-not-allowed" : ""}
+                    disabled={isLoading || (!isFormValid && Object.values(availableShifts).flat().length === 0)}
+                    className={isLoading || (!isFormValid && Object.values(availableShifts).flat().length === 0) ? "opacity-50 cursor-not-allowed" : ""}
                 >
                     {isLoading ? "Salvando..." : credential ? "Atualizar" : "Criar"}
                 </Button>

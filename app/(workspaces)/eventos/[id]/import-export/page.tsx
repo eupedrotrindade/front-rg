@@ -43,7 +43,7 @@ import { useCredentialsByEvent } from "@/features/eventos/api/query/use-credenti
 import { useCreateCredential } from "@/features/eventos/api/mutation/use-credential-mutations"
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas"
 import { useCreateEmpresa } from "@/features/eventos/api/mutation"
-import type { EventParticipant, CreateCredentialRequest, CreateEmpresaRequest } from "@/features/eventos/types"
+import type { EventParticipant, CreateCredentialRequest, CreateEmpresaRequest, CreateEventParticipantRequest } from "@/features/eventos/types"
 import type { EventParticipantSchema } from "@/features/eventos/schemas"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
@@ -62,7 +62,7 @@ interface ImportProgress {
 }
 
 interface ImportResult {
-    success: EventParticipantSchema[]
+    success: CreateEventParticipantRequest[]
     errors: Array<{ item: any; error: string; row: number }>
     duplicates: Array<{ item: any; existing: EventParticipant; row: number }>
 }
@@ -136,9 +136,11 @@ export default function ImportExportPage() {
 
     // Batch configuration
     const [batchConfig, setBatchConfig] = useState({
-        batchSize: 25,
-        pauseBetweenBatches: 10000, // 10 seconds between batches
-        pauseBetweenItems: 500, // 500ms per participant
+        batchSize: 10, // Reduced for Supabase
+        pauseBetweenBatches: 15000, // 15 seconds
+        pauseBetweenItems: 1000, // 1 second
+        maxRetries: 3,
+        backoffMultiplier: 2,
     })
 
     // UI States
@@ -152,6 +154,15 @@ export default function ImportExportPage() {
 
     const fileInputRef = useRef<HTMLInputElement>(null)
     const dropZoneRef = useRef<HTMLDivElement>(null)
+
+    // Rate limiting e controle de carga
+    const [apiMetrics, setApiMetrics] = useState({
+        consecutiveErrors: 0,
+        lastErrorTime: null as Date | null,
+        avgResponseTime: 0,
+        totalRequests: 0,
+        isThrottled: false,
+    })
 
     // API Hooks
     const { data: participants = [] } = useEventParticipantsByEvent({ eventId })
@@ -322,123 +333,221 @@ export default function ImportExportPage() {
         })
     }
 
-    // Creation functions with verification
+    // Creation functions with verification - CREATE FOR ALL SELECTED SHIFTS
     const createCredentialFunction = async (name: string, color: string): Promise<{ success: boolean; id: string | null }> => {
-        return new Promise((resolve) => {
-            const normalizedName = normalizeCredentialName(name)
-            const daysWorks =
-                selectedEventDates.length > 0
-                    ? selectedEventDates.map((date) => formatEventDate(date + 'T00:00:00'))
-                    : [formatEventDate(new Date().toISOString())]
+        const normalizedName = normalizeCredentialName(name)
+        
+        if (selectedEventDates.length === 0) {
+            console.warn('⚠️ Nenhum turno selecionado para criar credencial')
+            return { success: false, id: null }
+        }
 
-            const credentialData: CreateCredentialRequest = {
-                nome: normalizedName,
-                id_events: eventId,
-                days_works: daysWorks,
-                cor: color,
+        console.log(`🎫 Criando credencial "${normalizedName}" para ${selectedEventDates.length} turnos:`, selectedEventDates)
+
+        // Create credential for EACH selected shift
+        const results: { success: boolean; id: string | null }[] = []
+        
+        for (let i = 0; i < selectedEventDates.length; i++) {
+            const shiftId = selectedEventDates[i]
+            const { dateISO, stage, period } = parseShiftId(shiftId)
+            
+            const shiftData = {
+                shiftId: shiftId,
+                workDate: dateISO,
+                workStage: stage as 'montagem' | 'evento' | 'desmontagem',
+                workPeriod: period
             }
 
-            createCredential(credentialData, {
-                onSuccess: (data) => {
-                    // Verify creation by checking if credential exists
-                    setTimeout(async () => {
-                        await refetchCredentials()
-                        const verifyCreation = findCredentialByName(normalizedName)
-                        resolve({
-                            success: !!verifyCreation,
-                            id: verifyCreation ? verifyCreation.id : data.id
-                        })
-                    }, 1000)
-                },
-                onError: (error) => {
-                    console.error(`Erro ao criar credencial ${normalizedName}:`, error)
-                    toast.error(`Erro ao criar credencial ${normalizedName}`)
-                    resolve({ success: false, id: null })
-                },
+            console.log(`📝 Criando credencial ${i + 1}/${selectedEventDates.length}:`, {
+                nome: normalizedName,
+                turno: shiftId,
+                data: dateISO,
+                estagio: stage,
+                periodo: period
             })
+
+            const credentialData: CreateCredentialRequest = {
+                nome: `${normalizedName}`,
+                id_events: eventId,
+                days_works: [shiftId], // One shift per credential
+                cor: color,
+                // ✅ Add shift-based fields for this specific shift
+                shiftId: shiftData.shiftId,
+                workDate: shiftData.workDate,
+                workStage: shiftData.workStage,
+                workPeriod: shiftData.workPeriod,
+            }
+
+            const result = await new Promise<{ success: boolean; id: string | null }>((resolve) => {
+                createCredential(credentialData, {
+                    onSuccess: async (data) => {
+                        console.log(`✅ Credencial criada para turno ${shiftId}:`, data)
+                        
+                        // Wait and verify creation
+                        setTimeout(async () => {
+                            await refetchCredentials()
+                            resolve({ success: true, id: data.id })
+                        }, 1000)
+                    },
+                    onError: (error) => {
+                        console.error(`❌ Erro ao criar credencial para turno ${shiftId}:`, error)
+                        resolve({ success: false, id: null })
+                    },
+                })
+            })
+
+            results.push(result)
+
+            // Pause between creations to avoid API overload
+            if (i < selectedEventDates.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1500))
+            }
+        }
+
+        // Return success if at least one credential was created successfully
+        const successfulCreations = results.filter(r => r.success).length
+        const allSuccessful = successfulCreations === selectedEventDates.length
+
+        console.log(`📊 Resultado criação credencial "${normalizedName}":`, {
+            total: selectedEventDates.length,
+            sucessos: successfulCreations,
+            falhas: selectedEventDates.length - successfulCreations,
+            todosSucessos: allSuccessful
         })
+
+        if (allSuccessful) {
+            toast.success(`✅ Credencial "${normalizedName}" criada para todos os ${selectedEventDates.length} turnos`)
+        } else if (successfulCreations > 0) {
+            toast.warning(`⚠️ Credencial "${normalizedName}" criada para ${successfulCreations} de ${selectedEventDates.length} turnos`)
+        } else {
+            toast.error(`❌ Falha ao criar credencial "${normalizedName}" para todos os turnos`)
+        }
+
+        return { 
+            success: successfulCreations > 0, 
+            id: results.find(r => r.success)?.id || null 
+        }
     }
 
     const createCompanyFunction = async (name: string): Promise<{ success: boolean; id: string | null }> => {
-        return new Promise((resolve) => {
-            const normalizedName = normalizeCompanyName(name)
-            // Convert selected dates to ISO format properly
-            const days = selectedEventDates.length > 0
-                ? selectedEventDates.map((date) => date) // Already in YYYY-MM-DD format
-                : [new Date().toISOString().slice(0, 10)]
+        const normalizedName = normalizeCompanyName(name)
+        
+        if (selectedEventDates.length === 0) {
+            console.warn('⚠️ Nenhum turno selecionado para criar empresa')
+            return { success: false, id: null }
+        }
 
-            console.log('🏢 Criando empresa:', { normalizedName, days, eventId })
+        console.log(`🏢 Criando empresa "${normalizedName}" para ${selectedEventDates.length} turnos:`, selectedEventDates)
+
+        // Create company for EACH selected shift
+        const results: { success: boolean; id: string | null }[] = []
+        
+        for (let i = 0; i < selectedEventDates.length; i++) {
+            const shiftId = selectedEventDates[i]
+            const { dateISO, stage, period } = parseShiftId(shiftId)
+            
+            const shiftData = {
+                shiftId: shiftId,
+                workDate: dateISO,
+                workStage: stage as 'montagem' | 'evento' | 'desmontagem',
+                workPeriod: period
+            }
+
+            console.log(`📝 Criando empresa ${i + 1}/${selectedEventDates.length}:`, {
+                nome: normalizedName,
+                turno: shiftId,
+                data: dateISO,
+                estagio: stage,
+                periodo: period
+            })
 
             const companyData: CreateEmpresaRequest = {
                 nome: normalizedName,
-                id_evento: eventId, // Sempre incluir o evento para vinculação automática
-                days: days,
+                id_evento: eventId,
+                days: [shiftId], // One shift per company
+                // ✅ Add shift-based fields for this specific shift
+                shiftId: shiftData.shiftId,
+                workDate: shiftData.workDate,
+                workStage: shiftData.workStage,
+                workPeriod: shiftData.workPeriod,
             }
 
-            createEmpresa(companyData, {
-                onSuccess: async (data) => {
-                    console.log('🏢 Empresa criada com sucesso:', data)
+            const result = await new Promise<{ success: boolean; id: string | null }>((resolve) => {
+                createEmpresa(companyData, {
+                    onSuccess: async (data) => {
+                        console.log(`✅ Empresa criada para turno ${shiftId}:`, data)
+                        
+                        // If we get creation data, consider it success
+                        if (data && data.id) {
+                            resolve({ success: true, id: data.id })
+                            
+                            // Background refresh
+                            setTimeout(async () => {
+                                try {
+                                    await refetchEmpresas()
+                                } catch (error) {
+                                    console.warn('⚠️ Erro ao atualizar cache de empresas:', error)
+                                }
+                            }, 1000)
+                            
+                            return
+                        }
 
-                    // Se recebemos dados da criação, consideramos sucesso
-                    if (data && data.id) {
-                        console.log('✅ Empresa criada e retornada:', data)
-                        resolve({ success: true, id: data.id })
-
-                        // Refresh em background para atualizar a cache
+                        // Fallback verification
                         setTimeout(async () => {
                             try {
                                 await refetchEmpresas()
-                            } catch (error) {
-                                console.warn('⚠️ Erro ao atualizar cache de empresas:', error)
-                            }
-                        }, 1000)
+                                await new Promise(r => setTimeout(r, 1500))
 
-                        return
-                    }
-
-                    // Fallback para verificação por refetch se não temos dados
-                    setTimeout(async () => {
-                        try {
-                            console.log('🔍 Verificando criação da empresa via refetch...')
-                            await refetchEmpresas()
-                            // Wait a bit more for the refetch to complete
-                            await new Promise(r => setTimeout(r, 1500))
-
-                            // Buscar por diferentes formas do nome
-                            let verifyCreation = findCompanyByName(normalizedName)
-
-                            // Se não encontrou com nome normalizado, tentar buscar com nome original
-                            if (!verifyCreation) {
-                                verifyCreation = (empresas || []).find((empresa) => {
-                                    const empresaNome = empresa.nome.toString().trim()
-                                    return empresaNome.toLowerCase() === name.toLowerCase() ||
-                                        empresaNome.toUpperCase() === normalizedName ||
-                                        empresaNome === name
+                                const verifyCreation = findCompanyByName(normalizedName)
+                                resolve({
+                                    success: !!verifyCreation,
+                                    id: verifyCreation?.id || null
                                 })
-                            }
-
-                            if (verifyCreation) {
-                                console.log('✅ Empresa verificada:', verifyCreation)
-                                resolve({ success: true, id: verifyCreation.id })
-                            } else {
-                                console.error('❌ Empresa não encontrada após criação:', { normalizedName, name, totalEmpresas: empresas?.length })
-                                // Mesmo que não encontramos, consideramos sucesso se chegou até aqui
-                                // porque o onSuccess foi chamado, indicando que o backend criou
+                            } catch (error) {
+                                console.error('❌ Erro na verificação da empresa:', error)
                                 resolve({ success: true, id: null })
                             }
-                        } catch (error) {
-                            console.error('❌ Erro na verificação da empresa:', error)
-                            // Consideramos sucesso mesmo com erro na verificação
-                            resolve({ success: true, id: null })
-                        }
-                    }, 2500)
-                },
-                onError: (error) => {
-                    console.error(`❌ Erro ao criar empresa ${normalizedName}:`, error)
-                    resolve({ success: false, id: null })
-                },
+                        }, 2500)
+                    },
+                    onError: (error) => {
+                        console.error(`❌ Erro ao criar empresa para turno ${shiftId}:`, error)
+                        resolve({ success: false, id: null })
+                    },
+                })
             })
+
+            results.push(result)
+
+            // Pause between creations to avoid API overload
+            if (i < selectedEventDates.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 2000))
+            }
+        }
+
+        // Return success if at least one company was created successfully
+        const successfulCreations = results.filter(r => r.success).length
+        const allSuccessful = successfulCreations === selectedEventDates.length
+
+        console.log(`📊 Resultado criação empresa "${normalizedName}":`, {
+            total: selectedEventDates.length,
+            sucessos: successfulCreations,
+            falhas: selectedEventDates.length - successfulCreations,
+            todosSucessos: allSuccessful
         })
+
+        if (allSuccessful) {
+            toast.success(`✅ Empresa "${normalizedName}" criada para todos os ${selectedEventDates.length} turnos`)
+        } else if (successfulCreations > 0) {
+            toast.warning(`⚠️ Empresa "${normalizedName}" criada para ${successfulCreations} de ${selectedEventDates.length} turnos`)
+        } else {
+            toast.error(`❌ Falha ao criar empresa "${normalizedName}" para todos os turnos`)
+        }
+
+        return { 
+            success: successfulCreations > 0, 
+            id: results.find(r => r.success)?.id || null 
+        }
     }
 
     // Main creation process
@@ -747,11 +856,10 @@ export default function ImportExportPage() {
                                 }
                             }
 
-                            const participantData: EventParticipantSchema = {
+                            // Store simplified participant data for validation and processing
+                            const participantData = {
                                 eventId: eventId,
                                 credentialId: credentialId,
-                                wristbandId: undefined,
-                                staffId: row.staffId || undefined,
                                 name: row.nome.toString().trim(),
                                 cpf: (() => {
                                     // Priorizar coluna CPF, depois RG
@@ -767,17 +875,10 @@ export default function ImportExportPage() {
                                 phone: row.phone?.toString().trim() || undefined,
                                 role: row.funcao.toString().trim(),
                                 company: row.empresa.toString().trim(),
-                                checkIn: row.checkIn || undefined,
-                                checkOut: row.checkOut || undefined,
-                                presenceConfirmed: row.presenceConfirmed || undefined,
-                                certificateIssued: row.certificateIssued || undefined,
+                                // Additional fields preserved for reference
+                                staffId: row.staffId || undefined,
                                 notes: row.notes?.toString().trim() || undefined,
-                                photo: row.photo || undefined,
-                                documentPhoto: row.documentPhoto || undefined,
                                 validatedBy: row.validatedBy || undefined,
-                                daysWork: selectedEventDates
-                                    ? selectedEventDates.map((date) => formatEventDate(date + 'T00:00:00'))
-                                    : undefined,
                             }
 
                             result.data.push({
@@ -829,7 +930,7 @@ export default function ImportExportPage() {
     }
 
     // Import participants with optimized batch processing
-    const importParticipants = async (participants: EventParticipantSchema[]) => {
+    const importParticipants = async (participants: CreateEventParticipantRequest[]) => {
         const { batchSize, pauseBetweenBatches, pauseBetweenItems } = batchConfig
         const totalBatches = Math.ceil(participants.length / batchSize)
         let success = 0
@@ -989,36 +1090,41 @@ export default function ImportExportPage() {
         setCurrentStep("import")
 
         try {
-            const result = await importParticipants(processedData.data.map((item) => ({
-                eventId: eventId,
-                name: normalizeStaffName(item.nome), // Normalizar nome para maiúsculas
-                cpf: item.cpf,
-                role: normalizeFunctionName(item.funcao), // Normalizar função para maiúsculas
-                company: normalizeCompanyName(item.empresa), // Normalizar empresa para maiúsculas
-                credentialId: item.credencial,
-                daysWork: selectedEventDates.map((shiftId) => {
-                    const { dateISO } = parseShiftId(shiftId);
-                    return formatEventDate(dateISO + 'T00:00:00');
-                }),
-            })))
+            // Create participant entries for each shift (new shift-based system)
+            const participantsWithShifts: CreateEventParticipantRequest[] = []
+            
+            processedData.data.forEach((item) => {
+                selectedEventDates.forEach((shiftId) => {
+                    const { dateISO, stage, period } = parseShiftId(shiftId)
+                    
+                    participantsWithShifts.push({
+                        eventId: eventId,
+                        name: normalizeStaffName(item.nome), // Normalizar nome para maiúsculas
+                        cpf: item.cpf,
+                        role: normalizeFunctionName(item.funcao), // Normalizar função para maiúsculas
+                        company: normalizeCompanyName(item.empresa), // Normalizar empresa para maiúsculas
+                        credentialId: item.credencial,
+                        // New shift-based fields
+                        shiftId: shiftId,
+                        workDate: dateISO,
+                        workStage: stage as "montagem" | "evento" | "desmontagem",
+                        workPeriod: period,
+                        validatedBy: "Sistema - Importação em Massa"
+                    })
+                })
+            })
+            
+            const result = await importParticipants(participantsWithShifts)
             setImportResult({
-                success: processedData.data.map((item) => ({
-                    eventId: eventId,
-                    name: normalizeStaffName(item.nome), // Normalizar nome para maiúsculas
-                    cpf: item.cpf,
-                    role: normalizeFunctionName(item.funcao), // Normalizar função para maiúsculas
-                    company: normalizeCompanyName(item.empresa), // Normalizar empresa para maiúsculas
-                    credentialId: item.credencial,
-                    daysWork: selectedEventDates.map((shiftId) => {
-                        const { dateISO } = parseShiftId(shiftId);
-                        return formatEventDate(dateISO + 'T00:00:00');
-                    }),
-                })),
+                success: participantsWithShifts,
                 errors: processedData.errors,
                 duplicates: processedData.duplicates,
             })
             setCurrentStep("complete")
-            toast.success(`Importação concluída! ${result.success} participantes importados com sucesso.`)
+            const totalParticipants = processedData.data.length
+            const totalShifts = selectedEventDates.length
+            const totalImported = result.success
+            toast.success(`Importação concluída! ${totalImported} registros de participantes x turnos criados (${totalParticipants} participantes em ${totalShifts} turno(s)).`)
         } catch (error) {
             toast.error("Erro durante a importação")
             console.error(error)
@@ -1086,10 +1192,18 @@ export default function ImportExportPage() {
                 CPF: p.cpf,
                 Empresa: p.company,
                 Função: p.role,
-
                 Email: p.email || "",
                 Telefone: p.phone || "",
-                Dias_Trabalho: p.daysWork?.join(", ") || "",
+                
+                // Shift-based system fields
+                Turno_ID: p.shiftId || "",
+                Data_Trabalho: p.workDate || "",
+                Estagio: p.workStage ? p.workStage.toUpperCase() : "",
+                Periodo: p.workPeriod ? (p.workPeriod === 'diurno' ? 'DIURNO' : 'NOTURNO') : "",
+                
+                // Legacy field for compatibility (using workDate if available)
+                Dias_Trabalho: p.daysWork?.join(", ") || (p.workDate ? formatEventDate(p.workDate + 'T00:00:00') : ""),
+                
                 Check_in: p.checkIn ? formatEventDate(p.checkIn) : "",
                 Horario_Check_in: p.checkIn ? new Date(p.checkIn).toLocaleTimeString('pt-BR') : "",
                 Check_out: p.checkOut ? formatEventDate(p.checkOut) : "",
@@ -1154,215 +1268,149 @@ export default function ImportExportPage() {
         XLSX.writeFile(wb, `modelo-participantes-${eventId}-${new Date().toISOString().split("T")[0]}.xlsx`)
     }
 
-    // Date functions - Agora suporta múltiplos turnos no mesmo dia
+    // Date functions - Processa diretamente dos objetos SimpleEventDay do evento
     const getEventDates = () => {
-        if (!evento) return []
-        const dateShifts: Array<{ 
-            id: string;
-            dateISO: string; 
-            stage: string; 
-            period: 'diurno' | 'noturno'; 
-            hour: number;
-            displayLabel: string;
-        }> = []
-
-        // Função helper para processar arrays de dados do evento (nova estrutura)
-        const processEventArray = (eventData: any, stageName: string) => {
-            if (!eventData) return;
-
+        if (!evento) return [];
+        
+        const shiftIds: string[] = [];
+        
+        // Processar nova estrutura SimpleEventDay diretamente
+        const processEventPhase = (phaseData: any, phaseName: 'montagem' | 'evento' | 'desmontagem') => {
+            if (!phaseData) return;
+            
+            let eventDays: any[] = [];
+            
             try {
-                let dataArray: any[] = [];
-
                 // Se for string JSON, fazer parse
-                if (typeof eventData === 'string') {
-                    dataArray = JSON.parse(eventData);
+                if (typeof phaseData === 'string') {
+                    eventDays = JSON.parse(phaseData);
                 }
-                // Se já for array, usar diretamente
-                else if (Array.isArray(eventData)) {
-                    dataArray = eventData;
+                // Se já for array, usar diretamente  
+                else if (Array.isArray(phaseData)) {
+                    eventDays = phaseData;
                 }
                 // Se não for nem string nem array, sair
                 else {
                     return;
                 }
-
-                // Processar cada item do array
-                dataArray.forEach(item => {
-                    if (item && item.date) {
-                        const dateISO = new Date(item.date).toISOString().split("T")[0];
-                        const hour = new Date(item.date).getHours();
-                        const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
-                        const formattedDate = formatEventDate(item.date);
-                        const stageUpper = stageName.toUpperCase();
-                        const periodLabel = period === 'diurno' ? 'DIURNO' : 'NOTURNO';
+                
+                // Processar cada SimpleEventDay
+                eventDays.forEach(eventDay => {
+                    if (eventDay && eventDay.date && eventDay.period) {
+                        // Usar diretamente os dados do SimpleEventDay
+                        const dateISO = eventDay.date; // já no formato YYYY-MM-DD
+                        const period = eventDay.period; // 'diurno' ou 'noturno'
                         
-                        const shift = {
-                            id: `${dateISO}-${stage}-${period}`,
-                            dateISO,
-                            stage,
-                            period,
-                            hour,
-                            displayLabel: `${formattedDate} (${stageUpper} - ${periodLabel})`
-                        };
-
-                        // Evitar duplicatas exatas
-                        const exists = dateShifts.find(s => s.id === shift.id);
-                        if (!exists) {
-                            dateShifts.push(shift);
+                        const shiftId = `${dateISO}-${phaseName}-${period}`;
+                        
+                        // Evitar duplicatas
+                        if (!shiftIds.includes(shiftId)) {
+                            shiftIds.push(shiftId);
                         }
                     }
                 });
             } catch (error) {
-                console.warn(`Erro ao processar dados do evento para stage ${stageName}:`, error);
+                console.warn(`Erro ao processar ${phaseName}:`, error);
             }
         };
-
-        // Processar nova estrutura do evento
-        processEventArray(evento.montagem, 'montagem');
-        processEventArray(evento.evento, 'evento');
-        processEventArray(evento.desmontagem, 'desmontagem');
-
-        // Fallback para estrutura antiga - criar turnos diurno E noturno para cada dia
-        if (evento.preparationStartDate && evento.preparationEndDate) {
-            const startDate = new Date(evento.preparationStartDate)
-            const endDate = new Date(evento.preparationEndDate)
-            const currentDate = new Date(startDate)
-            while (currentDate <= endDate) {
-                const dateISO = currentDate.toISOString().split("T")[0];
-                const formattedDate = formatEventDate(dateISO + 'T00:00:00');
+        
+        // Processar cada fase do evento usando a nova estrutura
+        processEventPhase(evento.montagem, 'montagem');
+        processEventPhase(evento.evento, 'evento'); 
+        processEventPhase(evento.desmontagem, 'desmontagem');
+        
+        // Fallback para estrutura legacy (apenas se não tiver a nova estrutura)
+        if (shiftIds.length === 0) {
+            console.warn('🔄 Usando fallback para estrutura legacy de eventos');
+            
+            // Legacy: setupStartDate/setupEndDate = montagem
+            if (evento.setupStartDate && evento.setupEndDate) {
+                const startDate = new Date(evento.setupStartDate);
+                const endDate = new Date(evento.setupEndDate);
+                const currentDate = new Date(startDate);
                 
-                // Criar ambos os turnos
-                const diurnoId = `${dateISO}-preparation-diurno`;
-                const noturnoId = `${dateISO}-preparation-noturno`;
-                
-                if (!dateShifts.find(s => s.id === diurnoId)) {
-                    dateShifts.push({
-                        id: diurnoId,
-                        dateISO,
-                        stage: 'preparation',
-                        period: 'diurno',
-                        hour: 8,
-                        displayLabel: `${formattedDate} (EVENTO - DIURNO)`
-                    });
+                while (currentDate <= endDate) {
+                    const dateISO = currentDate.toISOString().split("T")[0];
+                    shiftIds.push(`${dateISO}-montagem-diurno`);
+                    shiftIds.push(`${dateISO}-montagem-noturno`);
+                    currentDate.setDate(currentDate.getDate() + 1);
                 }
+            }
+            
+            // Legacy: preparationStartDate/preparationEndDate = evento
+            if (evento.preparationStartDate && evento.preparationEndDate) {
+                const startDate = new Date(evento.preparationStartDate);
+                const endDate = new Date(evento.preparationEndDate);
+                const currentDate = new Date(startDate);
                 
-                if (!dateShifts.find(s => s.id === noturnoId)) {
-                    dateShifts.push({
-                        id: noturnoId,
-                        dateISO,
-                        stage: 'preparation',
-                        period: 'noturno',
-                        hour: 20,
-                        displayLabel: `${formattedDate} (EVENTO - NOTURNO)`
-                    });
+                while (currentDate <= endDate) {
+                    const dateISO = currentDate.toISOString().split("T")[0];
+                    shiftIds.push(`${dateISO}-evento-diurno`);
+                    shiftIds.push(`${dateISO}-evento-noturno`);
+                    currentDate.setDate(currentDate.getDate() + 1);
                 }
+            }
+            
+            // Legacy: finalizationStartDate/finalizationEndDate = desmontagem
+            if (evento.finalizationStartDate && evento.finalizationEndDate) {
+                const startDate = new Date(evento.finalizationStartDate);
+                const endDate = new Date(evento.finalizationEndDate);
+                const currentDate = new Date(startDate);
                 
-                currentDate.setDate(currentDate.getDate() + 1)
+                while (currentDate <= endDate) {
+                    const dateISO = currentDate.toISOString().split("T")[0];
+                    shiftIds.push(`${dateISO}-desmontagem-diurno`);
+                    shiftIds.push(`${dateISO}-desmontagem-noturno`);
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
             }
         }
-
-        if (evento.setupStartDate && evento.setupEndDate) {
-            const startDate = new Date(evento.setupStartDate);
-            const endDate = new Date(evento.setupEndDate);
-            const currentDate = new Date(startDate);
-            while (currentDate <= endDate) {
-                const dateISO = currentDate.toISOString().split("T")[0];
-                const formattedDate = formatEventDate(dateISO + 'T00:00:00');
-                
-                const diurnoId = `${dateISO}-setup-diurno`;
-                const noturnoId = `${dateISO}-setup-noturno`;
-                
-                if (!dateShifts.find(s => s.id === diurnoId)) {
-                    dateShifts.push({
-                        id: diurnoId,
-                        dateISO,
-                        stage: 'setup',
-                        period: 'diurno',
-                        hour: 8,
-                        displayLabel: `${formattedDate} (MONTAGEM - DIURNO)`
-                    });
-                }
-                
-                if (!dateShifts.find(s => s.id === noturnoId)) {
-                    dateShifts.push({
-                        id: noturnoId,
-                        dateISO,
-                        stage: 'setup',
-                        period: 'noturno',
-                        hour: 20,
-                        displayLabel: `${formattedDate} (MONTAGEM - NOTURNO)`
-                    });
-                }
-                
-                currentDate.setDate(currentDate.getDate() + 1);
+        
+        // Ordenar cronologicamente e por hierarquia
+        shiftIds.sort((a, b) => {
+            const { dateISO: dateA, stage: stageA, period: periodA } = parseShiftId(a);
+            const { dateISO: dateB, stage: stageB, period: periodB } = parseShiftId(b);
+            
+            // Primeiro por data
+            if (dateA !== dateB) {
+                return dateA.localeCompare(dateB);
             }
-        }
-
-        if (evento.finalizationStartDate && evento.finalizationEndDate) {
-            const startDate = new Date(evento.finalizationStartDate);
-            const endDate = new Date(evento.finalizationEndDate);
-            const currentDate = new Date(startDate);
-            while (currentDate <= endDate) {
-                const dateISO = currentDate.toISOString().split("T")[0];
-                const formattedDate = formatEventDate(dateISO + 'T00:00:00');
-                
-                const diurnoId = `${dateISO}-finalization-diurno`;
-                const noturnoId = `${dateISO}-finalization-noturno`;
-                
-                if (!dateShifts.find(s => s.id === diurnoId)) {
-                    dateShifts.push({
-                        id: diurnoId,
-                        dateISO,
-                        stage: 'finalization',
-                        period: 'diurno',
-                        hour: 8,
-                        displayLabel: `${formattedDate} (DESMONTAGEM - DIURNO)`
-                    });
-                }
-                
-                if (!dateShifts.find(s => s.id === noturnoId)) {
-                    dateShifts.push({
-                        id: noturnoId,
-                        dateISO,
-                        stage: 'finalization',
-                        period: 'noturno',
-                        hour: 20,
-                        displayLabel: `${formattedDate} (DESMONTAGEM - NOTURNO)`
-                    });
-                }
-                
-                currentDate.setDate(currentDate.getDate() + 1);
+            
+            // Depois por estágio (montagem -> evento -> desmontagem)
+            const stageOrder = { 'montagem': 1, 'evento': 2, 'desmontagem': 3 };
+            const orderA = stageOrder[stageA as keyof typeof stageOrder] || 2;
+            const orderB = stageOrder[stageB as keyof typeof stageOrder] || 2;
+            if (orderA !== orderB) {
+                return orderA - orderB;
             }
-        }
-
-        // Ordenar cronologicamente e por período (diurno antes de noturno)
-        dateShifts.sort((a, b) => {
-            if (a.dateISO !== b.dateISO) {
-                return a.dateISO.localeCompare(b.dateISO);
-            }
-            if (a.stage !== b.stage) {
-                const stageOrder = { 'montagem': 1, 'evento': 2, 'desmontagem': 3 };
-                return (stageOrder[a.stage as keyof typeof stageOrder] || 2) - (stageOrder[b.stage as keyof typeof stageOrder] || 2);
-            }
-            // Diurno vem antes de noturno no mesmo dia e estágio
-            return a.period === 'diurno' ? -1 : 1;
+            
+            // Por último por período (diurno antes de noturno)
+            return periodA === 'diurno' ? -1 : 1;
         });
-
-        // Retornar apenas os IDs únicos que incluem o turno
-        return dateShifts.map(shift => shift.id);
+        
+        console.log('📅 Turnos processados:', {
+            total: shiftIds.length,
+            montagem: shiftIds.filter(id => id.includes('-montagem-')).length,
+            evento: shiftIds.filter(id => id.includes('-evento-')).length,
+            desmontagem: shiftIds.filter(id => id.includes('-desmontagem-')).length
+        });
+        
+        return shiftIds;
     }
 
     // Função para extrair informações do ID do turno
     const parseShiftId = (shiftId: string) => {
         const parts = shiftId.split('-');
         if (parts.length >= 5) {
+            // Formato: YYYY-MM-DD-stage-period
             const dateISO = `${parts[0]}-${parts[1]}-${parts[2]}`;
             const stage = parts[3];
             const period = parts[4] as 'diurno' | 'noturno';
             return { dateISO, stage, period };
         }
-        // Fallback para IDs antigos
-        return { dateISO: shiftId, stage: 'evento', period: 'diurno' as 'diurno' | 'noturno' };
+        // Fallback para IDs mal formados
+        console.warn('⚠️ ShiftId mal formatado:', shiftId);
+        return { dateISO: new Date().toISOString().split('T')[0], stage: 'evento', period: 'diurno' as 'diurno' | 'noturno' };
     };
 
     // Função para obter informações de exibição de um turno
@@ -1401,12 +1449,12 @@ export default function ImportExportPage() {
         setSelectedEventDates([])
     }
 
-    const formatDate = (dateString: string) => {
-        // Use formatEventDate for consistent timezone-safe formatting
-        const fullDate = formatEventDate(dateString + 'T00:00:00');
-
-        // Extract day number for display
-        const date = new Date(dateString + 'T12:00:00'); // Use noon to avoid timezone issues
+    // Helper function to extract date from shiftId and format it
+    const formatShiftDate = (shiftId: string) => {
+        const { dateISO } = parseShiftId(shiftId);
+        const fullDate = formatEventDate(dateISO + 'T00:00:00');
+        
+        const date = new Date(dateISO + 'T12:00:00');
         const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" });
         const day = date.getDate().toString().padStart(2, '0');
         const month = date.toLocaleDateString("pt-BR", { month: "short" });
@@ -1414,21 +1462,36 @@ export default function ImportExportPage() {
         return `${weekday}, ${day} ${month}`;
     }
 
-    const getDayNumber = (dateString: string) => {
-        // Use noon to avoid timezone issues when getting day number
-        return new Date(dateString + 'T12:00:00').getDate();
+    // Helper function to get day number from shiftId
+    const getShiftDayNumber = (shiftId: string) => {
+        const { dateISO } = parseShiftId(shiftId);
+        return new Date(dateISO + 'T12:00:00').getDate();
     }
 
-    const groupDatesByMonth = (dates: string[]) => {
+    // Group shifts by month - groups shiftIds by their month
+    const groupShiftsByMonth = (shiftIds: string[]) => {
         const groups: { [key: string]: string[] } = {}
-        dates.forEach((date) => {
-            // Use consistent date formatting for month grouping
-            const date_obj = new Date(date + 'T12:00:00'); // Use noon to avoid timezone issues
-            const monthKey = date_obj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+        shiftIds.forEach((shiftId) => {
+            const { dateISO } = parseShiftId(shiftId);
+            const date_obj = new Date(dateISO + 'T12:00:00');
+            const monthKey = date_obj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
             if (!groups[monthKey]) {
                 groups[monthKey] = []
             }
-            groups[monthKey].push(date)
+            groups[monthKey].push(shiftId)
+        })
+        return groups
+    }
+
+    // Group shifts by date to show all shifts for same date together
+    const groupShiftsByDate = (shiftIds: string[]) => {
+        const groups: { [key: string]: string[] } = {}
+        shiftIds.forEach((shiftId) => {
+            const { dateISO } = parseShiftId(shiftId);
+            if (!groups[dateISO]) {
+                groups[dateISO] = []
+            }
+            groups[dateISO].push(shiftId)
         })
         return groups
     }
@@ -1649,61 +1712,108 @@ export default function ImportExportPage() {
                                             </div>
                                         </div>
 
-                                        {/* Calendar */}
+                                        {/* Calendar - Nova interface organizada por data */}
                                         <div className="space-y-6">
-                                            {Object.entries(groupDatesByMonth(getEventDates())).map(([month, shiftIds]) => (
+                                            {Object.entries(groupShiftsByMonth(getEventDates())).map(([month, shiftIds]) => (
                                                 <div key={month} className="border border-gray-200 rounded-lg p-4">
                                                     <h3 className="text-lg font-semibold text-gray-900 mb-4">{month}</h3>
-                                                    <div className="grid grid-cols-7 gap-2">
-                                                        {/* Week header */}
-                                                        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
-                                                            <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
-                                                                {day}
-                                                            </div>
-                                                        ))}
-                                                        {/* Shift buttons - Agora suporta múltiplos turnos por dia */}
-                                                        {shiftIds.map((shiftId) => {
-                                                            const isSelected = selectedEventDates.includes(shiftId)
-                                                            const shiftInfo = getShiftDisplayInfo(shiftId)
-                                                            const { dateISO, stage, period } = parseShiftId(shiftId)
-                                                            const isToday = dateISO === new Date().toISOString().split("T")[0]
+                                                    
+                                                    {/* Agrupar turnos por data */}
+                                                    <div className="space-y-4">
+                                                        {Object.entries(groupShiftsByDate(shiftIds))
+                                                            .sort(([a], [b]) => a.localeCompare(b))
+                                                            .map(([dateISO, dateShifts]) => {
+                                                                const isToday = dateISO === new Date().toISOString().split("T")[0];
+                                                                const dateObj = new Date(dateISO + 'T12:00:00');
+                                                                const formattedDate = dateObj.toLocaleDateString("pt-BR", { 
+                                                                    weekday: "long", 
+                                                                    day: "2-digit", 
+                                                                    month: "long" 
+                                                                });
 
-                                                            return (
-                                                                <button
-                                                                    key={shiftId}
-                                                                    onClick={() => handleDateSelect(shiftId)}
-                                                                    className={`
-                                                                        relative p-2 rounded-lg text-center transition-all duration-200 min-h-[85px]
-                                                                        ${isSelected
-                                                                            ? "bg-blue-600 text-white shadow-md"
-                                                                            : "bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200"
-                                                                        }
-                                                                        ${isToday ? "ring-2 ring-blue-300" : ""}
-                                                                    `}
-                                                                    title={shiftInfo.displayLabel}
-                                                                >
-                                                                    <div className="flex flex-col items-center gap-1 h-full justify-center">
-                                                                        <div className="text-lg font-bold">{getDayNumber(shiftId)}</div>
-                                                                        <div className={`text-xs font-medium ${isSelected ? 'text-white' : getStageColor(stage.toUpperCase())}`}>
-                                                                            {stage.toUpperCase()}
+                                                                return (
+                                                                    <div key={dateISO} className={`border rounded-lg p-4 ${
+                                                                        isToday ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'
+                                                                    }`}>
+                                                                        {/* Cabeçalho da data */}
+                                                                        <div className="flex items-center justify-between mb-3">
+                                                                            <h4 className={`text-base font-semibold ${
+                                                                                isToday ? 'text-blue-800' : 'text-gray-800'
+                                                                            }`}>
+                                                                                {formattedDate}
+                                                                                {isToday && <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">HOJE</span>}
+                                                                            </h4>
+                                                                            <div className="text-sm text-gray-500">
+                                                                                {dateShifts.filter(shiftId => selectedEventDates.includes(shiftId)).length} de {dateShifts.length} turnos selecionados
+                                                                            </div>
                                                                         </div>
-                                                                        <div className="flex items-center justify-center">
-                                                                            {isSelected ? (
-                                                                                period === 'diurno' ?
-                                                                                    <Sun className="h-3 w-3 text-yellow-200" /> :
-                                                                                    <Moon className="h-3 w-3 text-blue-200" />
-                                                                            ) : (
-                                                                                getPeriodIcon(period)
-                                                                            )}
-                                                                        </div>
-                                                                        <div className={`text-xs ${isSelected ? 'text-white' : 'text-gray-500'}`}>
-                                                                            {period === 'diurno' ? 'D' : 'N'}
+
+                                                                        {/* Turnos do dia organizados por estágio */}
+                                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                                            {['montagem', 'evento', 'desmontagem'].map(stage => {
+                                                                                const stageShifts = dateShifts.filter(shiftId => {
+                                                                                    const { stage: shiftStage } = parseShiftId(shiftId);
+                                                                                    return shiftStage === stage;
+                                                                                });
+                                                                                
+                                                                                if (stageShifts.length === 0) return null;
+
+                                                                                return (
+                                                                                    <div key={stage} className="space-y-2">
+                                                                                        <div className={`text-xs font-semibold uppercase ${getStageColor(stage.toUpperCase())}`}>
+                                                                                            {stage}
+                                                                                        </div>
+                                                                                        <div className="flex gap-2">
+                                                                                            {stageShifts.sort((a, b) => {
+                                                                                                const { period: periodA } = parseShiftId(a);
+                                                                                                const { period: periodB } = parseShiftId(b);
+                                                                                                return periodA === 'diurno' ? -1 : 1;
+                                                                                            }).map((shiftId) => {
+                                                                                                const isSelected = selectedEventDates.includes(shiftId);
+                                                                                                const { period } = parseShiftId(shiftId);
+                                                                                                const shiftInfo = getShiftDisplayInfo(shiftId);
+
+                                                                                                return (
+                                                                                                    <button
+                                                                                                        key={shiftId}
+                                                                                                        onClick={() => handleDateSelect(shiftId)}
+                                                                                                        className={`
+                                                                                                            relative flex-1 p-3 rounded-lg text-center transition-all duration-200
+                                                                                                            ${isSelected
+                                                                                                                ? "bg-blue-600 text-white shadow-md"
+                                                                                                                : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200"
+                                                                                                            }
+                                                                                                        `}
+                                                                                                        title={shiftInfo.displayLabel}
+                                                                                                    >
+                                                                                                        <div className="flex flex-col items-center gap-1">
+                                                                                                            <div className="flex items-center gap-1">
+                                                                                                                {isSelected ? (
+                                                                                                                    period === 'diurno' ?
+                                                                                                                        <Sun className="h-4 w-4 text-yellow-200" /> :
+                                                                                                                        <Moon className="h-4 w-4 text-blue-200" />
+                                                                                                                ) : (
+                                                                                                                    getPeriodIcon(period)
+                                                                                                                )}
+                                                                                                                <span className={`text-sm font-medium ${
+                                                                                                                    isSelected ? 'text-white' : 'text-gray-700'
+                                                                                                                }`}>
+                                                                                                                    {period === 'diurno' ? 'DIURNO' : 'NOTURNO'}
+                                                                                                                </span>
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                        {isSelected && <Check className="w-3 h-3 absolute top-1 right-1" />}
+                                                                                                    </button>
+                                                                                                );
+                                                                                            })}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                     </div>
-                                                                    {isSelected && <Check className="w-3 h-3 absolute top-1 right-1" />}
-                                                                </button>
-                                                            )
-                                                        })}
+                                                                );
+                                                            })}
                                                     </div>
                                                 </div>
                                             ))}
@@ -1719,7 +1829,7 @@ export default function ImportExportPage() {
                                                         const { stage, period } = parseShiftId(shiftId);
                                                         return (
                                                             <Badge key={shiftId} variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 flex items-center gap-1">
-                                                                <span>{formatDate(shiftId)}</span>
+                                                                <span>{formatShiftDate(shiftId)}</span>
                                                                 <span className="text-xs">({stage.toUpperCase()} - {period.toUpperCase()})</span>
                                                                 {getPeriodIcon(period)}
                                                                 <button onClick={() => handleDateSelect(shiftId)} className="ml-1 hover:text-blue-600">
@@ -1926,74 +2036,143 @@ export default function ImportExportPage() {
                                         <CardTitle>Configurações de Importação</CardTitle>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">Tamanho do Lote</label>
-                                                <select
-                                                    value={batchConfig.batchSize}
-                                                    onChange={(e) =>
-                                                        setBatchConfig((prev) => ({
-                                                            ...prev,
-                                                            batchSize: Number(e.target.value),
-                                                        }))
-                                                    }
-                                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                                >
-                                                    <option value={10}>10 participantes</option>
-                                                    <option value={25}>25 participantes</option>
-                                                    <option value={50}>50 participantes</option>
-                                                    <option value={100}>100 participantes</option>
-                                                </select>
+                                        <div className="space-y-4">
+                                            {/* Performance Status */}
+                                            <div className="p-3 bg-gray-50 rounded-lg">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-sm font-medium text-gray-700">Status da API</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-2 h-2 rounded-full ${
+                                                            apiMetrics.consecutiveErrors === 0 ? 'bg-green-500' :
+                                                            apiMetrics.consecutiveErrors < 2 ? 'bg-yellow-500' : 'bg-red-500'
+                                                        }`} />
+                                                        <span className="text-xs text-gray-600">
+                                                            {apiMetrics.consecutiveErrors === 0 ? 'Saudável' :
+                                                             apiMetrics.consecutiveErrors < 2 ? 'Instável' : 'Sobrecarregada'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                {apiMetrics.totalRequests > 0 && (
+                                                    <div className="text-xs text-gray-600">
+                                                        Requests: {apiMetrics.totalRequests} | 
+                                                        Avg: {Math.round(apiMetrics.avgResponseTime)}ms |
+                                                        Erros: {apiMetrics.consecutiveErrors}
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Pausa entre Lotes (segundos)
-                                                </label>
-                                                <select
-                                                    value={batchConfig.pauseBetweenBatches / 1000}
-                                                    onChange={(e) =>
-                                                        setBatchConfig((prev) => ({
-                                                            ...prev,
-                                                            pauseBetweenBatches: Number(e.target.value) * 1000,
-                                                        }))
-                                                    }
-                                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                                >
-                                                    <option value={1}>1 segundo</option>
-                                                    <option value={2}>2 segundos</option>
-                                                    <option value={3}>3 segundos</option>
-                                                    <option value={5}>5 segundos</option>
-                                                    <option value={10}>10 segundos</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">Pausa entre Itens (ms)</label>
-                                                <select
-                                                    value={batchConfig.pauseBetweenItems}
-                                                    onChange={(e) =>
-                                                        setBatchConfig((prev) => ({
-                                                            ...prev,
-                                                            pauseBetweenItems: Number(e.target.value),
-                                                        }))
-                                                    }
-                                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                                >
-                                                    <option value={50}>50ms</option>
-                                                    <option value={100}>100ms</option>
-                                                    <option value={200}>200ms</option>
-                                                    <option value={500}>500ms</option>
-                                                </select>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Tamanho do Lote
+                                                        <span className="text-xs text-gray-500 ml-1">(Supabase otimizado)</span>
+                                                    </label>
+                                                    <select
+                                                        value={batchConfig.batchSize}
+                                                        onChange={(e) =>
+                                                            setBatchConfig((prev) => ({
+                                                                ...prev,
+                                                                batchSize: Number(e.target.value),
+                                                            }))
+                                                        }
+                                                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                                    >
+                                                        <option value={5}>5 participantes (Mais seguro)</option>
+                                                        <option value={10}>10 participantes (Recomendado)</option>
+                                                        <option value={15}>15 participantes</option>
+                                                        <option value={20}>20 participantes (Arriscado)</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Pausa entre Lotes
+                                                        <span className="text-xs text-gray-500 ml-1">(Rate limiting)</span>
+                                                    </label>
+                                                    <select
+                                                        value={batchConfig.pauseBetweenBatches / 1000}
+                                                        onChange={(e) =>
+                                                            setBatchConfig((prev) => ({
+                                                                ...prev,
+                                                                pauseBetweenBatches: Number(e.target.value) * 1000,
+                                                            }))
+                                                        }
+                                                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                                    >
+                                                        <option value={10}>10 segundos (Rápido)</option>
+                                                        <option value={15}>15 segundos (Recomendado)</option>
+                                                        <option value={20}>20 segundos (Conservador)</option>
+                                                        <option value={30}>30 segundos (Muito seguro)</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Pausa entre Itens
+                                                        <span className="text-xs text-gray-500 ml-1">(ms)</span>
+                                                    </label>
+                                                    <select
+                                                        value={batchConfig.pauseBetweenItems}
+                                                        onChange={(e) =>
+                                                            setBatchConfig((prev) => ({
+                                                                ...prev,
+                                                                pauseBetweenItems: Number(e.target.value),
+                                                            }))
+                                                        }
+                                                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                                    >
+                                                        <option value={500}>500ms (Rápido)</option>
+                                                        <option value={1000}>1000ms (Recomendado)</option>
+                                                        <option value={1500}>1500ms (Conservador)</option>
+                                                        <option value={2000}>2000ms (Muito seguro)</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Tentativas de Retry
+                                                        <span className="text-xs text-gray-500 ml-1">(Recuperação)</span>
+                                                    </label>
+                                                    <select
+                                                        value={batchConfig.maxRetries}
+                                                        onChange={(e) =>
+                                                            setBatchConfig((prev) => ({
+                                                                ...prev,
+                                                                maxRetries: Number(e.target.value),
+                                                            }))
+                                                        }
+                                                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                                    >
+                                                        <option value={1}>1 tentativa (Sem retry)</option>
+                                                        <option value={2}>2 tentativas</option>
+                                                        <option value={3}>3 tentativas (Recomendado)</option>
+                                                        <option value={5}>5 tentativas (Máximo)</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                                            <p className="text-sm text-blue-800">
-                                                <strong>Tempo estimado:</strong>{" "}
-                                                {Math.ceil(
-                                                    (processedData.validRows / batchConfig.batchSize) * (batchConfig.pauseBetweenBatches / 1000) +
-                                                    (processedData.validRows * batchConfig.pauseBetweenItems) / 1000,
-                                                )}{" "}
-                                                segundos para {processedData.validRows} participantes
-                                            </p>
+                                        <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-blue-800 font-medium">Tempo estimado:</span>
+                                                    <span className="text-blue-700 font-bold">
+                                                        {Math.ceil(
+                                                            (processedData.validRows / batchConfig.batchSize) * (batchConfig.pauseBetweenBatches / 1000) +
+                                                            (processedData.validRows * batchConfig.pauseBetweenItems) / 1000,
+                                                        )} segundos
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-blue-700">Participantes:</span>
+                                                    <span className="text-blue-600">{processedData.validRows}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-blue-700">Lotes:</span>
+                                                    <span className="text-blue-600">{Math.ceil(processedData.validRows / batchConfig.batchSize)}</span>
+                                                </div>
+                                                <div className="pt-2 border-t border-blue-200">
+                                                    <div className="text-xs text-blue-600">
+                                                        ✅ Rate limiting ativo | 🔄 Retry automático | 📊 Monitoramento de performance
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -2121,7 +2300,10 @@ export default function ImportExportPage() {
                                                     <p>• Evento: {evento?.name}</p>
                                                     <p>
                                                         • Dias de trabalho:{" "}
-                                                        {selectedEventDates.map((date) => formatEventDate(date + 'T00:00:00')).join(", ")}
+                                                        {selectedEventDates.map((shiftId) => {
+                                                            const { dateISO } = parseShiftId(shiftId);
+                                                            return formatEventDate(dateISO + 'T00:00:00');
+                                                        }).join(", ")}
                                                     </p>
                                                     <p>• Atribuição automática baseada na função do participante</p>
                                                 </div>
@@ -2165,7 +2347,10 @@ export default function ImportExportPage() {
                                                     <p>• Evento: {evento?.name}</p>
                                                     <p>
                                                         • Dias:{" "}
-                                                        {selectedEventDates.map((date) => new Date(date).toISOString().slice(0, 10)).join(", ")}
+                                                        {selectedEventDates.map((shiftId) => {
+                                                            const { dateISO } = parseShiftId(shiftId);
+                                                            return dateISO;
+                                                        }).join(", ")}
                                                     </p>
                                                     <p>• Atribuição automática dos participantes</p>
                                                 </div>
@@ -2451,11 +2636,37 @@ export default function ImportExportPage() {
                                                     <div className="text-gray-500">Processados</div>
                                                 </div>
                                             </div>
-                                            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                                                <div className="text-sm text-blue-800">
-                                                    <strong>Configurações:</strong> {batchConfig.batchSize} por lote,{" "}
-                                                    {batchConfig.pauseBetweenBatches / 1000}s entre lotes, {batchConfig.pauseBetweenItems}ms entre
-                                                    itens
+                                            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                <div className="text-sm space-y-1">
+                                                    <div className="text-blue-800 font-medium mb-2">Configurações Otimizadas para Supabase:</div>
+                                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-blue-700">Lote:</span>
+                                                            <span className="text-blue-600 font-medium">{batchConfig.batchSize} participantes</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-blue-700">Pausa lotes:</span>
+                                                            <span className="text-blue-600 font-medium">{batchConfig.pauseBetweenBatches / 1000}s</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-blue-700">Pausa itens:</span>
+                                                            <span className="text-blue-600 font-medium">{batchConfig.pauseBetweenItems}ms</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-blue-700">Max retry:</span>
+                                                            <span className="text-blue-600 font-medium">{batchConfig.maxRetries}x</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="pt-2 border-t border-blue-200">
+                                                        <div className="flex items-center gap-1 text-xs text-blue-600">
+                                                            <span className={`w-2 h-2 rounded-full ${
+                                                                apiMetrics.consecutiveErrors === 0 ? 'bg-green-500' :
+                                                                apiMetrics.consecutiveErrors < 2 ? 'bg-yellow-500' : 'bg-red-500'
+                                                            }`} />
+                                                            Status API: {apiMetrics.consecutiveErrors === 0 ? 'Saudável' : 
+                                                                        apiMetrics.consecutiveErrors < 2 ? 'Instável' : 'Sobrecarregada'}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

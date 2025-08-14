@@ -8,7 +8,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import EventParticipantEditDialog from '@/features/eventos/components/event-participant-edit-dialog'
 import { EventParticipant } from '@/features/eventos/types'
 import { Check, Clock, MoreVertical, RotateCcw, User } from 'lucide-react'
 import React, { useMemo } from 'react'
@@ -26,6 +25,7 @@ interface VirtualizedParticipantsTableProps {
   onCheckOut: (participant: EventParticipant) => void
   onReset: (participant: EventParticipant) => void
   onDelete: (participant: EventParticipant) => void
+  onEdit: (participant: EventParticipant) => void
   isLoading?: boolean
   loading?: boolean
 }
@@ -64,22 +64,41 @@ const getBotaoAcao = (
   hasCheckIn: (participantId: string, date: string) => boolean,
   hasCheckOut: (participantId: string, date: string) => boolean,
 ): string | null => {
-  // Verificar se o participante trabalha no dia selecionado usando normalização
-  if (!participant.daysWork || participant.daysWork.length === 0) {
-    return null // Não trabalha nesta data
+  // Verificar se o participante trabalha no dia selecionado
+  // Primeiro, tentar usar nova estrutura (shiftId)
+  if (participant.shiftId) {
+    // currentSelectedDay pode ser um shiftId (formato: "2025-08-09-evento-diurno") 
+    // ou uma data (formato: "2025-08-09" ou "09/08/2025")
+    if (participant.shiftId === currentSelectedDay) {
+      // Correspondência exata do shiftId
+    } else if (participant.workDate) {
+      // Verificar se a data corresponde
+      const participantWorkDate = new Date(participant.workDate).toISOString().split('T')[0]
+      const normalizedSelectedDay = normalizeDate(currentSelectedDay)
+      const selectedDateOnly = normalizedSelectedDay.includes('/')
+        ? normalizedSelectedDay.split('/').reverse().join('-')
+        : currentSelectedDay.split('-').slice(0, 3).join('-')
+
+      if (participantWorkDate !== selectedDateOnly) {
+        return null // Não trabalha nesta data
+      }
+    } else {
+      return null
+    }
   }
+  // Fallback para estrutura legada (daysWork)
+  else if (participant.daysWork && participant.daysWork.length > 0) {
+    const normalizedSelectedDay = normalizeDate(currentSelectedDay)
+    const hasDay = participant.daysWork.some(workDay => {
+      const normalizedWorkDay = normalizeDate(workDay)
+      return normalizedWorkDay === normalizedSelectedDay
+    })
 
-  // Normalizar o dia selecionado
-  const normalizedSelectedDay = normalizeDate(currentSelectedDay)
-
-  // Verificar se algum dos dias de trabalho do participante corresponde ao dia selecionado
-  const hasDay = participant.daysWork.some(workDay => {
-    const normalizedWorkDay = normalizeDate(workDay)
-    return normalizedWorkDay === normalizedSelectedDay
-  })
-
-  if (!hasDay) {
-    return null // Não trabalha nesta data
+    if (!hasDay) {
+      return null // Não trabalha nesta data
+    }
+  } else {
+    return null // Sem informação de dias de trabalho
   }
 
   // Verificar status de presença baseado nos dados reais de attendance
@@ -111,6 +130,7 @@ const ParticipantRow = React.memo<{
     onCheckOut: (participant: EventParticipant) => void
     onReset: (participant: EventParticipant) => void
     onDelete: (participant: EventParticipant) => void
+    onEdit: (participant: EventParticipant) => void
     loading: boolean
   }
 }>(({ index, style, data }) => {
@@ -262,21 +282,36 @@ const ParticipantRow = React.memo<{
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 bg-white">
-                {botaoTipo === 'checkout' && (
-                  <DropdownMenuItem
-                    onClick={() => data.onReset(participant)}
-                    className="text-yellow-600 focus:text-yellow-700"
-                  >
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Resetar Check-in
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem
+                  onClick={() => data.onCheckIn(participant)}
+                  className="text-green-600 focus:text-green-700 focus:bg-green-50"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Check-in
+                </DropdownMenuItem>
 
-                <DropdownMenuItem asChild>
-                  <EventParticipantEditDialog 
-                    participant={participant}
-                    currentShiftId={data.currentSelectedDay}
-                  />
+                <DropdownMenuItem
+                  onClick={() => data.onCheckOut(participant)}
+                  className="text-red-600 focus:text-red-700 focus:bg-red-50"
+                >
+                  <Clock className="w-4 h-4 mr-2" />
+                  Check-out
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={() => data.onReset(participant)}
+                  className="text-yellow-600 focus:text-yellow-700 focus:bg-yellow-50"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Resetar
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={() => data.onEdit(participant)}
+                  className="text-blue-600 focus:text-blue-700 focus:bg-blue-50"
+                >
+                  <User className="w-4 h-4 mr-2" />
+                  Editar Staff
                 </DropdownMenuItem>
 
                 <DropdownMenuItem
@@ -311,148 +346,151 @@ const VirtualizedParticipantsTable: React.FC<
   onCheckOut,
   onReset,
   onDelete,
+  onEdit,
   isLoading = false,
   loading = false,
 }) => {
-  // Dados otimizados para o componente virtualizado
-  const itemData = useMemo(
-    () => ({
-      participants,
-      selectedParticipants,
-      currentSelectedDay,
-      hasCheckIn,
-      hasCheckOut,
-      onToggleParticipant,
-      onCheckIn,
-      onCheckOut,
-      onReset,
-      onDelete,
-      loading,
-    }),
-    [
-      participants,
-      selectedParticipants,
-      currentSelectedDay,
-      hasCheckIn,
-      hasCheckOut,
-      onToggleParticipant,
-      onCheckIn,
-      onCheckOut,
-      onReset,
-      onDelete,
-      loading,
-    ],
-  )
+    // Dados otimizados para o componente virtualizado
+    const itemData = useMemo(
+      () => ({
+        participants,
+        selectedParticipants,
+        currentSelectedDay,
+        hasCheckIn,
+        hasCheckOut,
+        onToggleParticipant,
+        onCheckIn,
+        onCheckOut,
+        onReset,
+        onDelete,
+        onEdit,
+        loading,
+      }),
+      [
+        participants,
+        selectedParticipants,
+        currentSelectedDay,
+        hasCheckIn,
+        hasCheckOut,
+        onToggleParticipant,
+        onCheckIn,
+        onCheckOut,
+        onReset,
+        onDelete,
+        onEdit,
+        loading,
+      ],
+    )
 
-  if (isLoading) {
+    if (isLoading) {
+      return (
+        <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+          <div className="px-6 py-16 text-center text-gray-500">
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <User className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-lg font-semibold text-gray-700 mb-2">
+                Carregando...
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    if (participants.length === 0) {
+      return (
+        <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+          <div className="px-6 py-16 text-center text-gray-500">
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <User className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-lg font-semibold text-gray-700 mb-2">
+                Nenhum participante encontrado para {(() => {
+                  // Função para extrair informações do shift ID para display mais amigável
+                  const parseShiftForDisplay = (shiftId: string) => {
+                    const parts = shiftId.split('-');
+                    if (parts.length >= 5) {
+                      const year = parts[0];
+                      const month = parts[1];
+                      const day = parts[2];
+                      const stage = parts[3];
+                      const period = parts[4] as 'diurno' | 'noturno';
+
+                      const date = new Date(`${year}-${month}-${day}`);
+                      const dateFormatted = date.toLocaleDateString('pt-BR');
+                      const stageLabel = stage === 'montagem' ? 'Montagem' :
+                        stage === 'evento' ? 'Evento' :
+                          stage === 'desmontagem' ? 'Desmontagem' : stage;
+                      const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+
+                      return `${dateFormatted} (${stageLabel} - ${periodLabel})`;
+                    }
+                    return shiftId;
+                  };
+
+                  return parseShiftForDisplay(currentSelectedDay);
+                })()}
+              </p>
+              <p className="text-sm text-gray-500">
+                Adicione participantes com dias de trabalho definidos ou ajuste os
+                filtros
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-16 text-center text-gray-500">
-          <div className="flex flex-col items-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <User className="w-8 h-8 text-gray-400" />
+        {/* Header */}
+        <div className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 border-b border-gray-200">
+          <div className="grid grid-cols-6 gap-4 px-6 py-4 items-center">
+            <div className="flex items-center justify-center">
+              <Checkbox
+                checked={
+                  selectedParticipants.size === participants.length &&
+                  participants.length > 0
+                }
+                onCheckedChange={onSelectAll}
+              />
             </div>
-            <p className="text-lg font-semibold text-gray-700 mb-2">
-              Carregando...
-            </p>
+            <div className="text-xs font-semibold uppercase tracking-wider">
+              Participante
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-wider hidden md:block">
+              Empresa
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-wider hidden md:block">
+              Validado Por
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-wider">
+              CPF
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-wider">
+              Ações
+            </div>
           </div>
+        </div>
+
+        {/* Virtualized Rows */}
+        <div className="overflow-hidden">
+          <List
+            height={Math.min(participants.length * 80, 600)} // Máximo 600px de altura
+            itemCount={participants.length}
+            itemSize={80} // Altura de cada linha
+            itemData={itemData}
+            width="100%"
+            className="scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+          >
+            {ParticipantRow}
+          </List>
         </div>
       </div>
     )
   }
-
-  if (participants.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-16 text-center text-gray-500">
-          <div className="flex flex-col items-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <User className="w-8 h-8 text-gray-400" />
-            </div>
-            <p className="text-lg font-semibold text-gray-700 mb-2">
-              Nenhum participante encontrado para {(() => {
-                // Função para extrair informações do shift ID para display mais amigável
-                const parseShiftForDisplay = (shiftId: string) => {
-                  const parts = shiftId.split('-');
-                  if (parts.length >= 5) {
-                    const year = parts[0];
-                    const month = parts[1];
-                    const day = parts[2];
-                    const stage = parts[3];
-                    const period = parts[4] as 'diurno' | 'noturno';
-                    
-                    const date = new Date(`${year}-${month}-${day}`);
-                    const dateFormatted = date.toLocaleDateString('pt-BR');
-                    const stageLabel = stage === 'montagem' ? 'Montagem' :
-                                     stage === 'evento' ? 'Evento' :
-                                     stage === 'desmontagem' ? 'Desmontagem' : stage;
-                    const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
-                    
-                    return `${dateFormatted} (${stageLabel} - ${periodLabel})`;
-                  }
-                  return shiftId;
-                };
-                
-                return parseShiftForDisplay(currentSelectedDay);
-              })()}
-            </p>
-            <p className="text-sm text-gray-500">
-              Adicione participantes com dias de trabalho definidos ou ajuste os
-              filtros
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 border-b border-gray-200">
-        <div className="grid grid-cols-6 gap-4 px-6 py-4 items-center">
-          <div className="flex items-center justify-center">
-            <Checkbox
-              checked={
-                selectedParticipants.size === participants.length &&
-                participants.length > 0
-              }
-              onCheckedChange={onSelectAll}
-            />
-          </div>
-          <div className="text-xs font-semibold uppercase tracking-wider">
-            Participante
-          </div>
-          <div className="text-xs font-semibold uppercase tracking-wider hidden md:block">
-            Empresa
-          </div>
-          <div className="text-xs font-semibold uppercase tracking-wider hidden md:block">
-            Validado Por
-          </div>
-          <div className="text-xs font-semibold uppercase tracking-wider">
-            CPF
-          </div>
-          <div className="text-xs font-semibold uppercase tracking-wider">
-            Ações
-          </div>
-        </div>
-      </div>
-
-      {/* Virtualized Rows */}
-      <div className="overflow-hidden">
-        <List
-          height={Math.min(participants.length * 80, 600)} // Máximo 600px de altura
-          itemCount={participants.length}
-          itemSize={80} // Altura de cada linha
-          itemData={itemData}
-          width="100%"
-          className="scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-        >
-          {ParticipantRow}
-        </List>
-      </div>
-    </div>
-  )
-}
 
 export default VirtualizedParticipantsTable

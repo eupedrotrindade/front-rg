@@ -143,13 +143,18 @@ export type EventWristband = {
   isDistributed?: boolean;
 };
 
-// Novo tipo para credenciais independentes por dia
+// Novo tipo para credenciais baseadas em shift
 export type Credential = {
   id: string;
   nome: string;
   cor: string;
   id_events: string;
-  days_works: string[];
+  days_works: string[]; // Array de shift IDs (formato: YYYY-MM-DD-stage-period)
+  // Propriedades de shift expandidas diretamente no tipo
+  shiftId: string;
+  workDate: string; // YYYY-MM-DD
+  workStage: 'montagem' | 'evento' | 'desmontagem';
+  workPeriod: 'diurno' | 'noturno';
   isActive?: boolean;
   isDistributed?: boolean;
   createdAt?: string;
@@ -160,7 +165,12 @@ export type CreateCredentialRequest = {
   nome: string;
   cor: string;
   id_events: string;
-  days_works: string[];
+  days_works: string[]; // Array de shift IDs
+  // Propriedades de shift expandidas
+  shiftId: string;
+  workDate: string; // YYYY-MM-DD
+  workStage: 'montagem' | 'evento' | 'desmontagem';
+  workPeriod: 'diurno' | 'noturno';
   isActive?: boolean;
   isDistributed?: boolean;
 };

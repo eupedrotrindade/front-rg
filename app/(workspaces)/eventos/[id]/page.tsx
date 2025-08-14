@@ -68,6 +68,7 @@ import { toast } from 'sonner'
 
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import ModalAdicionarStaff from '@/components/operador/modalAdicionarStaff'
+import ModalEditarStaff from '@/components/operador/modalEditarStaff'
 import OptimizedFilters from '@/components/optimized-filters/OptimizedFilters'
 import VirtualizedParticipantsTable from '@/components/virtualized-table/VirtualizedParticipantsTable'
 import { useCredentials } from '@/features/eventos/api/query'
@@ -147,6 +148,10 @@ export default function EventoDetalhesPage() {
 
     // Estado para modal de adicionar staff
     const [showAdicionarStaffModal, setShowAdicionarStaffModal] = useState(false)
+
+    // Estado para modal de editar staff
+    const [showEditarStaffModal, setShowEditarStaffModal] = useState(false)
+    const [participantToEdit, setParticipantToEdit] = useState<EventParticipant | null>(null)
 
     // Estados para check-in/check-out
     const [participantAction, setParticipantAction] =
@@ -1005,6 +1010,22 @@ export default function EventoDetalhesPage() {
             );
         }
     }
+
+    // Handlers para editar staff
+    const handleEditParticipant = useCallback(
+        (participant: EventParticipant) => {
+            setParticipantToEdit(participant)
+            setShowEditarStaffModal(true)
+        },
+        []
+    )
+
+    const handleEditSuccess = useCallback(() => {
+        console.log('Staff editado com sucesso!')
+        setShowEditarStaffModal(false)
+        setParticipantToEdit(null)
+        // Refazer query para atualizar dados
+    }, [])
 
     // ========== HANDLERS E FUNÇÕES ==========
 
@@ -1954,6 +1975,7 @@ export default function EventoDetalhesPage() {
                         onCheckOut={abrirCheckout}
                         onReset={abrirResetCheckin}
                         onDelete={handleDeleteParticipant}
+                        onEdit={handleEditParticipant}
                         isLoading={isLoading}
                         loading={loading}
                     />
@@ -2007,8 +2029,8 @@ export default function EventoDetalhesPage() {
                                                 <label className="flex items-center gap-2 cursor-pointer">
                                                     <input
                                                         type="checkbox"
-                                                        checked={deleteMode === 'all'}
-                                                        onChange={(e) => setDeleteMode(e.target.checked ? 'all' : 'shift')}
+                                                        checked={(deleteMode as 'shift' | 'all') === 'all'}
+                                                        onChange={(e) => setDeleteMode(e.target.checked ? 'all' as 'all' : 'shift' as 'shift')}
                                                         className="rounded border-gray-300"
                                                     />
                                                     <span className="text-sm text-yellow-800">
@@ -2368,6 +2390,17 @@ export default function EventoDetalhesPage() {
                     // Recarregar dados se necessário
                     console.log('Staff adicionado com sucesso!')
                 }}
+            />
+
+            {/* Modal de Editar Staff */}
+            <ModalEditarStaff
+                isOpen={showEditarStaffModal}
+                onClose={() => setShowEditarStaffModal(false)}
+                eventId={String(params.id)}
+                participant={participantToEdit}
+                selectedDay={selectedDay}
+                evento={evento}
+                onSuccess={handleEditSuccess}
             />
 
             {/* Modal de Edição em Massa */}

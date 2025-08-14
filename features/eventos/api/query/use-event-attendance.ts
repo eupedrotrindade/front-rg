@@ -4,6 +4,7 @@ import {
   getEventAttendanceById,
   getEventAttendanceStats,
   getEventAttendanceByEventAndDate,
+  getEventAttendanceByShift,
   getEventAttendanceByParticipant,
   getEventAttendanceByEvent,
 } from "../../actions/event-attendance";
@@ -55,6 +56,20 @@ export const useEventAttendanceByEventAndDate = (
     queryKey: ["event-attendance-by-event-date", eventId, date],
     queryFn: () => getEventAttendanceByEventAndDate(eventId, date),
     enabled: !!eventId && !!date,
+  });
+};
+
+// Hook para buscar checks por turno específico (evento, data, stage e período)
+export const useEventAttendanceByShift = (
+  eventId: string,
+  date: string,
+  workStage: string,
+  workPeriod: string
+) => {
+  return useQuery({
+    queryKey: ["event-attendance-by-shift", eventId, date, workStage, workPeriod],
+    queryFn: () => getEventAttendanceByShift(eventId, date, workStage, workPeriod),
+    enabled: !!eventId && !!date && !!workStage && !!workPeriod,
   });
 };
 

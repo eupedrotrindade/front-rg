@@ -3,40 +3,50 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Calendar, Plus, Loader2, Search, X, Sun, Moon } from 'lucide-react';
+import { Calendar, Edit, Loader2, Search, X, Sun, Moon } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
-import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
+import { useUpdateEventParticipant } from "@/features/eventos/api/mutation/use-update-event-participant";
 import { useCredentials } from "@/features/eventos/api/query";
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas";
-import { Credential } from "@/features/eventos/types";
+import { Credential, EventParticipant } from "@/features/eventos/types";
 
-interface ModalAdicionarStaffProps {
+interface ModalEditarStaffProps {
   isOpen: boolean;
   onClose: () => void;
   eventId: string;
+  participant: EventParticipant | null;
   selectedDay?: string;
   onSuccess?: () => void;
   evento?: any;
 }
 
-const initialStaff = {
-  name: "",
-  cpf: "",
-  funcao: "",
-  empresa: "",
-  tipo_credencial: "",
-  daysWork: [] as string[]
-};
-
-export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selectedDay, onSuccess, evento }: ModalAdicionarStaffProps) {
+export default function ModalEditarStaff({ 
+  isOpen, 
+  onClose, 
+  eventId, 
+  participant, 
+  selectedDay, 
+  onSuccess, 
+  evento 
+}: ModalEditarStaffProps) {
   const [loading, setLoading] = useState(false);
-  const [novoStaff, setNovoStaff] = useState(initialStaff);
   const [empresaSearch, setEmpresaSearch] = useState("");
   const [isEmpresaSelectOpen, setIsEmpresaSelectOpen] = useState(false);
+  
+  // Estado do formulário baseado no participante
+  const [staffData, setStaffData] = useState({
+    name: "",
+    cpf: "",
+    funcao: "",
+    empresa: "",
+    tipo_credencial: "",
+    daysWork: [] as string[]
+  });
 
   const { data: credentials = [] } = useCredentials({ eventId });
   const { data: empresas = [] } = useEmpresasByEvent(eventId);
+  const updateParticipant = useUpdateEventParticipant();
 
   const formatCPF = (cpf: string): string => {
     const digits = cpf.replace(/\D/g, "");
@@ -111,21 +121,6 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
     );
   }, [empresasArray, empresaSearch]);
 
-  const getDateRange = useCallback((startDate?: string, endDate?: string): string[] => {
-    if (!startDate || !endDate) return [];
-
-    const dates: string[] = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    const current = new Date(start);
-    while (current <= end) {
-      dates.push(current.toLocaleDateString('pt-BR'));
-      current.setDate(current.getDate() + 1);
-    }
-    return dates;
-  }, []);
-
   // Função helper para garantir que os dados sejam arrays válidos
   const ensureArray = useCallback((data: any): any[] => {
     if (!data) return [];
@@ -155,11 +150,11 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
     return [];
   }, []);
 
-  // Nova função para obter turnos do evento baseada no sistema de shifts (igual à página principal)
+  // Nova função para obter turnos do evento baseada no sistema de shifts
   const getEventDays = useCallback(() => {
     if (!evento) return [];
 
-    console.log('🔧 getEventDays (modal) chamada, evento:', evento);
+    console.log('🔧 getEventDays (modal edit) chamada, evento:', evento);
 
     const days: Array<{
       id: string;
@@ -171,7 +166,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
     // Usar a nova estrutura SimpleEventDay se disponível com suporte a turnos
     const montagemData = ensureArray(evento.montagem);
-    console.log('🔧 Processando montagem (modal):', montagemData);
+    console.log('🔧 Processando montagem (modal edit):', montagemData);
     if (montagemData.length > 0) {
       montagemData.forEach(day => {
         if (day && day.date && day.period) {
@@ -180,7 +175,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             const dateISO = new Date(day.date).toISOString().split('T')[0];
             const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
 
-            console.log(`✅ Adicionando montagem (modal): ${dateStr} - ${periodLabel}`);
+            console.log(`✅ Adicionando montagem (modal edit): ${dateStr} - ${periodLabel}`);
             days.push({
               id: `${dateISO}-montagem-${day.period}`,
               label: `${dateStr} (MONTAGEM - ${periodLabel})`,
@@ -189,7 +184,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
               period: day.period
             });
           } catch (error) {
-            console.error('❌ Erro ao processar data da montagem (modal):', day, error);
+            console.error('❌ Erro ao processar data da montagem (modal edit):', day, error);
           }
         }
       });
@@ -219,7 +214,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
     // Adicionar dias de Evento/evento com suporte a turnos
     const eventoData = ensureArray(evento.evento);
-    console.log('🔧 Processando evento (modal):', eventoData);
+    console.log('🔧 Processando evento (modal edit):', eventoData);
     if (eventoData.length > 0) {
       eventoData.forEach(day => {
         if (day && day.date && day.period) {
@@ -228,7 +223,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             const dateISO = new Date(day.date).toISOString().split('T')[0];
             const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
 
-            console.log(`✅ Adicionando evento (modal): ${dateStr} - ${periodLabel}`);
+            console.log(`✅ Adicionando evento (modal edit): ${dateStr} - ${periodLabel}`);
             days.push({
               id: `${dateISO}-evento-${day.period}`,
               label: `${dateStr} (EVENTO - ${periodLabel})`,
@@ -237,7 +232,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
               period: day.period
             });
           } catch (error) {
-            console.error('❌ Erro ao processar data do evento (modal):', day, error);
+            console.error('❌ Erro ao processar data do evento (modal edit):', day, error);
           }
         }
       });
@@ -267,7 +262,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
     // Adicionar dias de finalização com suporte a turnos
     const desmontagemData = ensureArray(evento.desmontagem);
-    console.log('🔧 Processando desmontagem (modal):', desmontagemData);
+    console.log('🔧 Processando desmontagem (modal edit):', desmontagemData);
     if (desmontagemData.length > 0) {
       desmontagemData.forEach(day => {
         if (day && day.date && day.period) {
@@ -276,7 +271,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             const dateISO = new Date(day.date).toISOString().split('T')[0];
             const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
 
-            console.log(`✅ Adicionando desmontagem (modal): ${dateStr} - ${periodLabel}`);
+            console.log(`✅ Adicionando desmontagem (modal edit): ${dateStr} - ${periodLabel}`);
             days.push({
               id: `${dateISO}-desmontagem-${day.period}`,
               label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
@@ -285,7 +280,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
               period: day.period
             });
           } catch (error) {
-            console.error('❌ Erro ao processar data da desmontagem (modal):', day, error);
+            console.error('❌ Erro ao processar data da desmontagem (modal edit):', day, error);
           }
         }
       });
@@ -313,7 +308,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       }
     }
 
-    console.log('🎯 Dias finais gerados (modal):', days);
+    console.log('🎯 Dias finais gerados (modal edit):', days);
     return days.sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
       if (a.type !== b.type) {
@@ -325,7 +320,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   }, [evento, ensureArray, formatEventDate]);
 
   const toggleShift = useCallback((shiftId: string) => {
-    setNovoStaff(prev => ({
+    setStaffData(prev => ({
       ...prev,
       daysWork: prev.daysWork.includes(shiftId)
         ? prev.daysWork.filter(d => d !== shiftId)
@@ -334,7 +329,12 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   }, []);
 
   const handleSubmit = async () => {
-    const { name, cpf, funcao, empresa, tipo_credencial } = novoStaff;
+    if (!participant) {
+      toast.error("Nenhum participante selecionado para edição!");
+      return;
+    }
+
+    const { name, cpf, funcao, empresa, tipo_credencial } = staffData;
 
     if (!name.trim() || !cpf.trim() || !funcao.trim() || !empresa.trim() || !tipo_credencial) {
       toast.error("Todos os campos obrigatórios devem ser preenchidos!");
@@ -348,7 +348,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
     setLoading(true);
     try {
-      await createEventParticipant({
+      await updateParticipant.mutateAsync({
+        id: participant.id,
         eventId,
         credentialId: tipo_credencial,
         name: name.toUpperCase(),
@@ -356,21 +357,28 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
         role: funcao.toUpperCase(),
         company: empresa.toUpperCase(),
         validatedBy: "Sistema",
-        daysWork: novoStaff.daysWork,
+        daysWork: staffData.daysWork,
       });
 
-      toast.success("Staff adicionado com sucesso!");
-      setNovoStaff(initialStaff);
-      onClose();
+      toast.success("Staff editado com sucesso!");
+      handleClose();
       onSuccess?.();
     } catch (error) {
-      toast.error("Erro ao adicionar staff. Tente novamente.");
+      console.error("Erro ao editar staff:", error);
+      toast.error("Erro ao editar staff. Tente novamente.");
     }
     setLoading(false);
   };
 
   const handleClose = () => {
-    setNovoStaff(initialStaff);
+    setStaffData({
+      name: "",
+      cpf: "",
+      funcao: "",
+      empresa: "",
+      tipo_credencial: "",
+      daysWork: []
+    });
     setEmpresaSearch("");
     setIsEmpresaSelectOpen(false);
     onClose();
@@ -385,31 +393,33 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
     return null;
   }, []);
 
-  // Automaticamente selecionar o dia quando o modal abrir
+  // Inicializar o formulário com os dados do participante quando o modal abrir
   useEffect(() => {
-    if (isOpen && selectedDay) {
-      // Verificar se o shift ID selecionado existe nos turnos do evento
-      const selectedShiftExists = eventDays.some(shift => shift.id === selectedDay);
-
-      if (selectedShiftExists && !novoStaff.daysWork.includes(selectedDay)) {
-        setNovoStaff(prev => ({
-          ...prev,
-          daysWork: [selectedDay]
-        }));
-      }
+    if (isOpen && participant) {
+      console.log('🔧 Inicializando formulário de edição com participante:', participant);
+      
+      // Preencher dados do formulário
+      setStaffData({
+        name: participant.name || "",
+        cpf: participant.cpf || "",
+        funcao: participant.role || "",
+        empresa: participant.company || "",
+        tipo_credencial: participant.credentialId || participant.wristbandId || "",
+        daysWork: participant.daysWork || []
+      });
     }
-  }, [isOpen, selectedDay, eventDays, novoStaff.daysWork]);
+  }, [isOpen, participant]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            Adicionar Novo Staff
+            <Edit className="w-5 h-5" />
+            Editar Staff
           </DialogTitle>
           <DialogDescription>
-            Preencha os dados do novo Staff
+            {participant ? `Editando: ${participant.name}` : 'Edite os dados do Staff'}
           </DialogDescription>
         </DialogHeader>
 
@@ -419,8 +429,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             <div>
               <label className="block text-sm font-medium mb-2">Nome completo *</label>
               <Input
-                value={novoStaff.name}
-                onChange={(e) => setNovoStaff({ ...novoStaff, name: applyUppercaseMask(e.target.value) })}
+                value={staffData.name}
+                onChange={(e) => setStaffData({ ...staffData, name: applyUppercaseMask(e.target.value) })}
                 placeholder="Digite o nome completo"
                 disabled={loading}
                 style={{ textTransform: 'uppercase' }}
@@ -430,8 +440,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             <div>
               <label className="block text-sm font-medium mb-2">CPF *</label>
               <Input
-                value={novoStaff.cpf}
-                onChange={(e) => setNovoStaff({ ...novoStaff, cpf: formatCPF(e.target.value) })}
+                value={staffData.cpf}
+                onChange={(e) => setStaffData({ ...staffData, cpf: formatCPF(e.target.value) })}
                 placeholder="000.000.000-00"
                 disabled={loading}
               />
@@ -440,8 +450,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             <div>
               <label className="block text-sm font-medium mb-2">Função *</label>
               <Input
-                value={novoStaff.funcao}
-                onChange={(e) => setNovoStaff({ ...novoStaff, funcao: applyUppercaseMask(e.target.value) })}
+                value={staffData.funcao}
+                onChange={(e) => setStaffData({ ...staffData, funcao: applyUppercaseMask(e.target.value) })}
                 placeholder="Digite a função"
                 disabled={loading}
                 style={{ textTransform: 'uppercase' }}
@@ -453,9 +463,9 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
               {empresasArray.length > 0 ? (
                 <div className="relative">
                   <Select
-                    value={novoStaff.empresa}
+                    value={staffData.empresa}
                     onValueChange={(value) => {
-                      setNovoStaff({ ...novoStaff, empresa: applyUppercaseMask(value) });
+                      setStaffData({ ...staffData, empresa: applyUppercaseMask(value) });
                       setEmpresaSearch("");
                       setIsEmpresaSelectOpen(false);
                     }}
@@ -468,7 +478,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px] bg-white border-none">
                       {/* Campo de pesquisa */}
-                      <div className="sticky top-0 z-10  border-none p-2">
+                      <div className="sticky top-0 z-10 border-none p-2">
                         <div className="relative">
                           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                           <Input
@@ -514,8 +524,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                 </div>
               ) : (
                 <Input
-                  value={novoStaff.empresa}
-                  onChange={(e) => setNovoStaff({ ...novoStaff, empresa: applyUppercaseMask(e.target.value) })}
+                  value={staffData.empresa}
+                  onChange={(e) => setStaffData({ ...staffData, empresa: applyUppercaseMask(e.target.value) })}
                   placeholder="Digite o nome da empresa"
                   disabled={loading}
                   style={{ textTransform: 'uppercase' }}
@@ -529,8 +539,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             <label className="block text-sm font-medium mb-2">Tipo de Credencial *</label>
             {activeCredentials.length > 0 ? (
               <Select
-                value={novoStaff.tipo_credencial}
-                onValueChange={(value) => setNovoStaff({ ...novoStaff, tipo_credencial: value })}
+                value={staffData.tipo_credencial}
+                onValueChange={(value) => setStaffData({ ...staffData, tipo_credencial: value })}
                 disabled={loading}
               >
                 <SelectTrigger>
@@ -593,7 +603,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                                 <Button
                                   key={shift.id}
                                   type="button"
-                                  variant={novoStaff.daysWork.includes(shift.id) ? "default" : "outline"}
+                                  variant={staffData.daysWork.includes(shift.id) ? "default" : "outline"}
                                   size="sm"
                                   onClick={() => toggleShift(shift.id)}
                                   disabled={loading}
@@ -613,19 +623,14 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                   );
                 })}
 
-                {novoStaff.daysWork.length > 0 && (
+                {staffData.daysWork.length > 0 && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                     <p className="text-sm text-blue-800">
-                      <strong>Turnos selecionados:</strong> {novoStaff.daysWork.length}
-                      {selectedDay && novoStaff.daysWork.includes(selectedDay) && (
-                        <span className="ml-2 text-green-600 font-medium">
-                          (Turno atual selecionado automaticamente)
-                        </span>
-                      )}
+                      <strong>Turnos selecionados:</strong> {staffData.daysWork.length}
                     </p>
                     <div className="mt-2 space-y-2">
                       {Object.entries(
-                        novoStaff.daysWork.reduce((acc, shiftId) => {
+                        staffData.daysWork.reduce((acc, shiftId) => {
                           const shift = eventDays.find(s => s.id === shiftId);
                           if (!shift) return acc;
 
@@ -656,11 +661,11 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
               </div>
             ) : (
               <Input
-                value={novoStaff.daysWork.map(shiftId => parseShiftId(shiftId).dateFormatted).join(', ')}
+                value={staffData.daysWork.map(shiftId => parseShiftId(shiftId).dateFormatted).join(', ')}
                 onChange={(e) => {
                   const dates = e.target.value.split(',').map(d => d.trim()).filter(d => d);
-                  setNovoStaff({
-                    ...novoStaff,
+                  setStaffData({
+                    ...staffData,
                     daysWork: dates
                   });
                 }}
@@ -692,8 +697,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                 </>
               ) : (
                 <>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Adicionar Staff
+                  <Edit className="w-4 h-4 mr-2" />
+                  Salvar Alterações
                 </>
               )}
             </Button>
