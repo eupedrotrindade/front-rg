@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import React, { useState, useMemo } from 'react'
@@ -7,41 +8,41 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table"
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
 } from "@/components/ui/dialog"
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { 
-  UserCheck, 
-  Search, 
-  UserPlus, 
-  MoreVertical, 
-  Settings, 
+import {
+  UserCheck,
+  Search,
+  UserPlus,
+  MoreVertical,
+  Settings,
   Edit,
   Trash2,
   Shield,
@@ -67,7 +68,7 @@ interface OperatorFormData {
 export const OperatorsManagement = () => {
   // Usar hook real do sistema
   const { data: operators = [], isLoading, error } = useOperators()
-  
+
   const [search, setSearch] = useState("")
   const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null)
   const [operatorDetailsOpen, setOperatorDetailsOpen] = useState(false)
@@ -83,9 +84,9 @@ export const OperatorsManagement = () => {
   // Filtrar operadores baseado na busca
   const filteredOperators = useMemo(() => {
     if (!search.trim()) return operators
-    
+
     const searchLower = search.toLowerCase()
-    return operators.filter(operator => 
+    return operators.filter(operator =>
       operator.nome?.toLowerCase().includes(searchLower) ||
       operator.cpf?.includes(search) ||
       operator.id?.includes(search)
@@ -97,7 +98,7 @@ export const OperatorsManagement = () => {
     const totalOperators = operators.length
     const operatorsWithEvents = operators.filter(op => op.id_events && op.id_events.trim()).length
     const operatorsWithoutEvents = totalOperators - operatorsWithEvents
-    
+
     return {
       total: totalOperators,
       withEvents: operatorsWithEvents,
@@ -109,11 +110,11 @@ export const OperatorsManagement = () => {
     try {
       // Aqui você implementaria a lógica para criar operador via API
       // Por exemplo: await createOperatorMutation(formData)
-      
+
       toast.success("Operador criado com sucesso")
       setCreateOperatorOpen(false)
       setFormData({ nome: "", cpf: "", senha: "", id_events: "" })
-      
+
       // Invalidar query para recarregar dados
       // queryClient.invalidateQueries(['operators'])
     } catch (error) {
@@ -128,11 +129,11 @@ export const OperatorsManagement = () => {
     try {
       // Aqui você implementaria a lógica para editar operador via API
       // Por exemplo: await updateOperatorMutation({ id: selectedOperator.id, ...formData })
-      
+
       toast.success("Operador atualizado com sucesso")
       setEditOperatorOpen(false)
       setSelectedOperator(null)
-      
+
       // Invalidar query para recarregar dados
       // queryClient.invalidateQueries(['operators'])
     } catch (error) {
@@ -145,9 +146,9 @@ export const OperatorsManagement = () => {
     try {
       // Aqui você implementaria a lógica para deletar operador via API
       // Por exemplo: await deleteOperatorMutation(operatorId)
-      
+
       toast.success("Operador removido com sucesso")
-      
+
       // Invalidar query para recarregar dados
       // queryClient.invalidateQueries(['operators'])
     } catch (error) {
@@ -156,13 +157,13 @@ export const OperatorsManagement = () => {
     }
   }
 
-  const getOperatorStatus = (operator: Operator) => {
-    if (operator.isActive === false) {
+  const getOperatorStatus = (operator: any) => {
+    if (operator.ativo === false) {
       return { label: "Inativo", color: "bg-red-100 text-red-700", icon: XCircle }
     }
-    
+
     // Verificar se tem ações recentes (últimas 24h)
-    const hasRecentActivity = operator.acoes && operator.acoes.some(acao => {
+    const hasRecentActivity = operator.acoes && operator.acoes.some((acao: { timestamp: string | number | Date }) => {
       const actionTime = new Date(acao.timestamp).getTime()
       const now = Date.now()
       return now - actionTime < 24 * 60 * 60 * 1000
@@ -217,7 +218,7 @@ export const OperatorsManagement = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -231,7 +232,7 @@ export const OperatorsManagement = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -245,7 +246,7 @@ export const OperatorsManagement = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -323,7 +324,7 @@ export const OperatorsManagement = () => {
                 </TableRow>
               ) : (
                 filteredOperators.map((operator) => {
-                  
+
                   return (
                     <TableRow key={operator.id}>
                       <TableCell>
@@ -359,7 +360,7 @@ export const OperatorsManagement = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onClick={() => {
                                 setSelectedOperator(operator)
                                 setOperatorDetailsOpen(true)
@@ -367,7 +368,7 @@ export const OperatorsManagement = () => {
                             >
                               Ver Detalhes
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onClick={() => {
                                 setSelectedOperator(operator)
                                 setFormData({
@@ -382,7 +383,7 @@ export const OperatorsManagement = () => {
                               <Edit className="h-4 w-4 mr-2" />
                               Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => handleDeleteOperator(operator.id)}
                             >
@@ -410,7 +411,7 @@ export const OperatorsManagement = () => {
               Adicione um novo operador ao sistema
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label htmlFor="nome">Nome Completo</Label>
@@ -421,7 +422,7 @@ export const OperatorsManagement = () => {
                 placeholder="Digite o nome completo"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="cpf">CPF</Label>
               <Input
@@ -431,7 +432,7 @@ export const OperatorsManagement = () => {
                 placeholder="000.000.000-00"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="senha">Senha</Label>
               <Input
@@ -442,7 +443,7 @@ export const OperatorsManagement = () => {
                 placeholder="Digite a senha"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="id_events">Eventos (IDs separados por vírgula)</Label>
               <Textarea
@@ -453,7 +454,7 @@ export const OperatorsManagement = () => {
                 rows={3}
               />
             </div>
-            
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setCreateOperatorOpen(false)}>
                 Cancelar
@@ -475,7 +476,7 @@ export const OperatorsManagement = () => {
               Atualize as informações do operador
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label htmlFor="edit-nome">Nome Completo</Label>
@@ -486,7 +487,7 @@ export const OperatorsManagement = () => {
                 placeholder="Digite o nome completo"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="edit-cpf">CPF</Label>
               <Input
@@ -496,7 +497,7 @@ export const OperatorsManagement = () => {
                 placeholder="000.000.000-00"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="edit-senha">Nova Senha (deixe vazio para manter atual)</Label>
               <Input
@@ -507,7 +508,7 @@ export const OperatorsManagement = () => {
                 placeholder="Digite a nova senha"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="edit-id_events">Eventos (IDs separados por vírgula)</Label>
               <Textarea
@@ -518,7 +519,7 @@ export const OperatorsManagement = () => {
                 rows={3}
               />
             </div>
-            
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setEditOperatorOpen(false)}>
                 Cancelar
@@ -540,14 +541,14 @@ export const OperatorsManagement = () => {
               Informações detalhadas do operador
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedOperator && (
             <div className="space-y-4">
               <div>
                 <h3 className="font-semibold text-lg">{selectedOperator.nome}</h3>
                 <p className="text-gray-600">{selectedOperator.cpf}</p>
               </div>
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-gray-600">Status</label>
@@ -557,26 +558,26 @@ export const OperatorsManagement = () => {
                     </Badge>
                   </div>
                 </div>
-                
+
                 <div>
                   <label className="text-sm font-medium text-gray-600">Eventos Atribuídos</label>
                   <p className="text-sm">{getEventsCount(selectedOperator.id_events)} eventos</p>
                 </div>
-                
+
                 <div>
                   <label className="text-sm font-medium text-gray-600">Total de Ações</label>
                   <p className="text-sm">{selectedOperator.acoes?.length || 0} ações realizadas</p>
                 </div>
-                
-                <div>
+
+                {/* <div>
                   <label className="text-sm font-medium text-gray-600">Criado em</label>
                   <p className="text-sm">{formatDate(selectedOperator.created_at)}</p>
-                </div>
-                
-                <div>
+                </div> */}
+
+                {/* <div>
                   <label className="text-sm font-medium text-gray-600">Última Atualização</label>
                   <p className="text-sm">{formatDate(selectedOperator.updated_at)}</p>
-                </div>
+                </div> */}
               </div>
             </div>
           )}
