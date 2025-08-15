@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import React, { useState, useMemo } from 'react'
@@ -5,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -13,19 +14,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table"
-import { 
-  BarChart3, 
-  Download, 
-  Calendar, 
-  Users, 
+import {
+  BarChart3,
+  Download,
+  Calendar,
+  Users,
   Activity,
   TrendingUp,
   FileText,
@@ -78,8 +79,8 @@ const AdminRelatoriosPage = () => {
   // Estatísticas gerais
   const generalStats = useMemo(() => {
     const totalEvents = eventos.length
-    const activeEvents = eventos.filter(e => e.status === 'active').length
-    const completedEvents = eventos.filter(e => e.status === 'completed').length
+    const activeEvents = eventos.filter((e: { status: string }) => e.status === 'active').length
+    const completedEvents = eventos.filter((e: { status: string }) => e.status === 'completed').length
     const totalActivities = activities.length
     const todayActivities = activities.filter(a => {
       const activityDate = new Date(a.timestamp).toDateString()
@@ -102,9 +103,9 @@ const AdminRelatoriosPage = () => {
       acc[activity.entityType] = (acc[activity.entityType] || 0) + 1
       return acc
     }, {} as Record<string, number>)
-    
+
     return Object.entries(stats)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
   }, [activities])
 
@@ -114,9 +115,9 @@ const AdminRelatoriosPage = () => {
       acc[activity.action] = (acc[activity.action] || 0) + 1
       return acc
     }, {} as Record<string, number>)
-    
+
     return Object.entries(stats)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
   }, [activities])
 
@@ -126,9 +127,9 @@ const AdminRelatoriosPage = () => {
       acc[activity.performedBy] = (acc[activity.performedBy] || 0) + 1
       return acc
     }, {} as Record<string, number>)
-    
+
     return Object.entries(stats)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
   }, [activities])
 
@@ -205,7 +206,7 @@ const AdminRelatoriosPage = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os eventos</SelectItem>
-                  {eventos.map((evento) => (
+                  {eventos.map((evento: any) => (
                     <SelectItem key={evento.id} value={evento.id}>
                       {evento.name}
                     </SelectItem>
@@ -236,7 +237,7 @@ const AdminRelatoriosPage = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -248,7 +249,7 @@ const AdminRelatoriosPage = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -260,7 +261,7 @@ const AdminRelatoriosPage = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -272,7 +273,7 @@ const AdminRelatoriosPage = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -313,8 +314,8 @@ const AdminRelatoriosPage = () => {
                       <span className="text-sm font-medium capitalize">{entityType}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-blue-600 h-2 rounded-full" 
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
                             style={{ width: `${(count / entityStats[0][1]) * 100}%` }}
                           />
                         </div>
@@ -341,8 +342,8 @@ const AdminRelatoriosPage = () => {
                       <span className="text-sm font-medium capitalize">{action}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-green-600 h-2 rounded-full" 
+                          <div
+                            className="bg-green-600 h-2 rounded-full"
                             style={{ width: `${(count / actionStats[0][1]) * 100}%` }}
                           />
                         </div>
@@ -379,16 +380,15 @@ const AdminRelatoriosPage = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {eventos.slice(0, 10).map((evento) => (
+                  {eventos.slice(0, 10).map((evento: any) => (
                     <TableRow key={evento.id}>
                       <TableCell className="font-medium">{evento.name}</TableCell>
                       <TableCell>
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          evento.status === 'active' ? 'bg-green-100 text-green-700' :
-                          evento.status === 'draft' ? 'bg-yellow-100 text-yellow-700' :
-                          evento.status === 'completed' ? 'bg-blue-100 text-blue-700' :
-                          'bg-red-100 text-red-700'
-                        }`}>
+                        <span className={`px-2 py-1 rounded-full text-xs ${evento.status === 'active' ? 'bg-green-100 text-green-700' :
+                            evento.status === 'draft' ? 'bg-yellow-100 text-yellow-700' :
+                              evento.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                                'bg-red-100 text-red-700'
+                          }`}>
                           {evento.status}
                         </span>
                       </TableCell>
@@ -481,8 +481,8 @@ const AdminRelatoriosPage = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-32 bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full" 
+                        <div
+                          className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full"
                           style={{ width: `${(count / userStats[0][1]) * 100}%` }}
                         />
                       </div>
@@ -539,32 +539,32 @@ const AdminRelatoriosPage = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="w-full justify-start"
                     onClick={() => handleExportReport('events-summary')}
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Resumo de Eventos
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="w-full justify-start"
                     onClick={() => handleExportReport('activities-log')}
                   >
                     <FileText className="h-4 w-4 mr-2" />
                     Exportar Log de Atividades
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="w-full justify-start"
                     onClick={() => handleExportReport('users-report')}
                   >
                     <Users className="h-4 w-4 mr-2" />
                     Relatório de Usuários
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="w-full justify-start"
                     onClick={() => handleExportReport('performance-metrics')}
                   >
