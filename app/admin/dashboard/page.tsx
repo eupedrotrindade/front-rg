@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import React, { useState, useMemo } from 'react'
@@ -10,12 +11,12 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  Calendar, 
-  MapPin, 
-  Settings, 
-  Users, 
-  UserCheck, 
+import {
+  Calendar,
+  MapPin,
+  Settings,
+  Users,
+  UserCheck,
   Shield,
   Search,
   Filter,
@@ -184,21 +185,21 @@ const AdminDashboard = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Eventos Ativos</p>
                   <p className="text-2xl font-bold text-emerald-600">
-                    {eventos.filter(e => e.status === 'active').length}
+                    {eventos.filter((e: { status: string }) => e.status === 'active').length}
                   </p>
                 </div>
                 <UserCheck className="h-8 w-8 text-emerald-600" />
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -210,7 +211,7 @@ const AdminDashboard = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -222,7 +223,7 @@ const AdminDashboard = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -236,7 +237,7 @@ const AdminDashboard = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -290,7 +291,7 @@ const AdminDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-              
+
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -302,7 +303,7 @@ const AdminDashboard = () => {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600">Eventos Ativos</span>
-                      <span className="font-semibold">{eventos.filter(e => e.status === 'active').length}</span>
+                      <span className="font-semibold">{eventos.filter((e: { status: string }) => e.status === 'active').length}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600">Total de Usuários</span>
@@ -338,7 +339,7 @@ const AdminDashboard = () => {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="min-w-[150px]">
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
                       <SelectTrigger>
@@ -353,7 +354,7 @@ const AdminDashboard = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <Button variant="outline" size="sm">
                     <Filter className="h-4 w-4 mr-2" />
                     Mais filtros
@@ -372,9 +373,9 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {filteredEventos.map((evento) => {
+                  {filteredEventos.map((evento: any) => {
                     const statusConfig = getStatusConfig(evento.status)
-                    
+
                     return (
                       <div
                         key={evento.id}
@@ -388,33 +389,33 @@ const AdminDashboard = () => {
                                 {statusConfig.label}
                               </Badge>
                             </div>
-                            
+
                             <div className="flex items-center gap-6 text-sm text-gray-600">
                               <div className="flex items-center gap-1">
                                 <Calendar className="h-4 w-4" />
                                 <span>{formatDate(evento.startDate)}</span>
                               </div>
-                              
+
                               {evento.venue && (
                                 <div className="flex items-center gap-1">
                                   <MapPin className="h-4 w-4" />
                                   <span>{evento.venue}</span>
                                 </div>
                               )}
-                              
+
                               <div className="flex items-center gap-1">
                                 <Users className="h-4 w-4" />
                                 <span>Participantes: --</span>
                               </div>
                             </div>
-                            
+
                             {evento.description && (
                               <p className="text-gray-600 text-sm mt-2 line-clamp-2">
                                 {evento.description}
                               </p>
                             )}
                           </div>
-                          
+
                           <div className="flex items-center gap-2">
                             <Button
                               variant="outline"
@@ -424,7 +425,7 @@ const AdminDashboard = () => {
                               <Settings className="h-4 w-4 mr-1" />
                               Configurar
                             </Button>
-                            
+
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="sm">
@@ -451,7 +452,7 @@ const AdminDashboard = () => {
                       </div>
                     )
                   })}
-                  
+
                   {filteredEventos.length === 0 && !isLoading && (
                     <div className="text-center py-12">
                       <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -459,8 +460,8 @@ const AdminDashboard = () => {
                         Nenhum evento encontrado
                       </h3>
                       <p className="text-gray-600">
-                        {search.trim() 
-                          ? "Tente ajustar os filtros de pesquisa" 
+                        {search.trim()
+                          ? "Tente ajustar os filtros de pesquisa"
                           : "Não há eventos cadastrados no sistema"
                         }
                       </p>

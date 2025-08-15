@@ -36,7 +36,7 @@ import { toast } from "sonner"
 import { Event } from '@/app/utils/interfaces/eventos'
 
 interface EventConfigModalProps {
-  evento: Event
+  evento: any
   open: boolean
   onOpenChange: (open: boolean) => void
 }

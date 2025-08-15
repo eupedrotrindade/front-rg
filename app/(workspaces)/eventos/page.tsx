@@ -167,6 +167,11 @@ const EventosPage = () => {
                         Dashboard de Eventos
                     </div>
 
+                    <Button>
+                        Acessar Painel Geral
+                    </Button>
+
+
                 </div>
 
                 {/* Grid de Cards */}
