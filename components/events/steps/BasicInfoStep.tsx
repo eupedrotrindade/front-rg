@@ -1,12 +1,14 @@
 'use client'
 
 import React from 'react';
+import Image from 'next/image';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
+import { BannerUpload } from '@/components/ui/banner-upload';
 import { FileText, Type, Tag, CheckCircle } from 'lucide-react';
 
 interface BasicInfoStepProps {
@@ -135,6 +137,22 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
         </CardContent>
       </Card>
 
+      {/* Banner Upload */}
+      <Card>
+        <CardContent className="p-4">
+          <BannerUpload
+            value={(basicData.bannerUrl as string) || ''}
+            onChange={(url) => handleInputChange('bannerUrl', url)}
+            onPathChange={(path) => handleInputChange('bannerPath', path)}
+            eventId={(basicData.name as string)?.toLowerCase().replace(/\s+/g, '-')}
+            maxSize={5}
+          />
+          <p className="text-xs text-gray-500 mt-2">
+            O banner será exibido como imagem principal do evento
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Preview Card */}
       {(basicData.name as string) && (
         <Card className="bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200">
@@ -143,7 +161,19 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
               <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
               <span className="text-sm font-medium text-purple-800">Preview</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* Banner Preview */}
+              {(basicData.bannerUrl as string) && (
+                <div className="relative w-full h-32 rounded-lg overflow-hidden bg-gray-100">
+                  <Image
+                    src={basicData.bannerUrl as string}
+                    alt="Banner do evento"
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+              )}
+              
               <h3 className="text-lg font-semibold text-gray-900">{basicData.name as string}</h3>
               {(basicData.type as string) && (
                 <span className="inline-block px-3 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full">

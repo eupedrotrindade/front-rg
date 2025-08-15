@@ -19,7 +19,7 @@ import { useAllCoordenadores } from "@/features/eventos/api/query/use-coordenado
 import { useCreateCoordenador, useAssignCoordenador, useUpdateCoordenador, useDeleteCoordenador } from "@/features/eventos/api/mutation"
 import Image from "next/image"
 
-interface Coordenador {
+export interface Coordenador {
     id: string
     email: string
     firstName: string

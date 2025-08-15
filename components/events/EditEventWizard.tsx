@@ -62,6 +62,9 @@ interface EventData {
     name: string;
     type: string;
     description: string;
+    bannerUrl?: string;
+    bannerPath?: string;
+    isActive?: boolean;
   };
   datetime: {
     montagem: any[];
@@ -90,7 +93,10 @@ export function EditEventWizard({ event }: EditEventWizardProps) {
     basic: {
       name: '',
       type: '',
-      description: ''
+      description: '',
+      bannerUrl: '',
+      bannerPath: '',
+      isActive: true
     },
     datetime: {
       montagem: [],
@@ -144,7 +150,10 @@ export function EditEventWizard({ event }: EditEventWizardProps) {
         basic: {
           name: event.name || '',
           type: event.type || '',
-          description: event.description || ''
+          description: event.description || '',
+          bannerUrl: event.bannerUrl || '',
+          bannerPath: '', // Não temos esse campo no evento
+          isActive: event.isActive ?? true
         },
         datetime: {
           montagem: parseEventDays((event as any).montagem),
@@ -207,6 +216,7 @@ export function EditEventWizard({ event }: EditEventWizardProps) {
       name: eventData.basic.name,
       description: eventData.basic.description || undefined,
       type: eventData.basic.type || undefined,
+      bannerUrl: eventData.basic.bannerUrl || undefined,
       
       // Main event dates
       startDate: eventBoundaries.start || event.startDate,

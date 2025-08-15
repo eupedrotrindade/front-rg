@@ -62,6 +62,9 @@ interface EventData {
     name: string;
     type: string;
     description: string;
+    bannerUrl?: string;
+    bannerPath?: string;
+    isActive?: boolean;
   };
   datetime: {
     montagem: any[];
@@ -81,7 +84,10 @@ const initialEventData: EventData = {
   basic: {
     name: '',
     type: '',
-    description: ''
+    description: '',
+    bannerUrl: '',
+    bannerPath: '',
+    isActive: true
   },
   datetime: {
     montagem: [],
@@ -152,6 +158,7 @@ export function CreateEventWizard() {
       name: eventData.basic.name,
       description: eventData.basic.description || undefined,
       type: eventData.basic.type || undefined,
+      bannerUrl: eventData.basic.bannerUrl || undefined,
       
       // Main event dates
       startDate: eventBoundaries.start || new Date().toISOString().split('T')[0],
@@ -178,7 +185,7 @@ export function CreateEventWizard() {
       totalDays: allEventDays.length,
       status: 'active' as const,
       visibility: 'public' as const,
-      isActive: true
+      isActive: eventData.basic.isActive ?? true
     };
   };
 

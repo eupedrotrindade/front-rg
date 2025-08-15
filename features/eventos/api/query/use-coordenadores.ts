@@ -40,5 +40,9 @@ export const useAllCoordenadores = () => {
       // Garantir que sempre retorne um array
       return Array.isArray(data) ? data : [];
     },
+    staleTime: 30 * 1000, // 30 segundos - dados ficam "fresh" por menos tempo
+    gcTime: 60 * 1000, // 1 minuto - limpa cache mais rapidamente
+    refetchOnWindowFocus: true, // Refaz busca quando foca na janela
+    refetchOnMount: true, // Sempre refaz busca ao montar
   });
 };

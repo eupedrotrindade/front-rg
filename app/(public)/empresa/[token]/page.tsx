@@ -1353,8 +1353,8 @@ export default function PublicEmpresaPage() {
                                                                 </SelectTrigger>
                                                                 <SelectContent>
                                                                     <SelectItem value="all">Todas as funções</SelectItem>
-                                                                    {uniqueValues.funcoes.map((funcao) => (
-                                                                        <SelectItem key={funcao} value={funcao || ""}>{funcao}</SelectItem>
+                                                                    {uniqueValues.funcoes.filter(funcao => funcao && funcao.trim()).map((funcao) => (
+                                                                        <SelectItem key={funcao} value={funcao}>{funcao}</SelectItem>
                                                                     ))}
                                                                 </SelectContent>
                                                             </Select>
@@ -1970,8 +1970,8 @@ export default function PublicEmpresaPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">Todas as funções</SelectItem>
-                                            {uniqueValues.funcoes.map((funcao) => (
-                                                <SelectItem key={funcao} value={funcao || ""}>{funcao}</SelectItem>
+                                            {uniqueValues.funcoes.filter(funcao => funcao && funcao.trim()).map((funcao) => (
+                                                <SelectItem key={funcao} value={funcao}>{funcao}</SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
