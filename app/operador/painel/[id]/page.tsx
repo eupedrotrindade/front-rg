@@ -77,7 +77,7 @@ import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { FixedSizeList as List } from 'react-window'
 
 
 import ExcelColumnFilter from '@/components/ui/excel-column-filter'
@@ -184,9 +184,7 @@ export default function Painel() {
   const [showLeftArrow, setShowLeftArrow] = useState(true)
   const [showRightArrow, setShowRightArrow] = useState(true)
 
-  // Estados para paginação e otimização
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(50)
+  // Estados para otimização (paginação removida - usando virtualização completa)
   const [isLoadingPage, setIsLoadingPage] = useState(false)
   const [virtualizedData, setVirtualizedData] = useState<EventParticipant[]>([])
   const [searchDebounce, setSearchDebounce] = useState<NodeJS.Timeout | null>(
@@ -401,7 +399,7 @@ export default function Painel() {
     }
 
     const timeout = setTimeout(() => {
-      setCurrentPage(1)
+      // Virtualização não precisa de reset de página
     }, 50) // Muito reduzido para fluidez
 
     setSearchDebounce(timeout)
@@ -419,53 +417,12 @@ export default function Painel() {
       debouncedSearch(term)
     }
 
-    setCurrentPage(1)
+    // Virtualização não precisa de reset de página
   }
 
-  // Função simples de paginação sem useCallback
-  const getPaginatedData = (data: EventParticipant[], page: number, perPage: number) => {
-    const startIndex = (page - 1) * perPage
-    const endIndex = startIndex + perPage
-    return data.slice(startIndex, endIndex)
-  }
+  // Funções de utilidade removidas - usando virtualização completa
 
-  // Função simples sem useCallback
-  const calculateTotalPages = (total: number, perPage: number) => {
-    return Math.ceil(total / perPage)
-  }
-
-  const getVisiblePages = useCallback(
-    (currentPage: number, totalPages: number) => {
-      const delta = 2
-      const range = []
-      const rangeWithDots = []
-
-      for (
-        let i = Math.max(2, currentPage - delta);
-        i <= Math.min(totalPages - 1, currentPage + delta);
-        i++
-      ) {
-        range.push(i)
-      }
-
-      if (currentPage - delta > 2) {
-        rangeWithDots.push(1, '...')
-      } else {
-        rangeWithDots.push(1)
-      }
-
-      rangeWithDots.push(...range)
-
-      if (currentPage + delta < totalPages - 1) {
-        rangeWithDots.push('...', totalPages)
-      } else if (totalPages > 1) {
-        rangeWithDots.push(totalPages)
-      }
-
-      return rangeWithDots
-    },
-    [],
-  )
+  // Função removida - paginação não é mais necessária com virtualização
 
   const isDateWithinEventPeriods = useCallback(
     (dateStr: string): boolean => {
@@ -1046,7 +1003,6 @@ export default function Painel() {
         ...prev,
         [column]: selectedValues,
       }))
-      setCurrentPage(1)
     },
     [],
   )
@@ -1055,7 +1011,7 @@ export default function Painel() {
   const handleColumnSort = useCallback(
     (column: string, direction: 'asc' | 'desc') => {
       setOrdenacao({ campo: column, direcao: direction })
-      setCurrentPage(1)
+      // Virtualização não precisa de reset de página
     },
     [],
   )
@@ -1068,7 +1024,7 @@ export default function Painel() {
       empresa: [],
       credencial: [],
     })
-    setCurrentPage(1)
+    // Virtualização não precisa de reset de página
   }, [])
 
   const hasActiveColumnFilters = useMemo(() => {
@@ -1089,7 +1045,7 @@ export default function Painel() {
       eventId: eventId,
       hasOperatorInfo: !!operadorInfo
     })
-    
+
     // Se não tem operador logado ou não tem shifts atribuídos, mostrar todos os dias
     if (!operadorInfo?.id || !operadorInfo?.id_events) {
       console.log('🔍 Operador sem ID ou sem shifts atribuídos, mostrando todos os dias')
@@ -1104,20 +1060,20 @@ export default function Painel() {
     }
 
     console.log('🔍 Operador shifts:', operadorInfo.id_events)
-    
+
     // Obter todos os dias do evento
     const allEventDays = getEventDays()
     console.log('🔍 Todos os dias do evento:', allEventDays.map(d => d.id))
-    
+
     // Dividir os shifts do operador por vírgula e filtrar para este evento
     const operatorShifts = operadorInfo.id_events
       .split(',')
       .map(shift => shift.trim())
       .filter(shift => shift.includes(eventId)) // Filtrar apenas shifts deste evento
       .map(shift => shift.replace(`${eventId}:`, '')) // Remover o prefixo eventId:
-    
+
     console.log('🔍 Shifts do operador para este evento:', operatorShifts)
-    
+
     // Filtrar apenas os dias em que o operador trabalha
     const diasDisponiveis = allEventDays.filter(day => {
       const dayIncluded = operatorShifts.includes(day.id)
@@ -1128,14 +1084,14 @@ export default function Painel() {
       }
       return dayIncluded
     })
-    
+
     // Ordena as datas
     diasDisponiveis.sort((a, b) => {
       const dateA = dataBRtoDate(a.date)
       const dateB = dataBRtoDate(b.date)
       return dateA.getTime() - dateB.getTime()
     })
-    
+
     console.log('🎯 Dias finais disponíveis para o operador:', diasDisponiveis.map(d => ({ id: d.id, label: d.label })))
     return diasDisponiveis
   }, [operadorInfo?.id, operadorInfo?.id_events, eventId, getEventDays])
@@ -1484,35 +1440,121 @@ export default function Painel() {
     filtrarColaboradores
   ]) // SIMPLIFIED: uma só dependência
 
-  // Dados finais otimizados
+  // 🚀 DADOS FINAIS VIRTUALIZADOS - SEM PAGINAÇÃO
   const finalData = useMemo(() => {
-    if (isVirtualMode) {
-      return unifiedData
-    } else {
-      const paginated = getPaginatedData(
-        unifiedData.data,
-        currentPage,
-        itemsPerPage,
-      )
-      return { data: paginated, total: unifiedData.total }
-    }
-  }, [
-    unifiedData,
-    isVirtualMode,
-    currentPage,
-    itemsPerPage
-  ]) // Removido getPaginatedData das dependências
+    // Sempre retorna todos os dados filtrados para virtualização
+    return unifiedData
+  }, [unifiedData])
 
   // Para compatibilidade com componentes que usam paginatedData
   const paginatedData = finalData
 
-  // 🚀 VIRTUAL TABLE CONFIGURATION
-  const virtualizer = useVirtualizer({
-    count: finalData.data.length,
-    getScrollElement: () => tableContainerRef.current,
-    estimateSize: () => (isMobileTable ? 72 : 84), // Altura estimada das linhas
-    overscan: 5,
-  })
+  // 🚀 CONFIGURAÇÃO VIRTUALIZAÇÃO REACT-WINDOW
+  const itemHeight = isMobileTable ? 72 : 84 // Altura das linhas
+
+  // Componente para renderizar cada linha da tabela virtualizada
+  const VirtualizedTableRow = useCallback(({ index, style }: { index: number; style: any }) => {
+    const colab = finalData.data[index]
+    if (!colab) return null
+
+    const botaoTipo = getBotaoAcao(colab)
+
+    return (
+      <div
+        style={style}
+        className="border-b border-gray-300 hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 bg-white shadow-sm"
+        onClick={() => abrirPopup(colab)}
+      >
+        <div className="flex items-center min-h-full">
+          {/* Nome - sempre visível */}
+          <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+            <div className="flex items-center">
+              <div className={isMobileTable ? '' : 'ml-4'}>
+                <div className="text-sm font-semibold text-gray-900">
+                  {colab.name}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CPF - esconder em mobile */}
+          {!isMobileTable && (
+            <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+              <p className="text-sm text-gray-900 font-mono">
+                {formatCPF(colab.cpf?.trim() || '')}
+              </p>
+            </div>
+          )}
+
+          {/* Função - esconder em mobile */}
+          {!isMobileTable && (
+            <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+              <p className="text-sm text-gray-600">{colab.role}</p>
+            </div>
+          )}
+
+          {/* Empresa - esconder em mobile */}
+          {!isMobileTable && (
+            <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {colab.company}
+              </span>
+            </div>
+          )}
+
+          {/* Credencial - esconder em mobile */}
+          {!isMobileTable && (
+            <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+              <span
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                style={{
+                  backgroundColor: getCredencialCor(colab),
+                  color: getContrastingTextColor(getCredencialCor(colab)),
+                  border: needsBorder(getCredencialCor(colab)) ? '1px solid #d1d5db' : 'none'
+                }}
+              >
+                {getCredencial(colab)}
+              </span>
+            </div>
+          )}
+
+          {/* Ação - sempre visível e sticky à direita */}
+          <div className={`flex-none whitespace-nowrap text-sm font-medium sticky right-0 bg-white ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
+            <div
+              className="flex space-x-2"
+              onClick={e => e.stopPropagation()}
+            >
+              {botaoTipo === 'checkin' && (
+                <Button
+                  onClick={() => abrirCheckin(colab)}
+                  size="sm"
+                  className={`bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${isMobileTable ? 'text-xs px-1.5 py-1' : ''}`}
+                  disabled={loading}
+                >
+                  <Check className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
+                  {isMobileTable ? 'In' : 'Check-in'}
+                </Button>
+              )}
+              {botaoTipo === 'checkout' && (
+                <Button
+                  onClick={() => abrirCheckout(colab)}
+                  size="sm"
+                  className={`bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${isMobileTable ? 'text-xs px-1.5 py-1' : ''}`}
+                  disabled={loading}
+                >
+                  <Clock className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
+                  {isMobileTable ? 'Out' : 'Check-out'}
+                </Button>
+              )}
+              {botaoTipo === null && (
+                <p className='text-emerald-700'>CONCLUIDO</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }, [finalData.data, formatCPF, getBotaoAcao, getCredencialCor, getContrastingTextColor, needsBorder, getCredencial, loading, abrirCheckin, abrirCheckout, abrirPopup, isMobileTable])
 
   const isHighVolume = unifiedData.total > 1000
   const showPerformanceIndicator = isHighVolume && !participantsLoading
@@ -1641,14 +1683,18 @@ export default function Painel() {
   useEffect(() => {
     if (participantsData.length > 0) {
       setIsDataStale(true)
-
-      setCurrentPage(1)
+      // Dados carregados, limpar loading
+      setIsLoadingPage(false)
     }
   }, [participantsData])
 
-  // useEffect para resetar página quando filtros mudam
+  // useEffect para revalidar dados quando filtros mudam
   useEffect(() => {
-    setCurrentPage(1)
+    // Limpar cache de busca quando filtros mudam
+    if (searchDebounce) {
+      clearTimeout(searchDebounce)
+      setSearchDebounce(null)
+    }
   }, [
     filtro,
     selectedDay,
@@ -1782,7 +1828,7 @@ export default function Painel() {
     if (!valor.trim()) {
       setSearchTerm('')
       setIsSearching(false)
-      setCurrentPage(1)
+      // Virtualização não precisa de reset de página
       setSearchDebounce(null)
       return
     }
@@ -1793,110 +1839,14 @@ export default function Painel() {
     // 5. DEBOUNCE REAL - só executa filtro após parar de digitar
     const timeout = setTimeout(() => {
       setSearchTerm(valor)
-      setCurrentPage(1)
+      // Virtualização não precisa de reset de página
       setIsSearching(false)
     }, 300) // 300ms após parar de digitar
 
     setSearchDebounce(timeout)
   }
 
-  // Função para mudar página
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  // Função para mudar itens por página
-  const handleItemsPerPageChange = (newItemsPerPage: number) => {
-    setItemsPerPage(newItemsPerPage)
-    setCurrentPage(1)
-  }
-
-  // Componente de paginação
-  const PaginationComponent = () => {
-    const totalPages = calculateTotalPages(unifiedData.total, itemsPerPage)
-    const visiblePages = getVisiblePages(currentPage, totalPages)
-
-    if (totalPages <= 1) return null
-
-    return (
-      <div className="flex items-center justify-between bg-white px-6 py-4 border-t border-gray-200">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-700">Itens por página:</span>
-            <Select
-              value={itemsPerPage.toString()}
-              onValueChange={value => handleItemsPerPageChange(Number(value))}
-            >
-              <SelectTrigger className="w-20 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-                <SelectItem value="200">200</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <span className="text-sm text-gray-600">
-            Mostrando {(currentPage - 1) * itemsPerPage + 1} a{' '}
-            {Math.min(currentPage * itemsPerPage, unifiedData.total)} de{' '}
-            {unifiedData.total} resultados
-            {(searchTerm.trim() || filtro.nome.trim()) && (
-              <span className="ml-2 px-2 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full font-medium border border-blue-200" title="Busca inteligente: encontra por combinação de letras, iniciais, subsequência">
-                🎯 Busca inteligente ativa
-              </span>
-            )}
-            {attendanceDataLoaded && (
-              <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
-                ✓ Dados sincronizados
-              </span>
-            )}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="px-3 py-1"
-          >
-            Anterior
-          </Button>
-
-          {visiblePages.map((page, index) => (
-            <div key={index}>
-              {page === '...' ? (
-                <span className="px-3 py-1 text-gray-500">...</span>
-              ) : (
-                <Button
-                  variant={currentPage === page ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handlePageChange(page as number)}
-                  className="px-3 py-1"
-                >
-                  {page}
-                </Button>
-              )}
-            </div>
-          ))}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1"
-          >
-            Próxima
-          </Button>
-        </div>
-      </div>
-    )
-  }
+  // Funções de paginação removidas - usando virtualização completa
 
   const fecharPopup = () => {
     setSelectedParticipant(null)
@@ -1959,7 +1909,7 @@ export default function Painel() {
         credencial: newCredential,
         credencialAnterior: currentCredential,
         trocouTipoCredencial: changedCredentialType || false,
-        observacoes: changedCredentialType ? 
+        observacoes: changedCredentialType ?
           `Troca de credencial: ${currentCredential} → ${newCredential} + Nova pulseira: ${newWristbandCode.trim()}` :
           `Atualização de pulseira: ${participantWristbands.get(participantId) || 'anterior'} → ${newWristbandCode.trim()}`
       })
@@ -3110,58 +3060,58 @@ export default function Painel() {
               console.log('🎯 Renderização das tabs - Dias disponíveis:', diasDisponiveis.length, diasDisponiveis.map(d => ({ id: d.id, label: d.label })))
               return diasDisponiveis.length > 0
             })() && (
-              <div className="mb-8">
-                <div className="border-b border-gray-200 bg-white rounded-t-lg relative">
-                  {/* Container dos tabs sem scroll horizontal */}
-                  <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
-                    {getDiasDisponiveisParaOperador().map(day => {
-                      const participantesNoDia = getParticipantsCountByShift(day.id)
-                      const isActive = selectedDay === day.id
+                <div className="mb-8">
+                  <div className="border-b border-gray-200 bg-white rounded-t-lg relative">
+                    {/* Container dos tabs sem scroll horizontal */}
+                    <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
+                      {getDiasDisponiveisParaOperador().map(day => {
+                        const participantesNoDia = getParticipantsCountByShift(day.id)
+                        const isActive = selectedDay === day.id
 
-                      return (
-                        <div key={day.id} className="flex items-center gap-2">
-                          <button
-                            onClick={() => setSelectedDay(day.id)}
-                            className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
-                              ? getTabColor(day.type, true)
-                              : `border-transparent text-gray-500 ${getTabColor(
-                                day.type,
-                                false,
-                              )}`
-                              }`}
-                          >
-                            <div className="flex flex-col items-center gap-1">
-                              <div className="flex items-center gap-1">
-                                <span className="text-xs font-medium">
-                                  {day.label.split(' ')[0]}
-                                </span>
-                                {getPeriodIcon(day.period)}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <span className="text-xs opacity-75">
-                                  {day.type === 'setup' ? 'MONTAGEM' :
-                                    day.type === 'preparation' ? 'EVENTO' :
-                                      day.type === 'finalization' ? 'DESMONTAGEM' :
-                                        'EVENTO'}
-                                </span>
-                                {day.period && (
-                                  <span className="text-xs opacity-60">
-                                    ({day.period === 'diurno' ? 'D' : day.period === 'noturno' ? 'N' : 'DI'})
+                        return (
+                          <div key={day.id} className="flex items-center gap-2">
+                            <button
+                              onClick={() => setSelectedDay(day.id)}
+                              className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
+                                ? getTabColor(day.type, true)
+                                : `border-transparent text-gray-500 ${getTabColor(
+                                  day.type,
+                                  false,
+                                )}`
+                                }`}
+                            >
+                              <div className="flex flex-col items-center gap-1">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs font-medium">
+                                    {day.label.split(' ')[0]}
                                   </span>
-                                )}
+                                  {getPeriodIcon(day.period)}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs opacity-75">
+                                    {day.type === 'setup' ? 'MONTAGEM' :
+                                      day.type === 'preparation' ? 'EVENTO' :
+                                        day.type === 'finalization' ? 'DESMONTAGEM' :
+                                          'EVENTO'}
+                                  </span>
+                                  {day.period && (
+                                    <span className="text-xs opacity-60">
+                                      ({day.period === 'diurno' ? 'D' : day.period === 'noturno' ? 'N' : 'DI'})
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs opacity-75">
+                                  ({participantesNoDia})
+                                </span>
                               </div>
-                              <span className="text-xs opacity-75">
-                                ({participantesNoDia})
-                              </span>
-                            </div>
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </nav>
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </nav>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Table */}
             <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
@@ -3274,203 +3224,74 @@ export default function Painel() {
                   </Table>
                 </div>
 
-                {/* 🚀 VIRTUALIZED TABLE BODY */}
-                <div
-                  ref={tableContainerRef}
-                  className="overflow-auto"
-                  style={{ height: 'calc(100vh - 600px)', minHeight: '400px', maxHeight: '600px' }} // Responsive height for virtualization
-                >
-                  <div
-                    style={{
-                      height: `${virtualizer.getTotalSize()}px`,
-                      width: '100%',
-                      position: 'relative',
-                    }}
-                  >
-                    {finalData.total === 0 ? (
-                      <div className="flex items-center justify-center py-16">
-                        <div className="text-center text-gray-500">
-                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-                            {(searchTerm.trim() || filtro.nome.trim()) ? (
-                              <Search className="w-8 h-8 text-gray-400" />
-                            ) : (
-                              <User className="w-8 h-8 text-gray-400" />
-                            )}
-                          </div>
-                          <p className="text-lg font-semibold text-gray-700 mb-2">
-                            {(searchTerm.trim() || filtro.nome.trim()) ? (
-                              'Nenhum resultado encontrado'
-                            ) : selectedDay ? (
-                              `Nenhum colaborador encontrado para ${selectedDay}`
-                            ) : (
-                              'Nenhum colaborador encontrado'
-                            )}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {(searchTerm.trim() || filtro.nome.trim()) ? (
-                              <>Tente termos diferentes ou <button
-                                onClick={() => {
-                                  setFiltro(prev => ({ ...prev, nome: '' }))
-                                  setSearchTerm('')
-                                  setIsSearching(false)
-                                  if (searchDebounce) {
-                                    clearTimeout(searchDebounce)
-                                    setSearchDebounce(null)
-                                  }
-                                  clearSearch()
-                                }}
-                                className="text-blue-600 hover:text-blue-800 underline"
-                              >limpe a busca</button></>
-                            ) : selectedDay ? (
-                              'Adicione colaboradores com dias de trabalho definidos ou ajuste os filtros'
-                            ) : (
-                              'Tente ajustar os filtros ou adicionar novos colaboradores'
-                            )}
-                          </p>
+                {/* 🚀 REACT-WINDOW VIRTUALIZED TABLE */}
+                {finalData.data.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+                    <div className="px-6 py-16 text-center text-gray-500">
+                      <div className="flex flex-col items-center">
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                          <User className="w-8 h-8 text-gray-400" />
+                        </div>
+                        <p className="text-lg font-semibold text-gray-700 mb-2">
+                          {filtro.nome.trim() ? 'Nenhum resultado encontrado' : 'Nenhum colaborador encontrado'}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {filtro.nome.trim() ? (
+                            <>Tente termos diferentes ou <button
+                              onClick={() => setFiltro(prev => ({ ...prev, nome: '' }))}
+                              className="text-blue-600 hover:text-blue-800 underline"
+                            >limpe a busca</button></>
+                          ) : (
+                            'Adicione colaboradores ou ajuste os filtros'
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-b-lg border-t-0">
+                    {/* Performance indicator */}
+                    {finalData.data.length > 1000 && (
+                      <div className="px-6 py-2 bg-blue-50 border-b border-blue-200">
+                        <div className="flex items-center text-sm text-blue-700">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></div>
+                          Modo de alta performance ativo ({finalData.data.length.toLocaleString()} registros)
                         </div>
                       </div>
-                    ) : (
-                      virtualizer.getVirtualItems().map((virtualRow) => {
-                        const colab = finalData.data[virtualRow.index]
-                        const botaoTipo = getBotaoAcao(colab)
-
-                        return (
-                          <div
-                            key={virtualRow.index}
-                            style={{
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              width: '100%',
-                              height: `${virtualRow.size}px`,
-                              transform: `translateY(${virtualRow.start}px)`,
-                            }}
-                            className={` border-gray-300 hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 bg-white border-b shadow-md`}
-                            onClick={() => abrirPopup(colab)}
-                          >
-                            <div className="flex items-center min-h-full">
-                              {/* Nome - sempre visível */}
-                              <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-                                <div className="flex items-center">
-                                  <div className={isMobileTable ? '' : 'ml-4'}>
-                                    <div className="text-sm font-semibold text-gray-900">
-                                      {colab.name}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* CPF - esconder em mobile */}
-                              {!isMobileTable && (
-                                <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-                                  <p className="text-sm text-gray-900 font-mono">
-                                    {formatCPF(colab.cpf?.trim() || '')}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Função - esconder em mobile */}
-                              {!isMobileTable && (
-                                <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-                                  <p className="text-sm text-gray-600">{colab.role}</p>
-                                </div>
-                              )}
-
-                              {/* Empresa - esconder em mobile */}
-                              {!isMobileTable && (
-                                <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                    {colab.company}
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* Credencial - esconder em mobile */}
-                              {!isMobileTable && (
-                                <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-                                  <span
-                                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                                    style={{
-                                      backgroundColor: getCredencialCor(colab),
-                                      color: getContrastingTextColor(getCredencialCor(colab)),
-                                      border: needsBorder(getCredencialCor(colab)) ? '1px solid #d1d5db' : 'none'
-                                    }}
-                                  >
-                                    {getCredencial(colab)}
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* Ação - sempre visível e sticky à direita */}
-                              <div className={`flex-none whitespace-nowrap text-sm font-medium sticky right-0 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
-                                <div
-                                  className="flex space-x-2"
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  {botaoTipo === 'checkin' && (
-                                    <Button
-                                      onClick={() => abrirCheckin(colab)}
-                                      size="sm"
-                                      className={`bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${isMobileTable ? 'text-xs px-1.5 py-1' : ''
-                                        }`}
-                                      disabled={loading}
-                                    >
-                                      <Check className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
-                                      {isMobileTable ? 'In' : 'Check-in'}
-                                    </Button>
-                                  )}
-                                  {botaoTipo === 'checkout' && (
-                                    <Button
-                                      onClick={() => abrirCheckout(colab)}
-                                      size="sm"
-                                      className={`bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 ${isMobileTable ? 'text-xs px-1.5 py-1' : ''
-                                        }`}
-                                      disabled={loading}
-                                    >
-                                      <Clock className={`${isMobileTable ? 'w-3 h-3 mr-0.5' : 'w-4 h-4 mr-1'}`} />
-                                      {isMobileTable ? 'Out' : 'Check-out'}
-                                    </Button>
-                                  )}
-                                  {botaoTipo === null && (
-                                    <p className='text-emerald-700'>CONCLUIDO</p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })
                     )}
-                  </div>
-                </div>
 
-                {/* 🚀 PAGINATION - Preserved and working with virtualization */}
-                {finalData.total > 0 && (
-                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                    {/* Lista virtualizada usando react-window */}
+                    <List
+                      key={`${selectedDay}-${filtro.nome}-${finalData.data.length}`}
+                      height={Math.min(finalData.data.length * itemHeight, 600)}
+                      width="100%"
+                      itemCount={finalData.data.length}
+                      itemSize={itemHeight}
+                      className="scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+                    >
+                      {VirtualizedTableRow}
+                    </List>
+                  </div>
+                )}
+
+                {/* 📊 INFORMAÇÕES DA LISTA VIRTUALIZADA */}
+                {finalData.data.length > 0 && (
+                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
                     <div className="text-sm text-gray-700">
-                      Mostrando <span className="font-medium">{Math.min(finalData.data.length, finalData.total)}</span> de{' '}
-                      <span className="font-medium">{finalData.total}</span> resultados
+                      <span className="font-medium">{finalData.data.length.toLocaleString()}</span> {finalData.data.length === 1 ? 'colaborador' : 'colaboradores'}
+                      {filtro.nome.trim() && (
+                        <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                          🔍 Filtrado
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                        disabled={currentPage <= 1}
-                      >
-                        Anterior
-                      </Button>
-                      <span className="text-sm text-gray-600">
-                        Página {currentPage} de {Math.ceil(finalData.total / itemsPerPage)}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(Math.min(Math.ceil(finalData.total / itemsPerPage), currentPage + 1))}
-                        disabled={currentPage >= Math.ceil(finalData.total / itemsPerPage)}
-                      >
-                        Próxima
-                      </Button>
+                    <div className="flex items-center space-x-3 text-xs text-gray-500">
+                      <span>🚀 Virtualizado para máxima performance</span>
+                      {finalData.data.length > 500 && (
+                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                          ⚡ Modo rápido
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}

@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import React, { useState, useMemo, useCallback } from "react"
+import { FixedSizeList as List } from "react-window"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -126,6 +128,37 @@ export default function ExcelColumnFilter({
     }
   }, [onSortTable])
 
+  // ⚡ COMPONENTE VIRTUALIZADO - Item da lista
+  const VirtualizedFilterItem = useCallback(({ index, style }: { index: number; style: any }) => {
+    const value = processedValues[index]
+    const isChecked = selectedValues.includes(value)
+
+    return (
+      <div style={style}>
+        <div
+          className="flex items-center space-x-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
+          onClick={() => handleItemToggle(value, !isChecked)}
+        >
+          <Checkbox
+            id={`filter-${value}-${index}`}
+            checked={isChecked}
+            onChange={() => { }} // Controlado pelo onClick do div
+          />
+          <label
+            htmlFor={`filter-${value}-${index}`}
+            className="text-sm flex-1 cursor-pointer truncate"
+            title={value.toString()}
+          >
+            {value.toString()}
+          </label>
+          {isChecked && (
+            <Check className="h-3 w-3 text-blue-600 flex-shrink-0" />
+          )}
+        </div>
+      </div>
+    )
+  }, [processedValues, selectedValues, handleItemToggle])
+
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
@@ -240,41 +273,23 @@ export default function ExcelColumnFilter({
           </div>
         </div>
 
-        {/* Lista de Valores */}
-        <div className="max-h-60 overflow-y-auto">
+        {/* Lista de Valores Virtualizados */}
+        <div>
           {processedValues.length === 0 ? (
             <div className="px-3 py-8 text-center text-sm text-gray-500">
               {searchTerm ? "Nenhum resultado encontrado" : "Nenhum valor disponível"}
             </div>
           ) : (
-            <div className="py-2">
-              {processedValues.map((value, index) => {
-                const isChecked = selectedValues.includes(value)
-                return (
-                  <div
-                    key={`${value}-${index}`}
-                    className="flex items-center space-x-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleItemToggle(value, !isChecked)}
-                  >
-                    <Checkbox
-                      id={`filter-${value}-${index}`}
-                      checked={isChecked}
-                      onChange={() => { }} // Controlado pelo onClick do div
-                    />
-                    <label
-                      htmlFor={`filter-${value}-${index}`}
-                      className="text-sm flex-1 cursor-pointer truncate"
-                      title={value.toString()}
-                    >
-                      {value.toString()}
-                    </label>
-                    {isChecked && (
-                      <Check className="h-3 w-3 text-blue-600 flex-shrink-0" />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <List
+              key={`${processedValues.length}-${searchTerm}-${sortOrder}`}
+              height={Math.min(processedValues.length * 36, 240)} // 36px por item, max 240px
+              width="100%"
+              itemCount={processedValues.length}
+              itemSize={36}
+              className="scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+            >
+              {VirtualizedFilterItem}
+            </List>
           )}
         </div>
 

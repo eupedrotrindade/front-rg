@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import apiClient from "@/lib/api-client"
 import { formatCpf, isValidCpf, formatCpfInput } from "@/lib/utils"
 import { toast } from "sonner"
-import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw, Activity, Sun, Moon, Clock, Eye } from "lucide-react"
+import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw, Activity, Sun, Moon, Clock, Eye, EyeOff, Power } from "lucide-react"
 import { useParams } from "next/navigation"
 import { useOperatorsByEvent } from "@/features/operadores/api/query/use-operators-by-event"
 import { useOperators } from "@/features/operadores/api/query/use-operators"
@@ -106,7 +106,7 @@ export default function OperadoresPage() {
     const [actionsFilter, setActionsFilter] = useState({ busca: "", tipo: "all-types", operador: "all-operators" })
     const [allActions, setAllActions] = useState<any[]>([])
     const [loadingActions, setLoadingActions] = useState(false)
-    
+
     // Estados para modal de detalhes da ação
     const [actionDetailsOpen, setActionDetailsOpen] = useState(false)
     const [selectedAction, setSelectedAction] = useState<any>(null)
@@ -228,7 +228,7 @@ export default function OperadoresPage() {
                         console.log(`✅ Adicionando montagem (operadores): ${dateStr} - ${periodLabel}`);
                         days.push({
                             id: `${dateISO}-montagem-${day.period}`,
-                            label: `${dateStr} (MONTAGEM - ${periodLabel})`,
+                            label: `${dateStr} • Montagem • ${periodLabel}`,
                             date: dateStr,
                             type: 'montagem',
                             period: day.period
@@ -253,7 +253,7 @@ export default function OperadoresPage() {
 
                     days.push({
                         id: `${dateISO}-montagem-${periodTyped}`,
-                        label: `${dateStr} (MONTAGEM - ${periodLabel})`,
+                        label: `${dateStr} • Montagem • ${periodLabel}`,
                         date: dateStr,
                         type: 'montagem',
                         period: periodTyped
@@ -276,7 +276,7 @@ export default function OperadoresPage() {
                         console.log(`✅ Adicionando evento (operadores): ${dateStr} - ${periodLabel}`);
                         days.push({
                             id: `${dateISO}-evento-${day.period}`,
-                            label: `${dateStr} (EVENTO - ${periodLabel})`,
+                            label: `${dateStr} • Evento • ${periodLabel}`,
                             date: dateStr,
                             type: 'evento',
                             period: day.period
@@ -301,7 +301,7 @@ export default function OperadoresPage() {
 
                     days.push({
                         id: `${dateISO}-evento-${periodTyped}`,
-                        label: `${dateStr} (EVENTO - ${periodLabel})`,
+                        label: `${dateStr} • Evento • ${periodLabel}`,
                         date: dateStr,
                         type: 'evento',
                         period: periodTyped
@@ -324,7 +324,7 @@ export default function OperadoresPage() {
                         console.log(`✅ Adicionando desmontagem (operadores): ${dateStr} - ${periodLabel}`);
                         days.push({
                             id: `${dateISO}-desmontagem-${day.period}`,
-                            label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
+                            label: `${dateStr} • Desmontagem • ${periodLabel}`,
                             date: dateStr,
                             type: 'desmontagem',
                             period: day.period
@@ -349,7 +349,7 @@ export default function OperadoresPage() {
 
                     days.push({
                         id: `${dateISO}-desmontagem-${periodTyped}`,
-                        label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
+                        label: `${dateStr} • Desmontagem • ${periodLabel}`,
                         date: dateStr,
                         type: 'desmontagem',
                         period: periodTyped
@@ -506,6 +506,54 @@ export default function OperadoresPage() {
     const abrirExcluir = (operador: Operator) => {
         setOperatorToDelete(operador)
         setDeleteDialogOpen(true)
+    }
+
+    // Função para alternar acesso do operador ao evento
+    const toggleEventAccess = async (operador: Operator) => {
+        try {
+            setLoading(true)
+
+            // Obter o status atual do operador para este evento
+            const currentAssignments: string[] = operador.id_events ? operador.id_events.split(',') : []
+            const eventAssignments = currentAssignments.filter((assignment: string) => assignment.includes(`${eventId}:`))
+            const otherAssignments = currentAssignments.filter((assignment: string) => !assignment.includes(`${eventId}:`))
+
+            let newAssignments: string[]
+            let actionMessage: string
+            if (eventAssignments.length > 0) {
+                // Se tem atribuições para este evento, remover (desativar acesso)
+                newAssignments = otherAssignments
+                actionMessage = "Acesso ao evento desativado"
+            } else {
+                // Se não tem atribuições, precisa adicionar pelo menos uma (ativar acesso)
+                // Vamos adicionar o primeiro turno disponível como padrão
+                const eventDays = getEventDays()
+                if (eventDays.length > 0) {
+                    const firstShift = eventDays[0]
+                    newAssignments = [...otherAssignments, `${eventId}:${firstShift.id}`]
+                    actionMessage = "Acesso ao evento ativado"
+                } else {
+                    toast.error("Não há turnos disponíveis para este evento")
+                    return
+                }
+            }
+
+            await apiClient.put(`/operadores/${operador.id}`, {
+                nome: operador.nome,
+                cpf: operador.cpf,
+                senha: operador.senha,
+                id_events: newAssignments.join(',')
+            })
+
+            toast.success(actionMessage)
+
+            // Forçar atualização dos dados
+            await forceRefreshData()
+        } catch (error: any) {
+            toast.error("Erro ao alterar acesso do operador")
+        } finally {
+            setLoading(false)
+        }
     }
 
     const salvarEdicao = async () => {
@@ -971,6 +1019,13 @@ export default function OperadoresPage() {
 
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 
+    // Função para verificar se o operador tem acesso a este evento
+    const hasEventAccess = (operador: Operator) => {
+        if (!operador.id_events) return false
+        const currentAssignments = operador.id_events.split(',')
+        return currentAssignments.some((assignment: string) => assignment.includes(`${eventId}:`))
+    }
+
     // Função para extrair os turnos de atribuição do operador
     const getOperatorAssignmentShifts = (operator: Operator) => {
         if (!operator?.id_events) return []
@@ -1265,29 +1320,42 @@ export default function OperadoresPage() {
                                 operadores.map((operador) => (
                                     <div key={operador.id} className="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition-shadow">
                                         <div className="flex items-start justify-between mb-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                                                    <span className="text-lg font-medium text-blue-600">
-                                                        {getInitials(operador.nome)}
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    <h3 className="font-semibold text-gray-900">{capitalizeWords(operador.nome)}</h3>
-                                                    <p className="text-sm text-gray-600">{formatCPF(operador.cpf)}</p>
-                                                </div>
+                                            <div>
+                                                <h3 className="font-semibold text-gray-900">{capitalizeWords(operador.nome)}</h3>
+                                                <p className="text-sm text-gray-600">{formatCPF(operador.cpf)}</p>
                                             </div>
                                             <div className="flex gap-1">
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
+                                                    onClick={() => abrirPopup(operador)}
+                                                    title="Ver detalhes"
+                                                >
+                                                    <Eye className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
                                                     onClick={() => abrirEditar(operador)}
+                                                    title="Editar"
                                                 >
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
+                                                    onClick={() => toggleEventAccess(operador)}
+                                                    disabled={loading}
+                                                    title={hasEventAccess(operador) ? "Desativar acesso ao evento" : "Ativar acesso ao evento"}
+                                                    className={hasEventAccess(operador) ? "text-green-600 border-green-200 hover:bg-green-50" : "text-red-600 border-red-200 hover:bg-red-50"}
+                                                >
+                                                    {hasEventAccess(operador) ? <Power className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
                                                     onClick={() => abrirExcluir(operador)}
+                                                    title="Excluir"
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
@@ -1306,24 +1374,42 @@ export default function OperadoresPage() {
                                                             </Badge>
                                                         );
                                                     }
+                                                    // Agrupar por data para melhor visualização
+                                                    const shiftsByDate = assignmentShifts.reduce((acc, shift) => {
+                                                        const date = shift.date || new Date().toLocaleDateString('pt-BR');
+                                                        if (!acc[date]) acc[date] = [];
+                                                        acc[date].push(shift);
+                                                        return acc;
+                                                    }, {} as Record<string, typeof assignmentShifts>);
+
                                                     return (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {assignmentShifts.slice(0, 3).map((shift, index) => (
-                                                                <Badge key={index} variant="outline" className="text-blue-600 border-blue-200 text-xs">
-                                                                    <div className="flex items-center gap-1">
-                                                                        {getPeriodIcon(shift.period)}
-                                                                        <span>
-                                                                            {shift.type === 'montagem' ? 'Mont' :
-                                                                                shift.type === 'evento' ? 'Evt' :
-                                                                                    shift.type === 'desmontagem' ? 'Desm' : 'Fin'} -
-                                                                            {shift.period === 'diurno' ? 'Dia' : shift.period === 'noturno' ? 'Noite' : 'DI'}
-                                                                        </span>
+                                                        <div className="space-y-2">
+                                                            {Object.entries(shiftsByDate).slice(0, 2).map(([date, shifts]) => (
+                                                                <div key={date} className="bg-gray-50 rounded p-2 border border-gray-200">
+                                                                    <div className="text-xs font-medium text-gray-700 mb-1">{date}</div>
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {(Array.isArray(shifts) ? shifts : []).map((shift: any, index: number) => (
+                                                                            <Badge key={index} variant="outline" className="text-blue-600 border-blue-200 text-xs">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {getPeriodIcon(shift.period)}
+                                                                                    <span>
+                                                                                        {shift.type === 'montagem' ? 'Mont' :
+                                                                                            shift.type === 'evento' ? 'Evt' :
+                                                                                                shift.type === 'desmontagem' ? 'Desm' : 'Fin'}
+                                                                                    </span>
+                                                                                    <span>•</span>
+                                                                                    <span>
+                                                                                        {shift.period === 'diurno' ? 'Dia' : shift.period === 'noturno' ? 'Noite' : 'DI'}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </Badge>
+                                                                        ))}
                                                                     </div>
-                                                                </Badge>
+                                                                </div>
                                                             ))}
-                                                            {assignmentShifts.length > 3 && (
+                                                            {Object.keys(shiftsByDate).length > 2 && (
                                                                 <Badge variant="outline" className="text-gray-500 border-gray-200 text-xs">
-                                                                    +{assignmentShifts.length - 3} mais
+                                                                    +{Object.keys(shiftsByDate).length - 2} dias a mais
                                                                 </Badge>
                                                             )}
                                                         </div>
@@ -1332,8 +1418,21 @@ export default function OperadoresPage() {
                                             </div>
 
                                             <div className="flex items-center justify-between">
+                                                <span className="text-sm text-gray-600">Status do Acesso:</span>
+                                                <Badge
+                                                    variant="outline"
+                                                    className={hasEventAccess(operador)
+                                                        ? "text-green-600 border-green-200 bg-green-50"
+                                                        : "text-red-600 border-red-200 bg-red-50"
+                                                    }
+                                                >
+                                                    {hasEventAccess(operador) ? "Ativo" : "Inativo"}
+                                                </Badge>
+                                            </div>
+
+                                            <div className="flex items-center justify-between">
                                                 <span className="text-sm text-gray-600">Ações Realizadas:</span>
-                                                <Badge variant="outline" className="text-green-600 border-green-200">
+                                                <Badge variant="outline" className="text-gray-600 border-gray-200">
                                                     {operador.acoes?.length || 0} ações
                                                 </Badge>
                                             </div>
@@ -1439,37 +1538,23 @@ export default function OperadoresPage() {
                                                             {action.type}
                                                         </Badge>
                                                     </TableCell>
-                                                    
+
                                                     {/* Quem Executou */}
                                                     <TableCell className="font-medium">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                                                                <span className="text-xs font-medium text-blue-600">
-                                                                    {getInitials(action.operatorName || action.operadorNome)}
-                                                                </span>
-                                                            </div>
-                                                            <div>
-                                                                <span className="text-sm text-gray-900">{capitalizeWords(action.operatorName || action.operadorNome)}</span>
-                                                                <p className="text-xs text-gray-500">{formatCPF(action.operatorCpf || action.operadorCpf)}</p>
-                                                            </div>
+                                                        <div>
+                                                            <span className="text-sm text-gray-900">{capitalizeWords(action.operatorName || action.operadorNome)}</span>
+                                                            <p className="text-xs text-gray-500">{formatCPF(action.operatorCpf || action.operadorCpf)}</p>
                                                         </div>
                                                     </TableCell>
-                                                    
+
                                                     {/* Quem Sofreu a Ação */}
                                                     <TableCell className="font-medium">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-                                                                <span className="text-xs font-medium text-green-600">
-                                                                    {getInitials(action.staffName)}
-                                                                </span>
-                                                            </div>
-                                                            <div>
-                                                                <span className="text-sm text-gray-900">{capitalizeWords(action.staffName)}</span>
-                                                                <p className="text-xs text-gray-500">{formatCPF(action.staffCpf)}</p>
-                                                            </div>
+                                                        <div>
+                                                            <span className="text-sm text-gray-900">{capitalizeWords(action.staffName)}</span>
+                                                            <p className="text-xs text-gray-500">{formatCPF(action.staffCpf)}</p>
                                                         </div>
                                                     </TableCell>
-                                                    
+
                                                     {/* Empresa/Função */}
                                                     <TableCell className="text-gray-700">
                                                         <div>
@@ -1477,7 +1562,7 @@ export default function OperadoresPage() {
                                                             <p className="text-xs text-gray-500">{action.funcao || "-"}</p>
                                                         </div>
                                                     </TableCell>
-                                                    
+
                                                     {/* Credencial */}
                                                     <TableCell className="text-gray-700">
                                                         <div>
@@ -1490,7 +1575,7 @@ export default function OperadoresPage() {
                                                             {!action.credencial && "-"}
                                                         </div>
                                                     </TableCell>
-                                                    
+
                                                     {/* Pulseira */}
                                                     <TableCell className="text-gray-700">
                                                         <div>
@@ -1503,7 +1588,7 @@ export default function OperadoresPage() {
                                                             {!action.pulseira && "-"}
                                                         </div>
                                                     </TableCell>
-                                                    
+
                                                     {/* Período/Turno */}
                                                     <TableCell className="text-gray-700">
                                                         <div>
@@ -1511,7 +1596,7 @@ export default function OperadoresPage() {
                                                             <p className="text-xs text-gray-500">{action.workStage || ""}</p>
                                                         </div>
                                                     </TableCell>
-                                                    
+
                                                     {/* Data/Hora */}
                                                     <TableCell className="text-gray-700">
                                                         <div>
@@ -1524,7 +1609,7 @@ export default function OperadoresPage() {
                                                             )}
                                                         </div>
                                                     </TableCell>
-                                                    
+
                                                     {/* Detalhes */}
                                                     <TableCell className="text-center">
                                                         <Button
@@ -2057,14 +2142,7 @@ export default function OperadoresPage() {
                                                                 </div>
                                                             </TableCell>
                                                             <TableCell className="font-medium">
-                                                                <div className="flex items-center gap-2 sm:gap-3">
-                                                                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                                                        <span className="text-xs sm:text-sm font-medium text-blue-600">
-                                                                            {getInitials(operator.nome)}
-                                                                        </span>
-                                                                    </div>
-                                                                    <span className="text-gray-900 truncate max-w-[100px] sm:max-w-[180px]">{capitalizeWords(operator.nome)}</span>
-                                                                </div>
+                                                                <span className="text-gray-900 truncate max-w-[100px] sm:max-w-[180px]">{capitalizeWords(operator.nome)}</span>
                                                             </TableCell>
                                                             <TableCell className="text-gray-700">{formatCPF(operator.cpf)}</TableCell>
                                                             <TableCell>

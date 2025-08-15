@@ -1715,16 +1715,7 @@ export default function EventoDetalhesPage() {
                         <div className="flex items-center gap-3">
                             {/* Toggle para modo de visualização */}
                             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-1">
-                                <button
-                                    onClick={() => setViewMode('grouped')}
-                                    className={`px-3 py-1 rounded text-sm font-medium transition-all ${viewMode === 'grouped'
-                                        ? 'bg-purple-600 text-white shadow-sm'
-                                        : 'text-gray-600 hover:bg-gray-100'
-                                        }`}
-                                >
-                                    <Users className="w-4 h-4 mr-1 inline" />
-                                    Agrupado
-                                </button>
+
                                 <button
                                     onClick={() => setViewMode('shift')}
                                     className={`px-3 py-1 rounded text-sm font-medium transition-all ${viewMode === 'shift'
