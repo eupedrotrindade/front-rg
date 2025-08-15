@@ -1257,9 +1257,9 @@ export default function PublicEmpresaPage() {
                                                             <Badge
                                                                 variant="secondary"
                                                                 className={`text-xs ${day.type === 'montagem' ? 'bg-orange-100 text-orange-800' :
-                                                                        day.type === 'evento' ? 'bg-blue-100 text-blue-800' :
-                                                                            day.type === 'desmontagem' ? 'bg-red-100 text-red-800' :
-                                                                                'bg-gray-100 text-gray-800'
+                                                                    day.type === 'evento' ? 'bg-blue-100 text-blue-800' :
+                                                                        day.type === 'desmontagem' ? 'bg-red-100 text-red-800' :
+                                                                            'bg-gray-100 text-gray-800'
                                                                     }`}
                                                             >
                                                                 {day.type.toUpperCase()}
@@ -1354,7 +1354,7 @@ export default function PublicEmpresaPage() {
                                                                 <SelectContent>
                                                                     <SelectItem value="all">Todas as funções</SelectItem>
                                                                     {uniqueValues.funcoes.filter(funcao => funcao && funcao.trim()).map((funcao) => (
-                                                                        <SelectItem key={funcao} value={funcao}>{funcao}</SelectItem>
+                                                                        <SelectItem key={funcao} value={funcao || ""}>{funcao}</SelectItem>
                                                                     ))}
                                                                 </SelectContent>
                                                             </Select>
@@ -1971,7 +1971,7 @@ export default function PublicEmpresaPage() {
                                         <SelectContent>
                                             <SelectItem value="all">Todas as funções</SelectItem>
                                             {uniqueValues.funcoes.filter(funcao => funcao && funcao.trim()).map((funcao) => (
-                                                <SelectItem key={funcao} value={funcao}>{funcao}</SelectItem>
+                                                <SelectItem key={funcao} value={funcao || ""}>{funcao}</SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
