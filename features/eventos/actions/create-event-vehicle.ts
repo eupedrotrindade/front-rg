@@ -11,7 +11,7 @@ export interface CreateEventVehicleData {
   shiftId: string;
   workDate: string;
   workStage: "montagem" | "evento" | "desmontagem";
-  workPeriod: "diurno" | "noturno";
+  workPeriod: "diurno" | "noturno" | "dia_inteiro";
 }
 
 export interface EventVehicle {
@@ -26,7 +26,7 @@ export interface EventVehicle {
   shiftId?: string;
   workDate?: string;
   workStage?: "montagem" | "evento" | "desmontagem";
-  workPeriod?: "diurno" | "noturno";
+  workPeriod?: "diurno" | "noturno" | "dia_inteiro";
   // Campo legado (compatibilidade durante transição)
   dia?: string;
   created_at: string;

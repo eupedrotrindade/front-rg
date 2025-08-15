@@ -145,6 +145,7 @@ export default function Painel() {
     cpf: string
     id?: string
     acoes?: any[]
+    id_events?: string
   } | null>(null)
 
   // Estados para selects pesquisáveis
@@ -246,6 +247,7 @@ export default function Painel() {
 
   // Estado para controlar o loading durante carregamento de attendance
   const [isLoadingAttendance, setIsLoadingAttendance] = useState<boolean>(false)
+
 
   // Estados para permissões de operadores
   const [operatorPermissions, setOperatorPermissions] = useState<{
@@ -636,7 +638,7 @@ export default function Painel() {
       const month = parts[1];
       const day = parts[2];
       const stage = parts[3];
-      const period = parts[4] as 'diurno' | 'noturno';
+      const period = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro';
 
       return {
         dateISO: `${year}-${month}-${day}`,
@@ -671,7 +673,7 @@ export default function Painel() {
     label: string
     date: string
     type: string
-    period?: 'diurno' | 'noturno'
+    period?: 'diurno' | 'noturno' | 'dia_inteiro'
   }> => {
     if (!evento || Array.isArray(evento)) return []
 
@@ -680,7 +682,7 @@ export default function Painel() {
       label: string
       date: string
       type: string
-      period?: 'diurno' | 'noturno'
+      period?: 'diurno' | 'noturno' | 'dia_inteiro'
     }> = []
 
     // Usar os arrays montagem, evento, desmontagem do JSON
@@ -688,7 +690,7 @@ export default function Painel() {
     // Processar montagem
     if (evento.montagem && Array.isArray(evento.montagem)) {
       console.log('🔧 Processando montagem:', evento.montagem)
-      evento.montagem.forEach((item: { date: string; period: 'diurno' | 'noturno' }) => {
+      evento.montagem.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
         // Usar a data ISO diretamente sem conversões desnecessárias
         const isoDate = item.date // YYYY-MM-DD
         const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
@@ -699,7 +701,7 @@ export default function Painel() {
 
         days.push({
           id: dayId,
-          label: `${dateStr} (MONTAGEM - ${item.period.toUpperCase()})`,
+          label: `${dateStr} (MONTAGEM - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
           date: dateStr,
           type: 'setup',
           period: item.period,
@@ -715,7 +717,7 @@ export default function Painel() {
       const isOnlyEventDay = !hasSetup && !hasFinalization
       const eventLabel = isOnlyEventDay ? 'DIA DO EVENTO' : 'EVENTO'
 
-      evento.evento.forEach((item: { date: string; period: 'diurno' | 'noturno' }) => {
+      evento.evento.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
         // Usar a data ISO diretamente sem conversões desnecessárias
         const isoDate = item.date // YYYY-MM-DD
         const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
@@ -726,7 +728,7 @@ export default function Painel() {
 
         days.push({
           id: dayId,
-          label: `${dateStr} (${eventLabel} - ${item.period.toUpperCase()})`,
+          label: `${dateStr} (${eventLabel} - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
           date: dateStr,
           type: 'preparation',
           period: item.period,
@@ -737,7 +739,7 @@ export default function Painel() {
     // Processar desmontagem
     if (evento.desmontagem && Array.isArray(evento.desmontagem)) {
       console.log('🔧 Processando desmontagem:', evento.desmontagem)
-      evento.desmontagem.forEach((item: { date: string; period: 'diurno' | 'noturno' }) => {
+      evento.desmontagem.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
         // Usar a data ISO diretamente sem conversões desnecessárias
         const isoDate = item.date // YYYY-MM-DD
         const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
@@ -748,7 +750,7 @@ export default function Painel() {
 
         days.push({
           id: dayId,
-          label: `${dateStr} (DESMONTAGEM - ${item.period.toUpperCase()})`,
+          label: `${dateStr} (DESMONTAGEM - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
           date: dateStr,
           type: 'finalization',
           period: item.period,
@@ -762,10 +764,11 @@ export default function Painel() {
       const dateB = new Date(b.date.split('/').reverse().join('-'))
 
       if (dateA.getTime() === dateB.getTime()) {
-        // Se mesma data, ordenar por período (diurno primeiro)
-        if (a.period === 'diurno' && b.period === 'noturno') return -1
-        if (a.period === 'noturno' && b.period === 'diurno') return 1
-        return 0
+        // Se mesma data, ordenar por período (diurno, noturno, dia_inteiro)
+        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
+        const aPeriodOrder = periodOrder[a.period as keyof typeof periodOrder] ?? 999;
+        const bPeriodOrder = periodOrder[b.period as keyof typeof periodOrder] ?? 999;
+        return aPeriodOrder - bPeriodOrder;
       }
 
       return dateA.getTime() - dateB.getTime()
@@ -821,11 +824,13 @@ export default function Painel() {
   )
 
   // Função para obter ícone do período - baseada no eventos/[id]/page.tsx
-  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
     if (period === 'diurno') {
       return <Sun className="h-3 w-3 text-yellow-500" />
     } else if (period === 'noturno') {
       return <Moon className="h-3 w-3 text-blue-500" />
+    } else if (period === 'dia_inteiro') {
+      return <Clock className="h-3 w-3 text-purple-500" />
     }
     return null
   }, [])
@@ -1076,26 +1081,64 @@ export default function Painel() {
     return new Date(Number(ano), Number(mes) - 1, Number(dia))
   }
 
-  // Retorna apenas as datas autorizadas para o operador logado
+  // Retorna apenas as datas atribuídas ao operador logado
   const getDiasDisponiveisParaOperador = useCallback(() => {
-    let dias = []
-    if (!operadorInfo?.id) {
-      dias = getEventDays()
-    } else if (availableDatesForOperator.length === 0) {
-      dias = getEventDays()
-    } else {
-      dias = getEventDays().filter(day =>
-        availableDatesForOperator.includes(day.id),
-      )
+    console.log('🔍 Debug getDiasDisponiveisParaOperador - operadorInfo:', {
+      id: operadorInfo?.id,
+      id_events: operadorInfo?.id_events,
+      eventId: eventId,
+      hasOperatorInfo: !!operadorInfo
+    })
+    
+    // Se não tem operador logado ou não tem shifts atribuídos, mostrar todos os dias
+    if (!operadorInfo?.id || !operadorInfo?.id_events) {
+      console.log('🔍 Operador sem ID ou sem shifts atribuídos, mostrando todos os dias')
+      const dias = getEventDays()
+      console.log('🔍 Todos os dias retornados quando sem shifts:', dias.length, dias.map(d => ({ id: d.id, label: d.label })))
+      dias.sort((a, b) => {
+        const dateA = dataBRtoDate(a.date)
+        const dateB = dataBRtoDate(b.date)
+        return dateA.getTime() - dateB.getTime()
+      })
+      return dias
     }
+
+    console.log('🔍 Operador shifts:', operadorInfo.id_events)
+    
+    // Obter todos os dias do evento
+    const allEventDays = getEventDays()
+    console.log('🔍 Todos os dias do evento:', allEventDays.map(d => d.id))
+    
+    // Dividir os shifts do operador por vírgula e filtrar para este evento
+    const operatorShifts = operadorInfo.id_events
+      .split(',')
+      .map(shift => shift.trim())
+      .filter(shift => shift.includes(eventId)) // Filtrar apenas shifts deste evento
+      .map(shift => shift.replace(`${eventId}:`, '')) // Remover o prefixo eventId:
+    
+    console.log('🔍 Shifts do operador para este evento:', operatorShifts)
+    
+    // Filtrar apenas os dias em que o operador trabalha
+    const diasDisponiveis = allEventDays.filter(day => {
+      const dayIncluded = operatorShifts.includes(day.id)
+      if (dayIncluded) {
+        console.log('✅ Dia incluído:', day.id, day.label)
+      } else {
+        console.log('❌ Dia excluído:', day.id, day.label)
+      }
+      return dayIncluded
+    })
+    
     // Ordena as datas
-    dias.sort((a, b) => {
+    diasDisponiveis.sort((a, b) => {
       const dateA = dataBRtoDate(a.date)
       const dateB = dataBRtoDate(b.date)
       return dateA.getTime() - dateB.getTime()
     })
-    return dias
-  }, [operadorInfo?.id, availableDatesForOperator, getEventDays])
+    
+    console.log('🎯 Dias finais disponíveis para o operador:', diasDisponiveis.map(d => ({ id: d.id, label: d.label })))
+    return diasDisponiveis
+  }, [operadorInfo?.id, operadorInfo?.id_events, eventId, getEventDays])
 
   // Adicione após os outros useCallback, antes dos useEffect:
 
@@ -1500,10 +1543,11 @@ export default function Painel() {
     }
   }, [selectedDay, participantsData, credential]) // Dependências necessárias
 
+
   // Função para obter todos os dias disponíveis nas tabs (navegação sequencial)
   const getDaysOfSameStage = useCallback((currentShiftId: string) => {
     if (!currentShiftId || currentShiftId === 'all') return []
-    
+
     // Retornar TODOS os dias disponíveis nas tabs, ordenados cronologicamente
     return getDiasDisponiveisParaOperador()
       .sort((a, b) => a.id.localeCompare(b.id))
@@ -1513,7 +1557,7 @@ export default function Painel() {
   const goToPreviousDay = useCallback(() => {
     const sameStageDays = getDaysOfSameStage(selectedDay)
     const currentIndex = sameStageDays.findIndex(day => day.id === selectedDay)
-    
+
     if (currentIndex > 0) {
       setSelectedDay(sameStageDays[currentIndex - 1].id)
     }
@@ -1523,7 +1567,7 @@ export default function Painel() {
   const goToNextDay = useCallback(() => {
     const sameStageDays = getDaysOfSameStage(selectedDay)
     const currentIndex = sameStageDays.findIndex(day => day.id === selectedDay)
-    
+
     if (currentIndex < sameStageDays.length - 1) {
       setSelectedDay(sameStageDays[currentIndex + 1].id)
     }
@@ -1542,6 +1586,7 @@ export default function Painel() {
     return currentIndex < sameStageDays.length - 1
   }, [selectedDay, getDaysOfSameStage])
 
+
   // TODOS OS useEffect POR ÚLTIMO
   useEffect(() => {
     const carregarOperador = async () => {
@@ -1559,11 +1604,13 @@ export default function Painel() {
               )
               if (response.data && response.data.length > 0) {
                 const operadorCompleto = response.data[0]
+                console.log('🔍 Operador carregado:', operadorCompleto)
                 setOperadorInfo({
                   nome: operador.nome,
                   cpf: operador.cpf,
                   id: operadorCompleto.id,
                   acoes: operadorCompleto.acoes,
+                  id_events: operadorCompleto.id_events,
                 })
                 return
               } else {
@@ -1577,6 +1624,7 @@ export default function Painel() {
             cpf: operador.cpf,
             id: operador.id,
             acoes: operador.acoes,
+            id_events: operador.id_events,
           })
         } catch (error) {
           setOperadorInfo(null)
@@ -1901,12 +1949,19 @@ export default function Painel() {
 
       await registerOperatorActionInColumn({
         type: actionType,
-        staffId: String(participantId),
+        staffId: participantId ? String(participantId) : undefined,
         staffName: participant.name,
-        pulseira: newWristbandCode.trim(),
+        staffCpf: participant.cpf,
+        empresa: participant.company,
+        funcao: participant.role,
+        pulseira: newWristbandCode.trim() || undefined,
+        pulseiraAnterior: participantWristbands.get(participantId) || undefined,
         credencial: newCredential,
         credencialAnterior: currentCredential,
         trocouTipoCredencial: changedCredentialType || false,
+        observacoes: changedCredentialType ? 
+          `Troca de credencial: ${currentCredential} → ${newCredential} + Nova pulseira: ${newWristbandCode.trim()}` :
+          `Atualização de pulseira: ${participantWristbands.get(participantId) || 'anterior'} → ${newWristbandCode.trim()}`
       })
 
       // Atualizar o estado local
@@ -2080,10 +2135,20 @@ export default function Painel() {
     type: string
     staffId?: string
     staffName?: string
+    staffCpf?: string
     pulseira?: string
+    pulseiraAnterior?: string
     credencial?: string
     credencialAnterior?: string
     trocouTipoCredencial?: boolean
+    workDate?: string
+    workStage?: string
+    workPeriod?: string
+    checkInTime?: string
+    checkOutTime?: string
+    empresa?: string
+    funcao?: string
+    observacoes?: string
   }) => {
 
     if (!operadorInfo?.id) {
@@ -2104,6 +2169,7 @@ export default function Painel() {
               cpf: operadorInfo.cpf,
               id: operadorCompleto.id,
               acoes: operadorCompleto.acoes,
+              id_events: operadorCompleto.id_events,
             })
 
             // Continuar com o registro da ação
@@ -2130,18 +2196,85 @@ export default function Painel() {
           : []
         : []
 
-      const newAction = {
+      // Criar objeto base com campos obrigatórios
+      const baseAction = {
         type: actionData.type,
-        evento: Array.isArray(evento) ? 'Evento' : evento?.name || 'Evento',
-        tabela: params?.id as string,
-        staffId: actionData.staffId ? parseInt(actionData.staffId) : 0,
-        pulseira: actionData.pulseira || '',
-        staffName: actionData.staffName || '',
         timestamp: new Date().toISOString(),
-        credencial: actionData.credencial || '',
-        credencialAnterior: actionData.credencialAnterior || '',
-        trocouTipoCredencial: actionData.trocouTipoCredencial || false,
+        tabela: 'operadores', // Propriedade obrigatória para o backend
       }
+
+      // Função para adicionar campo apenas se não for vazio
+      const addFieldIfNotEmpty = (obj: any, key: string, value: any) => {
+        // Verificar se o valor é realmente válido
+        if (value === undefined || value === null || value === '' || value === 'undefined' || value === 'null') {
+          return // Não adicionar campos vazios/inválidos
+        }
+
+        // Para números (incluindo staffId)
+        if (typeof value === 'number') {
+          // Aceitar números válidos (incluindo 0, mas não NaN)
+          if (!isNaN(value)) {
+            obj[key] = value
+          }
+        }
+        // Para strings que podem ser números
+        else if (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '') {
+          const numValue = parseInt(value.trim())
+          if (!isNaN(numValue)) {
+            obj[key] = numValue
+          }
+        }
+        // Para booleans
+        else if (typeof value === 'boolean') {
+          obj[key] = value
+        }
+        // Para strings normais
+        else if (typeof value === 'string') {
+          const trimmed = value.trim()
+          if (trimmed !== '' && trimmed !== 'undefined' && trimmed !== 'null') {
+            obj[key] = trimmed
+          }
+        }
+        // Para outros tipos válidos
+        else {
+          obj[key] = value
+        }
+      }
+
+      // Adicionar campos do evento
+      addFieldIfNotEmpty(baseAction, 'evento', Array.isArray(evento) ? 'Evento' : evento?.name || 'Evento')
+      addFieldIfNotEmpty(baseAction, 'eventId', params?.id as string)
+      addFieldIfNotEmpty(baseAction, 'workDate', actionData.workDate || selectedDay)
+      addFieldIfNotEmpty(baseAction, 'workStage', actionData.workStage)
+      addFieldIfNotEmpty(baseAction, 'workPeriod', actionData.workPeriod)
+
+      // Adicionar campos do staff
+      addFieldIfNotEmpty(baseAction, 'staffId', actionData.staffId)
+      addFieldIfNotEmpty(baseAction, 'staffName', actionData.staffName)
+      addFieldIfNotEmpty(baseAction, 'staffCpf', actionData.staffCpf)
+      addFieldIfNotEmpty(baseAction, 'empresa', actionData.empresa)
+      addFieldIfNotEmpty(baseAction, 'funcao', actionData.funcao)
+
+      // Adicionar campos das pulseiras/credenciais
+      addFieldIfNotEmpty(baseAction, 'pulseira', actionData.pulseira)
+      addFieldIfNotEmpty(baseAction, 'pulseiraAnterior', actionData.pulseiraAnterior)
+      addFieldIfNotEmpty(baseAction, 'credencial', actionData.credencial)
+      addFieldIfNotEmpty(baseAction, 'credencialAnterior', actionData.credencialAnterior)
+      addFieldIfNotEmpty(baseAction, 'trocouTipoCredencial', actionData.trocouTipoCredencial)
+
+      // Adicionar campos de check-in/check-out
+      addFieldIfNotEmpty(baseAction, 'checkInTime', actionData.checkInTime)
+      addFieldIfNotEmpty(baseAction, 'checkOutTime', actionData.checkOutTime)
+
+      // Adicionar campos do operador
+      addFieldIfNotEmpty(baseAction, 'operatorId', operadorInfo.id)
+      addFieldIfNotEmpty(baseAction, 'operatorName', operadorInfo.nome)
+      addFieldIfNotEmpty(baseAction, 'operatorCpf', operadorInfo.cpf)
+
+      // Adicionar observações
+      addFieldIfNotEmpty(baseAction, 'observacoes', actionData.observacoes)
+
+      const newAction = baseAction
 
       const updatedActions = [...currentActions, newAction]
 
@@ -2185,15 +2318,20 @@ export default function Painel() {
       // });
       await registerOperatorActionInColumn({
         type: 'update_wristband',
-        staffId: String(participantAction.id),
+        staffId: participantAction.id ? String(participantAction.id) : undefined,
         staffName: participantAction.name,
-        pulseira: novaPulseira.trim(),
+        staffCpf: participantAction.cpf,
+        empresa: participantAction.company,
+        funcao: participantAction.role,
+        pulseira: novaPulseira.trim() || undefined,
+        pulseiraAnterior: undefined, // Removido "Não informada"
         credencial: (() => {
           const credentialSelected = credential.find(
             w => w.id === participantAction.credentialId,
           )
-          return credentialSelected?.nome || ''
+          return credentialSelected?.nome || undefined
         })(),
+        observacoes: `Pulseira atualizada para: ${novaPulseira.trim()}`
       })
 
       // Atualizar dados automaticamente
@@ -2254,12 +2392,16 @@ export default function Painel() {
       await registerOperatorActionInColumn({
         type: 'add_staff',
         staffName: novoStaff.name,
+        staffCpf: novoStaff.cpf,
+        empresa: novoStaff.empresa,
+        funcao: novoStaff.funcao,
         credencial: (() => {
           const credentialSelected = credential.find(
-            w => w.id === novoStaff.tipo_credencial,
+            w => w.nome === novoStaff.tipo_credencial,
           )
           return credentialSelected?.nome || ''
         })(),
+        observacoes: `Novo staff adicionado: ${novoStaff.name} (${formatCPF(novoStaff.cpf)}) - ${novoStaff.empresa} - ${novoStaff.funcao}`
       })
       toast.success('Novo staff adicionado com sucesso!')
       setNovoStaff({
@@ -2381,10 +2523,18 @@ export default function Painel() {
       // });
       await registerOperatorActionInColumn({
         type: 'checkin',
-        staffId: String(participantAction.id),
+        staffId: participantAction.id ? String(participantAction.id) : undefined,
         staffName: participantAction.name,
-        pulseira: codigoPulseira.trim(),
+        staffCpf: participantAction.cpf,
+        empresa: participantAction.company,
+        funcao: participantAction.role,
+        pulseira: codigoPulseira.trim() || undefined,
         credencial: getCredencial(participantAction),
+        workDate: dateToUse,
+        workStage: stage,
+        workPeriod: period,
+        checkInTime: currentTime,
+        observacoes: `Check-in realizado - Pulseira: ${codigoPulseira.trim()} - Data: ${dateToUse} - Turno: ${stage.toUpperCase()} ${period.toUpperCase()}`
       })
 
       // Atualizar dados de presença automaticamente
@@ -2462,9 +2612,18 @@ export default function Painel() {
       // });
       await registerOperatorActionInColumn({
         type: 'checkout',
-        staffId: String(participantAction.id),
+        staffId: participantAction.id ? String(participantAction.id) : undefined,
         staffName: participantAction.name,
+        staffCpf: participantAction.cpf,
+        empresa: participantAction.company,
+        funcao: participantAction.role,
         credencial: getCredencial(participantAction),
+        workDate: dateToUse,
+        workStage: stage,
+        workPeriod: period,
+        checkOutTime: currentTime,
+        checkInTime: currentStatus?.checkIn || undefined,
+        observacoes: `Check-out realizado - Data: ${dateToUse} - Turno: ${stage.toUpperCase()} ${period.toUpperCase()}`
       })
 
       // Atualizar dados de presença automaticamente
@@ -2530,10 +2689,10 @@ export default function Painel() {
         // Calcular qual dia é sequencialmente através de todos os dias disponíveis
         let dayNumber = 1
         const availableDays = getDiasDisponiveisParaOperador()
-        
+
         // Ordenar todos os dias disponíveis por data (ordem cronológica)
         const sortedDays = availableDays.sort((a, b) => a.id.localeCompare(b.id))
-        
+
         // Encontrar a posição do dia atual na sequência completa
         const currentIndex = sortedDays.findIndex(day => day.id === selectedDay)
         if (currentIndex !== -1) {
@@ -2636,7 +2795,7 @@ export default function Painel() {
                         Otimizar
                       </Button>
                     )}
-                    
+
                     {/* Exibir dia selecionado formatado com navegação */}
                     {selectedDay && selectedDay !== 'all' && (
                       <div className="flex items-center gap-2">
@@ -2644,11 +2803,10 @@ export default function Painel() {
                         <button
                           onClick={goToPreviousDay}
                           disabled={!canNavigateToPrevious}
-                          className={`p-1 rounded-full transition-colors ${
-                            canNavigateToPrevious
-                              ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-100'
-                              : 'text-gray-300 cursor-not-allowed'
-                          }`}
+                          className={`p-1 rounded-full transition-colors ${canNavigateToPrevious
+                            ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-100'
+                            : 'text-gray-300 cursor-not-allowed'
+                            }`}
                           title="Dia anterior do mesmo estágio"
                         >
                           <ChevronLeft className="w-4 h-4" />
@@ -2663,18 +2821,17 @@ export default function Painel() {
                         <button
                           onClick={goToNextDay}
                           disabled={!canNavigateToNext}
-                          className={`p-1 rounded-full transition-colors ${
-                            canNavigateToNext
-                              ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-100'
-                              : 'text-gray-300 cursor-not-allowed'
-                          }`}
+                          className={`p-1 rounded-full transition-colors ${canNavigateToNext
+                            ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-100'
+                            : 'text-gray-300 cursor-not-allowed'
+                            }`}
                           title="Próximo dia do mesmo estágio"
                         >
                           <ChevronRight className="w-4 h-4" />
                         </button>
                       </div>
                     )}
-                    
+
                     <Button
                       onClick={sair}
                       variant="outline"
@@ -2948,7 +3105,11 @@ export default function Painel() {
             </div>
 
             {/* Tabs dos dias do evento */}
-            {getDiasDisponiveisParaOperador().length > 0 && (
+            {(() => {
+              const diasDisponiveis = getDiasDisponiveisParaOperador()
+              console.log('🎯 Renderização das tabs - Dias disponíveis:', diasDisponiveis.length, diasDisponiveis.map(d => ({ id: d.id, label: d.label })))
+              return diasDisponiveis.length > 0
+            })() && (
               <div className="mb-8">
                 <div className="border-b border-gray-200 bg-white rounded-t-lg relative">
                   {/* Container dos tabs sem scroll horizontal */}
@@ -2985,7 +3146,7 @@ export default function Painel() {
                                 </span>
                                 {day.period && (
                                   <span className="text-xs opacity-60">
-                                    ({day.period === 'diurno' ? 'D' : 'N'})
+                                    ({day.period === 'diurno' ? 'D' : day.period === 'noturno' ? 'N' : 'DI'})
                                   </span>
                                 )}
                               </div>
@@ -3025,18 +3186,7 @@ export default function Painel() {
                         <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`}>
                           <div className="flex items-center justify-between">
                             <span>Nome</span>
-                            <ExcelColumnFilter
-                              values={columnUniqueValues.nome}
-                              selectedValues={columnFilters.nome}
-                              onSelectionChange={values =>
-                                handleColumnFilterChange('nome', values)
-                              }
-                              onSortTable={direction =>
-                                handleColumnSort('name', direction)
-                              }
-                              columnTitle="Nome"
-                              isActive={columnFilters.nome.length > 0}
-                            />
+
                           </div>
                         </TableHead>
 
@@ -3045,18 +3195,7 @@ export default function Painel() {
                           <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
                             <div className="flex items-center justify-between">
                               <span>CPF</span>
-                              <ExcelColumnFilter
-                                values={columnUniqueValues.cpf}
-                                selectedValues={columnFilters.cpf}
-                                onSelectionChange={values =>
-                                  handleColumnFilterChange('cpf', values)
-                                }
-                                onSortTable={direction =>
-                                  handleColumnSort('cpf', direction)
-                                }
-                                columnTitle="CPF"
-                                isActive={columnFilters.cpf.length > 0}
-                              />
+
                             </div>
                           </TableHead>
                         )}
@@ -4035,11 +4174,13 @@ export default function Painel() {
               selectedDay={selectedDay}
               onClose={() => setPopupNovoStaff(false)}
               evento={evento}
+              operadorInfo={operadorInfo}
               onSuccess={async () => {
                 // Recarregar dados se necessário
                 await refetchParticipants();
                 await refetchAttendance();
               }} />
+
           </div>
         </>
       )}

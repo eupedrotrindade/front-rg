@@ -2,7 +2,7 @@
 
 export interface SimpleEventDay {
   date: string; // formato: "2025-08-12" (apenas data, sem horário)
-  period: "diurno" | "noturno"; // Período do dia
+  period: "diurno" | "noturno" | "dia_inteiro"; // Período do dia
   idSync?: string; // ID opcional para sincronizar período
 }
 

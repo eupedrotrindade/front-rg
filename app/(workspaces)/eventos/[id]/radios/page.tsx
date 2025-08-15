@@ -147,10 +147,10 @@ export default function RadiosPage() {
     }, [availableRadios, radioSearchTerm])
 
     // Função para gerar dias do evento
-    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> => {
         if (!evento) return []
 
-        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = []
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> = []
 
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
@@ -185,8 +185,8 @@ export default function RadiosPage() {
                         const formattedDate = formatEventDate(dateObj.toISOString());
 
                         // Usar período do item se disponível, senão calcular baseado na hora
-                        let period: 'diurno' | 'noturno';
-                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                        let period: 'diurno' | 'noturno' | 'dia_inteiro';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
                             period = item.period;
                         } else {
                             // Fallback: calcular baseado na hora
@@ -197,9 +197,11 @@ export default function RadiosPage() {
                         // Criar ID único baseado na data e período
                         const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
 
+                        const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+                        
                         days.push({
                             id: dayId,
-                            label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
+                            label: `${formattedDate} (${stageName} - ${periodLabel})`,
                             date: formattedDate,
                             type: stage,
                             period
@@ -294,7 +296,7 @@ export default function RadiosPage() {
             if (dateA.getTime() === dateB.getTime()) {
                 // Se for o mesmo dia, ordenar por tipo e período
                 const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
-                const periodOrder = { diurno: 0, noturno: 1 };
+                const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
 
                 const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
                 if (typeComparison !== 0) return typeComparison;
@@ -346,11 +348,13 @@ export default function RadiosPage() {
     }, [])
 
     // Função para obter ícone do período
-    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
         if (period === 'diurno') {
             return <Sun className="h-3 w-3 text-yellow-500" />;
         } else if (period === 'noturno') {
             return <Moon className="h-3 w-3 text-blue-500" />;
+        } else if (period === 'dia_inteiro') {
+            return <Clock className="h-3 w-3 text-purple-500" />;
         }
         return null;
     }, [])
@@ -585,7 +589,7 @@ export default function RadiosPage() {
                     return {
                         workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
                         workStage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
-                        workPeriod: parts[4] as 'diurno' | 'noturno'
+                        workPeriod: parts[4] as 'diurno' | 'noturno' | 'dia_inteiro'
                     };
                 }
                 return {
@@ -977,7 +981,7 @@ export default function RadiosPage() {
                                                 </span>
                                                 {day.period && (
                                                     <span className="text-xs opacity-60">
-                                                        ({day.period === 'diurno' ? 'D' : 'N'})
+                                                        ({day.period === 'diurno' ? 'D' : day.period === 'noturno' ? 'N' : 'DI'})
                                                     </span>
                                                 )}
                                             </div>

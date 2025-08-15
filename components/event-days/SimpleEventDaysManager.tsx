@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Trash2, Plus, Calendar, AlertCircle, Sun, Moon } from 'lucide-react';
+import { Trash2, Plus, Calendar, AlertCircle, Sun, Moon, Clock } from 'lucide-react';
 import { SimpleEventDay, EventPhase } from '@/public/types/simple-event-days';
 
 interface SimpleEventDaysManagerProps {
@@ -38,7 +38,7 @@ const phases: PhaseConfig[] = [
     key: 'evento',
     title: 'Evento',
     color: 'border-purple-200 bg-purple-50',
-    description: 'Dias de execução do evento principal'
+    description: 'Dias de execução do evento (dia inteiro)'
   },
   {
     key: 'desmontagem',
@@ -81,19 +81,37 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
   }, [eventDays, onChange]);
 
   const handleAddDay = () => {
-    if (!newDayForm.phase || !newDayForm.date || !newDayForm.period) {
+    if (!newDayForm.phase || !newDayForm.date) {
       return;
     }
 
-    const newDay: SimpleEventDay = {
-      date: newDayForm.date,
-      period: newDayForm.period as 'diurno' | 'noturno'
-    };
+    // Para a fase 'evento', adiciona como dia inteiro
+    if (newDayForm.phase === 'evento') {
+      const eventDay: SimpleEventDay = {
+        date: newDayForm.date,
+        period: 'dia_inteiro'
+      };
 
-    setEventDays(prev => ({
-      ...prev,
-      [newDayForm.phase]: [...prev[newDayForm.phase as EventPhase], newDay]
-    }));
+      setEventDays(prev => ({
+        ...prev,
+        evento: [...prev.evento, eventDay]
+      }));
+    } else {
+      // Para montagem e desmontagem, mantém a lógica original
+      if (!newDayForm.period) {
+        return;
+      }
+
+      const newDay: SimpleEventDay = {
+        date: newDayForm.date,
+        period: newDayForm.period as 'diurno' | 'noturno'
+      };
+
+      setEventDays(prev => ({
+        ...prev,
+        [newDayForm.phase]: [...prev[newDayForm.phase as EventPhase], newDay]
+      }));
+    }
 
     // Reset form
     setNewDayForm({
@@ -131,16 +149,30 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
     }
   };
 
-  const getPeriodIcon = (period: 'diurno' | 'noturno') => {
-    return period === 'diurno' ?
-      <Sun className="w-4 h-4 text-yellow-500" /> :
-      <Moon className="w-4 h-4 text-blue-500" />;
+  const getPeriodIcon = (period: 'diurno' | 'noturno' | 'dia_inteiro') => {
+    switch (period) {
+      case 'diurno':
+        return <Sun className="w-4 h-4 text-yellow-500" />;
+      case 'noturno':
+        return <Moon className="w-4 h-4 text-blue-500" />;
+      case 'dia_inteiro':
+        return <Clock className="w-4 h-4 text-purple-500" />;
+      default:
+        return <Clock className="w-4 h-4 text-gray-500" />;
+    }
   };
 
-  const getPeriodColor = (period: 'diurno' | 'noturno') => {
-    return period === 'diurno' ?
-      'bg-yellow-100 text-yellow-800 border-yellow-200' :
-      'bg-blue-100 text-blue-800 border-blue-200';
+  const getPeriodColor = (period: 'diurno' | 'noturno' | 'dia_inteiro') => {
+    switch (period) {
+      case 'diurno':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'noturno':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'dia_inteiro':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
   };
 
   const hasAnyDays = () => {
@@ -206,38 +238,50 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
               />
             </div>
 
-            {/* Período */}
-            <div>
-              <Label htmlFor="period">Período</Label>
-              <Select
-                value={newDayForm.period}
-                onValueChange={(value) => setNewDayForm(prev => ({ ...prev, period: value as 'diurno' | 'noturno' }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o período" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="diurno">
-                    <div className="flex items-center gap-2">
-                      <Sun className="w-4 h-4 text-yellow-500" />
-                      Diurno
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="noturno">
-                    <div className="flex items-center gap-2">
-                      <Moon className="w-4 h-4 text-blue-500" />
-                      Noturno
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Período - Só aparece para montagem e desmontagem */}
+            {newDayForm.phase !== 'evento' && (
+              <div>
+                <Label htmlFor="period">Período</Label>
+                <Select
+                  value={newDayForm.period}
+                  onValueChange={(value) => setNewDayForm(prev => ({ ...prev, period: value as 'diurno' | 'noturno' }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o período" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="diurno">
+                      <div className="flex items-center gap-2">
+                        <Sun className="w-4 h-4 text-yellow-500" />
+                        Diurno
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="noturno">
+                      <div className="flex items-center gap-2">
+                        <Moon className="w-4 h-4 text-blue-500" />
+                        Noturno
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Explicação para fase evento */}
+            {newDayForm.phase === 'evento' && (
+              <div className="md:col-span-1 flex items-center p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-purple-700">
+                  <Clock className="w-4 h-4" />
+                  <span>Evento será configurado como dia inteiro</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end">
             <Button
               onClick={handleAddDay}
-              disabled={!newDayForm.phase || !newDayForm.date || !newDayForm.period}
+              disabled={!newDayForm.phase || !newDayForm.date || (newDayForm.phase !== 'evento' && !newDayForm.period)}
               className="bg-purple-600 hover:bg-purple-700"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -283,7 +327,7 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
                               {formatDateDisplay(day.date)}
                             </div>
                             <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full border ${getPeriodColor(day.period)}`}>
-                              {day.period}
+                              {day.period === 'dia_inteiro' ? 'Dia Inteiro' : day.period}
                             </span>
                           </div>
                         </div>

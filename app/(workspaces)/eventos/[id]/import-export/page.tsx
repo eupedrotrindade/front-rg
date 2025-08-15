@@ -1199,7 +1199,7 @@ export default function ImportExportPage() {
                 Turno_ID: p.shiftId || "",
                 Data_Trabalho: p.workDate || "",
                 Estagio: p.workStage ? p.workStage.toUpperCase() : "",
-                Periodo: p.workPeriod ? (p.workPeriod === 'diurno' ? 'DIURNO' : 'NOTURNO') : "",
+                Periodo: p.workPeriod ? (p.workPeriod === 'diurno' ? 'DIURNO' : p.workPeriod === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO') : "",
                 
                 // Legacy field for compatibility (using workDate if available)
                 Dias_Trabalho: p.daysWork?.join(", ") || (p.workDate ? formatEventDate(p.workDate + 'T00:00:00') : ""),
@@ -1405,12 +1405,12 @@ export default function ImportExportPage() {
             // Formato: YYYY-MM-DD-stage-period
             const dateISO = `${parts[0]}-${parts[1]}-${parts[2]}`;
             const stage = parts[3];
-            const period = parts[4] as 'diurno' | 'noturno';
+            const period = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro';
             return { dateISO, stage, period };
         }
         // Fallback para IDs mal formados
         console.warn('⚠️ ShiftId mal formatado:', shiftId);
-        return { dateISO: new Date().toISOString().split('T')[0], stage: 'evento', period: 'diurno' as 'diurno' | 'noturno' };
+        return { dateISO: new Date().toISOString().split('T')[0], stage: 'evento', period: 'diurno' as 'diurno' | 'noturno' | 'dia_inteiro' };
     };
 
     // Função para obter informações de exibição de um turno
@@ -1418,7 +1418,7 @@ export default function ImportExportPage() {
         const { dateISO, stage, period } = parseShiftId(shiftId);
         const formattedDate = formatEventDate(dateISO + 'T00:00:00');
         const stageUpper = stage.toUpperCase();
-        const periodLabel = period === 'diurno' ? 'DIURNO' : 'NOTURNO';
+        const periodLabel = period === 'diurno' ? 'DIURNO' : period === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO';
         
         return {
             dateISO,
@@ -1499,10 +1499,12 @@ export default function ImportExportPage() {
     // A função getDateInfo não é mais necessária pois as informações estão nos IDs dos turnos
 
     // Função para obter ícone do período
-    const getPeriodIcon = (period: 'diurno' | 'noturno') => {
+    const getPeriodIcon = (period: 'diurno' | 'noturno' | 'dia_inteiro') => {
         return period === 'diurno' ?
             <Sun className="h-3 w-3 text-yellow-500" /> :
-            <Moon className="h-3 w-3 text-blue-500" />;
+            period === 'noturno' ?
+            <Moon className="h-3 w-3 text-blue-500" /> :
+            <Clock className="h-3 w-3 text-green-500" />;
     }
 
     // Função para obter cor do estágio
@@ -1767,7 +1769,8 @@ export default function ImportExportPage() {
                                                                                             {stageShifts.sort((a, b) => {
                                                                                                 const { period: periodA } = parseShiftId(a);
                                                                                                 const { period: periodB } = parseShiftId(b);
-                                                                                                return periodA === 'diurno' ? -1 : 1;
+                                                                                                const periodOrder = { 'diurno': 1, 'dia_inteiro': 2, 'noturno': 3 };
+                                                                                                return (periodOrder[periodA as keyof typeof periodOrder] || 2) - (periodOrder[periodB as keyof typeof periodOrder] || 2);
                                                                                             }).map((shiftId) => {
                                                                                                 const isSelected = selectedEventDates.includes(shiftId);
                                                                                                 const { period } = parseShiftId(shiftId);
@@ -1791,14 +1794,16 @@ export default function ImportExportPage() {
                                                                                                                 {isSelected ? (
                                                                                                                     period === 'diurno' ?
                                                                                                                         <Sun className="h-4 w-4 text-yellow-200" /> :
-                                                                                                                        <Moon className="h-4 w-4 text-blue-200" />
+                                                                                                                        period === 'noturno' ?
+                                                                                                                        <Moon className="h-4 w-4 text-blue-200" /> :
+                                                                                                                        <Clock className="h-4 w-4 text-green-200" />
                                                                                                                 ) : (
                                                                                                                     getPeriodIcon(period)
                                                                                                                 )}
                                                                                                                 <span className={`text-sm font-medium ${
                                                                                                                     isSelected ? 'text-white' : 'text-gray-700'
                                                                                                                 }`}>
-                                                                                                                    {period === 'diurno' ? 'DIURNO' : 'NOTURNO'}
+                                                                                                                    {period === 'diurno' ? 'DIURNO' : period === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO'}
                                                                                                                 </span>
                                                                                                             </div>
                                                                                                         </div>
@@ -1830,7 +1835,7 @@ export default function ImportExportPage() {
                                                         return (
                                                             <Badge key={shiftId} variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 flex items-center gap-1">
                                                                 <span>{formatShiftDate(shiftId)}</span>
-                                                                <span className="text-xs">({stage.toUpperCase()} - {period.toUpperCase()})</span>
+                                                                <span className="text-xs">({stage.toUpperCase()} - {period === 'dia_inteiro' ? 'DIA INTEIRO' : period.toUpperCase()})</span>
                                                                 {getPeriodIcon(period)}
                                                                 <button onClick={() => handleDateSelect(shiftId)} className="ml-1 hover:text-blue-600">
                                                                     <X className="w-3 h-3" />

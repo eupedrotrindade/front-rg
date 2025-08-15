@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { X, Palette, Wrench, Calendar, Truck, Sun, Moon } from "lucide-react";
+import { X, Palette, Wrench, Calendar, Truck, Sun, Moon, Clock } from "lucide-react";
 import { HexColorPicker } from "react-colorful";
 import { formatEventDate, getCurrentDateBR } from "@/lib/utils";
 
@@ -25,7 +25,7 @@ const parseShiftId = (shiftId: string) => {
         return {
             workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
             workStage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
-            workPeriod: parts[4] as 'diurno' | 'noturno'
+            workPeriod: parts[4] as 'diurno' | 'noturno' | 'dia_inteiro'
         };
     }
     // Fallback para dias simples (backward compatibility)
@@ -202,7 +202,14 @@ const getShiftDisplayInfo = (shiftId: string) => {
     const { workDate, workStage, workPeriod } = parseShiftId(shiftId);
     const formattedDate = formatEventDate(workDate + 'T00:00:00');
     const stageInfo = getStageInfo(workStage);
-    const period = workPeriod === 'diurno' ? 'Dia' : 'Noite';
+    const period = workPeriod === 'diurno' ? 'Dia' : workPeriod === 'noturno' ? 'Noite' : 'Dia Inteiro';
+    
+    console.log('🔍 [getShiftDisplayInfo] Debug:', {
+        shiftId,
+        workPeriod,
+        period,
+        shouldShowClock: workPeriod === 'dia_inteiro'
+    });
     
     return {
         date: formattedDate,
@@ -432,7 +439,7 @@ export const CredentialForm = ({
             shiftId: string;
             workDate: string;
             workStage: 'montagem' | 'evento' | 'desmontagem';
-            workPeriod: 'diurno' | 'noturno';
+            workPeriod: 'diurno' | 'noturno' | 'dia_inteiro';
         } = {
             shiftId: '',
             workDate: '',
@@ -675,10 +682,22 @@ export const CredentialForm = ({
                                                                         <div>
                                                                             <div className="text-sm font-medium">{displayInfo.date}</div>
                                                                             <div className="flex items-center gap-1 text-xs text-gray-600">
-                                                                                {displayInfo.period === 'Dia' ? 
-                                                                                    <Sun className="h-3 w-3 text-yellow-500" /> : 
-                                                                                    <Moon className="h-3 w-3 text-blue-500" />
-                                                                                }
+                                                                                {(() => {
+                                                                                    console.log('🎯 [Icon Selection] Debug:', {
+                                                                                        period: displayInfo.period,
+                                                                                        isDia: displayInfo.period === 'Dia',
+                                                                                        isNoite: displayInfo.period === 'Noite',
+                                                                                        isDiaInteiro: displayInfo.period === 'Dia Inteiro'
+                                                                                    });
+                                                                                    
+                                                                                    if (displayInfo.period === 'Dia') {
+                                                                                        return <Sun className="h-3 w-3 text-yellow-500" />;
+                                                                                    } else if (displayInfo.period === 'Noite') {
+                                                                                        return <Moon className="h-3 w-3 text-blue-500" />;
+                                                                                    } else {
+                                                                                        return <Clock className="h-3 w-3 text-purple-500" />;
+                                                                                    }
+                                                                                })()}
                                                                                 {displayInfo.period}
                                                                             </div>
                                                                         </div>

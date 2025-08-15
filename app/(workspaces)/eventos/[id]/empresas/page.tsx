@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink, Sun, Moon } from "lucide-react"
+import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink, Sun, Moon, Clock } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas"
@@ -44,10 +44,10 @@ export default function EmpresasPage() {
     const { data: event } = useEventos({ id: eventId })
 
     // Função para gerar dias do evento usando nova estrutura SimpleEventDay
-    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> => {
         if (!event) return []
 
-        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = []
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> = []
 
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
@@ -80,10 +80,10 @@ export default function EmpresasPage() {
                         }
 
                         const formattedDate = formatEventDate(dateObj.toISOString());
-                        
+
                         // Usar período do item se disponível, senão calcular baseado na hora
-                        let period: 'diurno' | 'noturno';
-                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                        let period: 'diurno' | 'noturno' | 'dia_inteiro';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
                             period = item.period;
                         } else {
                             // Fallback: calcular baseado na hora
@@ -94,9 +94,11 @@ export default function EmpresasPage() {
                         // Criar ID único baseado na data e período
                         const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
 
+                        const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+                        
                         days.push({
                             id: dayId,
-                            label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
+                            label: `${formattedDate} (${stageName} - ${periodLabel})`,
                             date: formattedDate,
                             type: stage,
                             period
@@ -120,7 +122,7 @@ export default function EmpresasPage() {
         }
 
         // Fallback para estrutura antiga (manter compatibilidade) - só usar se não há nova estrutura
-        if ('setupStartDate' in event && 'setupEndDate' in event && event.setupStartDate && event.setupEndDate && 
+        if ('setupStartDate' in event && 'setupEndDate' in event && event.setupStartDate && event.setupEndDate &&
             (!('montagem' in event) || !(event as any).montagem || (event as any).montagem.length === 0)) {
             const startDate = new Date(event.setupStartDate)
             const endDate = new Date(event.setupEndDate)
@@ -145,7 +147,7 @@ export default function EmpresasPage() {
             }
         }
 
-        if ('preparationStartDate' in event && 'preparationEndDate' in event && event.preparationStartDate && event.preparationEndDate && 
+        if ('preparationStartDate' in event && 'preparationEndDate' in event && event.preparationStartDate && event.preparationEndDate &&
             (!('evento' in event) || !(event as any).evento || (event as any).evento.length === 0)) {
             const startDate = new Date(event.preparationStartDate)
             const endDate = new Date(event.preparationEndDate)
@@ -168,7 +170,7 @@ export default function EmpresasPage() {
             }
         }
 
-        if ('finalizationStartDate' in event && 'finalizationEndDate' in event && event.finalizationStartDate && event.finalizationEndDate && 
+        if ('finalizationStartDate' in event && 'finalizationEndDate' in event && event.finalizationStartDate && event.finalizationEndDate &&
             (!('desmontagem' in event) || !(event as any).desmontagem || (event as any).desmontagem.length === 0)) {
             const startDate = new Date(event.finalizationStartDate)
             const endDate = new Date(event.finalizationEndDate)
@@ -200,7 +202,7 @@ export default function EmpresasPage() {
             if (dateA.getTime() === dateB.getTime()) {
                 // Se for o mesmo dia, ordenar por tipo e período
                 const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
-                const periodOrder = { diurno: 0, noturno: 1 };
+                const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
 
                 const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
                 if (typeComparison !== 0) return typeComparison;
@@ -247,7 +249,7 @@ export default function EmpresasPage() {
             const period = parts[4];
 
             // Validar que temos valores válidos
-            if (!stage || (period !== 'diurno' && period !== 'noturno')) {
+            if (!stage || (period !== 'diurno' && period !== 'noturno' && period !== 'dia_inteiro')) {
                 console.warn('Valores inválidos no shiftId:', { parts, stage, period });
                 return {
                     workDate: `${parts[0]}-${parts[1]}-${parts[2]}`,
@@ -259,7 +261,7 @@ export default function EmpresasPage() {
             return {
                 workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
                 workStage: stage,
-                workPeriod: period as 'diurno' | 'noturno'
+                workPeriod: period as 'diurno' | 'noturno' | 'dia_inteiro'
             };
         }
 
@@ -274,7 +276,7 @@ export default function EmpresasPage() {
     // Normalizar dados das empresas (novo modelo - cada registro é um shift individual)
     const normalizeEmpresas = useCallback((empresasArray: any[]) => {
         console.log('🔍 Normalizando empresas (modelo individual):', empresasArray.length);
-        
+
         // No novo modelo, cada empresa já representa um shift específico
         // Não precisamos mais de shiftData, pois os campos estão diretamente na empresa
         return empresasArray.map(empresa => {
@@ -369,21 +371,21 @@ export default function EmpresasPage() {
 
         // No novo modelo, cada record é um shift de uma empresa
         const total = allEmpresas.length
-        
+
         // Empresas únicas (agrupar por nome)
         const uniqueEmpresasSet = new Set(allEmpresas.map(e => e.nome))
         const uniqueEmpresas = uniqueEmpresasSet.size
-        
+
         // Uma empresa é considerada configurada se tem campos de shift individuais
-        const configuradas = allEmpresas.filter(e => 
+        const configuradas = allEmpresas.filter(e =>
             e.shiftId && e.workDate && e.workStage && e.workPeriod
         ).length
-        
-        const parcialmenteConfiguradas = allEmpresas.filter(e => 
+
+        const parcialmenteConfiguradas = allEmpresas.filter(e =>
             e.id_evento && (!e.shiftId || !e.workDate || !e.workStage || !e.workPeriod)
         ).length
-        
-        const naoConfiguradas = allEmpresas.filter(e => 
+
+        const naoConfiguradas = allEmpresas.filter(e =>
             !e.id_evento && (!e.shiftId || !e.workDate || !e.workStage || !e.workPeriod)
         ).length
 
@@ -532,11 +534,13 @@ export default function EmpresasPage() {
     }, [])
 
     // Função para obter ícone do período
-    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
         if (period === 'diurno') {
             return <Sun className="h-3 w-3 text-yellow-500" />;
         } else if (period === 'noturno') {
             return <Moon className="h-3 w-3 text-blue-500" />;
+        } else if (period === 'dia_inteiro') {
+            return <Clock className="h-3 w-3 text-purple-500" />;
         }
         return null;
     }, [])
@@ -676,7 +680,7 @@ export default function EmpresasPage() {
                                                 </span>
                                                 {day.period && (
                                                     <span className="text-xs opacity-60">
-                                                        ({day.period === 'diurno' ? 'D' : 'N'})
+                                                        ({day.period === 'diurno' ? 'D' : day.period === 'noturno' ? 'N' : 'DI'})
                                                     </span>
                                                 )}
                                             </div>

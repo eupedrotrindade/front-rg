@@ -5,8 +5,9 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
-import { FileText, Type, Tag } from 'lucide-react';
+import { FileText, Type, Tag, CheckCircle } from 'lucide-react';
 
 interface BasicInfoStepProps {
   data: Record<string, unknown>;
@@ -15,22 +16,19 @@ interface BasicInfoStepProps {
 }
 
 const eventTypes = [
-  { value: 'conference', label: 'Conferência' },
-  { value: 'workshop', label: 'Workshop' },
-  { value: 'seminar', label: 'Seminário' },
-  { value: 'concert', label: 'Concerto' },
-  { value: 'exhibition', label: 'Exposição' },
-  { value: 'corporate', label: 'Evento Corporativo' },
-  { value: 'wedding', label: 'Casamento' },
-  { value: 'party', label: 'Festa' },
-  { value: 'sports', label: 'Evento Esportivo' },
-  { value: 'other', label: 'Outro' }
+  { value: 'corporativo', label: 'Corporativo' },
+  { value: 'cultural', label: 'Cultural' },
+  { value: 'entretenimento', label: 'Entretenimento' },
+  { value: 'esportivo', label: 'Esportivo' },
+  { value: 'religioso', label: 'Religioso' },
+  { value: 'show', label: 'Show' },
+  { value: 'outros', label: 'Outros' }
 ];
 
 export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInfoStepProps) {
   const basicData = (data.basic as Record<string, unknown>) || {};
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | boolean) => {
     const updatedData = { ...basicData, [field]: value };
     updateData('basic', updatedData);
   };
@@ -89,6 +87,30 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
             </p>
           </CardContent>
         </Card>
+
+        {/* Status do Evento */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2 mb-3">
+              <CheckCircle className="w-5 h-5 text-purple-600" />
+              <Label className="text-base font-medium">
+                Status do Evento
+              </Label>
+            </div>
+            <div className="flex items-center space-x-3">
+              <Switch
+                checked={(basicData.isActive as boolean) ?? true}
+                onCheckedChange={(checked) => handleInputChange('isActive', checked)}
+              />
+              <span className="text-sm text-gray-600">
+                {(basicData.isActive as boolean) ?? true ? 'Ativo' : 'Inativo'}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Eventos inativos não serão exibidos publicamente
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Descrição */}
@@ -131,6 +153,12 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
               {(basicData.description as string) && (
                 <p className="text-sm text-gray-600 line-clamp-3">{basicData.description as string}</p>
               )}
+              <div className="flex items-center space-x-2 mt-2">
+                <div className={`w-2 h-2 rounded-full ${(basicData.isActive as boolean) ?? true ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                <span className={`text-xs font-medium ${(basicData.isActive as boolean) ?? true ? 'text-green-700' : 'text-gray-500'}`}>
+                  {(basicData.isActive as boolean) ?? true ? 'Evento Ativo' : 'Evento Inativo'}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>

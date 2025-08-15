@@ -35,8 +35,8 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
         </CardHeader>
         <CardContent>
           <p className="text-gray-600">
-            Configure o endereço completo onde o evento será realizado. 
-            Essas informações serão importantes para logística e divulgação.
+            Configure o endereço onde o evento será realizado. 
+            Todas as informações são opcionais e podem ser adicionadas posteriormente.
           </p>
         </CardContent>
       </Card>
@@ -49,7 +49,7 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
             <div className="flex items-center space-x-2 mb-3">
               <Building className="w-5 h-5 text-purple-600" />
               <Label htmlFor="address" className="text-base font-medium">
-                Endereço *
+                Endereço
               </Label>
             </div>
             <Input
@@ -70,7 +70,7 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
           <Card>
             <CardContent className="p-4">
               <Label htmlFor="city" className="text-sm font-medium mb-2 block">
-                Cidade *
+                Cidade
               </Label>
               <Input
                 id="city"
@@ -165,10 +165,10 @@ export function LocationStep({ data, updateData, onValidationChange }: LocationS
         </Card>
       )}
 
-      {/* Required Fields Notice */}
-      <div className="flex items-center justify-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <p className="text-sm text-yellow-800">
-          <span className="font-medium">Campos obrigatórios:</span> Endereço e cidade são necessários para continuar
+      {/* Optional Fields Notice */}
+      <div className="flex items-center justify-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <p className="text-sm text-blue-800">
+          <span className="font-medium">Informação:</span> Todos os campos de localização são opcionais e podem ser preenchidos posteriormente
         </p>
       </div>
     </div>

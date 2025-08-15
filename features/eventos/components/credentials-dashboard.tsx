@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useState, useMemo, useCallback } from "react";
@@ -27,7 +28,7 @@ const parseShiftId = (shiftId: string) => {
     return {
       workDate: `${parts[0]}-${parts[1]}-${parts[2]}`,
       workStage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
-      workPeriod: parts[4] as 'diurno' | 'noturno'
+      workPeriod: parts[4] as 'diurno' | 'noturno' | 'dia_inteiro'
     };
   }
   return {
@@ -54,7 +55,7 @@ const formatShiftInfo = (shiftId: string) => {
   const { workDate, workStage, workPeriod } = parseShiftId(shiftId);
   const formattedDate = formatEventDate(workDate + 'T00:00:00');
   const stageInfo = getStageInfo(workStage);
-  const period = workPeriod === 'diurno' ? 'Dia' : 'Noite';
+  const period = workPeriod === 'diurno' ? 'Dia' : workPeriod === 'noturno' ? 'Noite' : 'Dia Inteiro';
 
   return {
     date: formattedDate,
@@ -67,19 +68,19 @@ const formatShiftInfo = (shiftId: string) => {
 // Função para gerar shift IDs baseados na estrutura do evento
 const generateEventShifts = (event: Event): string[] => {
   const shifts: string[] = [];
-  
+
   if (!event) return shifts;
-  
+
   // Processar cada etapa do evento
   const stages = ['montagem', 'evento', 'desmontagem'] as const;
-  
+
   stages.forEach(stage => {
     const stageData = event[stage];
     if (!stageData) return;
-    
+
     try {
       let dataArray: any[] = [];
-      
+
       // Se for string JSON, fazer parse
       if (typeof stageData === 'string') {
         dataArray = JSON.parse(stageData);
@@ -88,7 +89,7 @@ const generateEventShifts = (event: Event): string[] => {
       else if (Array.isArray(stageData)) {
         dataArray = stageData;
       }
-      
+
       // Gerar shift IDs para cada dia da etapa
       dataArray.forEach(item => {
         if (item && item.date && item.period) {
@@ -100,7 +101,7 @@ const generateEventShifts = (event: Event): string[] => {
       console.warn(`Erro ao processar dados da etapa ${stage}:`, error);
     }
   });
-  
+
   return shifts;
 };
 
@@ -122,10 +123,10 @@ export const CredentialsDashboard = () => {
   const event = Array.isArray(eventData) ? null : eventData as Event;
 
   // Gerar dias disponíveis baseado no evento (similar ao empresas)
-  const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
+  const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> => {
     if (!event) return []
 
-    const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = []
+    const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> = []
 
     // Função helper para processar arrays de dados do evento
     const processEventArray = (eventData: any, stage: string, stageName: string) => {
@@ -156,10 +157,10 @@ export const CredentialsDashboard = () => {
             }
 
             const formattedDate = formatEventDate(dateObj.toISOString());
-            
+
             // Usar período do item se disponível
-            let period: 'diurno' | 'noturno';
-            if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+            let period: 'diurno' | 'noturno' | 'dia_inteiro';
+            if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
               period = item.period;
             } else {
               // Fallback: calcular baseado na hora
@@ -170,9 +171,11 @@ export const CredentialsDashboard = () => {
             // Criar ID único baseado na data e período
             const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
 
+            const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+
             days.push({
               id: dayId,
-              label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
+              label: `${formattedDate} (${stageName} - ${periodLabel})`,
               date: formattedDate,
               type: stage,
               period
@@ -202,7 +205,7 @@ export const CredentialsDashboard = () => {
 
       if (dateA.getTime() === dateB.getTime()) {
         const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
-        const periodOrder = { diurno: 0, noturno: 1 };
+        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
 
         const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
         if (typeComparison !== 0) return typeComparison;
@@ -281,7 +284,7 @@ export const CredentialsDashboard = () => {
   // Gerar turnos disponíveis do evento
   const availableEventShifts = useMemo(() => {
     const shifts = event ? generateEventShifts(event) : [];
-    
+
     console.log('🔍 Debug event shifts:', {
       event: event,
       eventId: eventId,
@@ -291,7 +294,7 @@ export const CredentialsDashboard = () => {
       generatedShifts: shifts,
       totalShifts: shifts.length
     });
-    
+
     return shifts;
   }, [event, eventId]);
 
@@ -366,11 +369,13 @@ export const CredentialsDashboard = () => {
   }, [])
 
   // Função para obter ícone do período (copiado do empresas)
-  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
     if (period === 'diurno') {
       return <Sun className="h-3 w-3 text-yellow-500" />;
     } else if (period === 'noturno') {
       return <Moon className="h-3 w-3 text-blue-500" />;
+    } else if (period === 'dia_inteiro') {
+      return <Clock className="h-3 w-3 text-purple-500" />;
     }
     return null;
   }, [])
@@ -408,17 +413,17 @@ export const CredentialsDashboard = () => {
     const selectedDayCredentials = processedCredentials.filter(credential => {
       // Se não há dia selecionado, mostrar todas
       if (!effectiveSelectedDay) return true
-      
+
       // Se tem shiftId direto, comparar
       if (credential.shiftId === effectiveSelectedDay) {
         return true
       }
-      
+
       // Se tem days_works, verificar se contém o dia selecionado
       if (credential.days_works && credential.days_works.includes(effectiveSelectedDay)) {
         return true
       }
-      
+
       return false
     })
 
@@ -446,7 +451,7 @@ export const CredentialsDashboard = () => {
       if (credential.workDate && credential.workStage && credential.workPeriod) {
         const formattedDate = formatEventDate(credential.workDate + 'T00:00:00');
         const stage = getStageInfo(credential.workStage).name;
-        const period = credential.workPeriod === 'diurno' ? 'Dia' : 'Noite';
+        const period = credential.workPeriod === 'diurno' ? 'Dia' : credential.workPeriod === 'noturno' ? 'Noite' : 'Dia Inteiro';
 
         return formattedDate.toLowerCase().includes(searchLower) ||
           stage.toLowerCase().includes(searchLower) ||
@@ -596,8 +601,8 @@ export const CredentialsDashboard = () => {
           <nav className="-mb-px flex flex-wrap gap-1 px-4 py-2">
             {eventDays.map((day) => {
               const credentialsInDay = processedCredentials.filter(credential => {
-                return credential.shiftId === day.id || 
-                       (credential.days_works && credential.days_works.includes(day.id))
+                return credential.shiftId === day.id ||
+                  (credential.days_works && credential.days_works.includes(day.id))
               }).length
               const isActive = effectiveSelectedDay === day.id
 
@@ -605,11 +610,10 @@ export const CredentialsDashboard = () => {
                 <button
                   key={day.id}
                   onClick={() => setSelectedDay(day.id)}
-                  className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${
-                    isActive
+                  className={`border-b-2 py-2 px-3 text-xs font-medium transition-colors duration-200 whitespace-nowrap rounded-t-lg flex-shrink-0 ${isActive
                       ? getTabColor(day.type, true)
                       : `border-transparent text-gray-500 ${getTabColor(day.type, false)}`
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col items-center gap-1">
                     <div className="flex items-center gap-1">
@@ -627,7 +631,7 @@ export const CredentialsDashboard = () => {
                       </span>
                       {day.period && (
                         <span className="text-xs opacity-60">
-                          ({day.period === 'diurno' ? 'D' : 'N'})
+                          ({day.period === 'diurno' ? 'D' : day.period === 'noturno' ? 'N' : 'DI'})
                         </span>
                       )}
                     </div>
@@ -706,7 +710,7 @@ export const CredentialsDashboard = () => {
                               variant="secondary"
                               className="text-xs bg-blue-50 text-blue-700 border-blue-200"
                             >
-                              {formatEventDate(credential.workDate + 'T00:00:00')} - {credential.workStage?.toUpperCase()} - {credential.workPeriod === 'diurno' ? 'Diurno' : 'Noturno'}
+                              {formatEventDate(credential.workDate + 'T00:00:00')} - {credential.workStage?.toUpperCase()} - {credential.workPeriod === 'diurno' ? 'Diurno' : credential.workPeriod === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
                             </Badge>
                             {credential.shiftId && (
                               <div className="text-xs text-gray-500 font-mono">

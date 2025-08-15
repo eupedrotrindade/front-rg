@@ -42,7 +42,7 @@ export function DateTimeStep({ data, updateData, onValidationChange }: DateTimeS
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
               <span className="text-gray-700">
-                <strong>Evento:</strong> Execução (Diurno/Noturno)
+                <strong>Evento:</strong> Execução (dia inteiro)
               </span>
             </div>
             <div className="flex items-center space-x-2">

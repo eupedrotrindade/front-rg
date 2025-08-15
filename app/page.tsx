@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button"
 import { UserCog, User } from "lucide-react"
 import Image from "next/image"
 
+
 export default function Home() {
   const router = useRouter()
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
+
       <header className="bg-white backdrop-blur-sm shadow-lg border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="text-center">

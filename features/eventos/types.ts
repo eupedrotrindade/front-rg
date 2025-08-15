@@ -154,7 +154,7 @@ export type Credential = {
   shiftId: string;
   workDate: string; // YYYY-MM-DD
   workStage: 'montagem' | 'evento' | 'desmontagem';
-  workPeriod: 'diurno' | 'noturno';
+  workPeriod: 'diurno' | 'noturno' | 'dia_inteiro';
   isActive?: boolean;
   isDistributed?: boolean;
   createdAt?: string;
@@ -170,7 +170,7 @@ export type CreateCredentialRequest = {
   shiftId: string;
   workDate: string; // YYYY-MM-DD
   workStage: 'montagem' | 'evento' | 'desmontagem';
-  workPeriod: 'diurno' | 'noturno';
+  workPeriod: 'diurno' | 'noturno' | 'dia_inteiro';
   isActive?: boolean;
   isDistributed?: boolean;
 };
@@ -204,7 +204,7 @@ export type EventParticipant = {
   shiftId?: string;
   workDate?: string;
   workStage?: "montagem" | "evento" | "desmontagem";
-  workPeriod?: "diurno" | "noturno";
+  workPeriod?: "diurno" | "noturno" | "dia_inteiro";
 };
 
 // Tipos para sistema de turnos
@@ -212,7 +212,7 @@ export type ShiftParticipant = EventParticipant & {
   shiftId: string;
   workDate: string;
   workStage: "montagem" | "evento" | "desmontagem";
-  workPeriod: "diurno" | "noturno";
+  workPeriod: "diurno" | "noturno" | "dia_inteiro";
 };
 
 export type GroupedParticipant = {
@@ -226,7 +226,7 @@ export type ShiftInfo = {
   shiftId: string;
   date: string;
   stage: "montagem" | "evento" | "desmontagem";
-  period: "diurno" | "noturno";
+  period: "diurno" | "noturno" | "dia_inteiro";
   participantCount: number;
 };
 
@@ -366,7 +366,7 @@ export type CreateEventParticipantRequest = {
   shiftId?: string;
   workDate?: string;
   workStage?: "montagem" | "evento" | "desmontagem";
-  workPeriod?: "diurno" | "noturno";
+  workPeriod?: "diurno" | "noturno" | "dia_inteiro";
 };
 
 // Tipos para respostas da API
@@ -411,7 +411,7 @@ export type Empresa = {
   shiftId?: string;
   workDate?: string;
   workStage?: "montagem" | "evento" | "desmontagem";
-  workPeriod?: "diurno" | "noturno";
+  workPeriod?: "diurno" | "noturno" | "dia_inteiro";
 };
 
 export type CreateEmpresaRequest = {
@@ -431,7 +431,7 @@ export type CreateEmpresaRequest = {
   shiftId?: string;
   workDate?: string;
   workStage?: "montagem" | "evento" | "desmontagem";
-  workPeriod?: "diurno" | "noturno";
+  workPeriod?: "diurno" | "noturno" | "dia_inteiro";
 };
 
 export type UpdateEmpresaRequest = Partial<CreateEmpresaRequest>;
@@ -587,7 +587,7 @@ export interface ShiftStats {
   shiftId: string;
   date: string;
   stage: "montagem" | "evento" | "desmontagem";
-  period: "diurno" | "noturno";
+  period: "diurno" | "noturno" | "dia_inteiro";
   totalParticipants: number;
   checkedIn: number;
   checkedOut: number;

@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Calendar, Plus, Loader2, Search, X, Sun, Moon } from 'lucide-react';
+import { Calendar, Plus, Loader2, Search, X, Sun, Moon, Clock } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
@@ -18,6 +18,12 @@ interface ModalAdicionarStaffProps {
   selectedDay?: string;
   onSuccess?: () => void;
   evento?: any;
+  operadorInfo?: {
+    nome: string;
+    cpf: string;
+    id?: string;
+    id_events?: string;
+  } | null;
 }
 
 const initialStaff = {
@@ -29,7 +35,7 @@ const initialStaff = {
   daysWork: [] as string[]
 };
 
-export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selectedDay, onSuccess, evento }: ModalAdicionarStaffProps) {
+export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selectedDay, onSuccess, evento, operadorInfo }: ModalAdicionarStaffProps) {
   const [loading, setLoading] = useState(false);
   const [novoStaff, setNovoStaff] = useState(initialStaff);
   const [empresaSearch, setEmpresaSearch] = useState("");
@@ -67,7 +73,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       const month = parts[1];
       const day = parts[2];
       const stage = parts[3];
-      const period = parts[4] as 'diurno' | 'noturno';
+      const period = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro';
 
       return {
         dateISO: `${year}-${month}-${day}`,
@@ -155,18 +161,31 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
     return [];
   }, []);
 
-  // Nova função para obter turnos do evento baseada no sistema de shifts (igual à página principal)
+  // Função para obter ícone do período
+  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
+    if (period === 'diurno') {
+      return <Sun className="h-3 w-3 text-yellow-500" />;
+    } else if (period === 'noturno') {
+      return <Moon className="h-3 w-3 text-blue-500" />;
+    } else if (period === 'dia_inteiro') {
+      return <Clock className="h-3 w-3 text-purple-500" />;
+    }
+    return null;
+  }, []);
+
+  // Nova função para obter turnos do evento filtrada pelos dias do operador
   const getEventDays = useCallback(() => {
     if (!evento) return [];
 
     console.log('🔧 getEventDays (modal) chamada, evento:', evento);
+    console.log('🔍 Operador info (modal):', operadorInfo);
 
     const days: Array<{
       id: string;
       label: string;
       date: string;
       type: string;
-      period?: 'diurno' | 'noturno';
+      period?: 'diurno' | 'noturno' | 'dia_inteiro';
     }> = [];
 
     // Usar a nova estrutura SimpleEventDay se disponível com suporte a turnos
@@ -176,9 +195,11 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       montagemData.forEach(day => {
         if (day && day.date && day.period) {
           try {
-            const dateStr = formatEventDate(day.date);
-            const dateISO = new Date(day.date).toISOString().split('T')[0];
-            const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
+            // Usar a data ISO diretamente para evitar problemas de timezone
+            const dateISO = day.date; // Já está no formato YYYY-MM-DD
+            const [year, month, day_num] = day.date.split('-');
+            const dateStr = `${day_num}/${month}/${year}`;
+            const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando montagem (modal): ${dateStr} - ${periodLabel}`);
             days.push({
@@ -203,8 +224,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
         // Adicionar ambos os períodos (diurno e noturno) para cada data
         ['diurno', 'noturno'].forEach(period => {
-          const periodTyped = period as 'diurno' | 'noturno';
-          const periodLabel = periodTyped === 'diurno' ? 'Diurno' : 'Noturno';
+          const periodTyped = period as 'diurno' | 'noturno' | 'dia_inteiro';
+          const periodLabel = periodTyped === 'diurno' ? 'Diurno' : periodTyped === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
           days.push({
             id: `${dateISO}-montagem-${periodTyped}`,
@@ -224,9 +245,11 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       eventoData.forEach(day => {
         if (day && day.date && day.period) {
           try {
-            const dateStr = formatEventDate(day.date);
-            const dateISO = new Date(day.date).toISOString().split('T')[0];
-            const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
+            // Usar a data ISO diretamente para evitar problemas de timezone
+            const dateISO = day.date; // Já está no formato YYYY-MM-DD
+            const [year, month, day_num] = day.date.split('-');
+            const dateStr = `${day_num}/${month}/${year}`;
+            const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando evento (modal): ${dateStr} - ${periodLabel}`);
             days.push({
@@ -251,8 +274,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
         // Adicionar ambos os períodos (diurno e noturno) para cada data
         ['diurno', 'noturno'].forEach(period => {
-          const periodTyped = period as 'diurno' | 'noturno';
-          const periodLabel = periodTyped === 'diurno' ? 'Diurno' : 'Noturno';
+          const periodTyped = period as 'diurno' | 'noturno' | 'dia_inteiro';
+          const periodLabel = periodTyped === 'diurno' ? 'Diurno' : periodTyped === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
           days.push({
             id: `${dateISO}-evento-${periodTyped}`,
@@ -272,9 +295,11 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       desmontagemData.forEach(day => {
         if (day && day.date && day.period) {
           try {
-            const dateStr = formatEventDate(day.date);
-            const dateISO = new Date(day.date).toISOString().split('T')[0];
-            const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
+            // Usar a data ISO diretamente para evitar problemas de timezone
+            const dateISO = day.date; // Já está no formato YYYY-MM-DD
+            const [year, month, day_num] = day.date.split('-');
+            const dateStr = `${day_num}/${month}/${year}`;
+            const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando desmontagem (modal): ${dateStr} - ${periodLabel}`);
             days.push({
@@ -299,8 +324,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
         // Adicionar ambos os períodos (diurno e noturno) para cada data
         ['diurno', 'noturno'].forEach(period => {
-          const periodTyped = period as 'diurno' | 'noturno';
-          const periodLabel = periodTyped === 'diurno' ? 'Diurno' : 'Noturno';
+          const periodTyped = period as 'diurno' | 'noturno' | 'dia_inteiro';
+          const periodLabel = periodTyped === 'diurno' ? 'Diurno' : periodTyped === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
           days.push({
             id: `${dateISO}-desmontagem-${periodTyped}`,
@@ -313,16 +338,70 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       }
     }
 
-    console.log('🎯 Dias finais gerados (modal):', days);
-    return days.sort((a, b) => {
+    console.log('🎯 Dias totais gerados (modal):', days);
+
+    // Filtrar apenas pelos dias atribuídos ao operador
+    if (!operadorInfo?.id || !operadorInfo?.id_events) {
+      console.log('🔍 Operador sem ID ou sem shifts atribuídos, mostrando todos os dias (modal)');
+      const sortedDays = days.sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        if (a.type !== b.type) {
+          const typeOrder: Record<string, number> = { montagem: 1, evento: 2, desmontagem: 3 };
+          return (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99);
+        }
+        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
+        const aPeriodOrder = periodOrder[a.period as keyof typeof periodOrder] ?? 999;
+        const bPeriodOrder = periodOrder[b.period as keyof typeof periodOrder] ?? 999;
+        return aPeriodOrder - bPeriodOrder;
+      });
+      console.log('🎯 Dias finais disponíveis (modal):', sortedDays);
+      return sortedDays;
+    }
+
+    console.log('🔍 Operador shifts (modal):', operadorInfo.id_events);
+    
+    // Dividir os shifts do operador por vírgula e processar cada shift
+    const operatorShifts = operadorInfo.id_events
+      .split(',')
+      .map(shift => shift.trim())
+      .filter(shift => shift.includes(eventId)) // Filtrar apenas shifts deste evento
+      .map(shift => {
+        // Extrair a parte do shift após o eventId (remover o prefixo "eventId:")
+        if (shift.includes(':')) {
+          return shift.split(':')[1]; // Pega a parte após os dois pontos
+        }
+        return shift;
+      });
+    
+    console.log('🔍 Shifts do operador para este evento (modal):', operatorShifts);
+    
+    // Filtrar apenas os dias em que o operador trabalha
+    const diasDisponiveis = days.filter(day => {
+      const dayIncluded = operatorShifts.includes(day.id);
+      if (dayIncluded) {
+        console.log('✅ Dia incluído (modal):', day.id, day.label);
+      } else {
+        console.log('❌ Dia excluído (modal):', day.id, day.label);
+        console.log('🔍 Comparando:', day.id, 'com shifts:', operatorShifts);
+      }
+      return dayIncluded;
+    });
+
+    const sortedFilteredDays = diasDisponiveis.sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
       if (a.type !== b.type) {
         const typeOrder: Record<string, number> = { montagem: 1, evento: 2, desmontagem: 3 };
         return (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99);
       }
-      return (a.period === 'diurno' ? 0 : 1) - (b.period === 'diurno' ? 0 : 1);
+      const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
+      const aPeriodOrder = periodOrder[a.period as keyof typeof periodOrder] ?? 999;
+      const bPeriodOrder = periodOrder[b.period as keyof typeof periodOrder] ?? 999;
+      return aPeriodOrder - bPeriodOrder;
     });
-  }, [evento, ensureArray, formatEventDate]);
+
+    console.log('🎯 Dias finais disponíveis para o operador (modal):', sortedFilteredDays);
+    return sortedFilteredDays;
+  }, [evento, ensureArray, formatEventDate, operadorInfo, eventId]);
 
   const toggleShift = useCallback((shiftId: string) => {
     setNovoStaff(prev => ({
@@ -379,12 +458,6 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   const eventDays = getEventDays();
   const hasDefinedShifts = eventDays.length > 0;
 
-  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
-    if (period === 'diurno') return <Sun className="h-3 w-3 text-yellow-500" />;
-    if (period === 'noturno') return <Moon className="h-3 w-3 text-blue-500" />;
-    return null;
-  }, []);
-
   // Automaticamente selecionar o dia quando o modal abrir
   useEffect(() => {
     if (isOpen && selectedDay) {
@@ -408,8 +481,29 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             <Plus className="w-5 h-5" />
             Adicionar Novo Staff
           </DialogTitle>
-          <DialogDescription>
-            Preencha os dados do novo Staff
+          <DialogDescription className="space-y-2">
+            <div>Preencha os dados do novo Staff</div>
+            {selectedDay && (
+              <div className="flex items-center gap-2 text-sm font-medium text-purple-600 bg-purple-50 p-2 rounded-lg">
+                {(() => {
+                  const currentDay = eventDays.find(day => day.id === selectedDay);
+                  if (currentDay) {
+                    return (
+                      <>
+                        {getPeriodIcon(currentDay.period)}
+                        <span>Dia atual de trabalho: {currentDay.label}</span>
+                      </>
+                    );
+                  }
+                  return <span>Dia selecionado: {selectedDay}</span>;
+                })()}
+              </div>
+            )}
+            {operadorInfo?.nome && (
+              <div className="text-sm text-gray-600">
+                <strong>Operador:</strong> {operadorInfo.nome} ({operadorInfo.cpf})
+              </div>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -601,7 +695,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                                 >
                                   {getPeriodIcon(shift.period)}
                                   <span>
-                                    {shift.period === 'diurno' ? 'Diurno' : 'Noturno'}
+                                    {shift.period === 'diurno' ? 'Diurno' : shift.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
                                   </span>
                                 </Button>
                               ))}
@@ -644,7 +738,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                                 {shift.type === 'montagem' ? 'Mont' :
                                   shift.type === 'evento' ? 'Evt' :
                                     shift.type === 'desmontagem' ? 'Desm' : 'Fin'} -
-                                {shift.period === 'diurno' ? 'Dia' : 'Noite'}
+                                {shift.period === 'diurno' ? 'Dia' : shift.period === 'noturno' ? 'Noite' : 'DI'}
                               </span>
                             ))}
                           </div>

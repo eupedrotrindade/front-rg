@@ -17,7 +17,7 @@ export interface RadioAssignment {
   shiftId?: string;
   workDate?: string;
   workStage?: "montagem" | "evento" | "desmontagem";
-  workPeriod?: "diurno" | "noturno";
+  workPeriod?: "diurno" | "noturno" | "dia_inteiro";
   created_at: string;
   updated_at: string;
 }

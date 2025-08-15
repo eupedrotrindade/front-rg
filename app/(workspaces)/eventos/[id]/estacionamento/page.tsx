@@ -66,10 +66,10 @@ export default function VagasPage() {
 
 
     // Função para gerar dias do evento usando nova estrutura SimpleEventDay
-    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> => {
         if (!evento) return []
 
-        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = []
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> = []
 
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
@@ -102,10 +102,10 @@ export default function VagasPage() {
                         }
 
                         const formattedDate = formatEventDate(dateObj.toISOString());
-                        
+
                         // Usar período do item se disponível, senão calcular baseado na hora
-                        let period: 'diurno' | 'noturno';
-                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                        let period: 'diurno' | 'noturno' | 'dia_inteiro';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
                             period = item.period;
                         } else {
                             // Fallback: calcular baseado na hora
@@ -116,9 +116,11 @@ export default function VagasPage() {
                         // Criar ID único baseado na data e período
                         const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
 
+                        const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+                        
                         days.push({
                             id: dayId,
-                            label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
+                            label: `${formattedDate} (${stageName} - ${periodLabel})`,
                             date: formattedDate,
                             type: stage,
                             period
@@ -139,7 +141,7 @@ export default function VagasPage() {
         if (evento.setupStartDate && evento.setupEndDate && (!evento.montagem || evento.montagem.length === 0)) {
             const startDate = new Date(evento.setupStartDate)
             const endDate = new Date(evento.setupEndDate)
-            
+
             // Validar datas
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 console.warn('Datas de setup inválidas:', evento.setupStartDate, evento.setupEndDate);
@@ -163,7 +165,7 @@ export default function VagasPage() {
         if (evento.preparationStartDate && evento.preparationEndDate && (!evento.evento || evento.evento.length === 0)) {
             const startDate = new Date(evento.preparationStartDate)
             const endDate = new Date(evento.preparationEndDate)
-            
+
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 console.warn('Datas de preparação inválidas:', evento.preparationStartDate, evento.preparationEndDate);
             } else {
@@ -185,7 +187,7 @@ export default function VagasPage() {
         if (evento.finalizationStartDate && evento.finalizationEndDate && (!evento.desmontagem || evento.desmontagem.length === 0)) {
             const startDate = new Date(evento.finalizationStartDate)
             const endDate = new Date(evento.finalizationEndDate)
-            
+
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 console.warn('Datas de finalização inválidas:', evento.finalizationStartDate, evento.finalizationEndDate);
             } else {
@@ -209,18 +211,18 @@ export default function VagasPage() {
             // Extrair a data do ID para ordenação mais confiável
             const dateA = new Date(a.id.split('-')[0]);
             const dateB = new Date(b.id.split('-')[0]);
-            
+
             if (dateA.getTime() === dateB.getTime()) {
                 // Se for o mesmo dia, ordenar por tipo e período
                 const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
-                const periodOrder = { diurno: 0, noturno: 1 };
-                
+                const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
+
                 const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
                 if (typeComparison !== 0) return typeComparison;
-                
+
                 return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder];
             }
-            
+
             return dateA.getTime() - dateB.getTime();
         });
 
@@ -247,10 +249,10 @@ export default function VagasPage() {
             // Mapear os tipos do frontend para os valores esperados pelo backend
             const stageMap: Record<string, 'montagem' | 'evento' | 'desmontagem'> = {
                 'montagem': 'montagem',
-                'evento': 'evento', 
+                'evento': 'evento',
                 'desmontagem': 'desmontagem',
                 'setup': 'montagem',
-                'event': 'evento', 
+                'event': 'evento',
                 'teardown': 'desmontagem',
                 'preparation': 'evento',
                 'finalization': 'desmontagem'
@@ -260,7 +262,7 @@ export default function VagasPage() {
             const period = parts[4];
 
             // Validar que temos valores válidos
-            if (!stage || (period !== 'diurno' && period !== 'noturno')) {
+            if (!stage || (period !== 'diurno' && period !== 'noturno' && period !== 'dia_inteiro')) {
                 console.warn('Valores inválidos no shiftId:', { parts, stage, period });
                 return {
                     workDate: `${parts[0]}-${parts[1]}-${parts[2]}`,
@@ -272,10 +274,10 @@ export default function VagasPage() {
             return {
                 workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
                 workStage: stage,
-                workPeriod: period as 'diurno' | 'noturno'
+                workPeriod: period as 'diurno' | 'noturno' | 'dia_inteiro'
             };
         }
-        
+
         // Se não conseguir parsear, usar valores padrão
         return {
             workDate: shiftId.includes('-') ? shiftId.split('-').slice(0, 3).join('-') : shiftId,
@@ -327,20 +329,20 @@ export default function VagasPage() {
                     // Mapear tipos para garantir consistência
                     const stageMap: Record<string, 'montagem' | 'evento' | 'desmontagem'> = {
                         'montagem': 'montagem',
-                        'evento': 'evento', 
+                        'evento': 'evento',
                         'desmontagem': 'desmontagem',
                         'setup': 'montagem',
-                        'event': 'evento', 
+                        'event': 'evento',
                         'teardown': 'desmontagem',
                         'preparation': 'evento',
                         'finalization': 'desmontagem'
                     };
 
                     const normalizedStage = stageMap[shiftStageFromId] || stageMap[veiculo.workStage] || 'evento';
-                    const normalizedPeriod = (shiftPeriodFromId === 'diurno' || shiftPeriodFromId === 'noturno') 
-                        ? shiftPeriodFromId 
-                        : (veiculo.workPeriod === 'diurno' || veiculo.workPeriod === 'noturno') 
-                            ? veiculo.workPeriod 
+                    const normalizedPeriod = (shiftPeriodFromId === 'diurno' || shiftPeriodFromId === 'noturno')
+                        ? shiftPeriodFromId
+                        : (veiculo.workPeriod === 'diurno' || veiculo.workPeriod === 'noturno' || veiculo.workPeriod === 'dia_inteiro')
+                            ? veiculo.workPeriod
                             : 'diurno';
 
                     // Criar shiftId consistente
@@ -366,7 +368,7 @@ export default function VagasPage() {
                     workPeriod: veiculo.workPeriod || 'diurno'
                 };
             }
-            
+
             // Se não tem campos de turno mas tem 'dia', tentar criar campos de turno
             if (veiculo.dia) {
                 // Tentar encontrar o turno correspondente à data
@@ -374,7 +376,7 @@ export default function VagasPage() {
                     const dayDate = day.id.split('-').slice(0, 3).join('-');
                     return dayDate === veiculo.dia;
                 });
-                
+
                 if (matchingDay) {
                     const shiftInfo = parseShiftId(matchingDay.id);
                     const normalized = {
@@ -384,11 +386,11 @@ export default function VagasPage() {
                         workStage: shiftInfo.workStage,
                         workPeriod: shiftInfo.workPeriod
                     };
-                    
+
                     // console.log('📅 Veículo criado do dia:', normalized.shiftId);
                     return normalized;
                 }
-                
+
                 // Fallback: criar campos básicos
                 const fallback = {
                     ...veiculo,
@@ -397,11 +399,11 @@ export default function VagasPage() {
                     workStage: 'evento' as const,
                     workPeriod: 'diurno' as const
                 };
-                
+
                 // console.log('🔧 Veículo fallback:', fallback.shiftId);
                 return fallback;
             }
-            
+
             // Se não tem nem dia nem campos de turno, retornar com valores padrão
             const defaultVeiculo = {
                 ...veiculo,
@@ -410,7 +412,7 @@ export default function VagasPage() {
                 workStage: 'evento' as const,
                 workPeriod: 'diurno' as const
             };
-            
+
             // console.log('⚠️ Veículo padrão:', defaultVeiculo.shiftId);
             return defaultVeiculo;
         });
@@ -468,13 +470,15 @@ export default function VagasPage() {
             }
         }
     }, [])
-    
+
     // Função para obter ícone do período
-    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
         if (period === 'diurno') {
             return <Sun className="h-3 w-3 text-yellow-500" />;
         } else if (period === 'noturno') {
             return <Moon className="h-3 w-3 text-blue-500" />;
+        } else if (period === 'dia_inteiro') {
+            return <Clock className="h-3 w-3 text-purple-500" />;
         }
         return null;
     }, [])
@@ -602,10 +606,10 @@ export default function VagasPage() {
         try {
             // Usar shiftId do modal ou selectedDay como fallback
             const finalShiftId = data.shiftId || selectedDay || effectiveSelectedDay;
-            
+
             // Extrair informações do shift para o modelo de turno
             const shiftInfo = parseShiftId(finalShiftId);
-            
+
             // Debug: verificar o que está sendo gerado
             console.log('🔍 Debug handleSaveVeiculo:', {
                 finalShiftId,
@@ -621,13 +625,13 @@ export default function VagasPage() {
             // Validar valores antes de criar o payload
             const allowedStages = ['montagem', 'evento', 'desmontagem'];
             const allowedPeriods = ['diurno', 'noturno'];
-            
+
             if (!allowedStages.includes(shiftInfo.workStage)) {
                 console.error('❌ workStage inválido:', shiftInfo.workStage);
                 toast.error(`Erro: workStage inválido: ${shiftInfo.workStage}`);
                 return;
             }
-            
+
             if (!allowedPeriods.includes(shiftInfo.workPeriod)) {
                 console.error('❌ workPeriod inválido:', shiftInfo.workPeriod);
                 toast.error(`Erro: workPeriod inválido: ${shiftInfo.workPeriod}`);
@@ -828,7 +832,7 @@ export default function VagasPage() {
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 'application/vnd.ms-excel'
             ];
-            
+
             if (!validTypes.includes(file.type)) {
                 toast.error('Por favor, selecione um arquivo Excel (.xlsx ou .xls)');
                 return;
@@ -990,11 +994,11 @@ export default function VagasPage() {
                                                     {day.type === 'montagem' || day.type === 'setup' ? 'MONTAGEM' :
                                                         day.type === 'evento' || day.type === 'event' || day.type === 'preparation' ? 'EVENTO' :
                                                             day.type === 'desmontagem' || day.type === 'teardown' || day.type === 'finalization' ? 'DESMONTAGEM' :
-                                                                        'EVENTO'}
+                                                                'EVENTO'}
                                                 </span>
                                                 {day.period && (
                                                     <span className="text-xs opacity-60">
-                                                        ({day.period === 'diurno' ? 'D' : 'N'})
+                                                        ({day.period === 'diurno' ? 'D' : day.period === 'noturno' ? 'N' : 'DI'})
                                                     </span>
                                                 )}
                                             </div>
@@ -1098,19 +1102,17 @@ export default function VagasPage() {
                                                         {veiculo.workDate ? formatEventDate(veiculo.workDate + 'T00:00:00') : formatEventDate(veiculo.dia + 'T00:00:00')}
                                                     </div>
                                                     <div className="flex items-center gap-2 text-xs text-gray-600">
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                            veiculo.workStage === 'montagem' ? 'bg-orange-100 text-orange-700' :
-                                                            veiculo.workStage === 'evento' ? 'bg-blue-100 text-blue-700' :
-                                                            veiculo.workStage === 'desmontagem' ? 'bg-red-100 text-red-700' :
-                                                            'bg-gray-100 text-gray-700'
-                                                        }`}>
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${veiculo.workStage === 'montagem' ? 'bg-orange-100 text-orange-700' :
+                                                                veiculo.workStage === 'evento' ? 'bg-blue-100 text-blue-700' :
+                                                                    veiculo.workStage === 'desmontagem' ? 'bg-red-100 text-red-700' :
+                                                                        'bg-gray-100 text-gray-700'
+                                                            }`}>
                                                             {veiculo.workStage?.toUpperCase() || 'EVENTO'}
                                                         </span>
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                            veiculo.workPeriod === 'diurno' ? 'bg-yellow-100 text-yellow-700' :
-                                                            veiculo.workPeriod === 'noturno' ? 'bg-blue-100 text-blue-700' :
-                                                            'bg-gray-100 text-gray-700'
-                                                        }`}>
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${veiculo.workPeriod === 'diurno' ? 'bg-yellow-100 text-yellow-700' :
+                                                                veiculo.workPeriod === 'noturno' ? 'bg-blue-100 text-blue-700' :
+                                                                    'bg-gray-100 text-gray-700'
+                                                            }`}>
                                                             {veiculo.workPeriod ? veiculo.workPeriod.toUpperCase() : 'DIURNO'}
                                                         </span>
                                                         {veiculo.shiftId && (

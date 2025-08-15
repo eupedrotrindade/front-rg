@@ -386,7 +386,7 @@ export default function EventoDetalhesPage() {
         label: string
         date: string
         type: string
-        period?: 'diurno' | 'noturno'
+        period?: 'diurno' | 'noturno' | 'dia_inteiro'
     }> => {
         console.log('🔧 getEventDays chamada, evento:', evento)
 
@@ -400,7 +400,7 @@ export default function EventoDetalhesPage() {
             label: string
             date: string
             type: string
-            period?: 'diurno' | 'noturno'
+            period?: 'diurno' | 'noturno' | 'dia_inteiro'
         }> = []
 
         // Usar a nova estrutura SimpleEventDay se disponível com suporte a turnos
@@ -412,7 +412,7 @@ export default function EventoDetalhesPage() {
                     try {
                         const dateStr = formatEventDate(day.date)
                         const dateISO = new Date(day.date).toISOString().split('T')[0]
-                        const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno'
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
                         console.log(`✅ Adicionando montagem: ${dateStr} - ${periodLabel}`)
                         days.push({
@@ -464,7 +464,7 @@ export default function EventoDetalhesPage() {
                     try {
                         const dateStr = formatEventDate(day.date)
                         const dateISO = new Date(day.date).toISOString().split('T')[0]
-                        const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno'
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
                         console.log(`✅ Adicionando evento: ${dateStr} - ${periodLabel}`)
                         days.push({
@@ -517,7 +517,7 @@ export default function EventoDetalhesPage() {
                     try {
                         const dateStr = formatEventDate(day.date)
                         const dateISO = new Date(day.date).toISOString().split('T')[0]
-                        const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno'
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
                         console.log(`✅ Adicionando desmontagem: ${dateStr} - ${periodLabel}`)
                         days.push({
@@ -604,14 +604,16 @@ export default function EventoDetalhesPage() {
     }, []);
 
     // Função para obter ícone do período
-    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
         if (period === 'diurno') {
             return <Sun className="h-3 w-3 text-yellow-500" />;
         } else if (period === 'noturno') {
             return <Moon className="h-3 w-3 text-blue-500" />;
+        } else if (period === 'dia_inteiro') {
+            return <Clock className="h-3 w-3 text-purple-500" />;
         }
         return null;
-    }, []);
+    }, [])
 
     // Função para obter a cor da tab baseada no tipo de dia
     const getTabColor = useCallback((type: string, isActive: boolean) => {
@@ -1116,7 +1118,7 @@ export default function EventoDetalhesPage() {
 
             // Extrair informações do shift selecionado
             const { stage, period } = parseShiftId(selectedDateForAction || selectedDay)
-            
+
             await checkInMutation.mutateAsync({
                 participantId: participantAction.id,
                 date: dateToUse,
@@ -1204,7 +1206,7 @@ export default function EventoDetalhesPage() {
 
             // Extrair informações do shift selecionado
             const { stage, period } = parseShiftId(selectedDateForAction || selectedDay)
-            
+
             await checkOutMutation.mutateAsync({
                 participantId: participantAction.id,
                 date: dateToUse,
@@ -1675,7 +1677,7 @@ export default function EventoDetalhesPage() {
                     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                         <div className="flex flex-wrap gap-3">
                             <Button
-                                variant="outline"
+
                                 size="sm"
                                 className="btn-brand-green"
                                 onClick={() =>
@@ -1882,10 +1884,11 @@ export default function EventoDetalhesPage() {
                                                         </span>
                                                         {day.period && (
                                                             <span className="text-xs opacity-60">
-                                                                ({day.period === 'diurno' ? 'D' : 'N'})
+                                                                ({day.period === 'diurno' ? 'D' : day.period === 'noturno' ? 'N' : 'DI'})
                                                             </span>
                                                         )}
                                                     </div>
+
                                                     <span className="text-xs opacity-75">
                                                         ({participantesNoDia})
                                                     </span>

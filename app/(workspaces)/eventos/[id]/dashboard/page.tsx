@@ -141,10 +141,10 @@ export default function EventDashboardPage() {
     }, []);
 
     // Função para gerar tabs dos dias do evento usando nova estrutura com suporte a turnos
-    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> => {
         if (!evento) return [];
 
-        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = [];
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> = [];
 
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
@@ -173,8 +173,8 @@ export default function EventDashboardPage() {
                         const dateISO = new Date(item.date).toISOString().split('T')[0]; // YYYY-MM-DD para ID
                         
                         // Usar período do item se disponível, senão calcular baseado na hora
-                        let period: 'diurno' | 'noturno';
-                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                        let period: 'diurno' | 'noturno' | 'dia_inteiro';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
                             period = item.period;
                         } else {
                             // Fallback: calcular baseado na hora
@@ -183,7 +183,7 @@ export default function EventDashboardPage() {
                             period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
                         }
                         
-                        const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+                        const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
                         
                         days.push({
                             id: `${dateISO}-${stage}-${period}`, // ID único incluindo o turno
@@ -399,11 +399,13 @@ export default function EventDashboardPage() {
     const companySummary = getCompanySummary();
 
     // Função para obter ícone do período
-    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
         if (period === 'diurno') {
             return <Sun className="h-4 w-4 text-yellow-500" />;
         } else if (period === 'noturno') {
             return <Moon className="h-4 w-4 text-blue-500" />;
+        } else if (period === 'dia_inteiro') {
+            return <Clock className="h-4 w-4 text-purple-500" />;
         }
         return null;
     }, []);

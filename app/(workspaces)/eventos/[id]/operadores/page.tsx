@@ -3,7 +3,7 @@
 
 import type React from "react"
 
-import { useEffect, useState, useRef, useMemo } from "react"
+import { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import apiClient from "@/lib/api-client"
 import { formatCpf, isValidCpf, formatCpfInput } from "@/lib/utils"
 import { toast } from "sonner"
-import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw, Activity } from "lucide-react"
+import { Loader2, Download, Upload, Plus, Edit, Trash2, Users, UserPlus, RefreshCw, Activity, Sun, Moon, Clock, Eye } from "lucide-react"
 import { useParams } from "next/navigation"
 import { useOperatorsByEvent } from "@/features/operadores/api/query/use-operators-by-event"
 import { useOperators } from "@/features/operadores/api/query/use-operators"
@@ -106,24 +106,12 @@ export default function OperadoresPage() {
     const [actionsFilter, setActionsFilter] = useState({ busca: "", tipo: "all-types", operador: "all-operators" })
     const [allActions, setAllActions] = useState<any[]>([])
     const [loadingActions, setLoadingActions] = useState(false)
+    
+    // Estados para modal de detalhes da ação
+    const [actionDetailsOpen, setActionDetailsOpen] = useState(false)
+    const [selectedAction, setSelectedAction] = useState<any>(null)
 
-    // Função para gerar datas do evento
-    const getEventDates = () => {
-        if (!evento) return []
-
-        const dates: string[] = []
-        const startDate = new Date(evento.startDate)
-        const endDate = new Date(evento.endDate)
-
-        const currentDate = new Date(startDate)
-        while (currentDate <= endDate) {
-            dates.push(currentDate.toISOString().split('T')[0])
-            currentDate.setDate(currentDate.getDate() + 1)
-        }
-
-        return dates
-    }
-
+    // Hooks de dados - devem vir antes das funções que os usam
     const { data: operadores = [], isLoading: loadingOperadores } = useOperatorsByEvent({
         eventId,
         search: filtro.busca,
@@ -133,6 +121,264 @@ export default function OperadoresPage() {
     const { data: allOperators = [], isLoading: loadingAllOperators, refetch: refetchAllOperators } = useOperators()
     const { data: eventos = [] } = useEventos()
     const evento = Array.isArray(eventos) ? eventos.find(e => e.id === eventId) : null
+
+    // Função helper para formatar data do evento
+    const formatEventDate = useCallback((dateStr: string): string => {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+    }, []);
+
+    // Função para extrair data do shift ID (compatibilidade com novo sistema)
+    const parseShiftId = useCallback((shiftId: string) => {
+        // Formato esperado: YYYY-MM-DD-stage-period
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            const year = parts[0];
+            const month = parts[1];
+            const day = parts[2];
+            const stage = parts[3];
+            const period = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro';
+
+            return {
+                dateISO: `${year}-${month}-${day}`,
+                dateFormatted: formatEventDate(`${year}-${month}-${day}T00:00:00`),
+                stage,
+                period
+            };
+        }
+
+        // Fallback para formato simples (apenas data)
+        try {
+            const dateFormatted = formatEventDate(shiftId.includes('T') ? shiftId : shiftId + 'T00:00:00');
+            return {
+                dateISO: shiftId,
+                dateFormatted,
+                stage: 'unknown',
+                period: 'diurno' as const
+            };
+        } catch (error) {
+            // Se não conseguir fazer parse da data, retornar valor padrão
+            return {
+                dateISO: shiftId,
+                dateFormatted: shiftId,
+                stage: 'unknown',
+                period: 'diurno' as const
+            };
+        }
+    }, [formatEventDate]);
+
+    // Função helper para garantir que os dados sejam arrays válidos
+    const ensureArray = useCallback((data: any): any[] => {
+        if (!data) return [];
+
+        // Se for string, tentar fazer parse
+        if (typeof data === 'string') {
+            try {
+                const parsed = JSON.parse(data);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (error) {
+                console.warn('⚠️ Dados não são JSON válido:', data);
+                return [];
+            }
+        }
+
+        // Se já for array, retornar como está
+        if (Array.isArray(data)) {
+            return data;
+        }
+
+        // Se for objeto, tentar extrair dados
+        if (typeof data === 'object' && data !== null) {
+            console.warn('⚠️ Dados inesperados para dias do evento:', data);
+            return [];
+        }
+
+        return [];
+    }, []);
+
+    // Nova função para obter turnos do evento baseada no sistema de shifts
+    const getEventDays = useCallback(() => {
+        if (!evento) return [];
+
+        console.log('🔧 getEventDays (operadores) chamada, evento:', evento);
+
+        const days: Array<{
+            id: string;
+            label: string;
+            date: string;
+            type: string;
+            period?: 'diurno' | 'noturno' | 'dia_inteiro';
+        }> = [];
+
+        // Usar a nova estrutura SimpleEventDay se disponível com suporte a turnos
+        const montagemData = ensureArray(evento.montagem);
+        console.log('🔧 Processando montagem (operadores):', montagemData);
+        if (montagemData.length > 0) {
+            montagemData.forEach(day => {
+                if (day && day.date && day.period) {
+                    try {
+                        const dateStr = formatEventDate(day.date);
+                        const dateISO = new Date(day.date).toISOString().split('T')[0];
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+
+                        console.log(`✅ Adicionando montagem (operadores): ${dateStr} - ${periodLabel}`);
+                        days.push({
+                            id: `${dateISO}-montagem-${day.period}`,
+                            label: `${dateStr} (MONTAGEM - ${periodLabel})`,
+                            date: dateStr,
+                            type: 'montagem',
+                            period: day.period
+                        });
+                    } catch (error) {
+                        console.error('❌ Erro ao processar data da montagem (operadores):', day, error);
+                    }
+                }
+            });
+        } else if (evento.setupStartDate && evento.setupEndDate) {
+            // Fallback para estrutura antiga com suporte a turnos
+            const startDate = new Date(evento.setupStartDate);
+            const endDate = new Date(evento.setupEndDate);
+            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                const dateStr = formatEventDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+
+                // Adicionar ambos os períodos (diurno e noturno) para cada data
+                ['diurno', 'noturno'].forEach(period => {
+                    const periodTyped = period as 'diurno' | 'noturno' | 'dia_inteiro';
+                    const periodLabel = periodTyped === 'diurno' ? 'Diurno' : periodTyped === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+
+                    days.push({
+                        id: `${dateISO}-montagem-${periodTyped}`,
+                        label: `${dateStr} (MONTAGEM - ${periodLabel})`,
+                        date: dateStr,
+                        type: 'montagem',
+                        period: periodTyped
+                    });
+                });
+            }
+        }
+
+        // Adicionar dias de Evento/evento com suporte a turnos
+        const eventoData = ensureArray(evento.evento);
+        console.log('🔧 Processando evento (operadores):', eventoData);
+        if (eventoData.length > 0) {
+            eventoData.forEach(day => {
+                if (day && day.date && day.period) {
+                    try {
+                        const dateStr = formatEventDate(day.date);
+                        const dateISO = new Date(day.date).toISOString().split('T')[0];
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+
+                        console.log(`✅ Adicionando evento (operadores): ${dateStr} - ${periodLabel}`);
+                        days.push({
+                            id: `${dateISO}-evento-${day.period}`,
+                            label: `${dateStr} (EVENTO - ${periodLabel})`,
+                            date: dateStr,
+                            type: 'evento',
+                            period: day.period
+                        });
+                    } catch (error) {
+                        console.error('❌ Erro ao processar data do evento (operadores):', day, error);
+                    }
+                }
+            });
+        } else if (evento.preparationStartDate && evento.preparationEndDate) {
+            // Fallback para estrutura antiga com suporte a turnos
+            const startDate = new Date(evento.preparationStartDate);
+            const endDate = new Date(evento.preparationEndDate);
+            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                const dateStr = formatEventDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+
+                // Adicionar ambos os períodos (diurno e noturno) para cada data
+                ['diurno', 'noturno'].forEach(period => {
+                    const periodTyped = period as 'diurno' | 'noturno' | 'dia_inteiro';
+                    const periodLabel = periodTyped === 'diurno' ? 'Diurno' : periodTyped === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+
+                    days.push({
+                        id: `${dateISO}-evento-${periodTyped}`,
+                        label: `${dateStr} (EVENTO - ${periodLabel})`,
+                        date: dateStr,
+                        type: 'evento',
+                        period: periodTyped
+                    });
+                });
+            }
+        }
+
+        // Adicionar dias de finalização com suporte a turnos
+        const desmontagemData = ensureArray(evento.desmontagem);
+        console.log('🔧 Processando desmontagem (operadores):', desmontagemData);
+        if (desmontagemData.length > 0) {
+            desmontagemData.forEach(day => {
+                if (day && day.date && day.period) {
+                    try {
+                        const dateStr = formatEventDate(day.date);
+                        const dateISO = new Date(day.date).toISOString().split('T')[0];
+                        const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+
+                        console.log(`✅ Adicionando desmontagem (operadores): ${dateStr} - ${periodLabel}`);
+                        days.push({
+                            id: `${dateISO}-desmontagem-${day.period}`,
+                            label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
+                            date: dateStr,
+                            type: 'desmontagem',
+                            period: day.period
+                        });
+                    } catch (error) {
+                        console.error('❌ Erro ao processar data da desmontagem (operadores):', day, error);
+                    }
+                }
+            });
+        } else if (evento.finalizationStartDate && evento.finalizationEndDate) {
+            // Fallback para estrutura antiga com suporte a turnos
+            const startDate = new Date(evento.finalizationStartDate);
+            const endDate = new Date(evento.finalizationEndDate);
+            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                const dateStr = formatEventDate(date.toISOString());
+                const dateISO = date.toISOString().split('T')[0];
+
+                // Adicionar ambos os períodos (diurno e noturno) para cada data
+                ['diurno', 'noturno'].forEach(period => {
+                    const periodTyped = period as 'diurno' | 'noturno' | 'dia_inteiro';
+                    const periodLabel = periodTyped === 'diurno' ? 'Diurno' : periodTyped === 'noturno' ? 'Noturno' : 'Dia Inteiro';
+
+                    days.push({
+                        id: `${dateISO}-desmontagem-${periodTyped}`,
+                        label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
+                        date: dateStr,
+                        type: 'desmontagem',
+                        period: periodTyped
+                    });
+                });
+            }
+        }
+
+        console.log('🎯 Dias finais gerados (operadores):', days);
+        return days.sort((a, b) => {
+            if (a.date !== b.date) return a.date.localeCompare(b.date);
+            if (a.type !== b.type) {
+                const typeOrder: Record<string, number> = { montagem: 1, evento: 2, desmontagem: 3 };
+                return (typeOrder[a.type] ?? 99) - (typeOrder[b.type] ?? 99);
+            }
+            const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
+            const aPeriodOrder = periodOrder[a.period as keyof typeof periodOrder] ?? 999;
+            const bPeriodOrder = periodOrder[b.period as keyof typeof periodOrder] ?? 999;
+            return aPeriodOrder - bPeriodOrder;
+        });
+    }, [evento, ensureArray, formatEventDate]);
+
+    // Função para obter ícone do período
+    const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
+        if (period === 'diurno') return <Sun className="h-3 w-3 text-yellow-500" />;
+        if (period === 'noturno') return <Moon className="h-3 w-3 text-blue-500" />;
+        if (period === 'dia_inteiro') return <Clock className="h-3 w-3 text-purple-500" />;
+        return null;
+    }, []);
 
     // Forçar refetch dos dados toda vez que a página é carregada
     useEffect(() => {
@@ -153,13 +399,10 @@ export default function OperadoresPage() {
     }, [eventId, queryClient, refetchAllOperators])
 
     useEffect(() => {
-        if (eventos && Array.isArray(eventos)) {
-            const evento = eventos.find((e: any) => e.id === eventId)
-            if (evento) {
-                setNomeEvento(evento.name || "Evento")
-            }
+        if (evento) {
+            setNomeEvento(evento.name || "Evento")
         }
-    }, [eventos, eventId])
+    }, [evento])
 
     // Filtrar operadores disponíveis (não atribuídos ao evento)
     const availableOperators = useMemo(() => {
@@ -243,20 +486,20 @@ export default function OperadoresPage() {
             senha: operador.senha
         })
 
-        // Carregar datas de Retirada atuais
-        const currentDates: string[] = []
+        // Carregar turnos de atribuição atuais
+        const currentShifts: string[] = []
         if (operador.id_events) {
             const eventAssignments = operador.id_events.split(',').map((assignment: string) => assignment.trim())
             for (const assignment of eventAssignments) {
                 if (assignment.includes(':')) {
-                    const [eventIdFromAssignment, date] = assignment.split(':')
+                    const [eventIdFromAssignment, shiftOrDate] = assignment.split(':')
                     if (eventIdFromAssignment === eventId) {
-                        currentDates.push(date)
+                        currentShifts.push(shiftOrDate)
                     }
                 }
             }
         }
-        setEditSelectedEventDates(currentDates)
+        setEditSelectedEventDates(currentShifts)
         setEditDialogOpen(true)
     }
 
@@ -276,14 +519,14 @@ export default function OperadoresPage() {
 
 
         if (editSelectedEventDates.length === 0) {
-            toast.error("Selecione pelo menos um dia do evento")
+            toast.error("Selecione pelo menos um turno do evento")
             return
         }
 
         setLoading(true)
         try {
-            // Criar atribuições para todas as datas selecionadas
-            const eventAssignments = editSelectedEventDates.map(date => `${eventId}:${date}`).join(',')
+            // Criar atribuições para todos os turnos selecionados
+            const eventAssignments = editSelectedEventDates.map(shiftId => `${eventId}:${shiftId}`).join(',')
 
             await apiClient.put(`/operadores/${operatorToEdit.id}`, {
                 nome: editForm.nome,
@@ -340,7 +583,7 @@ export default function OperadoresPage() {
 
         setLoading(true)
         try {
-            // Criar Retirada com data específica se disponível
+            // Criar atribuição com evento específico
             const eventAssignment = eventId
 
             await apiClient.post("/operadores", {
@@ -403,7 +646,7 @@ export default function OperadoresPage() {
         }
 
         if (selectedEventDates.length === 0) {
-            toast.error("Selecione pelo menos um dia do evento")
+            toast.error("Selecione pelo menos um turno do evento")
             return
         }
 
@@ -418,8 +661,8 @@ export default function OperadoresPage() {
                     // Remover atribuições existentes para este evento (se houver)
                     const filteredEvents = currentEvents.filter((event: string) => !event.startsWith(`${eventId}:`))
 
-                    // Adicionar novas atribuições para cada dia selecionado
-                    const newEventAssignments = selectedEventDates.map(date => `${eventId}:${date}`)
+                    // Adicionar novas atribuições para cada turno selecionado
+                    const newEventAssignments = selectedEventDates.map(shiftId => `${eventId}:${shiftId}`)
                     const newEvents = [...filteredEvents, ...newEventAssignments]
 
                     await apiClient.put(`/operadores/${operatorId}`, {
@@ -431,8 +674,11 @@ export default function OperadoresPage() {
                 }
             }
 
-            const datesText = selectedEventDates.map(date => formatDatePtBr(date)).join(', ')
-            toast.success(`${selectedOperators.length} operador(es) atribuído(s) com sucesso para os dias: ${datesText}!`)
+            const shiftsText = selectedEventDates.map(shiftId => {
+                const shift = getEventDays().find(s => s.id === shiftId)
+                return shift ? shift.label : shiftId
+            }).join(', ')
+            toast.success(`${selectedOperators.length} operador(es) atribuído(s) com sucesso para os turnos: ${shiftsText}!`)
             setAssignDialogOpen(false)
             setSelectedOperators([])
             setSelectedEventDates([])
@@ -446,20 +692,21 @@ export default function OperadoresPage() {
         }
     }
 
-    const handleDateSelection = (date: string) => {
+    const handleShiftSelection = (shiftId: string) => {
         setSelectedEventDates(prev =>
-            prev.includes(date)
-                ? prev.filter(d => d !== date)
-                : [...prev, date]
+            prev.includes(shiftId)
+                ? prev.filter(s => s !== shiftId)
+                : [...prev, shiftId]
         )
     }
 
-    const handleSelectAllDates = () => {
-        const eventDates = getEventDates()
-        if (selectedEventDates.length === eventDates.length) {
+    const handleSelectAllShifts = () => {
+        const eventShifts = getEventDays()
+        const allShiftIds = eventShifts.map(shift => shift.id)
+        if (selectedEventDates.length === allShiftIds.length) {
             setSelectedEventDates([])
         } else {
-            setSelectedEventDates(eventDates)
+            setSelectedEventDates(allShiftIds)
         }
     }
 
@@ -476,9 +723,9 @@ export default function OperadoresPage() {
         const dadosParaExportar = operadores.map(operador => ({
             Nome: operador.nome,
             CPF: formatCPF(operador.cpf),
-            "Data de Retirada": (() => {
-                const assignmentDate = getOperatorAssignmentDate(operador);
-                return assignmentDate ? formatDatePtBr(assignmentDate) : "Sem data específica";
+            "Turnos Atribuídos": (() => {
+                const assignmentShifts = getOperatorAssignmentShifts(operador);
+                return assignmentShifts.length > 0 ? assignmentShifts.map(shift => shift.label).join(', ') : "Sem turnos específicos";
             })(),
             "Data de Criação": formatDatePtBr(new Date())
         }))
@@ -595,8 +842,8 @@ export default function OperadoresPage() {
                     continue
                 }
 
-                // Criar atribuições para todos os dias selecionados
-                const eventAssignments = selectedEventDates.map(date => `${eventId}:${date}`).join(',')
+                // Criar atribuições para todos os turnos selecionados
+                const eventAssignments = selectedEventDates.map(shiftId => `${eventId}:${shiftId}`).join(',')
 
                 operadoresImportados.push({
                     id: "",
@@ -724,29 +971,63 @@ export default function OperadoresPage() {
 
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 
-    // Função para extrair a data de Retirada do operador
-    const getOperatorAssignmentDate = (operator: Operator) => {
-        if (!operator?.id_events) return null
+    // Função para extrair os turnos de atribuição do operador
+    const getOperatorAssignmentShifts = (operator: Operator) => {
+        if (!operator?.id_events) return []
 
         try {
             const eventAssignments = operator.id_events.split(',').map((assignment: string) => assignment.trim())
+            const eventShifts = getEventDays()
+            const assignedShifts: any[] = []
 
             for (const assignment of eventAssignments) {
                 if (assignment.includes(':')) {
-                    const [eventIdFromAssignment, date] = assignment.split(':')
-                    if (eventIdFromAssignment === eventId && date) {
-                        return date.trim()
+                    const [eventIdFromAssignment, shiftOrDate] = assignment.split(':')
+                    if (eventIdFromAssignment === eventId && shiftOrDate) {
+                        const shiftId = shiftOrDate.trim()
+
+                        // Procurar pelo shift ID no novo formato
+                        const shift = eventShifts.find(s => s.id === shiftId)
+                        if (shift) {
+                            assignedShifts.push(shift)
+                        } else {
+                            // Fallback para formato antigo (apenas data)
+                            const { dateFormatted } = parseShiftId(shiftId)
+                            assignedShifts.push({
+                                id: shiftId,
+                                label: `${dateFormatted} (Data simples)`,
+                                date: dateFormatted,
+                                type: 'legacy',
+                                period: 'diurno'
+                            })
+                        }
                     }
                 }
             }
-        } catch (error) {
-            console.error('Erro ao processar data de Retirada:', error)
-        }
 
+            return assignedShifts
+        } catch (error) {
+            console.error('Erro ao processar turnos de atribuição:', error)
+            return []
+        }
+    }
+
+    // Função para extrair a primeira data de atribuição do operador (compatibilidade)
+    const getOperatorAssignmentDate = (operator: Operator) => {
+        const shifts = getOperatorAssignmentShifts(operator)
+        if (shifts.length > 0) {
+            const firstShift = shifts[0]
+            if (firstShift.type === 'legacy') {
+                return firstShift.id // Para formato antigo, o ID é a data
+            } else {
+                const { dateISO } = parseShiftId(firstShift.id)
+                return dateISO
+            }
+        }
         return null
     }
 
-    // Função para coletar todas as ações dos operadores
+    // Função para coletar apenas as ações deste evento específico
     const collectAllActions = useMemo(() => {
         if (!operadores || operadores.length === 0) return []
 
@@ -755,18 +1036,21 @@ export default function OperadoresPage() {
         operadores.forEach(operator => {
             if (operator.acoes && Array.isArray(operator.acoes)) {
                 operator.acoes.forEach((action: any) => {
-                    actions.push({
-                        ...action,
-                        operadorId: operator.id,
-                        operadorNome: operator.nome,
-                        operadorCpf: operator.cpf
-                    })
+                    // Filtrar apenas ações deste evento
+                    if (action.eventId === eventId) {
+                        actions.push({
+                            ...action,
+                            operadorId: operator.id,
+                            operadorNome: operator.nome,
+                            operadorCpf: operator.cpf
+                        })
+                    }
                 })
             }
         })
 
         return actions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    }, [operadores])
+    }, [operadores, eventId])
 
     // Função para filtrar ações
     const filteredActions = useMemo(() => {
@@ -807,6 +1091,12 @@ export default function OperadoresPage() {
             hour: '2-digit',
             minute: '2-digit'
         })
+    }
+
+    // Função para abrir modal de detalhes da ação
+    const openActionDetails = (action: any) => {
+        setSelectedAction(action)
+        setActionDetailsOpen(true)
     }
 
     // Função para formatar data no padrão pt-BR yyyy/mm/dd
@@ -903,7 +1193,7 @@ export default function OperadoresPage() {
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 gap-14 rounded-lg p-4 bg-white">
+                    <TabsList className="grid w-full grid-cols-2 gap-14 rounded-lg p-4 bg-white">
                         <TabsTrigger
                             value="operadores"
                             className={`flex items-center justify-center p-4 gap-2 rounded-md transition-colors
@@ -1005,21 +1295,38 @@ export default function OperadoresPage() {
                                         </div>
 
                                         <div className="space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm text-gray-600">Data de Retirada:</span>
+                                            <div className="space-y-2">
+                                                <span className="text-sm text-gray-600 font-medium">Turnos Atribuídos:</span>
                                                 {(() => {
-                                                    const assignmentDate = getOperatorAssignmentDate(operador);
-                                                    if (!assignmentDate) {
+                                                    const assignmentShifts = getOperatorAssignmentShifts(operador);
+                                                    if (assignmentShifts.length === 0) {
                                                         return (
                                                             <Badge variant="outline" className="text-gray-500 border-gray-200">
-                                                                Sem data específica
+                                                                Sem turnos específicos
                                                             </Badge>
                                                         );
                                                     }
                                                     return (
-                                                        <Badge variant="outline" className="text-blue-600 border-blue-200">
-                                                            {formatDatePtBr(assignmentDate)}
-                                                        </Badge>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {assignmentShifts.slice(0, 3).map((shift, index) => (
+                                                                <Badge key={index} variant="outline" className="text-blue-600 border-blue-200 text-xs">
+                                                                    <div className="flex items-center gap-1">
+                                                                        {getPeriodIcon(shift.period)}
+                                                                        <span>
+                                                                            {shift.type === 'montagem' ? 'Mont' :
+                                                                                shift.type === 'evento' ? 'Evt' :
+                                                                                    shift.type === 'desmontagem' ? 'Desm' : 'Fin'} -
+                                                                            {shift.period === 'diurno' ? 'Dia' : shift.period === 'noturno' ? 'Noite' : 'DI'}
+                                                                        </span>
+                                                                    </div>
+                                                                </Badge>
+                                                            ))}
+                                                            {assignmentShifts.length > 3 && (
+                                                                <Badge variant="outline" className="text-gray-500 border-gray-200 text-xs">
+                                                                    +{assignmentShifts.length - 3} mais
+                                                                </Badge>
+                                                            )}
+                                                        </div>
                                                     );
                                                 })()}
                                             </div>
@@ -1111,51 +1418,129 @@ export default function OperadoresPage() {
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead className="text-left font-medium text-gray-900">Operador</TableHead>
-                                            <TableHead className="text-left font-medium text-gray-900">Tipo</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Tipo da Ação</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Quem Executou</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Quem Sofreu a Ação</TableHead>
+                                            <TableHead className="text-left font-medium text-gray-900">Empresa/Função</TableHead>
                                             <TableHead className="text-left font-medium text-gray-900">Credencial</TableHead>
                                             <TableHead className="text-left font-medium text-gray-900">Pulseira</TableHead>
-
+                                            <TableHead className="text-left font-medium text-gray-900">Período/Turno</TableHead>
                                             <TableHead className="text-left font-medium text-gray-900">Data/Hora</TableHead>
+                                            <TableHead className="text-center font-medium text-gray-900">Detalhes</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {filteredActions.length > 0 ? (
                                             filteredActions.map((action, index) => (
                                                 <TableRow key={index} className="hover:bg-gray-50 transition-colors">
-                                                    <TableCell className="font-medium">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                                                <span className="text-sm font-medium text-blue-600">
-                                                                    {getInitials(action.operadorNome)}
-                                                                </span>
-                                                            </div>
-                                                            <div>
-                                                                <span className="text-gray-900">{capitalizeWords(action.operadorNome)}</span>
-                                                                <p className="text-xs text-gray-500">{formatCPF(action.operadorCpf)}</p>
-                                                            </div>
-                                                        </div>
-                                                    </TableCell>
+                                                    {/* Tipo da Ação */}
                                                     <TableCell>
                                                         <Badge variant="outline" className={getActionBadgeColor(action.type)}>
                                                             {action.type}
                                                         </Badge>
                                                     </TableCell>
-                                                    <TableCell className="text-gray-700">
-                                                        {action.credencial || "-"}
+                                                    
+                                                    {/* Quem Executou */}
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                                                                <span className="text-xs font-medium text-blue-600">
+                                                                    {getInitials(action.operatorName || action.operadorNome)}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-sm text-gray-900">{capitalizeWords(action.operatorName || action.operadorNome)}</span>
+                                                                <p className="text-xs text-gray-500">{formatCPF(action.operatorCpf || action.operadorCpf)}</p>
+                                                            </div>
+                                                        </div>
                                                     </TableCell>
-                                                    <TableCell className="text-gray-700">
-                                                        {action.pulseira || "-"}
+                                                    
+                                                    {/* Quem Sofreu a Ação */}
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                                                                <span className="text-xs font-medium text-green-600">
+                                                                    {getInitials(action.staffName)}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-sm text-gray-900">{capitalizeWords(action.staffName)}</span>
+                                                                <p className="text-xs text-gray-500">{formatCPF(action.staffCpf)}</p>
+                                                            </div>
+                                                        </div>
                                                     </TableCell>
-
+                                                    
+                                                    {/* Empresa/Função */}
                                                     <TableCell className="text-gray-700">
-                                                        {formatTimestamp(action.timestamp)}
+                                                        <div>
+                                                            <span className="text-sm font-medium">{action.empresa || "-"}</span>
+                                                            <p className="text-xs text-gray-500">{action.funcao || "-"}</p>
+                                                        </div>
+                                                    </TableCell>
+                                                    
+                                                    {/* Credencial */}
+                                                    <TableCell className="text-gray-700">
+                                                        <div>
+                                                            {action.credencial && (
+                                                                <span className="text-sm">{action.credencial}</span>
+                                                            )}
+                                                            {action.credencialAnterior && action.credencialAnterior !== action.credencial && (
+                                                                <p className="text-xs text-gray-500">Anterior: {action.credencialAnterior}</p>
+                                                            )}
+                                                            {!action.credencial && "-"}
+                                                        </div>
+                                                    </TableCell>
+                                                    
+                                                    {/* Pulseira */}
+                                                    <TableCell className="text-gray-700">
+                                                        <div>
+                                                            {action.pulseira && (
+                                                                <span className="text-sm">{action.pulseira}</span>
+                                                            )}
+                                                            {action.pulseiraAnterior && action.pulseiraAnterior !== action.pulseira && (
+                                                                <p className="text-xs text-gray-500">Anterior: {action.pulseiraAnterior}</p>
+                                                            )}
+                                                            {!action.pulseira && "-"}
+                                                        </div>
+                                                    </TableCell>
+                                                    
+                                                    {/* Período/Turno */}
+                                                    <TableCell className="text-gray-700">
+                                                        <div>
+                                                            <span className="text-sm">{action.workPeriod || "-"}</span>
+                                                            <p className="text-xs text-gray-500">{action.workStage || ""}</p>
+                                                        </div>
+                                                    </TableCell>
+                                                    
+                                                    {/* Data/Hora */}
+                                                    <TableCell className="text-gray-700">
+                                                        <div>
+                                                            <span className="text-sm">{formatTimestamp(action.timestamp)}</span>
+                                                            {action.checkInTime && (
+                                                                <p className="text-xs text-green-600">Check-in: {action.checkInTime}</p>
+                                                            )}
+                                                            {action.checkOutTime && (
+                                                                <p className="text-xs text-red-600">Check-out: {action.checkOutTime}</p>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    
+                                                    {/* Detalhes */}
+                                                    <TableCell className="text-center">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => openActionDetails(action)}
+                                                            className="h-8 w-8 p-0 hover:bg-gray-100"
+                                                        >
+                                                            <Eye className="h-4 w-4 text-gray-500 hover:text-gray-700" />
+                                                        </Button>
                                                     </TableCell>
                                                 </TableRow>
                                             ))
                                         ) : (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                                                <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                                                     {collectAllActions.length === 0 ? "Nenhuma ação registrada" : "Nenhuma ação encontrada com os filtros aplicados"}
                                                 </TableCell>
                                             </TableRow>
@@ -1186,24 +1571,31 @@ export default function OperadoresPage() {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Data de Retirada</label>
-                                    <p className="text-gray-900">
+                                    <label className="block text-sm font-medium text-gray-700">Turnos Atribuídos</label>
+                                    <div className="mt-2">
                                         {(() => {
-                                            const assignmentDate = getOperatorAssignmentDate(selectedOperator);
-                                            if (!assignmentDate) {
+                                            const assignmentShifts = getOperatorAssignmentShifts(selectedOperator);
+                                            if (assignmentShifts.length === 0) {
                                                 return (
                                                     <Badge variant="outline" className="text-gray-500 border-gray-200">
-                                                        Sem data específica
+                                                        Sem turnos específicos
                                                     </Badge>
                                                 );
                                             }
                                             return (
-                                                <Badge variant="outline" className="text-blue-600 border-blue-200">
-                                                    {formatDatePtBr(assignmentDate)}
-                                                </Badge>
+                                                <div className="space-y-2">
+                                                    {assignmentShifts.map((shift, index) => (
+                                                        <div key={index} className="flex items-center gap-2 p-2 bg-blue-50 rounded border border-blue-200">
+                                                            {getPeriodIcon(shift.period)}
+                                                            <span className="text-sm text-blue-800">
+                                                                {shift.label}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             );
                                         })()}
-                                    </p>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">Ações Realizadas</label>
@@ -1283,55 +1675,112 @@ export default function OperadoresPage() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => {
-                                            if (editSelectedEventDates.length === getEventDates().length) {
+                                            const eventShifts = getEventDays()
+                                            const allShiftIds = eventShifts.map(shift => shift.id)
+                                            if (editSelectedEventDates.length === allShiftIds.length) {
                                                 setEditSelectedEventDates([])
                                             } else {
-                                                setEditSelectedEventDates(getEventDates())
+                                                setEditSelectedEventDates(allShiftIds)
                                             }
                                         }}
                                         className="text-gray-900"
                                     >
-                                        {editSelectedEventDates.length === getEventDates().length ? "Desmarcar Todos" : "Marcar Todos"}
+                                        {(() => {
+                                            const eventShifts = getEventDays()
+                                            const allShiftIds = eventShifts.map(shift => shift.id)
+                                            return editSelectedEventDates.length === allShiftIds.length ? "Desmarcar Todos" : "Marcar Todos"
+                                        })()}
                                     </Button>
                                 </div>
 
-                                <div className="grid grid-cols-7 gap-2">
-                                    {getEventDates().map((date) => {
-                                        const isSelected = editSelectedEventDates.includes(date)
-                                        const dateObj = new Date(date)
-                                        const dayName = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' })
-                                        const dayNumber = dateObj.getDate()
+                                <div className="space-y-4">
+                                    {/* Agrupar turnos por estágio e depois por data */}
+                                    {Object.entries(
+                                        getEventDays().reduce((acc, shift) => {
+                                            if (!acc[shift.type]) acc[shift.type] = {};
+                                            if (!acc[shift.type][shift.date]) acc[shift.type][shift.date] = [];
+                                            acc[shift.type][shift.date].push(shift);
+                                            return acc;
+                                        }, {} as Record<string, Record<string, typeof getEventDays extends () => infer T ? T : never>>)
+                                    ).map(([stage, dateGroups]) => {
+                                        const stageLabel = stage === 'montagem' ? 'Montagem' :
+                                            stage === 'evento' ? 'Evento' :
+                                                stage === 'desmontagem' ? 'Desmontagem' : 'Finalização';
 
                                         return (
-                                            <button
-                                                key={date}
-                                                onClick={() => {
-                                                    if (isSelected) {
-                                                        setEditSelectedEventDates(prev => prev.filter(d => d !== date))
-                                                    } else {
-                                                        setEditSelectedEventDates(prev => [...prev, date])
-                                                    }
-                                                }}
-                                                className={`
-                                                    p-3 rounded-lg border-2 transition-all duration-200 text-center
-                                                    ${isSelected
-                                                        ? 'bg-blue-500 text-white border-blue-500'
-                                                        : 'bg-white text-gray-900 border-gray-300 hover:border-blue-300 hover:bg-blue-50'
-                                                    }
-                                                `}
-                                            >
-                                                <div className="text-xs font-medium">{dayName}</div>
-                                                <div className="text-lg font-bold">{dayNumber}</div>
-                                            </button>
-                                        )
+                                            <div key={stage} className="border border-gray-200 rounded-lg p-3">
+                                                <h4 className="text-sm font-semibold mb-3 text-gray-700">{stageLabel}</h4>
+                                                {Object.entries(dateGroups).map(([date, shifts]) => {
+                                                    return (
+                                                        <div key={date} className="mb-3 last:mb-0">
+                                                            <p className="text-xs font-medium mb-2 text-gray-600">{date}</p>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {shifts.map((shift) => {
+                                                                    const isSelected = editSelectedEventDates.includes(shift.id)
+                                                                    return (
+                                                                        <Button
+                                                                            key={shift.id}
+                                                                            type="button"
+                                                                            variant={isSelected ? "default" : "outline"}
+                                                                            size="sm"
+                                                                            onClick={() => {
+                                                                                if (isSelected) {
+                                                                                    setEditSelectedEventDates(prev => prev.filter(s => s !== shift.id))
+                                                                                } else {
+                                                                                    setEditSelectedEventDates(prev => [...prev, shift.id])
+                                                                                }
+                                                                            }}
+                                                                            disabled={loading}
+                                                                            className="flex items-center gap-1 text-xs h-8"
+                                                                        >
+                                                                            {getPeriodIcon(shift.period)}
+                                                                            <span>
+                                                                                {shift.period === 'diurno' ? 'Diurno' : shift.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
+                                                                            </span>
+                                                                        </Button>
+                                                                    )
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
                                     })}
                                 </div>
 
                                 {editSelectedEventDates.length > 0 && (
                                     <div className="bg-blue-50 p-3 rounded-lg">
                                         <p className="text-sm text-blue-900">
-                                            <strong>Dias selecionados:</strong> {editSelectedEventDates.length} dia(s)
+                                            <strong>Turnos selecionados:</strong> {editSelectedEventDates.length} turno(s)
                                         </p>
+                                        <div className="mt-2 space-y-2">
+                                            {Object.entries(
+                                                editSelectedEventDates.reduce((acc, shiftId) => {
+                                                    const shift = getEventDays().find(s => s.id === shiftId);
+                                                    if (!shift) return acc;
+
+                                                    if (!acc[shift.date]) acc[shift.date] = [];
+                                                    acc[shift.date].push(shift);
+                                                    return acc;
+                                                }, {} as Record<string, any[]>)
+                                            ).map(([date, shifts]) => (
+                                                <div key={date} className="bg-blue-50 border border-blue-200 rounded p-2">
+                                                    <p className="text-xs font-medium text-blue-800 mb-1">{date}</p>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {shifts.map((shift) => (
+                                                            <span key={shift.id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 rounded text-xs">
+                                                                {getPeriodIcon(shift.period)}
+                                                                {shift.type === 'montagem' ? 'Mont' :
+                                                                    shift.type === 'evento' ? 'Evt' :
+                                                                        shift.type === 'desmontagem' ? 'Desm' : 'Fin'} -
+                                                                {shift.period === 'diurno' ? 'Dia' : shift.period === 'noturno' ? 'Noite' : 'DI'}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -1442,74 +1891,111 @@ export default function OperadoresPage() {
                             </DialogTitle>
                             <DialogDescription className="text-gray-600">
                                 {fileToImport
-                                    ? `Selecione os dias do evento "${nomeEvento}" para importar os operadores`
-                                    : `Selecione os operadores e os dias do evento "${nomeEvento}" para Retirada`
+                                    ? `Selecione os turnos do evento "${nomeEvento}" para importar os operadores`
+                                    : `Selecione os operadores e os turnos do evento "${nomeEvento}" para atribuição`
                                 }
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-6">
-                            {/* Seção de Seleção de Dias */}
+                            {/* Seção de Seleção de Turnos */}
                             <div className="bg-gray-50 rounded-lg p-2 sm:p-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
-                                    <h3 className="text-lg font-medium text-gray-900">Selecionar Dias do Evento</h3>
+                                    <h3 className="text-lg font-medium text-gray-900">Selecionar Turnos do Evento</h3>
                                     <Button
-                                        variant="outline"
+                                        variant="default"
                                         size="sm"
-                                        onClick={handleSelectAllDates}
+                                        onClick={handleSelectAllShifts}
                                     >
-                                        {selectedEventDates.length === getEventDates().length ? "Desmarcar Todos" : "Marcar Todos"}
+                                        {(() => {
+                                            const eventShifts = getEventDays()
+                                            const allShiftIds = eventShifts.map(shift => shift.id)
+                                            return selectedEventDates.length === allShiftIds.length ? "Desmarcar Todos" : "Marcar Todos"
+                                        })()}
                                     </Button>
                                 </div>
 
-                                <div className="overflow-x-auto">
-                                    <div className="grid grid-cols-7 min-w-[420px] gap-2">
-                                        {/* Cabeçalho dos dias da semana */}
-                                        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
-                                            <div key={day} className="text-center text-xs sm:text-sm font-medium text-gray-500 py-2">
-                                                {day}
-                                            </div>
-                                        ))}
+                                <div className="space-y-4">
+                                    {/* Agrupar turnos por estágio e depois por data */}
+                                    {Object.entries(
+                                        getEventDays().reduce((acc, shift) => {
+                                            if (!acc[shift.type]) acc[shift.type] = {};
+                                            if (!acc[shift.type][shift.date]) acc[shift.type][shift.date] = [];
+                                            acc[shift.type][shift.date].push(shift);
+                                            return acc;
+                                        }, {} as Record<string, Record<string, typeof getEventDays extends () => infer T ? T : never>>)
+                                    ).map(([stage, dateGroups]) => {
+                                        const stageLabel = stage === 'montagem' ? 'Montagem' :
+                                            stage === 'evento' ? 'Evento' :
+                                                stage === 'desmontagem' ? 'Desmontagem' : 'Finalização';
 
-                                        {/* Dias do evento */}
-                                        {getEventDates().map((date, index) => {
-                                            const isSelected = selectedEventDates.includes(date)
-                                            const dayNumber = new Date(date).getDate()
-
-                                            return (
-                                                <div
-                                                    key={date}
-                                                    className={`
-                                                        relative p-2 text-center cursor-pointer rounded-lg border-2 transition-all
-                                                        ${isSelected
-                                                            ? 'bg-blue-500 text-white border-blue-500'
-                                                            : 'bg-white text-gray-900 border-gray-200 hover:border-blue-300 hover:bg-blue-50'
-                                                        }
-                                                    `}
-                                                    onClick={() => handleDateSelection(date)}
-                                                >
-                                                    <div className="text-xs sm:text-sm font-medium">{dayNumber}</div>
-                                                    <div className="text-[10px] sm:text-xs opacity-75">
-                                                        {new Date(date).toLocaleDateString('pt-BR', { month: 'short' })}
-                                                    </div>
-                                                    {isSelected && (
-                                                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
-                                                            <span className="text-white text-xs">✓</span>
+                                        return (
+                                            <div key={stage} className="border border-gray-200 rounded-lg p-3 bg-white">
+                                                <h4 className="text-sm font-semibold mb-3 text-gray-700">{stageLabel}</h4>
+                                                {Object.entries(dateGroups).map(([date, shifts]) => {
+                                                    return (
+                                                        <div key={date} className="mb-3 last:mb-0">
+                                                            <p className="text-xs font-medium mb-2 text-gray-600">{date}</p>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {shifts.map((shift) => {
+                                                                    const isSelected = selectedEventDates.includes(shift.id)
+                                                                    return (
+                                                                        <Button
+                                                                            key={shift.id}
+                                                                            type="button"
+                                                                            variant={isSelected ? "default" : "outline"}
+                                                                            size="sm"
+                                                                            onClick={() => handleShiftSelection(shift.id)}
+                                                                            disabled={assignLoading}
+                                                                            className="flex items-center gap-1 text-xs h-8"
+                                                                        >
+                                                                            {getPeriodIcon(shift.period)}
+                                                                            <span>
+                                                                                {shift.period === 'diurno' ? 'Diurno' : shift.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
+                                                                            </span>
+                                                                        </Button>
+                                                                    )
+                                                                })}
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
 
                                 {selectedEventDates.length > 0 && (
                                     <div className="mt-4 p-3 bg-blue-50 rounded-lg">
                                         <p className="text-sm text-blue-800">
-                                            <strong>Dias selecionados:</strong> {selectedEventDates.length} dia(s)
+                                            <strong>Turnos selecionados:</strong> {selectedEventDates.length} turno(s)
                                         </p>
-                                        <p className="text-xs text-blue-600 mt-1 break-words">
-                                            {selectedEventDates.map(date => formatDatePtBr(date)).join(', ')}
-                                        </p>
+                                        <div className="mt-2 space-y-2">
+                                            {Object.entries(
+                                                selectedEventDates.reduce((acc, shiftId) => {
+                                                    const shift = getEventDays().find(s => s.id === shiftId);
+                                                    if (!shift) return acc;
+
+                                                    if (!acc[shift.date]) acc[shift.date] = [];
+                                                    acc[shift.date].push(shift);
+                                                    return acc;
+                                                }, {} as Record<string, any[]>)
+                                            ).map(([date, shifts]) => (
+                                                <div key={date} className="bg-blue-50 border border-blue-200 rounded p-2">
+                                                    <p className="text-xs font-medium text-blue-800 mb-1">{date}</p>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {shifts.map((shift) => (
+                                                            <span key={shift.id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 rounded text-xs">
+                                                                {getPeriodIcon(shift.period)}
+                                                                {shift.type === 'montagem' ? 'Mont' :
+                                                                    shift.type === 'evento' ? 'Evt' :
+                                                                        shift.type === 'desmontagem' ? 'Desm' : 'Fin'} -
+                                                                {shift.period === 'diurno' ? 'Dia' : shift.period === 'noturno' ? 'Noite' : 'DI'}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -1670,13 +2156,26 @@ export default function OperadoresPage() {
 
                             {resumoImportacao.importados.length > 0 && (
                                 <div className="p-4 bg-blue-50 rounded-lg">
-                                    <h3 className="font-medium text-blue-800">Dias de Retirada</h3>
-                                    <p className="text-blue-600">
-                                        {selectedEventDates.length > 0
-                                            ? selectedEventDates.map(date => formatDatePtBr(date)).join(', ')
-                                            : 'Sem datas específicas'
-                                        }
-                                    </p>
+                                    <h3 className="font-medium text-blue-800">Turnos de Atribuição</h3>
+                                    <div className="text-blue-600 text-sm">
+                                        {selectedEventDates.length > 0 ? (
+                                            <div className="space-y-1">
+                                                {selectedEventDates.map(shiftId => {
+                                                    const shift = getEventDays().find(s => s.id === shiftId)
+                                                    return shift ? (
+                                                        <div key={shiftId} className="flex items-center gap-1">
+                                                            {getPeriodIcon(shift.period)}
+                                                            <span>{shift.label}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div key={shiftId}>{shiftId}</div>
+                                                    )
+                                                })}
+                                            </div>
+                                        ) : (
+                                            'Sem turnos específicos'
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -1706,6 +2205,194 @@ export default function OperadoresPage() {
                                 </Button>
                             </div>
                         </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Modal de Detalhes da Ação */}
+                <Dialog open={actionDetailsOpen} onOpenChange={setActionDetailsOpen}>
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Detalhes Completos da Ação</DialogTitle>
+                            <DialogDescription>
+                                Visualização completa de todos os dados registrados nesta ação
+                            </DialogDescription>
+                        </DialogHeader>
+                        {selectedAction && (
+                            <div className="space-y-6">
+                                {/* Informações Básicas da Ação */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Tipo da Ação</label>
+                                        <Badge variant="outline" className={getActionBadgeColor(selectedAction.type)}>
+                                            {selectedAction.type}
+                                        </Badge>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Data/Hora da Ação</label>
+                                        <p className="text-gray-900">{formatTimestamp(selectedAction.timestamp)}</p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Tabela</label>
+                                        <p className="text-gray-900">{selectedAction.tabela || "-"}</p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Event ID</label>
+                                        <p className="text-gray-900 font-mono text-sm">{selectedAction.eventId || "-"}</p>
+                                    </div>
+                                </div>
+
+                                {/* Informações do Operador que Executou */}
+                                <div className="p-4 bg-blue-50 rounded-lg">
+                                    <h3 className="text-lg font-semibold text-blue-900 mb-3">👨‍💼 Quem Executou a Ação</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Nome</label>
+                                            <p className="text-gray-900">{capitalizeWords(selectedAction.operatorName || selectedAction.operadorNome)}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">CPF</label>
+                                            <p className="text-gray-900">{formatCPF(selectedAction.operatorCpf || selectedAction.operadorCpf)}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">ID do Operador</label>
+                                            <p className="text-gray-900 font-mono text-sm">{selectedAction.operatorId || selectedAction.operadorId}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Informações do Staff que Sofreu a Ação */}
+                                <div className="p-4 bg-green-50 rounded-lg">
+                                    <h3 className="text-lg font-semibold text-green-900 mb-3">👤 Quem Sofreu a Ação</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Nome</label>
+                                            <p className="text-gray-900">{capitalizeWords(selectedAction.staffName)}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">CPF</label>
+                                            <p className="text-gray-900">{formatCPF(selectedAction.staffCpf)}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">ID do Staff</label>
+                                            <p className="text-gray-900 font-mono text-sm">{selectedAction.staffId}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Empresa</label>
+                                            <p className="text-gray-900">{selectedAction.empresa || "-"}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Função</label>
+                                            <p className="text-gray-900">{selectedAction.funcao || "-"}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Informações do Evento */}
+                                <div className="p-4 bg-purple-50 rounded-lg">
+                                    <h3 className="text-lg font-semibold text-purple-900 mb-3">📅 Informações do Evento</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Data de Trabalho</label>
+                                            <p className="text-gray-900">{selectedAction.workDate || "-"}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Estágio</label>
+                                            <p className="text-gray-900">{selectedAction.workStage || "-"}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Período</label>
+                                            <p className="text-gray-900">{selectedAction.workPeriod || "-"}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Evento (Legado)</label>
+                                            <p className="text-gray-900 text-sm">{selectedAction.evento || "-"}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Credenciais e Pulseiras */}
+                                <div className="p-4 bg-orange-50 rounded-lg">
+                                    <h3 className="text-lg font-semibold text-orange-900 mb-3">🎫 Credenciais e Pulseiras</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <h4 className="font-medium text-gray-900 mb-2">Credenciais</h4>
+                                            <div className="space-y-2">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Atual</label>
+                                                    <p className="text-gray-900">{selectedAction.credencial || "-"}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Anterior</label>
+                                                    <p className="text-gray-900">{selectedAction.credencialAnterior || "-"}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Trocou Tipo</label>
+                                                    <Badge variant={selectedAction.trocouTipoCredencial ? "default" : "secondary"}>
+                                                        {selectedAction.trocouTipoCredencial ? "Sim" : "Não"}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-gray-900 mb-2">Pulseiras</h4>
+                                            <div className="space-y-2">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Atual</label>
+                                                    <p className="text-gray-900">{selectedAction.pulseira || "-"}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Anterior</label>
+                                                    <p className="text-gray-900">{selectedAction.pulseiraAnterior || "-"}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Check-in/Check-out */}
+                                {(selectedAction.checkInTime || selectedAction.checkOutTime) && (
+                                    <div className="p-4 bg-indigo-50 rounded-lg">
+                                        <h3 className="text-lg font-semibold text-indigo-900 mb-3">⏰ Check-in/Check-out</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {selectedAction.checkInTime && (
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Check-in</label>
+                                                    <p className="text-green-600 font-medium">{selectedAction.checkInTime}</p>
+                                                </div>
+                                            )}
+                                            {selectedAction.checkOutTime && (
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Check-out</label>
+                                                    <p className="text-red-600 font-medium">{selectedAction.checkOutTime}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Observações */}
+                                {selectedAction.observacoes && (
+                                    <div className="p-4 bg-gray-50 rounded-lg">
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-3">📝 Observações</h3>
+                                        <p className="text-gray-900 whitespace-pre-wrap">{selectedAction.observacoes}</p>
+                                    </div>
+                                )}
+
+                                {/* Dados Técnicos */}
+                                <details className="p-4 bg-gray-100 rounded-lg">
+                                    <summary className="font-medium text-gray-900 cursor-pointer">🔧 Dados Técnicos (JSON)</summary>
+                                    <pre className="mt-3 text-sm bg-white p-4 rounded border overflow-auto max-h-60">
+                                        {JSON.stringify(selectedAction, null, 2)}
+                                    </pre>
+                                </details>
+
+                                <div className="flex justify-end">
+                                    <Button onClick={() => setActionDetailsOpen(false)}>
+                                        Fechar
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </DialogContent>
                 </Dialog>
             </div>

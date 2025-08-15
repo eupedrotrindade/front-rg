@@ -190,7 +190,7 @@ export function CreateEventWizard() {
       
       if (result) {
         // Navigate to the newly created event
-        router.push(`/eventos/${result.id}/dashboard`);
+        router.push(`/evento/${result.id}`);
       }
     } catch (error) {
       console.error('Error creating event:', error);
@@ -205,7 +205,7 @@ export function CreateEventWizard() {
       case 1: // DateTime
         return eventData.datetime.evento.length > 0;
       case 2: // Location
-        return !!(eventData.location.address && eventData.location.city);
+        return true; // Todos os campos de localização são opcionais
       case 3: // Review
         return true;
       default:

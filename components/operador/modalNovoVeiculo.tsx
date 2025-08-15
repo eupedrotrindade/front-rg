@@ -16,7 +16,7 @@ interface ModalNovoVeiculoProps {
   onSave: (data: Omit<EventVehicle, 'id' | 'event_id' | 'created_at' | 'updated_at'>) => Promise<void>
   veiculo?: EventVehicle | null
   isEditing?: boolean
-  eventDays?: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }>
+  eventDays?: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }>
   selectedDay?: string
 }
 
