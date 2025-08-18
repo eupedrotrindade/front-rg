@@ -183,6 +183,10 @@ export default function EventoDetalhesPage() {
     const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
     const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false)
 
+    // Estados para reset de check-in em massa
+    const [showBulkResetModal, setShowBulkResetModal] = useState(false)
+    const [bulkResetLoading, setBulkResetLoading] = useState(false)
+
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
         console.log('🔧 formatDateForAPI chamada com:', dateStr);
@@ -1416,6 +1420,71 @@ export default function EventoDetalhesPage() {
         setBulkDeleteLoading(false)
     }
 
+    // Função para reset de check-in em massa
+    const handleBulkReset = async () => {
+        if (selectedParticipants.size === 0) {
+            toast.error('Nenhum participante selecionado')
+            return
+        }
+
+        setBulkResetLoading(true)
+        let successCount = 0
+        let errorCount = 0
+
+        try {
+            for (const participantId of Array.from(selectedParticipants)) {
+                try {
+                    await deleteAttendanceMutation.mutateAsync({
+                        participantId: participantId,
+                    })
+                    successCount++
+
+                    // Delay pequeno entre operações para evitar sobrecarga
+                    await new Promise(resolve => setTimeout(resolve, 100))
+                } catch (error) {
+                    console.error(
+                        `Erro ao resetar check-in do participante ${participantId}:`,
+                        error,
+                    )
+                    errorCount++
+                }
+            }
+
+            if (successCount > 0) {
+                // Exibir contexto do turno na mensagem de sucesso
+                const { dateFormatted, stage, period } = parseShiftId(currentSelectedDay);
+                const stageLabel = stage === 'montagem' ? 'Montagem' :
+                    stage === 'evento' ? 'Evento' :
+                        stage === 'desmontagem' ? 'Desmontagem' : stage;
+                const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+
+                toast.success(
+                    `Check-in resetado para ${successCount} participantes do turno ${dateFormatted} (${stageLabel} - ${periodLabel})!`,
+                )
+
+                // Forçar atualização dos dados de attendance
+                await queryClient.invalidateQueries({
+                    queryKey: [
+                        'event-attendance-by-event-date',
+                        String(params.id),
+                        formatDateForAPI(selectedDay),
+                    ],
+                })
+            }
+            if (errorCount > 0) {
+                toast.error(`${errorCount} erros durante o reset de check-in`)
+            }
+
+            setShowBulkResetModal(false)
+            clearSelection()
+        } catch (error) {
+            console.error('Erro geral no reset de check-in em massa:', error)
+            toast.error('Erro ao resetar check-in dos participantes')
+        }
+
+        setBulkResetLoading(false)
+    }
+
     // Função para remover duplicados
     const handleRemoveDuplicates = async () => {
         setDuplicatesLoading(true)
@@ -1940,6 +2009,15 @@ export default function EventoDetalhesPage() {
                                 >
                                     <UserCog className="w-4 h-4 mr-2" />
                                     Editar em massa
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setShowBulkResetModal(true)}
+                                    className="text-yellow-600 border-yellow-300 hover:bg-yellow-50 hover:border-yellow-400"
+                                >
+                                    <RotateCcw className="w-4 h-4 mr-2" />
+                                    Reset check-in
                                 </Button>
                                 <Button
                                     size="sm"
@@ -2598,6 +2676,72 @@ export default function EventoDetalhesPage() {
                                 <>
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Confirmar Exclusão
+                                </>
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Modal de Reset de Check-in em Massa */}
+            <AlertDialog open={showBulkResetModal} onOpenChange={setShowBulkResetModal}>
+                <AlertDialogContent className="bg-white text-black max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <RotateCcw className="h-5 w-5 text-yellow-600" />
+                            Resetar Check-in em Massa
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Você está prestes a resetar o check-in de {selectedParticipants.size} participante(s) selecionado(s).
+                            Todos os dados de presença deles serão removidos.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <RotateCcw className="h-4 w-4 text-yellow-600" />
+                                <span className="text-sm font-medium text-yellow-800">
+                                    Atenção - Reset de Presença
+                                </span>
+                            </div>
+                            <div className="text-xs text-yellow-700 space-y-1">
+                                <div>• {selectedParticipants.size} participante(s) terão check-in/check-out removidos</div>
+                                <div>• Todos os dados de presença serão perdidos para estes participantes</div>
+                                <div>• Os participantes ficarão com status &quot;pendente&quot; novamente</div>
+                                <div>• Esta ação ficará registrada no histórico do sistema</div>
+                            </div>
+                        </div>
+
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Users className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">
+                                    Participantes Selecionados
+                                </span>
+                            </div>
+                            <div className="text-xs text-blue-700">
+                                {selectedParticipants.size} participante(s) do dia {currentSelectedDay} terão check-in resetado
+                            </div>
+                        </div>
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleBulkReset}
+                            disabled={bulkResetLoading}
+                            className="bg-yellow-600 hover:bg-yellow-700"
+                        >
+                            {bulkResetLoading ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Resetando...
+                                </>
+                            ) : (
+                                <>
+                                    <RotateCcw className="w-4 h-4 mr-2" />
+                                    Confirmar Reset
                                 </>
                             )}
                         </AlertDialogAction>
