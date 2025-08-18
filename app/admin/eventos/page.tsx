@@ -61,7 +61,7 @@ import {
 import { useRouter } from "next/navigation"
 
 import { toast } from "sonner"
-import { EventConfigModal } from '../dashboard/components/event-config-modal'
+import { EventConfigModal } from '../components/event-config-modal'
 import { Event } from '@/app/utils/interfaces/eventos'
 
 const AdminEventosPage = () => {

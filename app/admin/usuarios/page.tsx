@@ -5,20 +5,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table"
-import { 
-  Users, 
-  Shield, 
-  UserCheck, 
-  Search, 
-  Mail, 
+import {
+  Users,
+  Shield,
+  UserCheck,
+  Search,
+  Mail,
   Calendar,
   Image as ImageIcon,
   Loader2,
@@ -28,11 +28,11 @@ import {
   Trash2,
   RefreshCw
 } from "lucide-react"
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { useAllCoordenadores } from "@/features/eventos/api/query/use-coordenadores"
 import { Coordenador } from "@/features/eventos/types"
@@ -42,10 +42,10 @@ import { useQueryClient } from "@tanstack/react-query"
 const AdminUsuariosPage = () => {
   const [search, setSearch] = useState("")
   const queryClient = useQueryClient()
-  
+
   // Usar hook de coordenadores (que são os usuários)
   const { data: usuarios = [], isLoading, error, refetch } = useAllCoordenadores()
-  
+
   // Debug: Log dos dados recebidos
   React.useEffect(() => {
     console.log('📊 Dados de usuários recebidos:', usuarios)
@@ -53,13 +53,13 @@ const AdminUsuariosPage = () => {
     console.log('⏳ Loading:', isLoading)
     console.log('❌ Error:', error)
   }, [usuarios, isLoading, error])
-  
+
   // Filtrar usuários baseado na busca
   const filteredUsuarios = useMemo(() => {
     if (!search.trim()) return usuarios
-    
+
     const searchLower = search.toLowerCase()
-    return usuarios.filter(usuario => 
+    return usuarios.filter(usuario =>
       usuario.firstName?.toLowerCase().includes(searchLower) ||
       usuario.lastName?.toLowerCase().includes(searchLower) ||
       usuario.email?.toLowerCase().includes(searchLower) ||
@@ -70,11 +70,11 @@ const AdminUsuariosPage = () => {
   // Estatísticas dos usuários
   const usuarioStats = useMemo(() => {
     const totalUsuarios = usuarios.length
-    const usuariosComEventos = usuarios.filter(user => 
+    const usuariosComEventos = usuarios.filter(user =>
       user.metadata?.eventos && user.metadata.eventos.length > 0
     ).length
     const usuariosSemEventos = totalUsuarios - usuariosComEventos
-    
+
     return {
       total: totalUsuarios,
       comEventos: usuariosComEventos,
@@ -187,32 +187,7 @@ const AdminUsuariosPage = () => {
           </CardContent>
         </Card>
 
-        {/* Card de Debug (temporário) */}
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardHeader>
-            <CardTitle className="text-yellow-800">Debug - Status da API</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p><strong>Loading:</strong> {isLoading ? 'Sim' : 'Não'}</p>
-                <p><strong>Error:</strong> {error ? error.message : 'Nenhum'}</p>
-                <p><strong>Total usuários:</strong> {usuarios.length}</p>
-              </div>
-              <div>
-                <p><strong>Endpoint:</strong> /coordenadores/all</p>
-                <p><strong>Query Key:</strong> all-coordenadores</p>
-                <p><strong>Timestamp:</strong> {new Date().toISOString()}</p>
-              </div>
-            </div>
-            <div className="mt-2">
-              <p><strong>Últimos 3 usuários:</strong></p>
-              <pre className="text-xs bg-white p-2 rounded mt-1">
-                {JSON.stringify(usuarios.slice(-3).map(u => ({ id: u.id, name: `${u.firstName} ${u.lastName}`, email: u.email })), null, 2)}
-              </pre>
-            </div>
-          </CardContent>
-        </Card>
+
       </div>
 
       {/* Estatísticas */}
@@ -228,7 +203,7 @@ const AdminUsuariosPage = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -240,7 +215,7 @@ const AdminUsuariosPage = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -252,7 +227,7 @@ const AdminUsuariosPage = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -334,8 +309,8 @@ const AdminUsuariosPage = () => {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         {usuario.imageUrl ? (
-                          <img 
-                            src={usuario.imageUrl} 
+                          <img
+                            src={usuario.imageUrl}
                             alt={formatName(usuario)}
                             className="h-8 w-8 rounded-full object-cover"
                           />
@@ -379,7 +354,7 @@ const AdminUsuariosPage = () => {
                             <Eye className="h-4 w-4 mr-2" />
                             Visualizar
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleDeleteUser(usuario)}
                             className="text-red-600"
                           >

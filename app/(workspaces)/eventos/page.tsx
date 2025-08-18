@@ -147,7 +147,7 @@ const EventosPage = () => {
         return (
             <div className="flex items-center justify-center min-h-[500px]">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-6"></div>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-800 mx-auto mb-6"></div>
                     <p className="text-lg text-muted-foreground">Carregando seus eventos...</p>
                 </div>
             </div>
@@ -159,7 +159,7 @@ const EventosPage = () => {
     return (
         <div className="min-h-screen">
             <HeaderWorkspace />
-            <div className="container mx-auto px-4 py-8 space-y-8">
+            <div className="container mx-auto px-4 py-8 space-y-8 justify-center flex flex-col">
                 {/* Header */}
                 <div className="text-center space-y-4">
                     <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-100 rounded-full text-purple-700 text-sm font-medium">
@@ -167,19 +167,20 @@ const EventosPage = () => {
                         Dashboard de Eventos
                     </div>
 
-                    <Button>
-                        Acessar Painel Geral
-                    </Button>
+
 
 
                 </div>
-
+                <div className="w-full flex flex-col justify-center items-center">
+                    <Button className="hover:bg-purple-900 bg-purple-800" onClick={() => { window.location.href = "/admin/eventos" }}>
+                        Acessar Painel Geral
+                    </Button></div>
                 {/* Grid de Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {/* Card de Criação */}
                     <Card className="cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 border-2 border-dashed border-purple-300 bg-purple-50 hover:bg-purple-100 group" onClick={() => { window.location.href = `${window.origin}/eventos/criar` }}>
                         <CardContent className="flex flex-col items-center justify-center p-8 min-h-[500px] ">
-                            <div className="rounded-full bg-purple-600 p-4 mb-6 group-hover:scale-110 transition-transform">
+                            <div className="rounded-full bg-purple-800 p-4 mb-6 group-hover:scale-110 transition-transform">
                                 <Plus className="h-8 w-8 text-white" />
                             </div>
                             <h3 className="font-bold text-xl mb-3 text-gray-800">Criar Novo Evento</h3>
@@ -344,7 +345,7 @@ const EventosPage = () => {
                     <div className="text-center py-16">
                         <div className="max-w-md mx-auto">
                             <div className="rounded-full bg-gradient-to-r from-purple-100 to-blue-100 p-6 w-24 h-24 mx-auto mb-6 flex items-center justify-center">
-                                <Calendar className="h-12 w-12 text-purple-600" />
+                                <Calendar className="h-12 w-12 text-purple-800" />
                             </div>
                             <h3 className="text-2xl font-bold mb-4 text-gray-800">Nenhum evento encontrado</h3>
                             <p className="text-gray-600 mb-8 leading-relaxed">

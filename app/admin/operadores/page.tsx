@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { OperatorsManagement } from '../dashboard/components/operators-management'
+import { OperatorsManagement } from '../components/operators-management'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { UserCheck, Settings, Activity, Calendar, Info } from "lucide-react"
 

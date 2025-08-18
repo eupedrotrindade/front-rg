@@ -14,36 +14,42 @@ import {
   Database,
   FileText,
   UserCheck,
-  AlertTriangle
+  AlertTriangle,
+  UsersRound
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const menuItems = [
-  {
-    title: "Dashboard",
-    href: "/admin/dashboard",
-    icon: LayoutDashboard,
-    description: "Visão geral do sistema"
-  },
+  // {
+  //   title: "Dashboard",
+  //   href: "/admin/dashboard",
+  //   icon: LayoutDashboard,
+  //   description: "Visão geral do sistema"
+  // },
   {
     title: "Eventos",
     href: "/admin/eventos",
     icon: Calendar,
     description: "Gerenciar todos os eventos",
-    badge: "12"
+
   },
   {
     title: "Usuários",
     href: "/admin/usuarios",
     icon: Users,
     description: "Gerenciar usuários do sistema",
-    badge: "245"
   },
   {
     title: "Operadores",
     href: "/admin/operadores",
     icon: UserCheck,
     description: "Gerenciar operadores e coordenadores"
+  },
+  {
+    title: "Staff Gerais",
+    href: "/admin/staff-gerais",
+    icon: UsersRound,
+    description: "Visualização completa de todos os participantes"
   },
   {
     title: "Relatórios",

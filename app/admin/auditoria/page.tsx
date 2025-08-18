@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { SystemHistoryDashboard } from '../dashboard/components/system-history-dashboard'
+import { SystemHistoryDashboard } from '../components/system-history-dashboard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Shield, Eye, Lock, AlertTriangle, FileSearch, Clock, Users, Activity } from "lucide-react"
 

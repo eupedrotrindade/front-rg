@@ -24,7 +24,8 @@ import {
     Building,
     ChevronDown,
     ChevronUp,
-    FileText
+    FileText,
+    BadgeIcon
 } from 'lucide-react'
 
 interface EventSidebarProps {
@@ -90,6 +91,12 @@ const EventSidebar = ({
             href: `/eventos/${eventId}/estacionamento`,
             icon: Car,
             description: 'Entrada e saída de veículos'
+        },
+        {
+            name: 'Retirada de Crachás',
+            href: `/eventos/${eventId}/retirada-cracha`,
+            icon: BadgeIcon,
+            description: 'Controle de retirada de crachás'
         },
         {
             name: 'Empresas',
