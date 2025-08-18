@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { DoorOpen, Menu, Settings } from 'lucide-react'
+import UserSelectorModal from './user-selector-modal'
 
 interface EventHeaderProps {
     eventName?: string
@@ -11,9 +13,14 @@ interface EventHeaderProps {
 
 const EventHeader = ({ eventName, onMobileMenuOpen }: EventHeaderProps) => {
     const router = useRouter()
+    const [showUserSelector, setShowUserSelector] = useState(false)
 
     const handleBackToEvents = () => {
         router.push('/eventos')
+    }
+
+    const handleCredenciamentoClick = () => {
+        setShowUserSelector(true)
     }
 
     return (
@@ -51,12 +58,17 @@ const EventHeader = ({ eventName, onMobileMenuOpen }: EventHeaderProps) => {
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                         <span>Evento Ativo</span>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => router.push(`/operador`)}>
+                    <Button variant="outline" size="sm" onClick={handleCredenciamentoClick}>
                         <DoorOpen className="w-4 h-4 mr-2" />
                         Credenciamento
                     </Button>
                 </div>
             </div>
+
+            <UserSelectorModal 
+                isOpen={showUserSelector}
+                onClose={() => setShowUserSelector(false)}
+            />
         </header>
     )
 }
