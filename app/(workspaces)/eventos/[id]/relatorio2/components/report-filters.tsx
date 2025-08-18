@@ -112,7 +112,7 @@ export function ReportFilters({
         const subtitles: Record<string, string> = {
             geral: "Relatório Geral de Participantes",
             checkin: "Relatório de Check-in",
-            checkin_com_pulseira: "Relatório de Check-in com Código da Pulseira", 
+            checkin_com_pulseira: "Relatório de Check-in com Código da Pulseira",
             checkout: "Relatório de Check-out",
             tempo_trabalho: "Relatório de Tempo de Trabalho",
             sem_checkin: "Relatório Sem Check-in",
@@ -126,7 +126,7 @@ export function ReportFilters({
 
     const handleExportClick = (type: 'all' | 'company') => {
         setPendingExportType(type)
-        
+
         // Sempre mostrar editor de título primeiro
         if (selectedReportType === 'personalizado') {
             // Para personalizado, iremos abrir coluna dialog depois do título
@@ -140,7 +140,7 @@ export function ReportFilters({
             }
             setPendingExportConfig(defaultConfig)
         }
-        
+
         setShowTitleDialog(true)
     }
 
@@ -149,12 +149,12 @@ export function ReportFilters({
             // Para personalizado, mostrar dialog de colunas depois do título
             setShowColumnDialog(true)
             // Salvar título personalizado para usar depois
-            setPendingExportConfig({ 
-                columns: [], 
-                columnOrder: [], 
+            setPendingExportConfig({
+                columns: [],
+                columnOrder: [],
                 columnWidths: [],
                 customTitle,
-                customSubtitle 
+                customSubtitle
             } as any)
         } else {
             // Para tipos predefinidos ou se já tem config, exportar diretamente
@@ -163,13 +163,13 @@ export function ReportFilters({
                 columnOrder: [],
                 columnWidths: []
             }
-            
+
             if (pendingExportType === 'all') {
                 onExport(finalConfig, customTitle, customSubtitle)
             } else if (pendingExportType === 'company') {
                 onExportCompany(finalConfig, customTitle, customSubtitle)
             }
-            
+
             // Reset states
             setPendingExportType(null)
             setPendingExportConfig(null)
@@ -180,13 +180,13 @@ export function ReportFilters({
         // Usar título personalizado se disponível
         const customTitle = (pendingExportConfig as any)?.customTitle
         const customSubtitle = (pendingExportConfig as any)?.customSubtitle
-        
+
         if (pendingExportType === 'all') {
             onExport(config, customTitle, customSubtitle)
         } else if (pendingExportType === 'company') {
             onExportCompany(config, customTitle, customSubtitle)
         }
-        
+
         // Reset states
         setPendingExportType(null)
         setPendingExportConfig(null)
@@ -590,19 +590,7 @@ export function ReportFilters({
 
                 {/* === BOTÕES DE EXPORTAÇÃO === */}
                 <div className="space-y-4 pt-4 border-t">
-                    {/* Botão de Preview */}
-                    <div>
-                        <label className="block text-sm font-medium mb-2">Visualizar PDF</label>
-                        <Button
-                            onClick={() => onPreview?.()}
-                            disabled={isExporting}
-                            variant="outline"
-                            className="w-full"
-                        >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Preview do PDF
-                        </Button>
-                    </div>
+
 
                     {/* Botões de Exportação */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
