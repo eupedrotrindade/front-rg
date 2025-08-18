@@ -13,21 +13,21 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { 
-  Calendar, 
-  Clock, 
-  User, 
-  Plus, 
-  Check, 
-  X, 
-  RotateCcw, 
-  Badge as BadgeIcon, 
-  Download, 
-  Upload, 
-  History, 
-  Package, 
-  Sun, 
-  Moon, 
+import {
+  Calendar,
+  Clock,
+  User,
+  Plus,
+  Check,
+  X,
+  RotateCcw,
+  Badge as BadgeIcon,
+  Download,
+  Upload,
+  History,
+  Package,
+  Sun,
+  Moon,
   FileDown,
   Search,
   Edit,
@@ -44,11 +44,11 @@ import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import { formatEventDate } from '@/lib/utils'
 import { useBadgePickupsByEvent } from '@/features/eventos/api/query/use-badge-pickups-by-event'
 import { useBadgePickupStats } from '@/features/eventos/api/query/use-badge-pickup-stats'
-import { 
-  useCreateBadgePickup, 
-  useUpdateBadgePickup, 
-  useDeleteBadgePickup, 
-  useProcessBadgePickup 
+import {
+  useCreateBadgePickup,
+  useUpdateBadgePickup,
+  useDeleteBadgePickup,
+  useProcessBadgePickup
 } from '@/features/eventos/api/mutation/use-badge-pickup-mutations'
 import { BadgePickup } from '@/features/eventos/actions/badge-pickup'
 
@@ -57,7 +57,7 @@ export default function RetiradaCrachaPage() {
   const eventId = String(params.id)
 
   // Estados
-  const [selectedDay, setSelectedDay] = useState<string>('')
+  const [selectedDay, setSelectedDay] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [showOnlyPending, setShowOnlyPending] = useState(false)
 
@@ -135,12 +135,12 @@ export default function RetiradaCrachaPage() {
 
             const formattedDate = dateObj.toISOString().split('T')[0]
             const period = item.period || 'dia_inteiro'
-            
+
             const periodLabel = period === 'diurno' ? '☀️ Diurno' :
-                              period === 'noturno' ? '🌙 Noturno' : '🌞 Dia Inteiro'
+              period === 'noturno' ? '🌙 Noturno' : '🌞 Dia Inteiro'
 
             const shiftId = `${formattedDate}-${stage}-${period}`
-            
+
             days.push({
               id: shiftId,
               label: `${stageName} - ${formattedDate} (${periodLabel})`,
@@ -180,7 +180,7 @@ export default function RetiradaCrachaPage() {
     }
 
     // Filtro por dia selecionado
-    if (selectedDay) {
+    if (selectedDay && selectedDay !== 'all') {
       filtered = filtered.filter(badge => badge.shiftId === selectedDay)
     }
 
@@ -283,9 +283,9 @@ export default function RetiradaCrachaPage() {
     }
 
     try {
-      await updateBadgePickupMutation.mutateAsync({ 
-        id: editingBadge.id, 
-        data: updateData 
+      await updateBadgePickupMutation.mutateAsync({
+        id: editingBadge.id,
+        data: updateData
       })
       setFormData({
         nome: '',
@@ -409,7 +409,7 @@ export default function RetiradaCrachaPage() {
   }
 
   return (
-    <EventLayout eventId={eventId} activeTab="retirada-cracha">
+    <EventLayout eventId={eventId} >
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -515,7 +515,7 @@ export default function RetiradaCrachaPage() {
                   <SelectValue placeholder="Todos os turnos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os turnos</SelectItem>
+                  <SelectItem value="all">Todos os turnos</SelectItem>
                   {eventDays.map(day => (
                     <SelectItem key={day.id} value={day.id}>
                       {day.label}
@@ -524,10 +524,10 @@ export default function RetiradaCrachaPage() {
                 </SelectContent>
               </Select>
               <div className="flex items-center space-x-2">
-                <Checkbox 
+                <Checkbox
                   id="show-only-pending"
                   checked={showOnlyPending}
-                  onCheckedChange={setShowOnlyPending}
+                  onCheckedChange={checked => setShowOnlyPending(checked === true)}
                 />
                 <Label htmlFor="show-only-pending" className="text-sm">
                   Apenas pendentes
@@ -677,7 +677,7 @@ export default function RetiradaCrachaPage() {
                 <Button variant="outline" onClick={closeModal} className="flex-1">
                   Cancelar
                 </Button>
-                <Button 
+                <Button
                   onClick={isEditing ? handleUpdateBadge : handleCreateBadge}
                   className="flex-1"
                 >
@@ -701,11 +701,11 @@ export default function RetiradaCrachaPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
-                <Checkbox 
+                <Checkbox
                   id="is-self-pickup"
                   checked={pickupData.isSelfPickup}
-                  onCheckedChange={(checked) => setPickupData(prev => ({ 
-                    ...prev, 
+                  onCheckedChange={(checked) => setPickupData(prev => ({
+                    ...prev,
                     isSelfPickup: !!checked,
                     pickerName: !!checked ? '' : prev.pickerName,
                     pickerCompany: !!checked ? '' : prev.pickerCompany
@@ -738,14 +738,14 @@ export default function RetiradaCrachaPage() {
               )}
 
               <div className="flex gap-4 pt-4">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setIsPickupModalOpen(false)}
                   className="flex-1"
                 >
                   Cancelar
                 </Button>
-                <Button 
+                <Button
                   onClick={handleProcessPickup}
                   className="flex-1"
                 >

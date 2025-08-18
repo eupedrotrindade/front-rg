@@ -116,19 +116,15 @@ export const Sidebar = () => {
                 <div className="flex items-center gap-3 w-full">
                   <Icon className="h-4 w-4 flex-shrink-0" />
                   <div className="flex-1 text-left">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center">
                       <span className="text-sm font-medium">{item.title}</span>
-                      {item.badge && (
-                        <Badge variant="secondary" className="text-xs">
-                          {item.badge}
-                        </Badge>
-                      )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {item.description}
-                    </p>
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {item.description}
+                  </p>
                 </div>
+
               </Button>
             )
           })}
@@ -168,6 +164,6 @@ export const Sidebar = () => {
           </div>
         </div>
       </div>
-    </aside>
+    </aside >
   )
 }
