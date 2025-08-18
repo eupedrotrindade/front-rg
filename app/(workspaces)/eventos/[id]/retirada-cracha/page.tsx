@@ -409,8 +409,8 @@ export default function RetiradaCrachaPage() {
   }
 
   return (
-    <EventLayout eventId={eventId} >
-      <div className="space-y-6">
+    <EventLayout eventId={eventId} eventName={evento?.name} >
+      <div className="space-y-6 p-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -438,60 +438,64 @@ export default function RetiradaCrachaPage() {
           </div>
         </div>
 
-        {/* Estatísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card>
-            <CardContent className="p-4">
+        {/* KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+          <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Total</p>
-                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-sm opacity-90">Total</p>
+                  <p className="text-3xl font-bold">{stats.total}</p>
                 </div>
-                <Users className="h-8 w-8 text-gray-400" />
+                <Users className="h-8 w-8 opacity-80" />
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
+
+          <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Pendentes</p>
-                  <p className="text-2xl font-bold text-yellow-600">{stats.pendentes}</p>
+                  <p className="text-sm opacity-90">Pendentes</p>
+                  <p className="text-3xl font-bold">{stats.pendentes}</p>
                 </div>
-                <AlertCircle className="h-8 w-8 text-yellow-400" />
+                <AlertCircle className="h-8 w-8 opacity-80" />
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
+
+          <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Retirados</p>
-                  <p className="text-2xl font-bold text-green-600">{stats.retiradas}</p>
+                  <p className="text-sm opacity-90">Retirados</p>
+                  <p className="text-3xl font-bold">{stats.retiradas}</p>
                 </div>
-                <CheckCircle className="h-8 w-8 text-green-400" />
+                <CheckCircle className="h-8 w-8 opacity-80" />
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
+
+          <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Próprio</p>
-                  <p className="text-2xl font-bold text-blue-600">{stats.selfPickups}</p>
+                  <p className="text-sm opacity-90">Próprio</p>
+                  <p className="text-3xl font-bold">{stats.selfPickups}</p>
                 </div>
-                <UserCheck className="h-8 w-8 text-blue-400" />
+                <UserCheck className="h-8 w-8 opacity-80" />
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
+
+          <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Terceiros</p>
-                  <p className="text-2xl font-bold text-purple-600">{stats.thirdPartyPickups}</p>
+                  <p className="text-sm opacity-90">Terceiros</p>
+                  <p className="text-3xl font-bold">{stats.thirdPartyPickups}</p>
                 </div>
-                <UserX className="h-8 w-8 text-purple-400" />
+                <UserX className="h-8 w-8 opacity-80" />
               </div>
             </CardContent>
           </Card>
@@ -537,87 +541,145 @@ export default function RetiradaCrachaPage() {
           </CardContent>
         </Card>
 
-        {/* Lista de badges */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Lista de Crachás ({filteredBadges.length})</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {filteredBadges.map(badge => (
-                <div
-                  key={badge.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="font-medium">{badge.nome}</p>
-                      {badge.cpf && <p className="text-sm text-gray-500">{badge.cpf}</p>}
-                    </div>
-                    <div>
-                      {badge.empresa && (
-                        <p className="text-sm flex items-center gap-1">
-                          <Building className="h-3 w-3" />
-                          {badge.empresa}
+        {/* Tabela de badges */}
+        <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                    Nome
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                    CPF
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                    Empresa
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                    Turno
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                    Ações
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {isLoadingBadges ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                      <div className="flex flex-col items-center">
+                        <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mb-2"></div>
+                        <p>Carregando crachás...</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredBadges.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                      <div className="flex flex-col items-center">
+                        <BadgeIcon className="w-8 h-8 text-gray-400 mb-2" />
+                        <p className="text-lg font-semibold text-gray-700 mb-2">
+                          {badges.length === 0 ? 'Nenhuma entrada de crachá cadastrada' : 'Nenhuma entrada encontrada com os filtros aplicados'}
                         </p>
-                      )}
-                    </div>
-                    <div>
-                      {getStatusBadge(badge.status, badge.isSelfPickup)}
-                    </div>
-                    <div className="flex items-center justify-end gap-2">
-                      {badge.status === 'pendente' && (
-                        <Button
-                          size="sm"
-                          onClick={() => openPickupModal(badge)}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <Check className="h-4 w-4 mr-1" />
-                          Retirar
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEditBadge(badge)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDeleteBadge(badge)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {filteredBadges.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  {badges.length === 0 ? (
-                    <div>
-                      <BadgeIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p>Nenhuma entrada de crachá cadastrada</p>
-                      <Button onClick={() => setIsModalOpen(true)} className="mt-2">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Criar primeira entrada
-                      </Button>
-                    </div>
-                  ) : (
-                    <div>
-                      <Search className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p>Nenhuma entrada encontrada com os filtros aplicados</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                        <p className="text-sm text-gray-500">
+                          {badges.length === 0 ? 'Crie a primeira entrada de crachá para este evento' : 'Tente ajustar os filtros ou termos de busca'}
+                        </p>
+                        {badges.length === 0 && (
+                          <Button onClick={() => setIsModalOpen(true)} className="mt-2">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Criar primeira entrada
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredBadges.map((badge) => (
+                    <tr key={badge.id} className="hover:bg-gray-50">
+                      {/* Nome */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {badge.nome}
+                        </div>
+                      </td>
+
+                      {/* CPF */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {badge.cpf || '-'}
+                      </td>
+
+                      {/* Empresa */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {badge.empresa ? (
+                            <div className="flex items-center gap-1">
+                              <Building className="h-3 w-3 text-gray-400" />
+                              {badge.empresa}
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(badge.status, badge.isSelfPickup)}
+                      </td>
+
+                      {/* Turno */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {badge.shiftId ? (
+                          <div className="text-xs">
+                            {eventDays.find(day => day.id === badge.shiftId)?.label || badge.shiftId}
+                          </div>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+
+                      {/* Ações */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex space-x-2">
+                          {badge.status === 'pendente' && (
+                            <Button
+                              size="sm"
+                              onClick={() => openPickupModal(badge)}
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              <Check className="w-4 h-4 mr-1" />
+                              Retirar
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditBadge(badge)}
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteBadge(badge)}
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
         {/* Modal para criar/editar entrada */}
         <Dialog open={isModalOpen} onOpenChange={closeModal}>
