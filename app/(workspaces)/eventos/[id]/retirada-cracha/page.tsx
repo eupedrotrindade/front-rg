@@ -192,8 +192,13 @@ export default function RetiradaCrachaPage() {
     return filtered
   }, [badges, searchTerm, selectedDay, showOnlyPending])
 
-  // Estatísticas
+  // Usar estatísticas da API ou calcular localmente como fallback
   const stats = useMemo(() => {
+    if (apiStats) {
+      return apiStats
+    }
+
+    // Fallback: calcular estatísticas localmente
     const total = badges.length
     const pendentes = badges.filter(b => b.status === 'pendente').length
     const retiradas = badges.filter(b => b.status === 'retirada').length
@@ -208,41 +213,42 @@ export default function RetiradaCrachaPage() {
       thirdPartyPickups,
       pickupRate: total > 0 ? (retiradas / total) * 100 : 0
     }
-  }, [badges])
+  }, [apiStats, badges])
 
   // Handlers
-  const handleCreateBadge = () => {
+  const handleCreateBadge = async () => {
     if (!formData.nome.trim()) {
       toast.error('Nome é obrigatório')
       return
     }
 
-    const newBadge: BadgePickup = {
-      id: Date.now().toString(),
+    const badgeData = {
       eventId,
       nome: formData.nome,
-      cpf: formData.cpf,
-      empresa: formData.empresa,
-      status: 'pendente',
-      shiftId: formData.shiftId,
-      workDate: formData.workDate,
+      cpf: formData.cpf || undefined,
+      empresa: formData.empresa || undefined,
+      status: 'pendente' as const,
+      shiftId: formData.shiftId || undefined,
+      workDate: formData.workDate || undefined,
       workStage: formData.workStage,
       workPeriod: formData.workPeriod,
-      createdAt: new Date().toISOString()
     }
 
-    setBadges(prev => [...prev, newBadge])
-    setFormData({
-      nome: '',
-      cpf: '',
-      empresa: '',
-      shiftId: '',
-      workDate: '',
-      workStage: 'evento',
-      workPeriod: 'dia_inteiro'
-    })
-    setIsModalOpen(false)
-    toast.success(`Entrada de crachá criada para ${formData.nome}`)
+    try {
+      await createBadgePickupMutation.mutateAsync(badgeData)
+      setFormData({
+        nome: '',
+        cpf: '',
+        empresa: '',
+        shiftId: '',
+        workDate: '',
+        workStage: 'evento',
+        workPeriod: 'dia_inteiro'
+      })
+      setIsModalOpen(false)
+    } catch (error) {
+      // Erro já tratado pela mutation
+    }
   }
 
   const handleEditBadge = (badge: BadgePickup) => {
@@ -260,49 +266,56 @@ export default function RetiradaCrachaPage() {
     setIsModalOpen(true)
   }
 
-  const handleUpdateBadge = () => {
+  const handleUpdateBadge = async () => {
     if (!editingBadge || !formData.nome.trim()) {
       toast.error('Nome é obrigatório')
       return
     }
 
-    setBadges(prev => prev.map(badge => 
-      badge.id === editingBadge.id 
-        ? {
-            ...badge,
-            nome: formData.nome,
-            cpf: formData.cpf,
-            empresa: formData.empresa,
-            shiftId: formData.shiftId,
-            workDate: formData.workDate,
-            workStage: formData.workStage,
-            workPeriod: formData.workPeriod,
-            updatedAt: new Date().toISOString()
-          }
-        : badge
-    ))
+    const updateData = {
+      nome: formData.nome,
+      cpf: formData.cpf || undefined,
+      empresa: formData.empresa || undefined,
+      shiftId: formData.shiftId || undefined,
+      workDate: formData.workDate || undefined,
+      workStage: formData.workStage,
+      workPeriod: formData.workPeriod,
+    }
 
-    setFormData({
-      nome: '',
-      cpf: '',
-      empresa: '',
-      shiftId: '',
-      workDate: '',
-      workStage: 'evento',
-      workPeriod: 'dia_inteiro'
-    })
-    setEditingBadge(null)
-    setIsEditing(false)
-    setIsModalOpen(false)
-    toast.success('Entrada de crachá atualizada')
+    try {
+      await updateBadgePickupMutation.mutateAsync({ 
+        id: editingBadge.id, 
+        data: updateData 
+      })
+      setFormData({
+        nome: '',
+        cpf: '',
+        empresa: '',
+        shiftId: '',
+        workDate: '',
+        workStage: 'evento',
+        workPeriod: 'dia_inteiro'
+      })
+      setEditingBadge(null)
+      setIsEditing(false)
+      setIsModalOpen(false)
+    } catch (error) {
+      // Erro já tratado pela mutation
+    }
   }
 
-  const handleDeleteBadge = (badge: BadgePickup) => {
-    setBadges(prev => prev.filter(b => b.id !== badge.id))
-    toast.success(`Entrada de ${badge.nome} removida`)
+  const handleDeleteBadge = async (badge: BadgePickup) => {
+    try {
+      await deleteBadgePickupMutation.mutateAsync({
+        id: badge.id,
+        eventId: badge.eventId
+      })
+    } catch (error) {
+      // Erro já tratado pela mutation
+    }
   }
 
-  const handleProcessPickup = () => {
+  const handleProcessPickup = async () => {
     if (!selectedBadgeForPickup) return
 
     if (!pickupData.isSelfPickup && !pickupData.pickerName.trim()) {
@@ -310,33 +323,29 @@ export default function RetiradaCrachaPage() {
       return
     }
 
-    setBadges(prev => prev.map(badge => 
-      badge.id === selectedBadgeForPickup.id 
-        ? {
-            ...badge,
-            status: 'retirada',
-            isSelfPickup: pickupData.isSelfPickup,
-            pickedUpBy: pickupData.isSelfPickup ? badge.nome : pickupData.pickerName,
-            pickerCompany: pickupData.isSelfPickup ? badge.empresa : pickupData.pickerCompany,
-            pickedUpAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-        : badge
-    ))
+    const retrieveData = {
+      performedBy: 'system', // TODO: usar dados do usuário logado
+      isSelfPickup: pickupData.isSelfPickup,
+      pickerName: pickupData.isSelfPickup ? undefined : pickupData.pickerName,
+      pickerCompany: pickupData.isSelfPickup ? undefined : pickupData.pickerCompany,
+    }
 
-    const description = pickupData.isSelfPickup
-      ? `Crachá retirado pela própria pessoa: "${selectedBadgeForPickup.nome}"`
-      : `Crachá de "${selectedBadgeForPickup.nome}" retirado por "${pickupData.pickerName}" ${pickupData.pickerCompany ? `da empresa "${pickupData.pickerCompany}"` : ''}`
+    try {
+      await processBadgePickupMutation.mutateAsync({
+        id: selectedBadgeForPickup.id,
+        data: retrieveData
+      })
 
-    toast.success(description)
-
-    setSelectedBadgeForPickup(null)
-    setPickupData({
-      isSelfPickup: true,
-      pickerName: '',
-      pickerCompany: ''
-    })
-    setIsPickupModalOpen(false)
+      setSelectedBadgeForPickup(null)
+      setPickupData({
+        isSelfPickup: true,
+        pickerName: '',
+        pickerCompany: ''
+      })
+      setIsPickupModalOpen(false)
+    } catch (error) {
+      // Erro já tratado pela mutation
+    }
   }
 
   const openPickupModal = (badge: BadgePickup) => {

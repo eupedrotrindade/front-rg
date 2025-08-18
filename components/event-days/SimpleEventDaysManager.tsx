@@ -137,7 +137,20 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
 
   const formatDateDisplay = (dateStr: string): string => {
     try {
-      const date = new Date(dateStr);
+      // Para strings no formato YYYY-MM-DD, evita problemas de fuso horário
+      if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = dateStr.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        return date.toLocaleDateString('pt-BR', {
+          weekday: 'short',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        });
+      }
+      
+      // Para outros formatos, adiciona T00:00:00 para forçar interpretação como horário local
+      const date = new Date(dateStr + 'T00:00:00');
       return date.toLocaleDateString('pt-BR', {
         weekday: 'short',
         day: '2-digit',
