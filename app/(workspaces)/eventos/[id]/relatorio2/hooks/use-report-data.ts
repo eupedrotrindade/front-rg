@@ -21,6 +21,10 @@ export function useReportData({
     if (!participantes.length) return [];
 
     return participantes
+      .filter((participant) => {
+        // Filtrar participantes sem empresa ou com empresa vazia
+        return participant.company && participant.company.trim() !== "" && participant.company !== "SEM EMPRESA";
+      })
       .map((participant) => {
         // Find attendance records
         const attendance = attendanceRecords.filter(
@@ -112,6 +116,11 @@ export function useReportData({
           checkOut,
           tempoTotal: calculateWorkTime(),
           status: getStatus(),
+          // Add shift information for filtering
+          shift_id: participant.shiftId || "",
+          work_date: participant.workDate || "",
+          work_stage: participant.workStage || "",
+          work_period: participant.workPeriod || "",
         } as ParticipantRecord;
       })
       .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -180,8 +189,8 @@ export function useReportData({
     }) => {
       let filtered = syncedParticipants;
 
-      // Filter by company (applies to most report types)
-      if (filters.empresa && filters.empresa !== "all") {
+      // Filter by company (applies to specific report types, but NOT to "geral")
+      if (filters.empresa && filters.empresa !== "all" && filters.reportType !== "geral") {
         filtered = filtered.filter((p) => p.empresa === filters.empresa);
       }
 
@@ -195,20 +204,32 @@ export function useReportData({
         filtered = filtered.filter((p) => p.funcao === filters.function);
       }
 
-      // Apply report type specific filters
+      // Apply report type specific filters (para visualização na tela e exportação)
       if (filters.reportType && filters.reportType !== "geral") {
         switch (filters.reportType) {
           case "checkin":
-            // Only participants who have checked in
+            // Quem fez Check-in: apenas pessoas que fizeram check-in
+            filtered = filtered.filter((p) => p.checkIn !== "-");
+            break;
+          case "checkin_com_pulseira":
+            // Quem fez Check-in com Código da Pulseira: apenas pessoas que fizeram check-in
             filtered = filtered.filter((p) => p.checkIn !== "-");
             break;
           case "checkout":
-            // Only participants who have checked out
-            filtered = filtered.filter((p) => p.checkOut !== "-");
+            // Quem fez Check-out: apenas pessoas que fizeram check-in E check-out
+            filtered = filtered.filter((p) => p.checkIn !== "-" && p.checkOut !== "-");
             break;
-          case "checkout_tempo":
-            // Only participants who have checked out (with time calculation)
-            filtered = filtered.filter((p) => p.checkOut !== "-" && p.tempoTotal !== "00:00");
+          case "tempo_trabalho":
+            // Tempo de Trabalho: apenas pessoas que fizeram check-in E check-out
+            filtered = filtered.filter((p) => p.checkIn !== "-" && p.checkOut !== "-");
+            break;
+          case "sem_checkin":
+            // Sem Check-in: apenas pessoas que NÃO fizeram check-in
+            filtered = filtered.filter((p) => p.checkIn === "-");
+            break;
+          case "personalizado":
+            // Personalizado: mostra todos os participantes, usuário escolhe colunas
+            // No additional filtering needed here, all participants are shown
             break;
           case "credencial":
             // All participants (filter by credential type if specified)
@@ -225,12 +246,34 @@ export function useReportData({
         }
       }
 
-      // TODO: Implement day/shift filtering when attendance data includes shift information
-      // This will require correlating attendance records with specific shifts
+      // Filter by day/shift when specified
       if (filters.day && filters.day !== "all") {
-        // For now, return all data as we need to implement shift-based attendance filtering
-        // This should filter attendance records by the specific shift (day, stage, period)
-        console.log("Day filtering not yet implemented for:", filters.day);
+        // Parse the selected day to get date, stage, and period
+        const dayParts = filters.day.split('-');
+        if (dayParts.length >= 5) {
+          const year = dayParts[0];
+          const month = dayParts[1];
+          const day = dayParts[2];
+          const stage = dayParts[3];
+          const period = dayParts[4];
+          
+          const selectedDate = `${year}-${month}-${day}`;
+          
+          console.log(`🔍 Filtering by day: ${selectedDate}, stage: ${stage}, period: ${period}`);
+          
+          // Filter participants by shift information
+          filtered = filtered.filter((participant) => {
+            // Check if participant has the matching shift information
+            // This assumes participants have shift_id, work_date, work_stage, work_period fields
+            return (
+              (participant as any).work_date === selectedDate &&
+              (participant as any).work_stage === stage &&
+              (participant as any).work_period === period
+            );
+          });
+          
+          console.log(`📊 Filtered results: ${filtered.length} participants for ${filters.day}`);
+        }
       }
 
       return filtered;

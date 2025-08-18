@@ -16,7 +16,7 @@ interface UseExportProps {
     label: string;
     date: string;
     type: string;
-    period?: "diurno" | "noturno";
+    period?: "diurno" | "noturno" | "dia_inteiro";
   }>;
 }
 
@@ -30,6 +30,129 @@ export function useExport({
   const exportPDFMutation = useExportPDF();
   const exportXLSXMutation = useExportXLSX();
 
+  // Função para configurar colunas específicas por tipo de relatório
+  const getReportTypeConfig = useCallback((reportType?: string, userConfig?: ExportConfig): ExportConfig => {
+    const defaultConfig: ExportConfig = {
+      columns: ["nome", "cpf", "funcao", "pulseira", "checkIn", "checkOut"],
+      columnOrder: ["nome", "cpf", "funcao", "pulseira", "checkIn", "checkOut"],
+      columnWidths: [
+        { key: "nome", width: 200 },
+        { key: "cpf", width: 120 },
+        { key: "funcao", width: 160 },
+        { key: "pulseira", width: 120 },
+        { key: "checkIn", width: 120 },
+        { key: "checkOut", width: 120 }
+      ]
+    };
+
+    // Se usuário especificou config, usar essa
+    if (userConfig && userConfig.columns.length > 0) {
+      return userConfig;
+    }
+
+    // Configurações específicas por tipo de relatório (SEM coluna empresa)
+    switch (reportType) {
+      case "geral":
+        return {
+          columns: ["nome", "cpf", "funcao", "pulseira", "checkIn", "checkOut"],
+          columnOrder: ["nome", "cpf", "funcao", "pulseira", "checkIn", "checkOut"],
+          columnWidths: [
+            { key: "nome", width: 200 },
+            { key: "cpf", width: 120 },
+            { key: "funcao", width: 160 },
+            { key: "pulseira", width: 120 },
+            { key: "checkIn", width: 120 },
+            { key: "checkOut", width: 120 }
+          ]
+        };
+
+      case "checkin":
+        return {
+          columns: ["nome", "cpf", "funcao", "checkIn"],
+          columnOrder: ["nome", "cpf", "funcao", "checkIn"],
+          columnWidths: [
+            { key: "nome", width: 250 },
+            { key: "cpf", width: 140 },
+            { key: "funcao", width: 200 },
+            { key: "checkIn", width: 140 }
+          ]
+        };
+
+      case "checkin_com_pulseira":
+        return {
+          columns: ["nome", "cpf", "funcao", "pulseira", "checkIn"],
+          columnOrder: ["nome", "cpf", "funcao", "pulseira", "checkIn"],
+          columnWidths: [
+            { key: "nome", width: 200 },
+            { key: "cpf", width: 120 },
+            { key: "funcao", width: 160 },
+            { key: "pulseira", width: 120 },
+            { key: "checkIn", width: 130 }
+          ]
+        };
+
+      case "checkout":
+        return {
+          columns: ["nome", "cpf", "funcao", "pulseira", "checkIn", "checkOut"],
+          columnOrder: ["nome", "cpf", "funcao", "pulseira", "checkIn", "checkOut"],
+          columnWidths: [
+            { key: "nome", width: 180 },
+            { key: "cpf", width: 110 },
+            { key: "funcao", width: 140 },
+            { key: "pulseira", width: 110 },
+            { key: "checkIn", width: 110 },
+            { key: "checkOut", width: 110 }
+          ]
+        };
+
+      case "tempo_trabalho":
+        return {
+          columns: ["nome", "cpf", "funcao", "pulseira", "checkIn", "checkOut", "tempoTotal"],
+          columnOrder: ["nome", "cpf", "funcao", "pulseira", "checkIn", "checkOut", "tempoTotal"],
+          columnWidths: [
+            { key: "nome", width: 160 },
+            { key: "cpf", width: 100 },
+            { key: "funcao", width: 120 },
+            { key: "pulseira", width: 100 },
+            { key: "checkIn", width: 100 },
+            { key: "checkOut", width: 100 },
+            { key: "tempoTotal", width: 90 }
+          ]
+        };
+
+      case "sem_checkin":
+        return {
+          columns: ["nome", "cpf", "funcao"],
+          columnOrder: ["nome", "cpf", "funcao"],
+          columnWidths: [
+            { key: "nome", width: 300 },
+            { key: "cpf", width: 150 },
+            { key: "funcao", width: 280 }
+          ]
+        };
+
+      case "personalizado":
+        // Para personalizado, permitir todas as colunas incluindo empresa
+        const personalizadoConfig: ExportConfig = {
+          columns: ["nome", "cpf", "empresa", "funcao", "pulseira", "checkIn", "checkOut"],
+          columnOrder: ["nome", "cpf", "empresa", "funcao", "pulseira", "checkIn", "checkOut"],
+          columnWidths: [
+            { key: "nome", width: 200 },
+            { key: "cpf", width: 120 },
+            { key: "empresa", width: 200 },
+            { key: "funcao", width: 160 },
+            { key: "pulseira", width: 120 },
+            { key: "checkIn", width: 120 },
+            { key: "checkOut", width: 120 }
+          ]
+        };
+        return userConfig || personalizadoConfig;
+
+      default:
+        return defaultConfig;
+    }
+  }, []);
+
   // Helper function to parse shift information
   const parseShiftInfo = useCallback((shiftId: string) => {
     const parts = shiftId.split("-");
@@ -38,7 +161,7 @@ export function useExport({
       const month = parts[1];
       const day = parts[2];
       const stage = parts[3];
-      const period = parts[4] as "diurno" | "noturno";
+      const period = parts[4] as "diurno" | "noturno" | "dia_inteiro";
 
       const date = new Date(`${year}-${month}-${day}`);
       const formattedDate = date.toLocaleDateString("pt-BR");
@@ -52,6 +175,7 @@ export function useExport({
       const periodNames = {
         diurno: "DIURNO",
         noturno: "NOTURNO",
+        dia_inteiro: "DIA INTEIRO",
       };
 
       return {
@@ -72,7 +196,8 @@ export function useExport({
     (
       participants: ParticipantRecord[],
       config?: ExportConfig,
-      selectedDay?: string
+      selectedDay?: string,
+      reportType?: string
     ) => {
       const formattedData: any[] = [];
       let totalParticipants = 0;
@@ -84,7 +209,7 @@ export function useExport({
         label: string;
         date: string;
         type: string;
-        period?: "diurno" | "noturno";
+        period?: "diurno" | "noturno" | "dia_inteiro";
       }> = [];
 
       if (selectedDay === "all") {
@@ -140,7 +265,7 @@ export function useExport({
           shiftPeriod: shiftInfo.period,
           shiftFullLabel: shiftInfo.fullLabel,
           centerShiftInfo: true,
-          isPageBreakBefore: shiftIndex > 0 && selectedDay === "all", // Quebra de página entre turnos apenas quando "TODOS"
+          isPageBreakBefore: shiftIndex > 0, // SEMPRE quebrar página entre dias/turnos quando há múltiplos
           isPageBreakAfter: false,
         });
 
@@ -148,31 +273,66 @@ export function useExport({
         let shiftParticipants: ParticipantRecord[];
 
         if (selectedDay === "all" && shiftsToProcess.length > 1) {
-          // Dividir participantes entre os turnos para demonstração
-          const participantsPerShift = Math.ceil(
-            participants.length / shiftsToProcess.length
-          );
-          const startIndex = shiftIndex * participantsPerShift;
-          const endIndex = Math.min(
-            startIndex + participantsPerShift,
-            participants.length
-          );
-          shiftParticipants = participants.slice(startIndex, endIndex);
+          // Filtrar participantes que realmente pertencem a este turno
+          const shiftDateISO = shift.id.split('-').slice(0, 3).join('-'); // YYYY-MM-DD
+          const shiftStage = shift.type;
+          const shiftPeriod = shift.period || 'diurno';
+          
+          shiftParticipants = participants.filter(participant => {
+            // Filtrar por dados reais do turno se disponíveis
+            if (participant.shift_id && participant.work_date && participant.work_stage && participant.work_period) {
+              return (
+                participant.work_date === shiftDateISO &&
+                participant.work_stage === shiftStage &&
+                participant.work_period === shiftPeriod
+              );
+            }
+            
+            // Fallback: dividir igualmente se não há dados de turno
+            const participantsPerShift = Math.ceil(participants.length / shiftsToProcess.length);
+            const startIndex = shiftIndex * participantsPerShift;
+            const endIndex = Math.min(startIndex + participantsPerShift, participants.length);
+            const participantIndex = participants.indexOf(participant);
+            return participantIndex >= startIndex && participantIndex < endIndex;
+          });
 
           console.log(`🔄 Turno ${shiftIndex + 1}/${shiftsToProcess.length}:`, {
             shift: shift.id,
             label: shiftInfo.fullLabel,
             participantsInShift: shiftParticipants.length,
             totalParticipants: participants.length,
+            hasShiftData: shiftParticipants.some(p => p.shift_id && p.work_date)
           });
         } else {
           // Usar todos os participantes para turno único ou específico
           shiftParticipants = participants;
         }
 
+        // Filtrar participantes SEM EMPRESA
+        let validParticipants = shiftParticipants.filter(p => p.empresa && p.empresa.trim() !== "" && p.empresa !== "SEM EMPRESA");
+
+        // Aplicar filtros específicos do tipo de relatório ANTES de agrupar por empresa
+        const participantsBeforeFilter = validParticipants.length;
+        
+        if (reportType === "checkin" || reportType === "checkin_com_pulseira") {
+          // Apenas participantes que fizeram check-in
+          validParticipants = validParticipants.filter(p => p.checkIn !== "-");
+          console.log(`📊 Relatório ${reportType}: ${participantsBeforeFilter} → ${validParticipants.length} participantes (apenas com check-in)`);
+        } else if (reportType === "checkout" || reportType === "tempo_trabalho") {
+          // Apenas participantes que fizeram check-in E check-out
+          validParticipants = validParticipants.filter(p => p.checkIn !== "-" && p.checkOut !== "-");
+          console.log(`📊 Relatório ${reportType}: ${participantsBeforeFilter} → ${validParticipants.length} participantes (com check-in E check-out)`);
+        } else if (reportType === "sem_checkin") {
+          // Apenas participantes que NÃO fizeram check-in
+          validParticipants = validParticipants.filter(p => p.checkIn === "-");
+          console.log(`📊 Relatório ${reportType}: ${participantsBeforeFilter} → ${validParticipants.length} participantes (sem check-in)`);
+        } else {
+          console.log(`📊 Relatório ${reportType}: ${validParticipants.length} participantes (todos válidos)`);
+        }
+
         // ====== EMPRESAS DENTRO DO TURNO ======
-        const participantsByCompany = shiftParticipants.reduce((acc, p) => {
-          const company = p.empresa || "SEM EMPRESA";
+        const participantsByCompany = validParticipants.reduce((acc, p) => {
+          const company = p.empresa;
           if (!acc[company]) {
             acc[company] = [];
           }
@@ -185,6 +345,14 @@ export function useExport({
           (a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" })
         );
 
+        console.log(`🏢 Empresas encontradas no turno ${shift.id}:`, {
+          totalEmpresas: sortedCompanies.length,
+          empresas: sortedCompanies.map(company => ({
+            nome: company,
+            participantes: participantsByCompany[company].length
+          }))
+        });
+
         // Processar cada empresa dentro do turno
         sortedCompanies.forEach((companyName, companyIndex) => {
           const companyParticipants = participantsByCompany[companyName];
@@ -194,21 +362,43 @@ export function useExport({
             a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" })
           );
 
-          // Contar check-ins da empresa no turno
-          const companyCheckIns = sortedStaff.filter(
-            (p) => p.checkIn !== "-"
-          ).length;
-          const companyTotal = sortedStaff.length;
+          // Calcular contagens baseadas no tipo de relatório
+          let companyDisplayCount = 0;
+          let companyTotalForDisplay = sortedStaff.length;
+          
+          if (reportType === "geral") {
+            // "Todos": Mostra check-ins do total de pessoas
+            const companyCheckIns = sortedStaff.filter((p) => p.checkIn !== "-").length;
+            companyDisplayCount = companyCheckIns;
+            companyTotalForDisplay = sortedStaff.length;
+          } else if (reportType === "checkin" || reportType === "checkin_com_pulseira") {
+            // "Presentes": Apenas quem fez check-in (já filtrado anteriormente)
+            companyDisplayCount = sortedStaff.length; // Todos já fizeram check-in devido ao filtro
+            companyTotalForDisplay = sortedStaff.length;
+          } else if (reportType === "checkout" || reportType === "tempo_trabalho") {
+            // "Finalizados": Apenas quem fez check-in E check-out (já filtrado anteriormente)
+            companyDisplayCount = sortedStaff.length; // Todos já fizeram check-in e check-out devido ao filtro
+            companyTotalForDisplay = sortedStaff.length;
+          } else if (reportType === "sem_checkin") {
+            // "Sem check-in": Apenas quem NÃO fez check-in (já filtrado anteriormente)
+            companyDisplayCount = sortedStaff.length; // Todos não fizeram check-in devido ao filtro
+            companyTotalForDisplay = sortedStaff.length;
+          } else {
+            // Para outros tipos, usar lógica padrão
+            const companyCheckIns = sortedStaff.filter((p) => p.checkIn !== "-").length;
+            companyDisplayCount = companyCheckIns;
+            companyTotalForDisplay = sortedStaff.length;
+          }
 
-          totalParticipants += companyTotal;
-          totalCheckIns += companyCheckIns;
+          totalParticipants += companyTotalForDisplay;
+          totalCheckIns += companyDisplayCount;
 
           // ====== CABEÇALHO DA EMPRESA ======
           formattedData.push({
             isCompanyHeader: true,
             companyName: companyName.toUpperCase(),
-            checkInCount: companyCheckIns,
-            totalCount: companyTotal,
+            checkInCount: companyDisplayCount,
+            totalCount: companyTotalForDisplay,
             shiftId: shift.id,
             isPageBreakBefore: false, // Não quebrar página entre empresas dentro do turno
             centerCompanyName: true,
@@ -274,32 +464,6 @@ export function useExport({
             }
           });
         });
-
-        // Para demonstração quando "TODOS" está selecionado, dividir participantes entre turnos
-        if (selectedDay === "all" && shiftsToProcess.length > 1) {
-          // Dividir participantes entre os turnos para mostrar a divisão
-          const participantsPerShift = Math.ceil(
-            participants.length / shiftsToProcess.length
-          );
-          const startIndex = shiftIndex * participantsPerShift;
-          const endIndex = Math.min(
-            startIndex + participantsPerShift,
-            participants.length
-          );
-
-          // Usar apenas uma parte dos participantes para este turno
-          const currentShiftParticipants = participants.slice(
-            startIndex,
-            endIndex
-          );
-
-          console.log(`🔄 Turno ${shiftIndex + 1}/${shiftsToProcess.length}:`, {
-            shift: shift.id,
-            label: shiftInfo.fullLabel,
-            participantsInShift: currentShiftParticipants.length,
-            totalParticipants: participants.length,
-          });
-        }
       });
 
       // Adicionar informações de resumo no final
@@ -375,31 +539,38 @@ export function useExport({
 
       return formattedData;
     },
-    [parseShiftInfo, eventDays]
+    [parseShiftInfo, eventDays, selectedReportType]
   );
 
   // Export all participants
   const exportAll = useCallback(
-    (config: ExportConfig) => {
+    (config: ExportConfig, customTitle?: string, customSubtitle?: string) => {
       if (participants.length === 0) {
         toast.error("Nenhum participante para exportar");
         return;
       }
 
+      // Aplicar configuração de colunas específica por tipo de relatório
+      const finalConfig = getReportTypeConfig(selectedReportType, config);
+
       const exportData = convertToExportFormat(
         participants,
-        config,
-        selectedDay
+        finalConfig,
+        selectedDay,
+        selectedReportType
       );
 
-      // Criar título baseado no tipo de relatório e turno
-      let titulo = `Relatório de Presença - ${eventName}`;
+      // Usar título personalizado ou criar baseado no tipo de relatório e turno
+      let titulo = customTitle || `Relatório de Presença - ${eventName}`;
       if (selectedReportType && selectedReportType !== "geral") {
         const reportTypeNames: Record<string, string> = {
           empresa: "Filtro por Empresa",
           checkin: "Quem fez Check-in",
+          checkin_com_pulseira: "Quem fez Check-in com Código da Pulseira",
           checkout: "Quem fez Check-out",
-          checkout_tempo: "Quem fez Check-out (com tempo)",
+          tempo_trabalho: "Tempo de Trabalho",
+          sem_checkin: "Sem Check-in",
+          personalizado: "Relatório Personalizado",
           credencial: "Tipo de Credencial",
           cadastrado_por: "Cadastrado por",
         };
@@ -411,14 +582,21 @@ export function useExport({
       exportPDFMutation.mutate(
         {
           titulo,
+          subtitulo: customSubtitle,
           tipo: (selectedReportType === "empresa"
             ? "filtroEmpresa"
             : selectedReportType === "credencial"
             ? "tipoCredencial"
             : selectedReportType === "cadastrado_por"
             ? "cadastradoPor"
-            : selectedReportType === "checkout_tempo"
+            : selectedReportType === "tempo_trabalho"
             ? "tempo"
+            : selectedReportType === "checkin_com_pulseira"
+            ? "checkin"
+            : selectedReportType === "sem_checkin"
+            ? "checkin"
+            : selectedReportType === "personalizado"
+            ? "geral"
             : selectedReportType === "geral" || !selectedReportType
             ? "geral"
             : selectedReportType) as
@@ -464,7 +642,7 @@ export function useExport({
 
   // Export by company
   const exportByCompany = useCallback(
-    (company: string, config: ExportConfig) => {
+    (company: string, config: ExportConfig, customTitle?: string, customSubtitle?: string) => {
       if (!company || company === "all") {
         toast.error("Selecione uma empresa específica");
         return;
@@ -479,20 +657,27 @@ export function useExport({
         return;
       }
 
+      // Aplicar configuração de colunas específica por tipo de relatório
+      const finalConfig = getReportTypeConfig(selectedReportType, config);
+
       const exportData = convertToExportFormat(
         companyParticipants,
-        config,
-        selectedDay
+        finalConfig,
+        selectedDay,
+        selectedReportType
       );
 
-      // Criar título baseado no tipo de relatório e empresa
-      let titulo = `Relatório de Presença - ${company}`;
+      // Usar título personalizado ou criar baseado no tipo de relatório e empresa
+      let titulo = customTitle || `Relatório de Presença - ${company}`;
       if (selectedReportType && selectedReportType !== "geral") {
         const reportTypeNames: Record<string, string> = {
           empresa: "Filtro por Empresa",
           checkin: "Quem fez Check-in",
+          checkin_com_pulseira: "Quem fez Check-in com Código da Pulseira",
           checkout: "Quem fez Check-out",
-          checkout_tempo: "Quem fez Check-out (com tempo)",
+          tempo_trabalho: "Tempo de Trabalho",
+          sem_checkin: "Sem Check-in",
+          personalizado: "Relatório Personalizado",
           credencial: "Tipo de Credencial",
           cadastrado_por: "Cadastrado por",
         };
@@ -504,6 +689,7 @@ export function useExport({
       exportPDFMutation.mutate(
         {
           titulo,
+          subtitulo: customSubtitle,
           tipo: "filtroEmpresa",
           dados: exportData,
           columnConfig: config,
@@ -667,7 +853,8 @@ export function useExport({
     const previewData = convertToExportFormat(
       participants,
       undefined,
-      selectedDay
+      selectedDay,
+      selectedReportType
     );
 
     return previewData.map((item) => ({

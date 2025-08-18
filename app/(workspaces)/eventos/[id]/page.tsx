@@ -1970,6 +1970,7 @@ export default function EventoDetalhesPage() {
                         onReset={abrirResetCheckin}
                         onDelete={handleDeleteParticipant}
                         onEdit={handleEditParticipant}
+                        credentials={Array.isArray(credentials) ? credentials : []}
                         isLoading={isLoading}
                         loading={loading}
                     />

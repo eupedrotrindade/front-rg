@@ -16,6 +16,7 @@ interface ExportConfig {
 
 interface ExportPDFData {
   titulo: string;
+  subtitulo?: string;
   tipo:
     | "geral"
     | "participantes"
@@ -53,10 +54,10 @@ export const useExportPDF = () => {
         const addHeader = async (doc: any, pageNumber: number = 1) => {
           const headerStartY = 30; // Começar o cabeçalho em 15pt do topo da página
 
-          // Título do relatório
+          // Título do relatório com cor personalizada #610E5C
           doc.setFontSize(16);
           doc.setFont("helvetica", "bold");
-          doc.setTextColor(138, 43, 138);
+          doc.setTextColor(97, 14, 92); // #610E5C convertido para RGB
           doc.text(data.titulo, 105, headerStartY + 15, { align: "center" });
 
           // Linha separadora
@@ -64,21 +65,24 @@ export const useExportPDF = () => {
           doc.setLineWidth(0.5);
           doc.line(20, headerStartY + 22, 190, headerStartY + 22);
 
-          // Subtítulo
-          const subtitulos: Record<ExportPDFData["tipo"], string> = {
-            geral: "Relatório Geral de Participantes",
-            participantes: "Relatório de Participantes",
-            coordenadores: "Relatório de Coordenadores",
-            vagas: "Relatório de Vagas",
-            checkin: "Relatório de Check-in",
-            checkout: "Relatório de Check-out",
-            tempo: "Relatório de Tempo de Permanência",
-            filtroEmpresa: "Relatório por Empresa",
-            tipoCredencial: "Relatório por Tipo de Credencial",
-            cadastradoPor: "Relatório por Cadastrado Por",
-          };
-
-          const subtitulo = subtitulos[data.tipo] ?? "Relatório de Eventos";
+          // Subtítulo - usar customizado se fornecido, senão usar padrão
+          let subtitulo = data.subtitulo;
+          if (!subtitulo) {
+            const subtitulos: Record<ExportPDFData["tipo"], string> = {
+              geral: "Relatório Geral de Participantes",
+              participantes: "Relatório de Participantes",
+              coordenadores: "Relatório de Coordenadores",
+              vagas: "Relatório de Vagas",
+              checkin: "Relatório de Check-in",
+              checkout: "Relatório de Check-out",
+              tempo: "Relatório de Tempo de Permanência",
+              filtroEmpresa: "Relatório por Empresa",
+              tipoCredencial: "Relatório por Tipo de Credencial",
+              cadastradoPor: "Relatório por Cadastrado Por",
+            };
+            subtitulo = subtitulos[data.tipo] ?? "Relatório de Eventos";
+          }
+          
           doc.setFontSize(12);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(80, 80, 80);
@@ -115,10 +119,31 @@ export const useExportPDF = () => {
             return columnConfig.columnOrder.map((key) => columnMap[key] || key);
           }
 
-          // Fall back to data structure
+          // Fall back to data structure - filter out metadata fields
           if (!dados || dados.length === 0) return [];
-          const firstRecord = dados[0];
-          return Object.keys(firstRecord).map((key) => columnMap[key] || key);
+          
+          // Find first staff record (not shift header, company header, or summary)
+          const firstStaffRecord = dados.find(record => 
+            record.isStaffRecord === true && 
+            !record.isShiftHeader && 
+            !record.isCompanyHeader && 
+            !record.isSummary
+          );
+          
+          if (!firstStaffRecord) return Object.keys(columnMap);
+          
+          // Filter out metadata fields and only include valid participant data columns
+          const validColumns = Object.keys(firstStaffRecord).filter(key => 
+            columnMap[key] && // Only include mapped columns
+            !key.startsWith('is') && // Exclude metadata flags
+            !key.startsWith('shift') && // Exclude shift metadata
+            !key.startsWith('company') && // Exclude company metadata
+            !key.startsWith('center') && // Exclude formatting metadata
+            !key.includes('PageBreak') && // Exclude page break metadata
+            !key.includes('Style') // Exclude style metadata
+          );
+          
+          return validColumns.map((key) => columnMap[key] || key);
         };
 
         // Get column widths from config
@@ -132,15 +157,70 @@ export const useExportPDF = () => {
         };
 
         // Get values from record in same order as headers
-        const getRowValues = (record: Record<string, unknown>): string[] => {
-          return Object.values(record).map((value) => {
+        let debugLogged = false;
+        const getRowValues = (record: Record<string, unknown>, headers: string[]): string[] => {
+          const columnMap: Record<string, string> = {
+            "Nome": "nome",
+            "CPF": "cpf", 
+            "Empresa": "empresa",
+            "Função": "funcao",
+            "Pulseira": "pulseira",
+            "Tipo de Pulseira": "tipoPulseira",
+            "Check-in": "checkIn",
+            "Check-out": "checkOut",
+            "Tempo Total": "tempoTotal",
+            "Status": "status",
+          };
+
+          const values = headers.map(header => {
+            const key = columnMap[header] || header.toLowerCase();
+            const value = record[key];
             if (value === null || value === undefined) return "-";
             return String(value).toUpperCase();
           });
+
+          // Log apenas para o primeiro registro para debug
+          if (record.nome && !debugLogged) {
+            console.log("🔍 getRowValues Debug:", {
+              headers,
+              recordKeys: Object.keys(record),
+              sampleRecord: {
+                nome: record.nome,
+                cpf: record.cpf,
+                empresa: record.empresa,
+                isStaffRecord: record.isStaffRecord
+              },
+              mappedValues: values
+            });
+            debugLogged = true;
+          }
+
+          return values;
         };
 
-        if (isAgrupadoPorEmpresa) {
-          // Use dynamic columns for grouped reports
+        // Verificar se os dados já vêm estruturados (com headers de empresa/turno)
+        const hasStructuredData = data.dados.some(item => 
+          item.isShiftHeader || item.isCompanyHeader || item.isStaffRecord || item.isSummary
+        );
+
+        console.log("📄 PDF Debug:", {
+          tipo: data.tipo,
+          isAgrupadoPorEmpresa,
+          hasStructuredData,
+          totalItems: data.dados.length,
+          firstItems: data.dados.slice(0, 5).map(item => ({
+            isShiftHeader: !!item.isShiftHeader,
+            isCompanyHeader: !!item.isCompanyHeader,
+            isStaffRecord: !!item.isStaffRecord,
+            isSummary: !!item.isSummary,
+            empresa: item.empresa,
+            nome: item.nome,
+            allKeys: Object.keys(item)
+          }))
+        });
+
+        if (isAgrupadoPorEmpresa && !hasStructuredData) {
+          // Use dynamic columns for grouped reports (dados não estruturados)
           colunas = getColumnHeaders(data.dados, data.columnConfig);
 
           const participantesPorEmpresa = new Map<string, typeof data.dados>();
@@ -159,32 +239,115 @@ export const useExportPDF = () => {
 
           empresasOrdenadas.forEach((empresa) => {
             const participantes = participantesPorEmpresa.get(empresa)!;
-            const checkInCount = participantes.filter((p) => p.checkIn).length;
+            const checkInCount = participantes.filter((p) => p.checkIn && p.checkIn !== "-").length;
 
             linhas.push([
               {
-                content: `${empresa.toUpperCase()} (${checkInCount}/${
+                content: String(`${empresa.toUpperCase()} (${checkInCount}/${
                   participantes.length
-                })`,
+                })`),
                 colSpan: colunas.length,
                 styles: {
                   fillColor: [138, 43, 138],
                   textColor: [255, 255, 255],
                   fontStyle: "bold",
-                  halign: "left",
-                  fontSize: 9,
+                  halign: "center",
+                  fontSize: 10,
+                  cellPadding: 6,
                 },
               },
             ]);
 
             participantes.forEach((p) => {
-              linhas.push(getRowValues(p));
+              // Only add staff records, skip metadata entries
+              if (!p.isShiftHeader && !p.isCompanyHeader && !p.isSummary) {
+                linhas.push(getRowValues(p, colunas));
+              }
             });
+          });
+        } else if (hasStructuredData) {
+          // Dados já estruturados - usar diretamente
+          colunas = getColumnHeaders(data.dados, data.columnConfig);
+          
+          data.dados.forEach((item) => {
+            if (item.isShiftHeader) {
+              // Cabeçalho de turno (data + estágio + período)
+              linhas.push([
+                {
+                  content: String(item.shiftFullLabel || "Turno"),
+                  colSpan: colunas.length,
+                  styles: {
+                    fillColor: [97, 14, 92], // #610E5C convertido para RGB
+                    textColor: [255, 255, 255],
+                    fontStyle: "bold",
+                    halign: "center",
+                    fontSize: 12,
+                    cellPadding: 8,
+                    lineWidth: { bottom: 1 }, // Linha apenas embaixo do cabeçalho de turno
+                    lineColor: [100, 100, 100], // Cor da linha
+                  },
+                },
+              ]);
+            } else if (item.isCompanyHeader) {
+              // Cabeçalho de empresa
+              linhas.push([
+                {
+                  content: String(`${item.companyName} (${item.checkInCount}/${item.totalCount})`),
+                  colSpan: colunas.length,
+                  styles: {
+                    fillColor: [138, 43, 138],
+                    textColor: [255, 255, 255],
+                    fontStyle: "bold",
+                    halign: "center",
+                    fontSize: 10,
+                    cellPadding: 6,
+                  },
+                },
+              ]);
+            } else if (item.isStaffRecord) {
+              // Participante
+              linhas.push(getRowValues(item, colunas));
+            } else if (item.isSummary) {
+              // Resumo final - pode ser processado separadamente se necessário
+            }
           });
         } else {
           // For non-grouped reports, also use dynamic columns
           colunas = getColumnHeaders(data.dados, data.columnConfig);
-          linhas = data.dados.map((record) => getRowValues(record));
+          linhas = data.dados
+            .filter(record => !record.isShiftHeader && !record.isCompanyHeader && !record.isSummary) // Filter out metadata
+            .map((record) => getRowValues(record, colunas));
+        }
+
+        console.log("📊 Tabela Debug:", {
+          colunas,
+          totalLinhas: linhas.length,
+          firstLinhas: linhas.slice(0, 3),
+          hasStructuredData,
+          isAgrupadoPorEmpresa
+        });
+
+        // Garantir que há pelo menos dados básicos para a tabela
+        if (colunas.length === 0) {
+          colunas = ["Nome", "CPF", "Função", "Check-in", "Check-out"];
+          console.warn("⚠️ Usando colunas padrão porque nenhuma foi detectada");
+        }
+
+        if (linhas.length === 0) {
+          console.warn("⚠️ Nenhuma linha de dados detectada");
+          // Se não há dados estruturados, tentar processar como dados simples
+          if (data.dados.length > 0) {
+            linhas = data.dados.map((record) => {
+              return [
+                record.nome || "-",
+                record.cpf || "-", 
+                record.funcao || "-",
+                record.checkIn || "-",
+                record.checkOut || "-"
+              ];
+            });
+            console.log("🔄 Processando como dados simples:", linhas.length, "linhas");
+          }
         }
 
         // Função para adicionar papel timbrado no fundo com imagem
@@ -233,10 +396,51 @@ export const useExportPDF = () => {
         // Get column widths configuration
         const columnWidths = getColumnWidths(data.columnConfig);
 
-        // Ordem correta: 1) Imagem no fundo, 2) Título/subtítulo, 3) Tabela
+        // Carregar watermark uma vez para reutilizar em todas as páginas
+        let watermarkBase64: string | null = null;
+        try {
+          const watermarkResponse = await fetch("/images/folha-timbrada.jpg");
+          if (watermarkResponse.ok) {
+            const watermarkBlob = await watermarkResponse.blob();
+            watermarkBase64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target?.result as string);
+              reader.readAsDataURL(watermarkBlob);
+            });
+          }
+        } catch (error) {
+          console.log("Erro ao carregar papel timbrado");
+        }
+
+        // Função para adicionar watermark em qualquer página
+        const addWatermarkToCurrentPage = (doc: any, watermarkBase64: string) => {
+          const pageWidth = doc.internal.pageSize.width;
+          const pageHeight = doc.internal.pageSize.height;
+          
+          // Salvar estado gráfico
+          doc.saveGraphicsState();
+          
+          // Adicionar imagem como fundo
+          doc.addImage(
+            watermarkBase64,
+            "JPEG",
+            0, // x: começa na borda
+            0, // y: começa na borda  
+            pageWidth, // largura total
+            pageHeight, // altura total
+            undefined,
+            "FAST"
+          );
+          
+          // Restaurar estado
+          doc.restoreGraphicsState();
+        };
+
+        // Aplicar watermark apenas na primeira página antes da tabela (método antigo funciona)
         await addWatermark(doc);
         await addHeader(doc, 1);
 
+        // Gerar tabela com didDrawPage para adicionar header nas páginas seguintes
         autoTable(doc, {
           head: [colunas],
           body: linhas,
@@ -244,8 +448,7 @@ export const useExportPDF = () => {
           styles: {
             fontSize: 9,
             cellPadding: 3,
-            lineWidth: 0.2,
-            lineColor: [180, 180, 180],
+            lineWidth: 0, // Remove bordas das células
             textColor: [40, 40, 40],
           },
           headStyles: {
@@ -255,6 +458,8 @@ export const useExportPDF = () => {
             fontSize: 10,
             halign: "center",
             cellPadding: 4,
+            lineWidth: { bottom: 1 }, // Linha apenas embaixo do cabeçalho
+            lineColor: [100, 100, 100], // Cor da linha
           },
           alternateRowStyles: {
             fillColor: [252, 252, 252],
@@ -273,35 +478,59 @@ export const useExportPDF = () => {
             top: headerHeight,
             bottom: footerHeight,
           },
-          theme: "striped",
-          tableLineColor: [180, 180, 180],
-          tableLineWidth: 0.1,
+          theme: "plain", // Remove tema com bordas
+          tableLineWidth: 0, // Remove linhas da tabela
+          willDrawPage: function (hookData) {
+            // ====== APLICAR WATERMARK ANTES DA TABELA (PÁGINAS 2+) ======
+            // Hook executado ANTES da tabela ser desenhada
+            if (watermarkBase64 && hookData.pageNumber > 1) {
+              addWatermarkToCurrentPage(doc, watermarkBase64);
+            }
+          },
+          didDrawPage: function (hookData) {
+            // ====== HEADER APÓS A TABELA (TODAS AS PÁGINAS) ======
+            const headerStartY = 30;
+            
+            // Título do relatório com cor personalizada #610E5C
+            doc.setFontSize(16);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(97, 14, 92); // #610E5C convertido para RGB
+            doc.text(data.titulo, 105, headerStartY + 15, { align: "center" });
+
+            // Linha separadora
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.5);
+            doc.line(20, headerStartY + 22, 190, headerStartY + 22);
+
+            // Subtítulo - usar customizado se fornecido, senão usar padrão
+            let subtitulo = data.subtitulo;
+            if (!subtitulo) {
+              const subtitulos: Record<string, string> = {
+                geral: "Relatório Geral de Participantes",
+                participantes: "Relatório de Participantes",
+                coordenadores: "Relatório de Coordenadores",
+                vagas: "Relatório de Vagas",
+                checkin: "Relatório de Check-in",
+                checkout: "Relatório de Check-out",
+                tempo: "Relatório de Tempo de Permanência",
+                filtroEmpresa: "Relatório por Empresa",
+                tipoCredencial: "Relatório por Tipo de Credencial",
+                cadastradoPor: "Relatório por Cadastrado Por",
+              };
+              subtitulo = subtitulos[data.tipo] ?? "Relatório de Eventos";
+            }
+            
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(80, 80, 80);
+            doc.text(subtitulo, 105, headerStartY + 28, { align: "center" });
+          },
         });
 
-        // Get total number of pages after table generation
-        const totalPages = (doc as any).internal.pages.length - 1;
-
-        // Processar cada página individualmente para adicionar fundo e cabeçalho
-        for (let pageNumber = 2; pageNumber <= totalPages; pageNumber++) {
-          doc.setPage(pageNumber);
-
-          // Salvar o estado atual da página
-          const pageContent = (doc as any).internal.pages[pageNumber];
-          
-          // Limpar a página atual
-          (doc as any).internal.pages[pageNumber] = [];
-
-          // Reconstruir na ordem correta:
-          // 1. Papel timbrado (fundo)
-          await addWatermark(doc);
-          
-          // 2. Título e subtítulo (sobre a imagem) 
-          await addHeader(doc, pageNumber);
-
-          // 3. Restaurar o conteúdo da tabela (mantém o que estava na página)
-          const currentContent = (doc as any).internal.pages[pageNumber];
-          (doc as any).internal.pages[pageNumber] = currentContent.concat(pageContent);
-        }
+        // Watermark agora é aplicado via didDrawPage de forma consistente em todas as páginas
+        // Primeira página: addWatermark() antes da tabela
+        // Páginas 2+: addWatermarkToCurrentPage() no didDrawPage hook
+        console.log("📄 PDF gerado com", (doc as any).internal.pages.length - 1, "páginas");
 
         const finalY = (doc as any).lastAutoTable?.finalY || 100;
 

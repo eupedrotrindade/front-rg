@@ -70,7 +70,7 @@ export default function Relatorio2Page() {
             const month = parts[1];
             const day = parts[2];
             const stage = parts[3];
-            const period = parts[4] as 'diurno' | 'noturno';
+            const period = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro';
 
             return {
                 dateISO: `${year}-${month}-${day}`,
@@ -90,10 +90,10 @@ export default function Relatorio2Page() {
     }, [formatDate]);
 
     // Função para gerar dias do evento usando nova estrutura
-    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> => {
         if (!evento) return [];
 
-        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = [];
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> = [];
 
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
@@ -122,8 +122,8 @@ export default function Relatorio2Page() {
                         const dateISO = new Date(item.date).toISOString().split('T')[0]; // YYYY-MM-DD para ID
 
                         // Usar período do item se disponível, senão calcular baseado na hora
-                        let period: 'diurno' | 'noturno';
-                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                        let period: 'diurno' | 'noturno' | 'dia_inteiro';
+                        if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
                             period = item.period;
                         } else {
                             // Fallback: calcular baseado na hora
@@ -132,7 +132,7 @@ export default function Relatorio2Page() {
                             period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
                         }
 
-                        const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
+                        const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
                         days.push({
                             id: `${dateISO}-${stage}-${period}`, // ID único incluindo o turno
@@ -330,8 +330,8 @@ export default function Relatorio2Page() {
                             onCredentialTypeChange={setSelectedCredentialType}
                             selectedFunction={selectedFunction}
                             onFunctionChange={setSelectedFunction}
-                            onExport={(config) => exportAll(config)}
-                            onExportCompany={(config) => exportByCompany(selectedCompany, config)}
+                            onExport={(config, customTitle, customSubtitle) => exportAll(config, customTitle, customSubtitle)}
+                            onExportCompany={(config, customTitle, customSubtitle) => exportByCompany(selectedCompany, config, customTitle, customSubtitle)}
                             onExportXLSX={exportAllXLSX}
                             onExportCompanyXLSX={exportByCompanyXLSX}
                             onExportRadios={exportRadios}
@@ -341,6 +341,7 @@ export default function Relatorio2Page() {
                             isExporting={isExporting}
                             credenciais={credenciais}
                             participantes={participantes}
+                            eventName={evento?.name || "Evento"}
                         />
 
                         {/* === PARTICIPANTS TABLE === */}

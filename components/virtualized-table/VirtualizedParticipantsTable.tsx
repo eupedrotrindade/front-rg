@@ -26,6 +26,7 @@ interface VirtualizedParticipantsTableProps {
   onReset: (participant: EventParticipant) => void
   onDelete: (participant: EventParticipant) => void
   onEdit: (participant: EventParticipant) => void
+  credentials?: Array<{ id: string; nome: string; cor: string }>
   isLoading?: boolean
   loading?: boolean
 }
@@ -131,6 +132,7 @@ const ParticipantRow = React.memo<{
     onReset: (participant: EventParticipant) => void
     onDelete: (participant: EventParticipant) => void
     onEdit: (participant: EventParticipant) => void
+    credentials: Array<{ id: string; nome: string; cor: string }>
     loading: boolean
   }
 }>(({ index, style, data }) => {
@@ -154,12 +156,15 @@ const ParticipantRow = React.memo<{
     data.hasCheckOut,
   )
 
+  // Buscar informações da credencial
+  const credentialInfo = data.credentials.find(cred => cred.id === participant.credentialId)
+
   return (
     <div
       style={style}
       className="flex items-center px-6 py-4 border-b border-gray-100 hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 transition-all duration-200"
     >
-      <div className="grid grid-cols-6 gap-4 w-full items-center">
+      <div className="grid grid-cols-7 gap-4 w-full items-center">
         {/* Checkbox */}
         <div className="flex items-center justify-center">
           <Checkbox
@@ -200,6 +205,24 @@ const ParticipantRow = React.memo<{
                   </span>
                 )}
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tipo de Credencial */}
+        <div className="col-span-1 hidden lg:block">
+          <div className="space-y-1">
+            {credentialInfo ? (
+              <span 
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white uppercase"
+                style={{ backgroundColor: credentialInfo.cor }}
+              >
+                {credentialInfo.nome}
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 uppercase">
+                Sem Credencial
+              </span>
             )}
           </div>
         </div>
@@ -347,6 +370,7 @@ const VirtualizedParticipantsTable: React.FC<
   onReset,
   onDelete,
   onEdit,
+  credentials = [],
   isLoading = false,
   loading = false,
 }) => {
@@ -364,6 +388,7 @@ const VirtualizedParticipantsTable: React.FC<
         onReset,
         onDelete,
         onEdit,
+        credentials,
         loading,
       }),
       [
@@ -378,6 +403,7 @@ const VirtualizedParticipantsTable: React.FC<
         onReset,
         onDelete,
         onEdit,
+        credentials,
         loading,
       ],
     )
@@ -448,7 +474,7 @@ const VirtualizedParticipantsTable: React.FC<
       <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600 border-b border-gray-200">
-          <div className="grid grid-cols-6 gap-4 px-6 py-4 items-center">
+          <div className="grid grid-cols-7 gap-4 px-6 py-4 items-center">
             <div className="flex items-center justify-center">
               <Checkbox
                 checked={
@@ -463,6 +489,9 @@ const VirtualizedParticipantsTable: React.FC<
             </div>
             <div className="text-xs font-semibold uppercase tracking-wider hidden md:block">
               Empresa
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-wider hidden lg:block">
+              Credencial
             </div>
             <div className="text-xs font-semibold uppercase tracking-wider hidden md:block">
               Validado Por

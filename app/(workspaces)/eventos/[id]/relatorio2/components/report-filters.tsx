@@ -10,13 +10,14 @@ import { Download, Filter, Check, ChevronsUpDown, Building2, FileSpreadsheet, Ca
 import { cn } from "@/lib/utils"
 import type { CompanyStats } from "../types"
 import { ColumnSelectionDialog, type ExportConfig } from "./column-selection-dialog"
+import { TitleEditorDialog } from "./title-editor-dialog"
 
 interface EventDay {
     id: string
     label: string
     date: string
     type: string
-    period?: 'diurno' | 'noturno'
+    period?: 'diurno' | 'noturno' | 'dia_inteiro'
 }
 
 interface ReportFiltersProps {
@@ -32,8 +33,8 @@ interface ReportFiltersProps {
     onCredentialTypeChange: (type: string) => void
     selectedFunction: string
     onFunctionChange: (func: string) => void
-    onExport: (config: ExportConfig) => void
-    onExportCompany: (config: ExportConfig) => void
+    onExport: (config: ExportConfig, customTitle?: string, customSubtitle?: string) => void
+    onExportCompany: (config: ExportConfig, customTitle?: string, customSubtitle?: string) => void
     onExportXLSX?: () => void
     onExportCompanyXLSX?: (company: string) => void
     onExportRadios?: () => void
@@ -43,6 +44,7 @@ interface ReportFiltersProps {
     isExporting: boolean
     credenciais: any[]
     participantes: any[]
+    eventName: string
 }
 
 export function ReportFilters({
@@ -68,24 +70,29 @@ export function ReportFilters({
     onPreview,
     isExporting,
     credenciais,
-    participantes
+    participantes,
+    eventName
 }: ReportFiltersProps) {
     const [companyOpen, setCompanyOpen] = useState(false)
     const [dayOpen, setDayOpen] = useState(false)
     const [credentialOpen, setCredentialOpen] = useState(false)
     const [functionOpen, setFunctionOpen] = useState(false)
     const [showColumnDialog, setShowColumnDialog] = useState(false)
+    const [showTitleDialog, setShowTitleDialog] = useState(false)
     const [pendingExportType, setPendingExportType] = useState<'all' | 'company' | null>(null)
+    const [pendingExportConfig, setPendingExportConfig] = useState<ExportConfig | null>(null)
 
     const selectedCompanyData = companies.find(c => c.empresa === selectedCompany)
     const displayValue = selectedCompany === "all" ? "Todas as Empresas" : selectedCompany
 
     // Obter ícone do período
-    const getPeriodIcon = (period?: 'diurno' | 'noturno') => {
+    const getPeriodIcon = (period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
         if (period === 'diurno') {
             return <Sun className="h-3 w-3 text-yellow-500" />
         } else if (period === 'noturno') {
             return <Moon className="h-3 w-3 text-blue-500" />
+        } else if (period === 'dia_inteiro') {
+            return <Calendar className="h-3 w-3 text-green-500" />
         }
         return null
     }
@@ -96,33 +103,111 @@ export function ReportFilters({
     // Obter tipos de credencial únicos
     const uniqueCredentialTypes = [...new Set(credenciais.map(c => c.nome).filter(Boolean))].sort()
 
+    // Gerar título e subtítulo pré-configurados
+    const getDefaultTitle = () => {
+        return `Relatório de Presença - ${eventName}`
+    }
+
+    const getDefaultSubtitle = () => {
+        const subtitles: Record<string, string> = {
+            geral: "Relatório Geral de Participantes",
+            checkin: "Relatório de Check-in",
+            checkin_com_pulseira: "Relatório de Check-in com Código da Pulseira", 
+            checkout: "Relatório de Check-out",
+            tempo_trabalho: "Relatório de Tempo de Trabalho",
+            sem_checkin: "Relatório Sem Check-in",
+            personalizado: "Relatório Personalizado",
+            empresa: "Relatório por Empresa",
+            credencial: "Relatório por Tipo de Credencial",
+            cadastrado_por: "Relatório por Cadastrado Por"
+        }
+        return subtitles[selectedReportType] || "Relatório de Participantes"
+    }
+
     const handleExportClick = (type: 'all' | 'company') => {
         setPendingExportType(type)
-        setShowColumnDialog(true)
+        
+        // Sempre mostrar editor de título primeiro
+        if (selectedReportType === 'personalizado') {
+            // Para personalizado, iremos abrir coluna dialog depois do título
+            setPendingExportConfig(null)
+        } else {
+            // Para tipos predefinidos, preparar config padrão
+            const defaultConfig = {
+                columns: [],
+                columnOrder: [],
+                columnWidths: []
+            }
+            setPendingExportConfig(defaultConfig)
+        }
+        
+        setShowTitleDialog(true)
+    }
+
+    const handleTitleConfirm = (customTitle: string, customSubtitle: string) => {
+        if (selectedReportType === 'personalizado' && !pendingExportConfig) {
+            // Para personalizado, mostrar dialog de colunas depois do título
+            setShowColumnDialog(true)
+            // Salvar título personalizado para usar depois
+            setPendingExportConfig({ 
+                columns: [], 
+                columnOrder: [], 
+                columnWidths: [],
+                customTitle,
+                customSubtitle 
+            } as any)
+        } else {
+            // Para tipos predefinidos ou se já tem config, exportar diretamente
+            const finalConfig = pendingExportConfig || {
+                columns: [],
+                columnOrder: [],
+                columnWidths: []
+            }
+            
+            if (pendingExportType === 'all') {
+                onExport(finalConfig, customTitle, customSubtitle)
+            } else if (pendingExportType === 'company') {
+                onExportCompany(finalConfig, customTitle, customSubtitle)
+            }
+            
+            // Reset states
+            setPendingExportType(null)
+            setPendingExportConfig(null)
+        }
     }
 
     const handleColumnSelection = (config: ExportConfig) => {
+        // Usar título personalizado se disponível
+        const customTitle = (pendingExportConfig as any)?.customTitle
+        const customSubtitle = (pendingExportConfig as any)?.customSubtitle
+        
         if (pendingExportType === 'all') {
-            onExport(config)
+            onExport(config, customTitle, customSubtitle)
         } else if (pendingExportType === 'company') {
-            onExportCompany(config)
+            onExportCompany(config, customTitle, customSubtitle)
         }
+        
+        // Reset states
         setPendingExportType(null)
+        setPendingExportConfig(null)
     }
 
     // Report types com base na especificação
     const reportTypes = [
-        { value: 'geral', label: 'Relatório Geral' },
+        { value: 'geral', label: 'Relatório Geral', description: 'Nome, CPF, função, pulseira (código), check-in e check-out. Lista TODOS independente de check-in/out' },
+        { value: 'checkin', label: 'Quem fez Check-in', description: 'Nome, CPF, função, check-in' },
+        { value: 'checkin_com_pulseira', label: 'Quem fez Check-in com Código da Pulseira', description: 'Nome, CPF, função, pulseira, check-in' },
+        { value: 'checkout', label: 'Quem fez Check-out', description: 'Nome, CPF, função, pulseira, check-in e check-out' },
+        { value: 'tempo_trabalho', label: 'Tempo de Trabalho', description: 'Nome, CPF, função, pulseira, check-in, check-out e tempo total' },
+        { value: 'sem_checkin', label: 'Sem Check-in', description: 'Nome, CPF, função. Lista apenas quem NÃO fez check-in' },
+        { value: 'personalizado', label: 'Personalizado', description: 'Escolha suas próprias colunas' },
         { value: 'empresa', label: 'Filtro por Empresa' },
-        { value: 'checkin', label: 'Quem fez Check-in' },
-        { value: 'checkout', label: 'Quem fez Check-out' },
-        { value: 'checkout_tempo', label: 'Quem fez Check-out (com tempo)' },
         { value: 'credencial', label: 'Tipo de Credencial' },
         { value: 'cadastrado_por', label: 'Cadastrado por' }
     ]
 
     // Mostrar filtros condicionais baseado no tipo de relatório
-    const showCompanyFilter = ['empresa', 'checkin', 'checkout', 'checkout_tempo', 'credencial', 'cadastrado_por'].includes(selectedReportType)
+    const showCompanyFilter = ['empresa', 'checkin', 'checkin_com_pulseira', 'checkout', 'tempo_trabalho', 'sem_checkin', 'personalizado', 'credencial', 'cadastrado_por'].includes(selectedReportType)
     const showCredentialFilter = selectedReportType === 'credencial'
     const showFunctionFilter = selectedReportType === 'credencial'
 
@@ -224,7 +309,7 @@ export function ReportFilters({
                                                         </Badge>
                                                         {getPeriodIcon(day.period)}
                                                         <span className="text-xs text-gray-600">
-                                                            {day.period === 'diurno' ? 'Diurno' : 'Noturno'}
+                                                            {day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -537,47 +622,20 @@ export function ReportFilters({
                             </Button>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Relatório Rádios</label>
-                            <Button
-                                onClick={() => onExportRadios?.()}
-                                disabled={isExporting}
-                                variant="outline"
-                                className="w-full"
-                            >
-                                <Radio className="h-4 w-4 mr-2" />
-                                PDF Rádios
-                            </Button>
-                        </div>
 
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Relatório Estacionamento</label>
-                            <Button
-                                onClick={() => onExportEstacionamento?.()}
-                                disabled={isExporting}
-                                variant="outline"
-                                className="w-full"
-                            >
-                                <Car className="h-4 w-4 mr-2" />
-                                PDF Veículos
-                            </Button>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Relatório Crachás</label>
-                            <Button
-                                onClick={() => onExportCrachas?.()}
-                                disabled={isExporting}
-                                variant="outline"
-                                className="w-full"
-                            >
-                                <CreditCard className="h-4 w-4 mr-2" />
-                                PDF Crachás
-                            </Button>
-                        </div>
                     </div>
                 </div>
             </CardContent>
+
+            {/* Title Editor Dialog */}
+            <TitleEditorDialog
+                open={showTitleDialog}
+                onOpenChange={setShowTitleDialog}
+                defaultTitle={getDefaultTitle()}
+                defaultSubtitle={getDefaultSubtitle()}
+                onConfirm={handleTitleConfirm}
+                isExporting={isExporting}
+            />
 
             {/* Column Selection Dialog */}
             <ColumnSelectionDialog

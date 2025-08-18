@@ -14,6 +14,11 @@ export interface ParticipantRecord {
     checkOut: string
     tempoTotal: string
     status: 'present' | 'checked_out' | 'no_checkin'
+    // Shift information for filtering
+    shift_id?: string
+    work_date?: string
+    work_stage?: string
+    work_period?: string
 }
 
 export interface CompanyStats {
