@@ -84,8 +84,8 @@ const UserSelectorModal = ({ isOpen, onClose }: UserSelectorModalProps) => {
 
         console.log('Login automático realizado:', operatorToLogin.nome, formatCPF(operatorToLogin.cpf))
         
-        // Redirecionar para eventos do operador
-        router.push('/operador/eventos')
+        // Abrir eventos do operador em nova guia
+        window.open('/operador/eventos', '_blank')
         onClose()
     }
 
@@ -96,8 +96,8 @@ const UserSelectorModal = ({ isOpen, onClose }: UserSelectorModalProps) => {
                 // Se já tem alguém logado, verificar se é o mesmo
                 if (currentOperator) {
                     if (currentOperator.id === selectedOperator.id) {
-                        // Mesmo operador, ir direto para eventos
-                        router.push('/operador/eventos')
+                        // Mesmo operador, ir direto para eventos em nova guia
+                        window.open('/operador/eventos', '_blank')
                         onClose()
                         return
                     } else {
@@ -134,7 +134,7 @@ const UserSelectorModal = ({ isOpen, onClose }: UserSelectorModalProps) => {
     }
 
     const handleGoToEvents = () => {
-        router.push('/operador/eventos')
+        window.open('/operador/eventos', '_blank')
         onClose()
     }
 
