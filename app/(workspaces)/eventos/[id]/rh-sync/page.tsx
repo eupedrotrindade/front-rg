@@ -163,7 +163,7 @@ export default function RHSyncPage() {
       const syncData = prepareSyncData()
 
       // Aqui você implementaria a chamada para sua API/webhook do sistema RH
-      const response = await fetch(`http://localhost:3334/colaborador/import/sync`, {
+      const response = await fetch(`https://rg-new-backend.rkwxxj.easypanel.host/colaborador/import/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
