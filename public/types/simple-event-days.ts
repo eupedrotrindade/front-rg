@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Nova estrutura simplificada para dias de evento
 
 export interface SimpleEventDay {

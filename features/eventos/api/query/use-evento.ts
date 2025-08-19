@@ -2,17 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Event } from "@/features/eventos/types";
 import { getEvent } from "../../actions/get-event";
 
-interface UseEventoParams {
-  id: string;
-}
-
-export const useEvento = ({ id }: UseEventoParams) => {
+export const useEvento = (eventId: string) => {
   return useQuery<Event | null>({
-    queryKey: ["evento", id],
+    queryKey: ["evento", eventId],
     queryFn: async () => {
-      const data = await getEvent(id);
+      const data = await getEvent(eventId);
       return data || null;
     },
-    enabled: !!id, // Só executa a query se o ID estiver presente
+    enabled: !!eventId, // Só executa a query se o ID estiver presente
   });
 };

@@ -25,7 +25,8 @@ import {
     ChevronDown,
     ChevronUp,
     FileText,
-    BadgeIcon
+    BadgeIcon,
+    RefreshCcw
 } from 'lucide-react'
 
 interface EventSidebarProps {
@@ -115,7 +116,11 @@ const EventSidebar = ({
             href: `/eventos/${eventId}/relatorio2`,
             icon: BarChart3,
             description: 'Relatórios e análises'
-        }        // {
+
+        }
+        ,
+        { name: "RG sincronização", href: `/eventos/${eventId}/rg-sync`, icon: RefreshCcw, description: 'Sincronização de dados CRED - RH' }
+        // {
         //     name: 'Configurações',
         //     href: `/eventos/${eventId}/configuracoes`,
         //     icon: Settings,

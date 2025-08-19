@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Home, History, ChevronDown, ChevronRight, Trello, Users, UserCog, Calendar, ImageIcon, Ticket, Building } from "lucide-react";
+import { Home, History, ChevronDown, ChevronRight, Trello, Users, UserCog, Calendar, ImageIcon, Ticket, Building, RefreshCcw } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "../ui/badge";
@@ -31,7 +31,8 @@ const menu: MenuItem[] = [
     { label: "Galeria", href: "/dashboard/gallery", icon: ImageIcon },
     { label: "Histórico", href: "/dashboard/event-histories", icon: History },
     { label: "Histórico OPERADORES", href: "/dashboard/operator-actions-history", icon: History },
-    { label: "Relatorio", href: "/dashboard/relatorio", icon: Trello }
+    { label: "Relatorio", href: "/dashboard/relatorio", icon: Trello },
+    { label: "RG sincronização", href: "/", icon: RefreshCcw }
 ];
 
 const Sidebar = () => {
