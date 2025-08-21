@@ -17,14 +17,13 @@ export const useOperatorsByEvent = ({
 }: UseOperatorsByEventParams) => {
   const { data: allOperators = [], isLoading, error } = useOperators();
 
-  // Filtrar operadores por evento
+  // Filtrar operadores por evento (incluindo ativos e desativados)
   const filteredOperators = allOperators.filter((operator) => {
-    // Verificar se o operador está associado ao evento
+    // Verificar se o operador está associado ao evento (ativos)
     const eventIds =
       operator.id_events?.split(",").map((id: string) => id.trim()) || [];
     
-    // Verificar se está associado ao evento (com ou sem data específica)
-    const isAssociatedWithEvent = eventIds.some((eventAssignment: string) => {
+    const isActiveInEvent = eventIds.some((eventAssignment: string) => {
       // Se contém ":", significa que tem data específica (formato: eventId:date)
       if (eventAssignment.includes(":")) {
         const [eventIdFromAssignment] = eventAssignment.split(":");
@@ -33,6 +32,22 @@ export const useOperatorsByEvent = ({
       // Se não contém ":", é o formato antigo (apenas eventId)
       return eventAssignment === eventId;
     });
+
+    // Verificar se o operador está desativado temporariamente no evento
+    const deactivatedEventIds =
+      operator.id_events_desativados?.split(",").map((id: string) => id.trim()) || [];
+    
+    const isDeactivatedInEvent = deactivatedEventIds.some((eventAssignment: string) => {
+      // Se contém ":", significa que tem data específica (formato: eventId:date)
+      if (eventAssignment.includes(":")) {
+        const [eventIdFromAssignment] = eventAssignment.split(":");
+        return eventIdFromAssignment === eventId;
+      }
+      // Se não contém ":", é o formato antigo (apenas eventId)
+      return eventAssignment === eventId;
+    });
+
+    const isAssociatedWithEvent = isActiveInEvent || isDeactivatedInEvent;
 
     // Aplicar filtro de busca se fornecido
     if (search) {

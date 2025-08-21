@@ -24,6 +24,7 @@ import type { Operator } from "@/features/operadores/types"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useQueryClient } from "@tanstack/react-query"
+import { useDefaultPassword } from "@/features/configuracoes/api/query/use-configuracoes-gerais"
 
 export default function OperadoresPage() {
     const params = useParams()
@@ -83,6 +84,16 @@ export default function OperadoresPage() {
     useEffect(() => {
         console.log("🔍 Estado selectedOperators atualizado:", selectedOperators)
     }, [selectedOperators])
+    
+    // Hook para buscar senha padrão das configurações (DEVE vir antes do useEffect que a usa)
+    const { data: defaultPassword, isLoading: loadingDefaultPassword } = useDefaultPassword()
+
+    // Definir senha padrão quando carregada
+    useEffect(() => {
+        if (defaultPassword && !createForm.senha) {
+            setCreateForm(prev => ({ ...prev, senha: defaultPassword }))
+        }
+    }, [defaultPassword, createForm.senha])
 
     // Verificar CPF quando o campo é alterado
     useEffect(() => {
@@ -508,49 +519,35 @@ export default function OperadoresPage() {
         setDeleteDialogOpen(true)
     }
 
-    // Função para alternar acesso do operador ao evento
+    // Função para alternar acesso do operador ao evento (ativação/desativação temporária)
     const toggleEventAccess = async (operador: Operator) => {
         try {
             setLoading(true)
 
-            // Obter o status atual do operador para este evento
-            const currentAssignments: string[] = operador.id_events ? operador.id_events.split(',') : []
-            const eventAssignments = currentAssignments.filter((assignment: string) => assignment.includes(`${eventId}:`))
-            const otherAssignments = currentAssignments.filter((assignment: string) => !assignment.includes(`${eventId}:`))
+            console.log(`🔄 Alternando status de acesso do operador ${operador.nome} no evento ${eventId}`)
 
-            let newAssignments: string[]
-            let actionMessage: string
-            if (eventAssignments.length > 0) {
-                // Se tem atribuições para este evento, remover (desativar acesso)
-                newAssignments = otherAssignments
-                actionMessage = "Acesso ao evento desativado"
-            } else {
-                // Se não tem atribuições, precisa adicionar pelo menos uma (ativar acesso)
-                // Vamos adicionar o primeiro turno disponível como padrão
-                const eventDays = getEventDays()
-                if (eventDays.length > 0) {
-                    const firstShift = eventDays[0]
-                    newAssignments = [...otherAssignments, `${eventId}:${firstShift.id}`]
-                    actionMessage = "Acesso ao evento ativado"
-                } else {
-                    toast.error("Não há turnos disponíveis para este evento")
-                    return
-                }
-            }
-
-            await apiClient.put(`/operadores/${operador.id}`, {
-                nome: operador.nome,
-                cpf: operador.cpf,
-                senha: operador.senha,
-                id_events: newAssignments.join(',')
+            const response = await apiClient.post(`/operadores/toggle-event-status`, {
+                operatorId: operador.id,
+                eventId: eventId,
+                performedBy: 'operador-interface'
             })
 
-            toast.success(actionMessage)
+            console.log(`✅ Status alterado:`, response.data)
+
+            toast.success(response.data.message)
 
             // Forçar atualização dos dados
             await forceRefreshData()
         } catch (error: any) {
-            toast.error("Erro ao alterar acesso do operador")
+            console.error('❌ Erro ao alterar status do operador:', error)
+            
+            if (error?.response?.status === 400) {
+                toast.error(error.response.data.error || "Operador não possui assignments para este evento")
+            } else if (error?.response?.status === 404) {
+                toast.error("Operador não encontrado")
+            } else {
+                toast.error("Erro ao alterar status do operador")
+            }
         } finally {
             setLoading(false)
         }
@@ -643,7 +640,7 @@ export default function OperadoresPage() {
 
             toast.success("Operador criado com sucesso!")
             setCreateDialogOpen(false)
-            setCreateForm({ nome: "", cpf: "", senha: "" })
+            setCreateForm({ nome: "", cpf: "", senha: defaultPassword || "" })
             setCpfExists(false)
 
             // Forçar atualização dos dados após criação
@@ -1019,42 +1016,85 @@ export default function OperadoresPage() {
 
     const getInitials = (nome: string) => nome.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 
-    // Função para verificar se o operador tem acesso a este evento
+    // Função para verificar se o operador tem acesso ativo a este evento (não desativado)
     const hasEventAccess = (operador: Operator) => {
         if (!operador.id_events) return false
         const currentAssignments = operador.id_events.split(',')
         return currentAssignments.some((assignment: string) => assignment.includes(`${eventId}:`))
     }
 
-    // Função para extrair os turnos de atribuição do operador
+    // Função para verificar se o operador existe neste evento (ativo ou desativado)
+    const hasEventAssignment = (operador: Operator) => {
+        const hasActive = operador.id_events ? 
+            operador.id_events.split(',').some((assignment: string) => assignment.includes(`${eventId}:`)) : false
+        const hasDeactivated = operador.id_events_desativados ? 
+            operador.id_events_desativados.split(',').some((assignment: string) => assignment.includes(`${eventId}:`)) : false
+        return hasActive || hasDeactivated
+    }
+
+    // Função para extrair os turnos de atribuição do operador (ativos e desativados)
     const getOperatorAssignmentShifts = (operator: Operator) => {
-        if (!operator?.id_events) return []
+        const eventShifts = getEventDays()
+        const assignedShifts: any[] = []
 
         try {
-            const eventAssignments = operator.id_events.split(',').map((assignment: string) => assignment.trim())
-            const eventShifts = getEventDays()
-            const assignedShifts: any[] = []
+            // Processar turnos ativos
+            if (operator?.id_events) {
+                const eventAssignments = operator.id_events.split(',').map((assignment: string) => assignment.trim())
+                
+                for (const assignment of eventAssignments) {
+                    if (assignment.includes(':')) {
+                        const [eventIdFromAssignment, shiftOrDate] = assignment.split(':')
+                        if (eventIdFromAssignment === eventId && shiftOrDate) {
+                            const shiftId = shiftOrDate.trim()
 
-            for (const assignment of eventAssignments) {
-                if (assignment.includes(':')) {
-                    const [eventIdFromAssignment, shiftOrDate] = assignment.split(':')
-                    if (eventIdFromAssignment === eventId && shiftOrDate) {
-                        const shiftId = shiftOrDate.trim()
+                            // Procurar pelo shift ID no novo formato
+                            const shift = eventShifts.find(s => s.id === shiftId)
+                            if (shift) {
+                                assignedShifts.push({ ...shift, status: 'active' })
+                            } else {
+                                // Fallback para formato antigo (apenas data)
+                                const { dateFormatted } = parseShiftId(shiftId)
+                                assignedShifts.push({
+                                    id: shiftId,
+                                    label: `${dateFormatted} (Data simples)`,
+                                    date: dateFormatted,
+                                    type: 'legacy',
+                                    period: 'diurno',
+                                    status: 'active'
+                                })
+                            }
+                        }
+                    }
+                }
+            }
 
-                        // Procurar pelo shift ID no novo formato
-                        const shift = eventShifts.find(s => s.id === shiftId)
-                        if (shift) {
-                            assignedShifts.push(shift)
-                        } else {
-                            // Fallback para formato antigo (apenas data)
-                            const { dateFormatted } = parseShiftId(shiftId)
-                            assignedShifts.push({
-                                id: shiftId,
-                                label: `${dateFormatted} (Data simples)`,
-                                date: dateFormatted,
-                                type: 'legacy',
-                                period: 'diurno'
-                            })
+            // Processar turnos desativados
+            if (operator?.id_events_desativados) {
+                const deactivatedAssignments = operator.id_events_desativados.split(',').map((assignment: string) => assignment.trim())
+                
+                for (const assignment of deactivatedAssignments) {
+                    if (assignment.includes(':')) {
+                        const [eventIdFromAssignment, shiftOrDate] = assignment.split(':')
+                        if (eventIdFromAssignment === eventId && shiftOrDate) {
+                            const shiftId = shiftOrDate.trim()
+
+                            // Procurar pelo shift ID no novo formato
+                            const shift = eventShifts.find(s => s.id === shiftId)
+                            if (shift) {
+                                assignedShifts.push({ ...shift, status: 'deactivated' })
+                            } else {
+                                // Fallback para formato antigo (apenas data)
+                                const { dateFormatted } = parseShiftId(shiftId)
+                                assignedShifts.push({
+                                    id: shiftId,
+                                    label: `${dateFormatted} (Data simples - Desativado)`,
+                                    date: dateFormatted,
+                                    type: 'legacy',
+                                    period: 'diurno',
+                                    status: 'deactivated'
+                                })
+                            }
                         }
                     }
                 }
@@ -1346,7 +1386,7 @@ export default function OperadoresPage() {
                                                     size="sm"
                                                     onClick={() => toggleEventAccess(operador)}
                                                     disabled={loading}
-                                                    title={hasEventAccess(operador) ? "Desativar acesso ao evento" : "Ativar acesso ao evento"}
+                                                    title={hasEventAccess(operador) ? "Desativar temporariamente do evento" : "Ativar no evento"}
                                                     className={hasEventAccess(operador) ? "text-green-600 border-green-200 hover:bg-green-50" : "text-red-600 border-red-200 hover:bg-red-50"}
                                                 >
                                                     {hasEventAccess(operador) ? <Power className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -1389,7 +1429,13 @@ export default function OperadoresPage() {
                                                                     <div className="text-xs font-medium text-gray-700 mb-1">{date}</div>
                                                                     <div className="flex flex-wrap gap-1">
                                                                         {(Array.isArray(shifts) ? shifts : []).map((shift: any, index: number) => (
-                                                                            <Badge key={index} variant="outline" className="text-blue-600 border-blue-200 text-xs">
+                                                                            <Badge 
+                                                                                key={index} 
+                                                                                variant="outline" 
+                                                                                className={shift.status === 'deactivated' 
+                                                                                    ? "text-gray-500 border-gray-300 bg-gray-100 text-xs" 
+                                                                                    : "text-blue-600 border-blue-200 text-xs"}
+                                                                            >
                                                                                 <div className="flex items-center gap-1">
                                                                                     {getPeriodIcon(shift.period)}
                                                                                     <span>
@@ -1401,6 +1447,9 @@ export default function OperadoresPage() {
                                                                                     <span>
                                                                                         {shift.period === 'diurno' ? 'Dia' : shift.period === 'noturno' ? 'Noite' : 'DI'}
                                                                                     </span>
+                                                                                    {shift.status === 'deactivated' && (
+                                                                                        <span className="text-xs opacity-75">(Desativ.)</span>
+                                                                                    )}
                                                                                 </div>
                                                                             </Badge>
                                                                         ))}
@@ -1670,10 +1719,24 @@ export default function OperadoresPage() {
                                             return (
                                                 <div className="space-y-2">
                                                     {assignmentShifts.map((shift, index) => (
-                                                        <div key={index} className="flex items-center gap-2 p-2 bg-blue-50 rounded border border-blue-200">
+                                                        <div 
+                                                            key={index} 
+                                                            className={`flex items-center gap-2 p-2 rounded border ${
+                                                                shift.status === 'deactivated' 
+                                                                    ? 'bg-gray-50 border-gray-200' 
+                                                                    : 'bg-blue-50 border-blue-200'
+                                                            }`}
+                                                        >
                                                             {getPeriodIcon(shift.period)}
-                                                            <span className="text-sm text-blue-800">
+                                                            <span className={`text-sm ${
+                                                                shift.status === 'deactivated' 
+                                                                    ? 'text-gray-600' 
+                                                                    : 'text-blue-800'
+                                                            }`}>
                                                                 {shift.label}
+                                                                {shift.status === 'deactivated' && (
+                                                                    <span className="text-xs text-gray-500 ml-2">(Desativado)</span>
+                                                                )}
                                                             </span>
                                                         </div>
                                                     ))}
@@ -1925,16 +1988,20 @@ export default function OperadoresPage() {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-                                <Input
-                                    type="password"
-                                    value={createForm.senha}
-                                    onChange={(e) => setCreateForm(prev => ({ ...prev, senha: e.target.value }))}
-                                />
+                                <div className="bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-600">
+                                    {loadingDefaultPassword ? (
+                                        "Carregando senha padrão..."
+                                    ) : defaultPassword ? (
+                                        "Será usada a senha padrão configurada automaticamente"
+                                    ) : (
+                                        "Nenhuma senha padrão configurada"
+                                    )}
+                                </div>
                             </div>
                             <div className="flex justify-end gap-2">
                                 <Button variant="outline" onClick={() => {
                                     setCreateDialogOpen(false)
-                                    setCreateForm({ nome: "", cpf: "", senha: "" })
+                                    setCreateForm({ nome: "", cpf: "", senha: defaultPassword || "" })
                                     setCpfExists(false)
                                 }}>
                                     Cancelar

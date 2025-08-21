@@ -9,6 +9,7 @@ import * as XLSX from "xlsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { Operator } from "@/features/operadores/types";
+import { useDefaultPassword } from "@/features/configuracoes/api/query/use-configuracoes-gerais";
 
 interface OperatorFormProps {
     onSuccess?: () => void;
@@ -42,6 +43,16 @@ const OperatorForm = ({ onSuccess }: OperatorFormProps) => {
     const [massLoading, setMassLoading] = useState(false);
     const [importedOperators, setImportedOperators] = useState<{ nome: string; senha: string; cpf?: string }[]>([]);
     const [massEvents, setMassEvents] = useState<string[]>([]);
+    
+    // Hook para buscar senha padrão das configurações
+    const { data: defaultPassword, isLoading: loadingDefaultPassword } = useDefaultPassword();
+
+    // Definir senha padrão quando carregada
+    useEffect(() => {
+        if (defaultPassword && !senha) {
+            setSenha(defaultPassword);
+        }
+    }, [defaultPassword, senha]);
 
     useEffect(() => {
         const carregarEventos = async () => {
@@ -88,7 +99,7 @@ const OperatorForm = ({ onSuccess }: OperatorFormProps) => {
             });
             setNome("");
             setCpf("");
-            setSenha("");
+            setSenha(defaultPassword || ""); // Reset para a senha padrão
             setEventosSelecionados([]);
             if (onSuccess) onSuccess();
         } catch {
@@ -130,10 +141,10 @@ const OperatorForm = ({ onSuccess }: OperatorFormProps) => {
     // Importar operadores em massa (apenas armazena para revisão)
     const handleImport = (data: Record<string, unknown>[]) => {
         const ops = data
-            .filter(row => row.nome && row.senha)
+            .filter(row => row.nome) // Só nome é obrigatório, senha será padrão se não fornecida
             .map(row => ({
                 nome: String(row.nome),
-                senha: String(row.senha),
+                senha: row.senha ? String(row.senha) : (defaultPassword || "123456"), // Usar senha padrão se não fornecida
                 cpf: row.cpf ? String(row.cpf) : undefined,
             }));
         setImportedOperators(ops);
@@ -209,14 +220,25 @@ const OperatorForm = ({ onSuccess }: OperatorFormProps) => {
                     disabled={loading}
                     maxLength={14}
                 />
-                <Input
-                    placeholder="Senha"
-                    type="password"
-                    value={senha}
-                    onChange={e => setSenha(e.target.value)}
-                    required
-                    disabled={loading}
-                />
+                <div>
+                    <Input
+                        placeholder="Senha"
+                        type="password"
+                        value={senha}
+                        onChange={e => setSenha(e.target.value)}
+                        required
+                        disabled={loading || loadingDefaultPassword}
+                    />
+                    <div className="text-sm text-gray-400 mt-1">
+                        {loadingDefaultPassword ? (
+                            "Carregando senha padrão..."
+                        ) : defaultPassword ? (
+                            <span>Senha padrão configurada: <span className="font-mono text-white">{defaultPassword}</span></span>
+                        ) : (
+                            "Nenhuma senha padrão configurada"
+                        )}
+                    </div>
+                </div>
                 <div>
                     <label className="block text-sm font-medium mb-1">Eventos vinculados</label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded p-2 bg-zinc-950">
@@ -265,8 +287,9 @@ const OperatorForm = ({ onSuccess }: OperatorFormProps) => {
                         <DialogDescription>
                             <ul className="list-disc pl-5 space-y-1 text-sm mt-2">
                                 <li>O arquivo deve ser Excel (.xlsx ou .xls).</li>
-                                <li>Colunas obrigatórias: <b>nome</b>, <b>email</b>, <b>senha</b>.</li>
-                                <li>Coluna opcional: <b>cpf</b> (formato 000.000.000-00).</li>
+                                <li>Coluna obrigatória: <b>nome</b>.</li>
+                                <li>Colunas opcionais: <b>cpf</b> (formato 000.000.000-00), <b>senha</b>.</li>
+                                <li>Se a senha não for fornecida, será usada a senha padrão configurada: <b>{defaultPassword || "carregando..."}</b></li>
                                 <li>Após importar, selecione os eventos que serão vinculados a todos os operadores.</li>
                                 <li>O campo <b>clerk_id_responsable</b> será preenchido automaticamente com seu usuário.</li>
                             </ul>
