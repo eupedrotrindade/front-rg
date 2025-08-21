@@ -29,6 +29,7 @@ import {
     useCheckOut,
 } from '@/features/eventos/api/mutation/use-check-operations'
 import { useDeleteEventAttendance } from '@/features/eventos/api/mutation/use-delete-event-attendance'
+import { useCreateEventParticipant } from '@/features/eventos/api/mutation/use-create-event-participant'
 import { useDeleteEventParticipant } from '@/features/eventos/api/mutation/use-delete-event-participant'
 import { useDeleteParticipantFromShift } from '@/features/eventos/api/mutation/use-delete-participant-from-shift'
 import { useDeleteParticipantAllShifts } from '@/features/eventos/api/mutation/use-delete-participant-all-shifts'
@@ -100,6 +101,8 @@ export default function EventoDetalhesPage() {
             shiftId: selectedDay,
         })
 
+    const { mutate: createParticipant, isPending: isCreating } =
+        useCreateEventParticipant()
     const { mutate: deleteParticipant, isPending: isDeleting } =
         useDeleteEventParticipant()
     const { mutate: deleteFromShift, isPending: isDeletingFromShift } =
@@ -1587,27 +1590,59 @@ export default function EventoDetalhesPage() {
         setShowReplicateDialog(true)
     }
 
-    // Função para replicar staff rapidamente
+    // Função para replicar staff rapidamente - versão melhorada com suporte a turnos
     const handleReplicateStaff = async () => {
-        if (!replicateSourceDay) return
+        if (!replicateSourceDay || !selectedDay) return
+
+        console.log('🚀 INICIANDO REPLICAÇÃO DE STAFF');
+        console.log('📋 Parâmetros iniciais:', {
+            turnoAtual: selectedDay,
+            turnoDestino: replicateSourceDay,
+            eventoId: params.id
+        });
 
         setReplicatingStaff(replicateSourceDay)
         setShowReplicateDialog(false)
 
         try {
-            // Buscar todos os participantes que trabalham no dia atual (origem)
-            const participantsFromCurrentDay = participantesDoDia
+            // Extrair informações detalhadas do turno de origem e destino
+            const sourceShiftInfo = parseShiftId(selectedDay) // Turno atual (origem)
+            const targetShiftInfo = parseShiftId(replicateSourceDay) // Turno para replicar (destino)
 
-            console.log('Dia de origem:', selectedDay)
-            console.log('Dia de destino:', replicateSourceDay)
-            console.log(
-                'Participantes encontrados no dia de origem:',
-                participantsFromCurrentDay,
-            )
+            // Validar se os turnos são válidos
+            if (!sourceShiftInfo.dateISO || !targetShiftInfo.dateISO) {
+                toast.error('Formato de turno inválido. Verifique as datas selecionadas.')
+                setReplicatingStaff(null)
+                return
+            }
+
+            // Buscar todos os participantes que trabalham no turno atual (origem específica)
+            const participantsFromCurrentShift = participantesDoDia
+
+            console.log('🔄 Iniciando replicação de turno:')
+            console.log('📅 Turno de origem:', {
+                shiftId: selectedDay,
+                data: sourceShiftInfo.dateFormatted,
+                estágio: sourceShiftInfo.stage,
+                período: sourceShiftInfo.period
+            })
+            console.log('🎯 Turno de destino:', {
+                shiftId: replicateSourceDay,
+                data: targetShiftInfo.dateFormatted,
+                estágio: targetShiftInfo.stage,
+                período: targetShiftInfo.period
+            })
+            console.log('👥 Participantes encontrados:', participantsFromCurrentShift.length)
+
+            if (participantsFromCurrentShift.length === 0) {
+                toast.warning('Nenhum participante encontrado no turno de origem.')
+                setReplicatingStaff(null)
+                return
+            }
 
             // Inicializar dados de progresso
             setProgressData({
-                total: participantsFromCurrentDay.length,
+                total: participantsFromCurrentShift.length,
                 current: 0,
                 processed: 0,
                 currentParticipant: '',
@@ -1615,93 +1650,155 @@ export default function EventoDetalhesPage() {
             setShowProgressDialog(true)
 
             let processedCount = 0
+            let successCount = 0
 
-            // Para cada participante do dia atual, adicionar ao dia de destino
-            for (let i = 0; i < participantsFromCurrentDay.length; i++) {
-                const participant = participantsFromCurrentDay[i]
-                const currentParticipantName =
-                    participant.name || 'Participante sem nome'
 
-                // Atualizar progresso
+            // Para cada participante do turno atual, replicar para o turno de destino
+            for (let i = 0; i < participantsFromCurrentShift.length; i++) {
+                const participant = participantsFromCurrentShift[i]
+                const currentParticipantName = participant.name || 'Participante sem nome'
+
+                // Atualizar progresso visual
                 setProgressData(prev => ({
                     ...prev,
                     current: i + 1,
                     currentParticipant: currentParticipantName,
                 }))
 
-                const currentDaysWork = participant.daysWork || []
-                const alreadyWorksInDestination =
-                    currentDaysWork.includes(replicateSourceDay)
+                // Verificar se o participante já existe no turno de destino
+                // Para isso, precisamos verificar se já existe uma cópia deste participante (mesmo CPF) no turno de destino
+                console.log(`🔍 Verificando se ${participant.name} (CPF: ${participant.cpf}) já existe no turno de destino`)
 
-                if (alreadyWorksInDestination) {
-                    // Se já trabalha no dia de destino, apenas limpar dados de check-in/check-out
-                    console.log(
-                        `Resetando dados para ${participant.name} no dia ${replicateSourceDay}`,
-                    )
-                    processedCount++
-                    setProgressData(prev => ({ ...prev, processed: processedCount }))
-                } else {
-                    // Adicionar o dia de destino aos dias de trabalho
-                    const updatedDaysWork = [...currentDaysWork, replicateSourceDay]
+                // Vamos sempre criar uma nova cópia para o turno de destino
+                try {
+                    console.log(`➕ Criando cópia de ${participant.name} para o turno de destino:`, {
+                        origem: selectedDay,
+                        destino: replicateSourceDay,
+                        cpf: participant.cpf,
+                        participanteOriginal: participant.id
+                    })
 
-                    try {
-                        // Atualizar participante via API - apenas dados básicos
-                        console.log(
-                            `Adicionando dia ${replicateSourceDay} para ${participant.name}`,
-                        )
+                    // Criar dados para novo participante (cópia) no turno de destino
+                    const newParticipantData = {
+                        eventId: participant.eventId || String(params.id),
+                        name: participant.name || '',
+                        cpf: participant.cpf || '',
+                        role: participant.role || '',
+                        company: participant.company || '',
+                        email: participant.email || undefined,
+                        phone: participant.phone || undefined,
+                        credentialId: participant.credentialId || undefined,
+                        shirtSize: participant.shirtSize || undefined,
+                        notes: participant.notes || undefined,
+                        // Criar apenas para o turno de destino
+                        daysWork: [replicateSourceDay],
+                        // Campos adicionais para compatibilidade
+                        shiftId: replicateSourceDay,
+                        workDate: targetShiftInfo.dateISO,
+                        workStage: targetShiftInfo.stage,
+                        workPeriod: targetShiftInfo.period,
+                        performedBy: 'replicacao-staff'
+                    }
 
-                        const updateData = {
-                            id: participant.id,
-                            eventId: participant.eventId || String(params.id),
-                            name: participant.name || '',
-                            cpf: participant.cpf || '',
-                            role: participant.role || '',
-                            company: participant.company || '',
-                            credentialId: participant.credentialId || undefined,
-                            daysWork: updatedDaysWork,
-                        }
+                    // LOG: Dados sendo enviados para o backend
+                    console.log('🔄 CRIANDO NOVO PARTICIPANTE NO BACKEND:', {
+                        participante: participant.name,
+                        cpfOriginal: participant.cpf,
+                        eventoId: newParticipantData.eventId,
+                        turnoOrigem: selectedDay,
+                        turnoDestino: replicateSourceDay,
+                        daysWorkNovo: newParticipantData.daysWork,
+                        dadosCompletos: newParticipantData
+                    });
 
-                        console.log('Dados para atualização:', updateData)
-
-                        updateParticipant(updateData, {
-                            onSuccess: () => {
-                                console.log(`✅ ${participant.name} atualizado com sucesso`)
+                    // Criar novo participante via API
+                    await new Promise((resolve, reject) => {
+                        console.log('📤 Chamando createParticipant para:', participant.name);
+                        createParticipant(newParticipantData, {
+                            onSuccess: (response) => {
+                                console.log(`✅ NOVO PARTICIPANTE CRIADO COM SUCESSO para ${participant.name}:`, response);
+                                console.log(`✅ ${participant.name} copiado com sucesso para ${targetShiftInfo.dateFormatted} (${targetShiftInfo.stage} - ${targetShiftInfo.period})`)
+                                successCount++
                                 processedCount++
                                 setProgressData(prev => ({
                                     ...prev,
                                     processed: processedCount,
                                 }))
+                                resolve(true)
                             },
                             onError: error => {
-                                console.error(
-                                    `❌ Erro ao atualizar ${participant.name}:`,
-                                    error,
-                                )
+                                console.error(`❌ ERRO AO CRIAR NOVO PARTICIPANTE para ${participant.name}:`, error);
+                                console.error(`❌ Detalhes completos do erro:`, {
+                                    participante: participant.name,
+                                    cpfOriginal: participant.cpf,
+                                    dadosEnviados: newParticipantData,
+                                    erro: error
+                                });
+                                processedCount++
+                                setProgressData(prev => ({
+                                    ...prev,
+                                    processed: processedCount,
+                                }))
+                                reject(error)
                             },
                         })
+                    })
 
-                        // Simular delay para mostrar progresso
-                        await new Promise(resolve => setTimeout(resolve, 500))
-                    } catch (error) {
-                        console.error(`Erro ao atualizar ${participant.name}:`, error)
-                    }
+                    // Delay controlado para não sobrecarregar a API
+                    await new Promise(resolve => setTimeout(resolve, 250))
+                } catch (error) {
+                    console.error(`💥 Erro ao criar cópia de ${participant.name}:`, error)
+                    processedCount++
+                    setProgressData(prev => ({
+                        ...prev,
+                        processed: processedCount,
+                    }))
                 }
             }
 
-            // Fechar popup de progresso após delay
+            // Finalizar processo com relatório detalhado
             setTimeout(() => {
                 setShowProgressDialog(false)
                 setReplicatingStaff(null)
 
-                toast.success(
-                    `Replicação concluída! ${processedCount} participantes processados para ${replicateSourceDay}.`,
-                )
-            }, 1000)
+                // Exibir resultado detalhado
+                const sourceDescription = `${sourceShiftInfo.dateFormatted} (${sourceShiftInfo.stage.toUpperCase()} - ${sourceShiftInfo.period === 'diurno' ? 'Diurno' : 'Noturno'})`
+                const targetDescription = `${targetShiftInfo.dateFormatted} (${targetShiftInfo.stage.toUpperCase()} - ${targetShiftInfo.period === 'diurno' ? 'Diurno' : 'Noturno'})`
+
+                if (successCount > 0) {
+                    toast.success(
+                        `🎉 Replicação concluída!\n` +
+                        `📊 ${successCount} cópias de participantes criadas\n` +
+                        `📅 De: ${sourceDescription}\n` +
+                        `🎯 Para: ${targetDescription}`
+                    )
+                } else {
+                    toast.warning('Nenhuma cópia de participante foi criada. Verifique os dados.')
+                }
+
+                // Invalidar queries para atualizar todas as visualizações
+                queryClient.invalidateQueries({
+                    queryKey: ['event-participants-by-event', String(params.id)]
+                })
+                queryClient.invalidateQueries({
+                    queryKey: ['event-participants-grouped', String(params.id)]
+                })
+                queryClient.invalidateQueries({
+                    queryKey: ['event-participants-by-shift', String(params.id), replicateSourceDay]
+                })
+                queryClient.invalidateQueries({
+                    queryKey: ['event-participants-by-shift', String(params.id), selectedDay]
+                })
+
+            }, 800)
         } catch (error) {
-            console.error('Erro na replicação:', error)
+            console.error('💥 Erro geral na replicação:', error)
             setShowProgressDialog(false)
             setReplicatingStaff(null)
-            toast.error('Erro ao replicar participantes')
+
+            // Mensagem de erro mais descritiva
+            const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+            toast.error(`Erro ao replicar participantes: ${errorMessage}`)
         }
     }
 
@@ -2162,49 +2259,119 @@ export default function EventoDetalhesPage() {
                 open={showReplicateDialog}
                 onOpenChange={setShowReplicateDialog}
             >
-                <AlertDialogContent className="bg-white text-black max-w-md">
+                <AlertDialogContent className="bg-white text-black max-w-lg">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Users className="h-5 w-5 text-green-600" />
-                            Replicar Participantes
+                            Replicar Participantes por Turno
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Escolha a nova data para onde os participantes serão replicados.
+                            Replique participantes do turno atual para outro turno específico, considerando data, período e estágio.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
 
                     <div className="space-y-4 py-4">
-                        {/* Seleção da nova data */}
+                        {/* Informações do Turno Atual (Origem) */}
+                        {selectedDay && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className="flex items-center gap-1">
+                                        <Users className="h-4 w-4 text-blue-600" />
+                                        <span className="text-sm font-medium text-blue-800">
+                                            Turno de Origem
+                                        </span>
+                                    </div>
+                                    {(() => {
+                                        const sourceInfo = parseShiftId(selectedDay)
+                                        return getPeriodIcon(sourceInfo.period)
+                                    })()}
+                                </div>
+                                {(() => {
+                                    const sourceInfo = parseShiftId(selectedDay)
+                                    return (
+                                        <div className="space-y-1">
+                                            <div className="text-xs text-blue-700 font-medium">
+                                                📅 {sourceInfo.dateFormatted} • {sourceInfo.stage.toUpperCase()} • {sourceInfo.period === 'diurno' ? 'Turno Diurno' : 'Turno Noturno'}
+                                            </div>
+                                            <div className="text-xs text-blue-600">
+                                                👥 {participantesDoDia.length} participante(s) serão replicados
+                                            </div>
+                                        </div>
+                                    )
+                                })()}
+                            </div>
+                        )}
+
+                        {/* Seleção do Turno de Destino */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Nova Data
+                                Turno de Destino
                             </label>
                             <select
                                 value={replicateSourceDay}
                                 onChange={e => setReplicateSourceDay(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
                             >
-                                <option value="">Selecione uma data</option>
-                                {getEventDays().map(day => (
-                                    <option key={day.id} value={day.id}>
-                                        {day.label}
-                                    </option>
-                                ))}
+                                <option value="">Selecione o turno de destino</option>
+                                {getEventDays()
+                                    .filter(day => day.id !== selectedDay) // Excluir o turno atual
+                                    .map(day => {
+                                        const dayInfo = parseShiftId(day.id)
+                                        const participantCount = getParticipantsCountByShift(day.id)
+                                        return (
+                                            <option key={day.id} value={day.id}>
+                                                {dayInfo.dateFormatted} • {dayInfo.stage.toUpperCase()} • {dayInfo.period === 'diurno' ? 'Diurno' : 'Noturno'} ({participantCount} participante(s) atuais)
+                                            </option>
+                                        )
+                                    })}
                             </select>
                         </div>
+
+                        {/* Preview do Turno de Destino */}
+                        {replicateSourceDay && (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className="flex items-center gap-1">
+                                        <Users className="h-4 w-4 text-green-600" />
+                                        <span className="text-sm font-medium text-green-800">
+                                            Turno de Destino
+                                        </span>
+                                    </div>
+                                    {(() => {
+                                        const targetInfo = parseShiftId(replicateSourceDay)
+                                        return getPeriodIcon(targetInfo.period)
+                                    })()}
+                                </div>
+                                {(() => {
+                                    const targetInfo = parseShiftId(replicateSourceDay)
+                                    const currentParticipants = getParticipantsCountByShift(replicateSourceDay)
+                                    return (
+                                        <div className="space-y-1">
+                                            <div className="text-xs text-green-700 font-medium">
+                                                🎯 {targetInfo.dateFormatted} • {targetInfo.stage.toUpperCase()} • {targetInfo.period === 'diurno' ? 'Turno Diurno' : 'Turno Noturno'}
+                                            </div>
+                                            <div className="text-xs text-green-600">
+                                                📊 {currentParticipants} participante(s) já cadastrados neste turno
+                                            </div>
+                                        </div>
+                                    )
+                                })()}
+                            </div>
+                        )}
 
                         {/* Informações sobre a replicação */}
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-2">
                                 <Users className="h-4 w-4 text-yellow-600" />
                                 <span className="text-sm font-medium text-yellow-800">
-                                    Atenção
+                                    Como funciona a replicação
                                 </span>
                             </div>
-                            <div className="text-xs text-yellow-700">
-                                Serão levados apenas: NOME, CPF, FUNÇÃO, EMPRESA e TIPO DE
-                                CREDENCIAL. Todos os dados de check-in/check-out serão limpos na
-                                nova data.
+                            <div className="text-xs text-yellow-700 space-y-1">
+                                <div>✅ <strong>Copiado:</strong> Nome, CPF, função, empresa e credencial</div>
+                                <div>🔄 <strong>Limpo:</strong> Dados de check-in/check-out (começam zerados)</div>
+                                <div>⏭️ <strong>Duplicados:</strong> Participantes já no turno destino são ignorados</div>
+                                <div>🎯 <strong>Precisão:</strong> Replicação específica por turno (data + período + estágio)</div>
                             </div>
                         </div>
                     </div>
@@ -2213,10 +2380,20 @@ export default function EventoDetalhesPage() {
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={handleReplicateStaff}
-                            disabled={!replicateSourceDay}
+                            disabled={!replicateSourceDay || participantesDoDia.length === 0}
                             className="bg-green-600 hover:bg-green-700"
                         >
-                            {replicatingStaff ? 'Replicando...' : 'Confirmar Replicação'}
+                            {replicatingStaff ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Replicando...
+                                </>
+                            ) : (
+                                <>
+                                    <Users className="w-4 h-4 mr-2" />
+                                    Confirmar Replicação
+                                </>
+                            )}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

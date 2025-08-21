@@ -56,7 +56,7 @@ apiClient.interceptors.response.use(
         response.config.url
       }`,
     )
-    // console.log('📦 Resposta da API:', response.data)
+    console.log('📦 Resposta da API:', response.data)
     return response
   },
   error => {

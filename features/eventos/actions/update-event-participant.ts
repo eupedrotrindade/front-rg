@@ -6,13 +6,27 @@ export const updateEventParticipant = async (
   participantData: Partial<EventParticipant>
 ): Promise<EventParticipant | null> => {
   try {
+    console.log("🔄 BACKEND ACTION - updateEventParticipant");
+    console.log("📨 Dados recebidos no backend action:", {
+      participantId: id,
+      dadosParaAtualizar: participantData,
+      endpoint: `/event-participants/${id}`
+    });
+
     const { data } = await apiClient.put<EventParticipant>(
       `/event-participants/${id}`,
       participantData
     );
+
+    console.log("✅ BACKEND ACTION - Resposta da API:", data);
     return data;
   } catch (error) {
-    console.error("Erro ao atualizar participante:", error);
+    console.error("❌ BACKEND ACTION - Erro ao atualizar participante:", error);
+    console.error("❌ Detalhes do erro:", {
+      participantId: id,
+      dadosEnviados: participantData,
+      erro: error
+    });
     return null;
   }
 };

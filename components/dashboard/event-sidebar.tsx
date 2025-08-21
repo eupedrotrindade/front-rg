@@ -105,12 +105,12 @@ const EventSidebar = ({
             icon: Building,
             description: 'Empresas vinculadas ao evento'
         },
-        {
-            name: 'Solicitações',
-            href: `/eventos/${eventId}/solicitacao`,
-            icon: FileText,
-            description: 'Solicitações de importação'
-        },
+        // {
+        //     name: 'Solicitações',
+        //     href: `/eventos/${eventId}/solicitacao`,
+        //     icon: FileText,
+        //     description: 'Solicitações de importação'
+        // },
         {
             name: 'Relatórios',
             href: `/eventos/${eventId}/relatorio2`,
@@ -118,8 +118,8 @@ const EventSidebar = ({
             description: 'Relatórios e análises'
 
         }
-        ,
-        { name: "RG sincronização", href: `/eventos/${eventId}/rg-sync`, icon: RefreshCcw, description: 'Sincronização de dados CRED - RH' }
+        // ,
+        // { name: "RG sincronização", href: `/eventos/${eventId}/rg-sync`, icon: RefreshCcw, description: 'Sincronização de dados CRED - RH' }
         // {
         //     name: 'Configurações',
         //     href: `/eventos/${eventId}/configuracoes`,

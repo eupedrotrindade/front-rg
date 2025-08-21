@@ -116,18 +116,30 @@ export function EditEventWizard({ event }: EditEventWizardProps) {
   // Pre-populate data from existing event
   useEffect(() => {
     if (event) {
-      // Function to parse event days (handles JSON strings)
+      // Function to parse event days (handles JSON strings) with date normalization
       const parseEventDays = (data: any) => {
+        let parsedDays: any[] = [];
+        
         if (Array.isArray(data)) {
-          return data;
+          parsedDays = data;
         } else if (typeof data === 'string' && data.trim().startsWith('[')) {
           try {
-            return JSON.parse(data);
+            parsedDays = JSON.parse(data);
           } catch {
             return [];
           }
+        } else {
+          return [];
         }
-        return [];
+
+        // Normalize dates to avoid timezone issues
+        return parsedDays.map(day => ({
+          ...day,
+          date: day.date ? (
+            // If date includes time, extract only the date part
+            day.date.includes('T') ? day.date.split('T')[0] : day.date
+          ) : day.date
+        }));
       };
 
       // Extract location parts from address or venue
@@ -183,10 +195,20 @@ export function EditEventWizard({ event }: EditEventWizardProps) {
   const getDateBoundaries = (days: SimpleEventDay[]) => {
     if (days.length === 0) return { start: null, end: null };
     
-    const sortedDays = days.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const sortedDays = days.sort((a, b) => {
+      // Normalize dates for comparison
+      const dateA = a.date.includes('T') ? a.date.split('T')[0] : a.date;
+      const dateB = b.date.includes('T') ? b.date.split('T')[0] : b.date;
+      return new Date(dateA).getTime() - new Date(dateB).getTime();
+    });
+    
+    // Return normalized dates
+    const startDate = sortedDays[0].date.includes('T') ? sortedDays[0].date.split('T')[0] : sortedDays[0].date;
+    const endDate = sortedDays[sortedDays.length - 1].date.includes('T') ? sortedDays[sortedDays.length - 1].date.split('T')[0] : sortedDays[sortedDays.length - 1].date;
+    
     return {
-      start: sortedDays[0].date,
-      end: sortedDays[sortedDays.length - 1].date
+      start: startDate,
+      end: endDate
     };
   };
 
@@ -230,10 +252,19 @@ export function EditEventWizard({ event }: EditEventWizardProps) {
       finalizationStartDate: desmontagemBoundaries.start || undefined,
       finalizationEndDate: desmontagemBoundaries.end || undefined,
       
-      // Event days structure
-      montagem: eventData.datetime.montagem,
-      evento: eventData.datetime.evento,
-      desmontagem: eventData.datetime.desmontagem,
+      // Event days structure - normalize dates to ensure consistent format
+      montagem: eventData.datetime.montagem.map(day => ({
+        ...day,
+        date: day.date.includes('T') ? day.date.split('T')[0] : day.date
+      })),
+      evento: eventData.datetime.evento.map(day => ({
+        ...day,
+        date: day.date.includes('T') ? day.date.split('T')[0] : day.date
+      })),
+      desmontagem: eventData.datetime.desmontagem.map(day => ({
+        ...day,
+        date: day.date.includes('T') ? day.date.split('T')[0] : day.date
+      })),
       
       // Location
       venue: eventData.location.address || event.venue,
