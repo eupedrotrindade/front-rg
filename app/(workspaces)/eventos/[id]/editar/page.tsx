@@ -8,8 +8,8 @@ import { useEvento } from '@/features/eventos/api/query/use-evento';
 export default function EditEventPage() {
   const params = useParams();
   const eventId = params?.id as string;
-  
-  const { data: event, isLoading, error } = useEvento({ id: eventId });
+
+  const { data: event, isLoading, error } = useEvento(eventId);
 
   if (isLoading) {
     return (
@@ -54,7 +54,7 @@ export default function EditEventPage() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Editar Evento</h1>
             <p className="text-gray-600">Atualize as informações do seu evento</p>
           </div>
-          
+
           <EditEventWizard event={event} />
         </div>
       </div>
