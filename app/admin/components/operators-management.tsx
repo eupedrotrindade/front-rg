@@ -62,7 +62,7 @@ interface OperatorFormData {
   nome: string
   cpf: string
   senha: string
-  id_events: string
+  id_events?: string // Opcional para criação
 }
 
 export const OperatorsManagement = () => {
@@ -77,8 +77,7 @@ export const OperatorsManagement = () => {
   const [formData, setFormData] = useState<OperatorFormData>({
     nome: "",
     cpf: "",
-    senha: "",
-    id_events: ""
+    senha: ""
   })
 
   // Filtrar operadores baseado na busca
@@ -113,7 +112,7 @@ export const OperatorsManagement = () => {
 
       toast.success("Operador criado com sucesso")
       setCreateOperatorOpen(false)
-      setFormData({ nome: "", cpf: "", senha: "", id_events: "" })
+      setFormData({ nome: "", cpf: "", senha: "" })
 
       // Invalidar query para recarregar dados
       // queryClient.invalidateQueries(['operators'])
@@ -408,7 +407,7 @@ export const OperatorsManagement = () => {
           <DialogHeader>
             <DialogTitle>Criar Novo Operador</DialogTitle>
             <DialogDescription>
-              Adicione um novo operador ao sistema
+              Adicione um novo operador ao sistema. Eventos podem ser atribuídos posteriormente através da edição.
             </DialogDescription>
           </DialogHeader>
 
@@ -444,16 +443,7 @@ export const OperatorsManagement = () => {
               />
             </div>
 
-            <div>
-              <Label htmlFor="id_events">Eventos (IDs separados por vírgula)</Label>
-              <Textarea
-                id="id_events"
-                value={formData.id_events}
-                onChange={(e) => setFormData(prev => ({ ...prev, id_events: e.target.value }))}
-                placeholder="event-id-1, event-id-2"
-                rows={3}
-              />
-            </div>
+            {/* Campo id_events removido da criação - operadores são criados sem eventos atribuídos */}
 
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setCreateOperatorOpen(false)}>

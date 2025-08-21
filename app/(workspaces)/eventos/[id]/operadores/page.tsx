@@ -628,17 +628,14 @@ export default function OperadoresPage() {
 
         setLoading(true)
         try {
-            // Criar atribuição com evento específico
-            const eventAssignment = eventId
-
+            // Criar operador sem eventos atribuídos (atribuição será feita manualmente)
             await apiClient.post("/operadores", {
                 nome: createForm.nome,
                 cpf: createForm.cpf,
-                senha: createForm.senha,
-                id_events: eventAssignment
+                senha: createForm.senha
             })
 
-            toast.success("Operador criado com sucesso!")
+            toast.success("Operador criado com sucesso! Use 'Atribuir Operadores' para vincular ao evento.")
             setCreateDialogOpen(false)
             setCreateForm({ nome: "", cpf: "", senha: defaultPassword || "" })
             setCpfExists(false)
@@ -960,8 +957,7 @@ export default function OperadoresPage() {
                         await apiClient.post("/operadores", {
                             nome: operador.nome,
                             cpf: operador.cpf,
-                            senha: operador.senha,
-                            id_events: operador.id_events
+                            senha: operador.senha
                         })
 
                         operadoresCriados++
@@ -984,9 +980,9 @@ export default function OperadoresPage() {
             if (totalSucesso > 0) {
                 let mensagem = ""
                 if (operadoresCriados > 0 && operadoresAtribuidos > 0) {
-                    mensagem = `${operadoresCriados} operadores criados e ${operadoresAtribuidos} operadores atribuídos ao evento!`
+                    mensagem = `${operadoresCriados} operadores criados e ${operadoresAtribuidos} operadores atribuídos ao evento! Use 'Atribuir Operadores' para vincular os novos ao evento.`
                 } else if (operadoresCriados > 0) {
-                    mensagem = `${operadoresCriados} novos operadores criados com sucesso!`
+                    mensagem = `${operadoresCriados} novos operadores criados com sucesso! Use 'Atribuir Operadores' para vincular ao evento.`
                 } else if (operadoresAtribuidos > 0) {
                     mensagem = `${operadoresAtribuidos} operadores existentes atribuídos ao evento!`
                 }
