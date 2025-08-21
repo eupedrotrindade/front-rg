@@ -7,48 +7,53 @@ const eventDaySchema = z.object({
   end: z.boolean(),
 });
 
-export const eventoSchema = z.object({
-  name: z.string().min(1, "Nome obrigatório"),
-  description: z.string().optional(),
-  type: z.string().optional(),
-  bannerUrl: z.string().optional(),
-  totalDays: z.number().min(1).optional(),
-  startDate: z.string().optional(), // Será calculado automaticamente
-  endDate: z.string().optional(), // Será calculado automaticamente
-  
-  // Nova estrutura de dias por fase
-  montagem: z.array(eventDaySchema).default([]),
-  evento: z.array(eventDaySchema).default([]),
-  desmontagem: z.array(eventDaySchema).default([]),
-  
-  // Campos antigos para compatibilidade (opcionais)
-  setupStartDate: z.string().optional(),
-  setupEndDate: z.string().optional(),
-  preparationStartDate: z.string().optional(),
-  preparationEndDate: z.string().optional(),
-  finalizationStartDate: z.string().optional(),
-  finalizationEndDate: z.string().optional(),
-  
-  venue: z.string().min(1, "Local obrigatório"),
-  address: z.string().optional(),
-  status: z.enum(["active", "closed", "canceled", "draft"]).default("draft"),
-  visibility: z.enum(["public", "private", "restricted"]).default("public"),
-  categories: z.array(z.string()).optional(),
-  capacity: z.number().min(1).optional(),
-  registrationLink: z.string().optional(),
-  qrCodeTemplate: z.enum(["default", "custom"]).optional(),
-  isActive: z.boolean().optional(),
-}).refine((data) => {
-  // Validação customizada: pelo menos uma fase deve ter dias
-  const hasMontagemDays = data.montagem.length > 0;
-  const hasEventoDays = data.evento.length > 0;
-  const hasDesmontagemDays = data.desmontagem.length > 0;
-  
-  return hasMontagemDays || hasEventoDays || hasDesmontagemDays;
-}, {
-  message: "Pelo menos uma fase deve ter dias definidos",
-  path: ["evento"] // Apontar erro para o campo evento
-});
+export const eventoSchema = z
+  .object({
+    name: z.string().min(1, "Nome obrigatório"),
+    description: z.string().optional(),
+    type: z.string().optional(),
+    bannerUrl: z.string().optional(),
+    totalDays: z.number().min(1).optional(),
+    startDate: z.string().optional(), // Será calculado automaticamente
+    endDate: z.string().optional(), // Será calculado automaticamente
+
+    // Nova estrutura de dias por fase
+    montagem: z.array(eventDaySchema).default([]),
+    evento: z.array(eventDaySchema).default([]),
+    desmontagem: z.array(eventDaySchema).default([]),
+
+    // Campos antigos para compatibilidade (opcionais)
+    setupStartDate: z.string().optional(),
+    setupEndDate: z.string().optional(),
+    preparationStartDate: z.string().optional(),
+    preparationEndDate: z.string().optional(),
+    finalizationStartDate: z.string().optional(),
+    finalizationEndDate: z.string().optional(),
+
+    venue: z.string().min(1, "Local obrigatório"),
+    address: z.string().optional(),
+    status: z.enum(["active", "closed", "canceled", "draft"]).default("draft"),
+    visibility: z.enum(["public", "private", "restricted"]).default("public"),
+    categories: z.array(z.string()).optional(),
+    capacity: z.number().min(1).optional(),
+    registrationLink: z.string().optional(),
+    qrCodeTemplate: z.enum(["default", "custom"]).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine(
+    (data) => {
+      // Validação customizada: pelo menos uma fase deve ter dias
+      const hasMontagemDays = data.montagem.length > 0;
+      const hasEventoDays = data.evento.length > 0;
+      const hasDesmontagemDays = data.desmontagem.length > 0;
+
+      return hasMontagemDays || hasEventoDays || hasDesmontagemDays;
+    },
+    {
+      message: "Pelo menos uma fase deve ter dias definidos",
+      path: ["evento"], // Apontar erro para o campo evento
+    }
+  );
 
 export type EventoSchema = z.infer<typeof eventoSchema>;
 
@@ -117,7 +122,9 @@ export const eventParticipantSchema = z.object({
   staffId: z.string().optional(),
   name: z.string().min(1, "Nome obrigatório"),
   cpf: z.string().min(11, "CPF obrigatório"),
-  email: z.union([z.string().email("E-mail inválido"), z.literal(""), z.undefined()]).optional(),
+  email: z
+    .union([z.string().email("E-mail inválido"), z.literal(""), z.undefined()])
+    .optional(),
   phone: z.union([z.string(), z.literal(""), z.undefined()]).optional(),
   role: z.string().optional(),
   company: z.string().min(1, "Empresa obrigatória"),
@@ -125,12 +132,24 @@ export const eventParticipantSchema = z.object({
   checkOut: z.string().optional(),
   presenceConfirmed: z.boolean().optional(),
   certificateIssued: z.boolean().optional(),
-  shirtSize: z.union([z.enum(["PP", "P", "M", "G", "GG", "XG", "XXG", "EXG"]), z.literal(""), z.undefined()]).optional(),
+  shirtSize: z
+    .union([
+      z.enum(["PP", "P", "M", "G", "GG", "XG", "XXG", "EXG"]),
+      z.literal(""),
+      z.undefined(),
+    ])
+    .optional(),
   notes: z.string().optional(),
   photo: z.string().optional(),
   documentPhoto: z.string().optional(),
   validatedBy: z.string().optional(),
   daysWork: z.array(z.string()).optional(),
+  // Novos campos para controle de turnos e períodos
+  workDate: z.string().optional(),
+  workStage: z.string().optional(),
+  workPeriod: z.string().optional(),
+
+  shiftId: z.string().optional(), // ID do turno/shift específico
 });
 
 export type EventParticipantSchema = z.infer<typeof eventParticipantSchema>;
@@ -140,13 +159,11 @@ export const credentialSchema = z.object({
   nome: z.string().min(1, "Nome obrigatório"),
   cor: z.string().min(1, "Cor obrigatória"),
   id_events: z.string().min(1, "Evento obrigatório"),
-  days_works: z
-    .array(z.string())
-    .refine((days) => {
-      // Filtrar valores undefined/null e verificar se há pelo menos um dia válido
-      const validDays = days.filter(day => day && day.trim().length > 0);
-      return validDays.length > 0;
-    }, "Pelo menos um dia de trabalho válido é obrigatório"),
+  days_works: z.array(z.string()).refine((days) => {
+    // Filtrar valores undefined/null e verificar se há pelo menos um dia válido
+    const validDays = days.filter((day) => day && day.trim().length > 0);
+    return validDays.length > 0;
+  }, "Pelo menos um dia de trabalho válido é obrigatório"),
   isActive: z.boolean().optional(),
   isDistributed: z.boolean().optional(),
 });
@@ -161,7 +178,7 @@ export const credentialUpdateSchema = z.object({
       // Se o array não foi fornecido (opcional), é válido
       if (!days) return true;
       // Se fornecido, deve ter pelo menos um dia válido
-      const validDays = days.filter(day => day && day.trim().length > 0);
+      const validDays = days.filter((day) => day && day.trim().length > 0);
       return validDays.length > 0;
     }, "Pelo menos um dia de trabalho válido é obrigatório")
     .optional(),
