@@ -319,7 +319,7 @@ const EventosPage = () => {
 
                 {/* Dialog de Confirmação de Exclusão */}
                 <AlertDialog open={!!deletingEvent} onOpenChange={(open) => !open && setDeletingEvent(null)}>
-                    <AlertDialogContent className="bg-white text-black">
+                    <AlertDialogContent className="bg-white text-black max-h-[80vh] overflow-y-auto">
                         <AlertDialogHeader>
                             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
                             <AlertDialogDescription>

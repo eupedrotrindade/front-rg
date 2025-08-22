@@ -172,7 +172,7 @@ export default function ImportRadiosModal({ isOpen, onClose, eventId }: ImportRa
 
     return (
         <AlertDialog open={isOpen} onOpenChange={handleClose}>
-            <AlertDialogContent className="max-w-2xl bg-white text-gray-800">
+            <AlertDialogContent className="max-w-2xl bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                 <AlertDialogHeader>
                     <AlertDialogTitle>Importar Rádios em Massa</AlertDialogTitle>
                     <AlertDialogDescription>

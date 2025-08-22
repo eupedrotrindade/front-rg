@@ -119,7 +119,7 @@ export default function ModalTrocaPulseira({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-md bg-white text-gray-900">
+            <DialogContent className="sm:max-w-md bg-white text-gray-900 max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Trocar Pulseira</DialogTitle>
                     <DialogDescription>

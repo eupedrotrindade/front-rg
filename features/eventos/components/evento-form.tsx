@@ -276,7 +276,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                                             <ImageIcon className="h-5 w-5" />
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent className="max-w-2xl bg-white text-gray-800">
+                                                    <DialogContent className="max-w-2xl bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                                                         <DialogHeader>
                                                             <DialogTitle>Selecionar imagem da galeria</DialogTitle>
                                                         </DialogHeader>
@@ -293,7 +293,7 @@ const EventoForm = ({ defaultValues, onSubmit, loading, isEditing = false }: Eve
                                                             <Upload className="h-5 w-5" />
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent className="max-w-md bg-white text-gray-800">
+                                                    <DialogContent className="max-w-md bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                                                         <DialogHeader>
                                                             <DialogTitle>Fazer upload de imagem</DialogTitle>
                                                         </DialogHeader>

@@ -1041,7 +1041,7 @@ OBSERVAÇÕES:
 
         {/* Modal para criar/editar entrada */}
         <Dialog open={isModalOpen} onOpenChange={closeModal}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {isEditing ? 'Editar Entrada' : 'Nova Entrada de Crachá'}
@@ -1110,7 +1110,7 @@ OBSERVAÇÕES:
 
         {/* Modal para processar retirada */}
         <Dialog open={isPickupModalOpen} onOpenChange={setIsPickupModalOpen}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Processar Retirada</DialogTitle>
               <DialogDescription>
@@ -1536,7 +1536,7 @@ OBSERVAÇÕES:
 
         {/* Modal para visualizar detalhes */}
         <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Eye className="h-5 w-5" />

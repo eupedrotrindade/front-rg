@@ -821,13 +821,13 @@ export default function EventoDetalhesPage() {
     const uniqueEmpresasFiltered = useMemo(() => {
         // Extrair empresas únicas dos participantes do turno atual
         const empresasDoTurno = new Set<string>()
-        
+
         participantesDoDia.forEach(participant => {
             if (participant.company && participant.company.trim()) {
                 empresasDoTurno.add(participant.company.trim())
             }
         })
-        
+
         return Array.from(empresasDoTurno).sort()
     }, [participantesDoDia])
 
@@ -2178,7 +2178,7 @@ export default function EventoDetalhesPage() {
                 open={!!deletingParticipant}
                 onOpenChange={open => !open && setDeletingParticipant(null)}
             >
-                <AlertDialogContent className="bg-white text-black">
+                <AlertDialogContent className="bg-white text-black max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -2270,7 +2270,7 @@ export default function EventoDetalhesPage() {
                 open={showReplicateDialog}
                 onOpenChange={setShowReplicateDialog}
             >
-                <AlertDialogContent className="bg-white text-black max-w-lg">
+                <AlertDialogContent className="bg-white text-black max-w-lg max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Users className="h-5 w-5 text-green-600" />
@@ -2415,7 +2415,7 @@ export default function EventoDetalhesPage() {
                 open={showProgressDialog}
                 onOpenChange={setShowProgressDialog}
             >
-                <AlertDialogContent className="max-w-md bg-white text-black">
+                <AlertDialogContent className="max-w-md bg-white text-black max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
@@ -2481,7 +2481,7 @@ export default function EventoDetalhesPage() {
 
             {/* Dialog de Check-in */}
             <AlertDialog open={popupCheckin} onOpenChange={setPopupCheckin}>
-                <AlertDialogContent className="bg-white text-black max-w-md">
+                <AlertDialogContent className="bg-white text-black max-w-md max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Check className="h-5 w-5 text-green-600" />
@@ -2541,7 +2541,7 @@ export default function EventoDetalhesPage() {
 
             {/* Dialog de Check-out */}
             <AlertDialog open={popupCheckout} onOpenChange={setPopupCheckout}>
-                <AlertDialogContent className="bg-white text-black max-w-md">
+                <AlertDialogContent className="bg-white text-black max-w-md max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Clock className="h-5 w-5 text-red-600" />
@@ -2583,7 +2583,7 @@ export default function EventoDetalhesPage() {
 
             {/* Dialog de Reset Check-in */}
             <AlertDialog open={popupResetCheckin} onOpenChange={setPopupResetCheckin}>
-                <AlertDialogContent className="bg-white text-black max-w-md">
+                <AlertDialogContent className="bg-white text-black max-w-md max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <RotateCcw className="h-5 w-5 text-yellow-600" />
@@ -2666,7 +2666,7 @@ export default function EventoDetalhesPage() {
 
             {/* Modal de Edição em Massa */}
             <AlertDialog open={showBulkEditModal} onOpenChange={setShowBulkEditModal}>
-                <AlertDialogContent className="bg-white text-black max-w-md">
+                <AlertDialogContent className="bg-white text-black max-w-md max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <UserCog className="h-5 w-5 text-blue-600" />
@@ -2807,7 +2807,7 @@ export default function EventoDetalhesPage() {
 
             {/* Modal de Exclusão em Massa */}
             <AlertDialog open={showBulkDeleteModal} onOpenChange={setShowBulkDeleteModal}>
-                <AlertDialogContent className="bg-white text-black max-w-md">
+                <AlertDialogContent className="bg-white text-black max-w-md max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Trash2 className="h-5 w-5 text-red-600" />
@@ -2873,7 +2873,7 @@ export default function EventoDetalhesPage() {
 
             {/* Modal de Reset de Check-in em Massa */}
             <AlertDialog open={showBulkResetModal} onOpenChange={setShowBulkResetModal}>
-                <AlertDialogContent className="bg-white text-black max-w-md">
+                <AlertDialogContent className="bg-white text-black max-w-md max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <RotateCcw className="h-5 w-5 text-yellow-600" />

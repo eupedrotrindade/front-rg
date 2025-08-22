@@ -54,14 +54,14 @@ export function TitleEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit3 className="h-5 w-5 text-[#610E5C]" />
             Personalizar Título do Relatório
           </DialogTitle>
           <DialogDescription>
-            Edite o título e subtítulo que aparecerão no cabeçalho do PDF. 
+            Edite o título e subtítulo que aparecerão no cabeçalho do PDF.
             Os campos já estão pré-configurados com base no tipo de relatório selecionado.
           </DialogDescription>
         </DialogHeader>

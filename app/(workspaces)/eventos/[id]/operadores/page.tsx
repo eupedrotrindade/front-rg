@@ -84,7 +84,7 @@ export default function OperadoresPage() {
     useEffect(() => {
         console.log("🔍 Estado selectedOperators atualizado:", selectedOperators)
     }, [selectedOperators])
-    
+
     // Hook para buscar senha padrão das configurações (DEVE vir antes do useEffect que a usa)
     const { data: defaultPassword, isLoading: loadingDefaultPassword } = useDefaultPassword()
 
@@ -540,7 +540,7 @@ export default function OperadoresPage() {
             await forceRefreshData()
         } catch (error: any) {
             console.error('❌ Erro ao alterar status do operador:', error)
-            
+
             if (error?.response?.status === 400) {
                 toast.error(error.response.data.error || "Operador não possui assignments para este evento")
             } else if (error?.response?.status === 404) {
@@ -1021,9 +1021,9 @@ export default function OperadoresPage() {
 
     // Função para verificar se o operador existe neste evento (ativo ou desativado)
     const hasEventAssignment = (operador: Operator) => {
-        const hasActive = operador.id_events ? 
+        const hasActive = operador.id_events ?
             operador.id_events.split(',').some((assignment: string) => assignment.includes(`${eventId}:`)) : false
-        const hasDeactivated = operador.id_events_desativados ? 
+        const hasDeactivated = operador.id_events_desativados ?
             operador.id_events_desativados.split(',').some((assignment: string) => assignment.includes(`${eventId}:`)) : false
         return hasActive || hasDeactivated
     }
@@ -1037,7 +1037,7 @@ export default function OperadoresPage() {
             // Processar turnos ativos
             if (operator?.id_events) {
                 const eventAssignments = operator.id_events.split(',').map((assignment: string) => assignment.trim())
-                
+
                 for (const assignment of eventAssignments) {
                     if (assignment.includes(':')) {
                         const [eventIdFromAssignment, shiftOrDate] = assignment.split(':')
@@ -1068,7 +1068,7 @@ export default function OperadoresPage() {
             // Processar turnos desativados
             if (operator?.id_events_desativados) {
                 const deactivatedAssignments = operator.id_events_desativados.split(',').map((assignment: string) => assignment.trim())
-                
+
                 for (const assignment of deactivatedAssignments) {
                     if (assignment.includes(':')) {
                         const [eventIdFromAssignment, shiftOrDate] = assignment.split(':')
@@ -1425,11 +1425,11 @@ export default function OperadoresPage() {
                                                                     <div className="text-xs font-medium text-gray-700 mb-1">{date}</div>
                                                                     <div className="flex flex-wrap gap-1">
                                                                         {(Array.isArray(shifts) ? shifts : []).map((shift: any, index: number) => (
-                                                                            <Badge 
-                                                                                key={index} 
-                                                                                variant="outline" 
-                                                                                className={shift.status === 'deactivated' 
-                                                                                    ? "text-gray-500 border-gray-300 bg-gray-100 text-xs" 
+                                                                            <Badge
+                                                                                key={index}
+                                                                                variant="outline"
+                                                                                className={shift.status === 'deactivated'
+                                                                                    ? "text-gray-500 border-gray-300 bg-gray-100 text-xs"
                                                                                     : "text-blue-600 border-blue-200 text-xs"}
                                                                             >
                                                                                 <div className="flex items-center gap-1">
@@ -1684,7 +1684,7 @@ export default function OperadoresPage() {
 
                 {/* Modal de Detalhes */}
                 <Dialog open={modalAberto} onOpenChange={setModalAberto}>
-                    <DialogContent className="max-w-2xl">
+                    <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>Detalhes do Operador</DialogTitle>
                         </DialogHeader>
@@ -1715,20 +1715,18 @@ export default function OperadoresPage() {
                                             return (
                                                 <div className="space-y-2">
                                                     {assignmentShifts.map((shift, index) => (
-                                                        <div 
-                                                            key={index} 
-                                                            className={`flex items-center gap-2 p-2 rounded border ${
-                                                                shift.status === 'deactivated' 
-                                                                    ? 'bg-gray-50 border-gray-200' 
+                                                        <div
+                                                            key={index}
+                                                            className={`flex items-center gap-2 p-2 rounded border ${shift.status === 'deactivated'
+                                                                    ? 'bg-gray-50 border-gray-200'
                                                                     : 'bg-blue-50 border-blue-200'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             {getPeriodIcon(shift.period)}
-                                                            <span className={`text-sm ${
-                                                                shift.status === 'deactivated' 
-                                                                    ? 'text-gray-600' 
+                                                            <span className={`text-sm ${shift.status === 'deactivated'
+                                                                    ? 'text-gray-600'
                                                                     : 'text-blue-800'
-                                                            }`}>
+                                                                }`}>
                                                                 {shift.label}
                                                                 {shift.status === 'deactivated' && (
                                                                     <span className="text-xs text-gray-500 ml-2">(Desativado)</span>
@@ -1955,7 +1953,7 @@ export default function OperadoresPage() {
 
                 {/* Modal de Criação */}
                 <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                    <DialogContent className="bg-white text-gray-900">
+                    <DialogContent className="bg-white text-gray-900 max-h-[80vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>Novo Operador</DialogTitle>
                         </DialogHeader>
@@ -2274,7 +2272,7 @@ export default function OperadoresPage() {
 
                 {/* Modal de Resumo de Importação */}
                 <Dialog open={resumoDialogOpen} onOpenChange={setResumoDialogOpen}>
-                    <DialogContent className="max-w-2xl">
+                    <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>Resumo da Importação de Operadores</DialogTitle>
                             <DialogDescription>

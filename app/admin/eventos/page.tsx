@@ -528,7 +528,7 @@ const AdminEventosPage = () => {
 
       {/* Modal de Detalhes */}
       <Dialog open={eventDetailsOpen} onOpenChange={setEventDetailsOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes do Evento</DialogTitle>
             <DialogDescription>

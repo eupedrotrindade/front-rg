@@ -215,7 +215,7 @@ export default function ImportExportPage() {
         const now = Date.now()
         const timeElapsedInMinute = now - minuteStart
         const timeRemainingInMinute = 60000 - timeElapsedInMinute
-        
+
         console.log(`⏱️ Rate limit check:`, {
             requestsSentThisMinute,
             timeElapsedInMinute: Math.round(timeElapsedInMinute / 1000),
@@ -226,22 +226,22 @@ export default function ImportExportPage() {
         // If we've hit our 90/min limit, wait until next minute
         if (requestsSentThisMinute >= rateLimitConfig.maxPerMinute) {
             const waitTime = timeRemainingInMinute + 100 // Add 100ms buffer for next minute
-            console.log(`🚫 Rate limit reached (${requestsSentThisMinute}/90). Waiting ${Math.round(waitTime/1000)}s for next minute.`)
+            console.log(`🚫 Rate limit reached (${requestsSentThisMinute}/90). Waiting ${Math.round(waitTime / 1000)}s for next minute.`)
             return waitTime
         }
 
         // If we're approaching the minute end and might exceed 90, wait for next minute
         const requestsRemaining = rateLimitConfig.maxPerMinute - requestsSentThisMinute
         const timeForRemainingRequests = requestsRemaining * (60000 / rateLimitConfig.maxPerMinute) // Ideal spacing
-        
+
         if (timeRemainingInMinute < timeForRemainingRequests && timeRemainingInMinute < 10000) {
-            console.log(`⏰ Close to minute end. Waiting ${Math.round(timeRemainingInMinute/1000)}s for next minute.`)
+            console.log(`⏰ Close to minute end. Waiting ${Math.round(timeRemainingInMinute / 1000)}s for next minute.`)
             return timeRemainingInMinute + 100
         }
 
         // Calculate optimal spacing: distribute remaining requests over remaining time
         const optimalSpacing = Math.max(667, timeRemainingInMinute / (requestsRemaining || 1)) // Min 667ms (90/min)
-        
+
         console.log(`✅ Optimal delay: ${Math.round(optimalSpacing)}ms (${requestsRemaining} remaining in window)`)
         return Math.round(optimalSpacing)
     }
@@ -250,14 +250,14 @@ export default function ImportExportPage() {
     const waitForRateLimit = async (): Promise<void> => {
         const now = Date.now()
         const currentMinuteStart = Math.floor(now / 60000) * 60000 // Start of current minute
-        
+
         setRateLimitTracker(prev => {
             // Clean old requests outside current minute window
             const validRequests = prev.requests.filter(timestamp => timestamp >= currentMinuteStart)
-            
+
             const requestsThisMinute = validRequests.length
             const delay = calculateOptimalDelay(requestsThisMinute, currentMinuteStart)
-            
+
             // Update state for UI display
             const newState = {
                 requests: validRequests,
@@ -280,13 +280,13 @@ export default function ImportExportPage() {
                 newState.requests = [...validRequests, now]
                 newState.totalSentThisWindow = requestsThisMinute + 1
             }
-            
+
             return newState
         })
 
         if (calculateOptimalDelay(rateLimitTracker.totalSentThisWindow, currentMinuteStart) > 0) {
             const delay = calculateOptimalDelay(rateLimitTracker.totalSentThisWindow, currentMinuteStart)
-            console.log(`⏳ Waiting ${Math.round(delay/1000)}s before next request...`)
+            console.log(`⏳ Waiting ${Math.round(delay / 1000)}s before next request...`)
             await new Promise(resolve => setTimeout(resolve, delay))
         }
     }
@@ -729,10 +729,10 @@ export default function ImportExportPage() {
 
         // ✅ Create all missing credentials (avoiding duplicates)
         const allMissingCredentials = new Set<string>()
-        
+
         // Add general missing credentials
         processedData.missingCredentials.forEach(cred => allMissingCredentials.add(cred.name))
-        
+
         // Add shift-specific missing credentials
         Object.values(shiftValidationErrors).forEach(errors => {
             errors.missingCredentials.forEach(cred => allMissingCredentials.add(cred))
@@ -745,10 +745,10 @@ export default function ImportExportPage() {
 
         // ✅ Create all missing companies (avoiding duplicates)
         const allMissingCompanies = new Set<string>()
-        
+
         // Add general missing companies
         processedData.missingCompanies.forEach(comp => allMissingCompanies.add(comp.name))
-        
+
         // Add shift-specific missing companies
         Object.values(shiftValidationErrors).forEach(errors => {
             errors.missingCompanies.forEach(comp => allMissingCompanies.add(comp))
@@ -1483,8 +1483,8 @@ export default function ImportExportPage() {
                     createParticipant(participant, {
                         onSuccess: () => {
                             success++
-                            setProgress((prev) => ({ 
-                                ...prev, 
+                            setProgress((prev) => ({
+                                ...prev,
                                 success,
                                 currentItem: `✅ ${participant.name} - Criado com sucesso`
                             }))
@@ -1493,8 +1493,8 @@ export default function ImportExportPage() {
                         onError: (error) => {
                             console.error(`❌ Erro ao criar participante ${participant.name}:`, error)
                             errors++
-                            setProgress((prev) => ({ 
-                                ...prev, 
+                            setProgress((prev) => ({
+                                ...prev,
                                 errors,
                                 currentItem: `❌ ${participant.name} - Erro na criação`
                             }))
@@ -1652,10 +1652,10 @@ export default function ImportExportPage() {
 
                     // ✅ Check if participant already exists for this specific shift
                     const cleanedCPF = item.cpf ? item.cpf.toString().replace(/\D/g, "") : ""
-                    const existingInShift = participants.find((p) => 
+                    const existingInShift = participants.find((p) =>
                         p.cpf.replace(/\D/g, "") === cleanedCPF && p.shiftId === shiftId
                     )
-                    
+
                     if (existingInShift) {
                         console.log(`⚠️ Participante ${item.nome} (CPF: ${cleanedCPF}) já existe no turno ${shiftId}. Ignorando duplicação.`)
                         skippedDuplicates++
@@ -1711,13 +1711,13 @@ export default function ImportExportPage() {
             const totalParticipants = processedData.data.length
             const totalShifts = selectedEventDates.length
             const totalImported = result.success
-            
+
             let message = `Importação concluída! ${totalImported} registros criados`
             if (skippedDuplicates > 0) {
                 message += ` (${skippedDuplicates} duplicatas ignoradas)`
             }
             message += ` de ${totalParticipants} participantes em ${totalShifts} turno(s).`
-            
+
             toast.success(message)
         } catch (error) {
             toast.error("Erro durante a importação")
@@ -3484,7 +3484,7 @@ export default function ImportExportPage() {
 
                 {/* Creation Progress Dialog */}
                 <Dialog open={isCreationDialogOpen}>
-                    <DialogContent className="max-w-md bg-white text-gray-800">
+                    <DialogContent className="max-w-md bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2">
                                 {creationProgress.type === "credential" ? (

@@ -1467,7 +1467,7 @@ export default function Painel() {
       >
         <div className="flex items-center min-h-full">
           {/* Nome - sempre visível */}
-          <div 
+          <div
             className={`text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}
             style={{ width: isMobileTable ? '40%' : '25%' }}
           >
@@ -1484,7 +1484,7 @@ export default function Painel() {
 
           {/* CPF - esconder em mobile */}
           {!isMobileTable && (
-            <div 
+            <div
               className="px-6 py-4 whitespace-nowrap text-gray-600"
               style={{ width: '15%' }}
             >
@@ -1496,7 +1496,7 @@ export default function Painel() {
 
           {/* Função - esconder em mobile */}
           {!isMobileTable && (
-            <div 
+            <div
               className="px-6 py-4 whitespace-nowrap text-gray-600"
               style={{ width: '18%' }}
             >
@@ -1506,7 +1506,7 @@ export default function Painel() {
 
           {/* Empresa - esconder em mobile */}
           {!isMobileTable && (
-            <div 
+            <div
               className="px-6 py-4 whitespace-nowrap text-gray-600"
               style={{ width: '18%' }}
             >
@@ -1518,7 +1518,7 @@ export default function Painel() {
 
           {/* Credencial - esconder em mobile */}
           {!isMobileTable && (
-            <div 
+            <div
               className="px-6 py-4 whitespace-nowrap text-gray-600"
               style={{ width: '16%' }}
             >
@@ -1536,8 +1536,8 @@ export default function Painel() {
           )}
 
           {/* Ação - sempre visível e sticky à direita */}
-          <div 
-            className={`whitespace-nowrap text-sm font-medium sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} 
+          <div
+            className={`whitespace-nowrap text-sm font-medium sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}
             style={{ width: isMobileTable ? '30%' : '8%', zIndex: 10 }}
           >
             <div
@@ -3149,7 +3149,7 @@ export default function Painel() {
               {/* 🚀 VIRTUALIZED TABLE CONTAINER */}
               <div className="overflow-x-auto">
                 <div className="min-w-full" style={{ minWidth: isMobileTable ? '100%' : '1000px' }}>
-                  <Table className="table-fixed"  style={{ width: '100%' }}>
+                  <Table className="table-fixed" style={{ width: '100%' }}>
                     <TableHeader>
                       <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
                         {/* Nome - sempre visível */}
@@ -3320,7 +3320,7 @@ export default function Painel() {
 
             {/* MODAL DETALHES DO COLABORADOR */}
             <Dialog open={modalAberto} onOpenChange={setModalAberto}>
-              <DialogContent className="max-w-md bg-white border-0 shadow-xl">
+              <DialogContent className="max-w-md bg-white border-0 shadow-xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader className="pb-4">
                   <DialogTitle className="flex items-center gap-3 text-lg font-bold text-gray-900">
                     <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
@@ -3526,7 +3526,7 @@ export default function Painel() {
 
             {/* MODAL CHECK-IN */}
             <Dialog open={popupCheckin} onOpenChange={setPopupCheckin}>
-              <DialogContent className="max-w-md bg-gradient-to-br from-white to-green-50 border-0 shadow-2xl">
+              <DialogContent className="max-w-md bg-gradient-to-br from-white to-green-50 border-0 shadow-2xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader className="pb-6">
                   <DialogTitle className="text-center text-xl font-bold text-gray-900 flex items-center justify-center gap-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
@@ -3632,7 +3632,7 @@ export default function Painel() {
 
             {/* MODAL CHECK-OUT */}
             <Dialog open={popupCheckout} onOpenChange={setPopupCheckout}>
-              <DialogContent className="max-w-md bg-gradient-to-br from-white to-red-50 border-0 shadow-2xl">
+              <DialogContent className="max-w-md bg-gradient-to-br from-white to-red-50 border-0 shadow-2xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader className="pb-6">
                   <DialogTitle className="text-center text-xl font-bold text-gray-900 flex items-center justify-center gap-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center">
@@ -3728,7 +3728,7 @@ export default function Painel() {
               open={popupTrocaPulseira}
               onOpenChange={setPopupTrocaPulseira}
             >
-              <DialogContent className="sm:max-w-md bg-white text-gray-900">
+              <DialogContent className="sm:max-w-md bg-white text-gray-900 max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-3">
                     <CreditCard className="w-5 h-5 text-blue-600" />

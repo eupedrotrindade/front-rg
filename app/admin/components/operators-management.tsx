@@ -524,7 +524,7 @@ export const OperatorsManagement = () => {
 
       {/* Modal de Detalhes do Operador */}
       <Dialog open={operatorDetailsOpen} onOpenChange={setOperatorDetailsOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes do Operador</DialogTitle>
             <DialogDescription>

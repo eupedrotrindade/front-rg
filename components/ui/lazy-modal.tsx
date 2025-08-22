@@ -13,10 +13,10 @@ interface LazyModalProps {
   loadingMessage?: string
 }
 
-export function LazyModal({ 
-  isOpen, 
-  onClose, 
-  component, 
+export function LazyModal({
+  isOpen,
+  onClose,
+  component,
   componentProps = {},
   loadingMessage = "Carregando..."
 }: LazyModalProps) {
@@ -27,7 +27,7 @@ export function LazyModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
         <Suspense fallback={
           <div className="flex items-center justify-center py-8">
             <div className="flex items-center gap-3">
@@ -36,8 +36,8 @@ export function LazyModal({
             </div>
           </div>
         }>
-          <LazyComponent 
-            isOpen={isOpen} 
+          <LazyComponent
+            isOpen={isOpen}
             onClose={onClose}
             {...componentProps}
           />

@@ -198,7 +198,7 @@ export default function RadiosPage() {
                         const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
 
                         const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
-                        
+
                         days.push({
                             id: dayId,
                             label: `${formattedDate} (${stageName} - ${periodLabel})`,
@@ -1174,7 +1174,7 @@ export default function RadiosPage() {
 
                 {/* Modal Nova Retirada */}
                 <AlertDialog open={isNewAssignmentModalOpen} onOpenChange={setIsNewAssignmentModalOpen} >
-                    <AlertDialogContent className="max-w-md bg-white text-gray-800">
+                    <AlertDialogContent className="max-w-md bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                         <AlertDialogHeader>
                             <AlertDialogTitle>Nova Atribuição de Rádios</AlertDialogTitle>
                             <AlertDialogDescription>
@@ -1348,7 +1348,7 @@ export default function RadiosPage() {
 
                 {/* Modal Devolução Parcial */}
                 <AlertDialog open={isPartialReturnModalOpen} onOpenChange={setIsPartialReturnModalOpen}>
-                    <AlertDialogContent className="max-w-md bg-white text-gray-800">
+                    <AlertDialogContent className="max-w-md bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                         <AlertDialogHeader>
                             <AlertDialogTitle>Devolução Parcial</AlertDialogTitle>
                             <AlertDialogDescription>
@@ -1415,7 +1415,7 @@ export default function RadiosPage() {
 
                 {/* Modal Troca de Rádios */}
                 <AlertDialog open={isExchangeModalOpen} onOpenChange={setIsExchangeModalOpen}>
-                    <AlertDialogContent className="max-w-4xl bg-white text-gray-800">
+                    <AlertDialogContent className="max-w-4xl bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                         <AlertDialogHeader>
                             <AlertDialogTitle>Troca de Rádios</AlertDialogTitle>
                             <AlertDialogDescription>
@@ -1574,7 +1574,7 @@ export default function RadiosPage() {
 
                 {/* Modal Criar Rádio */}
                 <AlertDialog open={isCreateRadioModalOpen} onOpenChange={setIsCreateRadioModalOpen}>
-                    <AlertDialogContent className="max-w-xl bg-white text-gray-800">
+                    <AlertDialogContent className="max-w-xl bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                         <AlertDialogHeader>
                             <AlertDialogTitle>Criar Novos Rádios</AlertDialogTitle>
                             <AlertDialogDescription>
@@ -1783,7 +1783,7 @@ export default function RadiosPage() {
 
                 {/* Modal Histórico */}
                 <AlertDialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
-                    <AlertDialogContent className="max-w-4xl bg-white text-gray-800">
+                    <AlertDialogContent className="max-w-4xl bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                         <AlertDialogHeader>
                             <AlertDialogTitle>Histórico de Operações</AlertDialogTitle>
                             <AlertDialogDescription>

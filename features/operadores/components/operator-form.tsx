@@ -43,7 +43,7 @@ const OperatorForm = ({ onSuccess }: OperatorFormProps) => {
     const [massLoading, setMassLoading] = useState(false);
     const [importedOperators, setImportedOperators] = useState<{ nome: string; senha: string; cpf?: string }[]>([]);
     const [massEvents, setMassEvents] = useState<string[]>([]);
-    
+
     // Hook para buscar senha padrão das configurações
     const { data: defaultPassword, isLoading: loadingDefaultPassword } = useDefaultPassword();
 
@@ -281,7 +281,7 @@ const OperatorForm = ({ onSuccess }: OperatorFormProps) => {
 
             {/* Dialog de importação em massa */}
             <Dialog open={importDialogOpen} onOpenChange={open => { if (!open) handleCloseImportDialog(); }}>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Importação em Massa de Operadores</DialogTitle>
                         <DialogDescription>

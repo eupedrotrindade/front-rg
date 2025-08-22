@@ -7,36 +7,36 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table"
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
 } from "@/components/ui/dialog"
-import { 
-  Users, 
-  Search, 
-  UserPlus, 
-  MoreVertical, 
-  Shield, 
-  UserX, 
-  Mail, 
+import {
+  Users,
+  Search,
+  UserPlus,
+  MoreVertical,
+  Shield,
+  UserX,
+  Mail,
   Calendar,
   CheckCircle,
   XCircle,
@@ -70,15 +70,15 @@ export const UsersManagement = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      
+
       const params = new URLSearchParams({
         page: '1',
         limit: '50',
         search: search.trim()
       })
-      
+
       const response = await fetch(`/api/admin/users?${params}`)
-      
+
       if (response.ok) {
         const data = await response.json()
         setUsers(data.data || [])
@@ -88,7 +88,7 @@ export const UsersManagement = () => {
     } catch (error) {
       console.error("Erro ao buscar usuários:", error)
       toast.error("Erro ao carregar usuários")
-      
+
       // Fallback para dados mockados em caso de erro
       const mockUsers: ClerkUser[] = [
         {
@@ -116,7 +116,7 @@ export const UsersManagement = () => {
           banned: false
         }
       ]
-      
+
       setUsers(mockUsers)
     } finally {
       setLoading(false)
@@ -127,7 +127,7 @@ export const UsersManagement = () => {
     fetchUsers()
   }, [search])
 
-  const filteredUsers = users.filter(user => 
+  const filteredUsers = users.filter(user =>
     user.firstName?.toLowerCase().includes(search.toLowerCase()) ||
     user.lastName?.toLowerCase().includes(search.toLowerCase()) ||
     user.emailAddress.toLowerCase().includes(search.toLowerCase())
@@ -145,9 +145,9 @@ export const UsersManagement = () => {
           action: 'ban'
         }),
       })
-      
+
       if (response.ok) {
-        setUsers(prev => prev.map(user => 
+        setUsers(prev => prev.map(user =>
           user.id === userId ? { ...user, banned: true } : user
         ))
         toast.success("Usuário banido com sucesso")
@@ -172,9 +172,9 @@ export const UsersManagement = () => {
           action: 'unban'
         }),
       })
-      
+
       if (response.ok) {
-        setUsers(prev => prev.map(user => 
+        setUsers(prev => prev.map(user =>
           user.id === userId ? { ...user, banned: false } : user
         ))
         toast.success("Usuário desbaneado com sucesso")
@@ -198,7 +198,7 @@ export const UsersManagement = () => {
           targetUserId: userId
         }),
       })
-      
+
       if (response.ok) {
         setUsers(prev => prev.filter(user => user.id !== userId))
         toast.success("Usuário removido com sucesso")
@@ -260,7 +260,7 @@ export const UsersManagement = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -274,7 +274,7 @@ export const UsersManagement = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -288,7 +288,7 @@ export const UsersManagement = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -362,7 +362,7 @@ export const UsersManagement = () => {
                 filteredUsers.map((user) => {
                   const status = getUserStatus(user)
                   const StatusIcon = status.icon
-                  
+
                   return (
                     <TableRow key={user.id}>
                       <TableCell>
@@ -408,7 +408,7 @@ export const UsersManagement = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onClick={() => {
                                 setSelectedUser(user)
                                 setUserDetailsOpen(true)
@@ -425,7 +425,7 @@ export const UsersManagement = () => {
                                 Banir Usuário
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => handleDeleteUser(user.id)}
                             >
@@ -445,14 +445,14 @@ export const UsersManagement = () => {
 
       {/* Modal de Detalhes do Usuário */}
       <Dialog open={userDetailsOpen} onOpenChange={setUserDetailsOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes do Usuário</DialogTitle>
             <DialogDescription>
               Informações detalhadas do usuário selecionado
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedUser && (
             <div className="space-y-4">
               <div className="flex items-center gap-4">
@@ -467,7 +467,7 @@ export const UsersManagement = () => {
                   <p className="text-gray-600">{selectedUser.emailAddress}</p>
                 </div>
               </div>
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-gray-600">Status</label>
@@ -477,17 +477,17 @@ export const UsersManagement = () => {
                     </Badge>
                   </div>
                 </div>
-                
+
                 <div>
                   <label className="text-sm font-medium text-gray-600">Data de Cadastro</label>
                   <p className="text-sm">{formatDate(selectedUser.createdAt)}</p>
                 </div>
-                
+
                 <div>
                   <label className="text-sm font-medium text-gray-600">Último Acesso</label>
                   <p className="text-sm">{formatDate(selectedUser.lastSignInAt)}</p>
                 </div>
-                
+
                 <div>
                   <label className="text-sm font-medium text-gray-600">Verificado</label>
                   <p className="text-sm">{selectedUser.verified ? "Sim" : "Não"}</p>
