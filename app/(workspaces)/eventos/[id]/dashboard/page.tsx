@@ -323,17 +323,40 @@ export default function EventDashboardPage() {
         });
     }, [participantsArray]);
 
-    // Função para verificar se o participante já fez check-in no turno selecionado
+    // ✅ CORRIGIDO: Verificar check-in baseado no turno, data, estágio e período específicos
     const hasCheckIn = useCallback((participantId: string, shiftId: string): boolean => {
-        if (!attendanceData || attendanceData.length === 0) return false;
+        if (!attendanceData || attendanceData.length === 0 || !shiftInfo) return false;
 
-        // Como agora buscamos attendance específico por turno, 
-        // verificamos apenas se existe check-in para este participante
+        // Extrair informações do turno para validação precisa
+        const { dateISO, stage, period } = shiftInfo;
+
+        // Verificar se existe attendance que corresponde exatamente ao turno selecionado
         return attendanceData.some((attendance: any) => {
-            return attendance.participantId === participantId &&
-                attendance.checkIn !== null;
+            // Verificar se é o mesmo participante e tem check-in
+            if (attendance.participantId !== participantId || attendance.checkIn === null) {
+                return false;
+            }
+
+            // Verificar se a data corresponde (converter attendance.date para ISO)
+            const attendanceDateISO = formatDateForAPI(attendance.date);
+            const shiftDateForAPI = formatDateForAPI(dateISO);
+            
+            if (attendanceDateISO !== shiftDateForAPI) {
+                return false;
+            }
+
+            // Verificar se o estágio e período correspondem (se disponíveis no attendance)
+            if (attendance.workStage && attendance.workStage !== stage) {
+                return false;
+            }
+            
+            if (attendance.workPeriod && attendance.workPeriod !== period) {
+                return false;
+            }
+
+            return true;
         });
-    }, [attendanceData]);
+    }, [attendanceData, shiftInfo, formatDateForAPI]);
 
     // KPIs baseados no turno selecionado
     const participantesDoDia = getParticipantesPorDia(selectedDay)
@@ -351,13 +374,33 @@ export default function EventDashboardPage() {
         }
     }, [selectedDay, shiftInfo, participantesDoDia, attendanceData, hasCheckIn]);
 
-    // Calcular estatísticas por credencial
+    // ✅ CORRIGIDO: Calcular estatísticas baseado em participantes atribuídos a cada credencial no turno específico
     const getCredentialStats = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; credentialName: string; color: string }> = {}
 
+        if (!selectedDay) return stats;
+
         credentialsArray.forEach((credential: any) => {
-            const participantsWithCredential = participantesDoDia.filter((p: any) => p.credentialId === credential.id)
-            const checkedInWithCredential = participantsWithCredential.filter((p: any) => hasCheckIn(p.id, selectedDay))
+            // ✅ Buscar participantes atribuídos a esta credencial no turno específico
+            const participantsWithCredential = participantesDoDia.filter((p: any) => {
+                // Verificar se o participante tem a credencial atribuída
+                return p.credentialId === credential.id;
+            });
+
+            // ✅ Contar presenças válidas: participantes com attendance correspondente ao turno exato
+            const checkedInWithCredential = participantsWithCredential.filter((p: any) => {
+                return hasCheckIn(p.id, selectedDay);
+            });
+
+            // Debug para verificação
+            if (participantsWithCredential.length > 0) {
+                console.log(`🎫 Credencial "${credential.nome}":`, {
+                    turnoSelecionado: selectedDay,
+                    totalParticipantes: participantsWithCredential.length,
+                    participantesPresentes: checkedInWithCredential.length,
+                    participantes: participantsWithCredential.map(p => ({ nome: p.name, id: p.id }))
+                });
+            }
 
             stats[credential.id] = {
                 total: participantsWithCredential.length,
@@ -367,11 +410,19 @@ export default function EventDashboardPage() {
             }
         })
 
-        // Adicionar participantes sem credencial
-        const participantsWithoutCredential = participantesDoDia.filter((p: any) => !p.credentialId)
-        const checkedInWithoutCredential = participantsWithoutCredential.filter((p: any) => hasCheckIn(p.id, selectedDay))
+        // ✅ Adicionar participantes sem credencial no turno específico
+        const participantsWithoutCredential = participantesDoDia.filter((p: any) => !p.credentialId);
+        const checkedInWithoutCredential = participantsWithoutCredential.filter((p: any) => {
+            return hasCheckIn(p.id, selectedDay);
+        });
 
         if (participantsWithoutCredential.length > 0) {
+            console.log('👤 Participantes sem credencial:', {
+                turnoSelecionado: selectedDay,
+                totalSemCredencial: participantsWithoutCredential.length,
+                presentesSemCredencial: checkedInWithoutCredential.length
+            });
+
             stats['no-credential'] = {
                 total: participantsWithoutCredential.length,
                 checkedIn: checkedInWithoutCredential.length,
@@ -388,63 +439,118 @@ export default function EventDashboardPage() {
         return participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length;
     }, [participantesDoDia, hasCheckIn, selectedDay]);
 
-    // Calcular estatísticas resumidas por empresa (baseado nas empresas reais + participantes)
+    // ✅ CORRIGIDO: Calcular estatísticas por empresa baseado em empresas filtradas pelo turno específico
     const getCompanySummary = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; companyName: string }> = {}
 
-        // Filtrar empresas do turno selecionado
-        const empresasDoTurno = empresasArray.filter((empresa: any) => 
-            empresa.shiftId === selectedDay
-        );
+        if (!selectedDay || !shiftInfo) {
+            console.log('⚠️ Nenhum dia selecionado ou shiftInfo indisponível para calcular empresas');
+            return stats;
+        }
 
-        // Para cada empresa do turno, calcular estatísticas baseado nos participantes
+        const { dateISO, stage, period } = shiftInfo;
+
+        console.log('🔍 Debug empresas - filtros:', {
+            selectedDay,
+            workDate: dateISO,
+            workStage: stage,
+            workPeriod: period,
+            totalEmpresasArray: empresasArray.length,
+            totalParticipantes: participantesDoDia.length
+        });
+
+        // ✅ Filtrar empresas pelo turno específico (workDate, workStage, workPeriod)
+        const empresasDoTurno = empresasArray.filter((empresa: any) => {
+            const matchDate = empresa.workDate === dateISO;
+            const matchStage = empresa.workStage === stage;
+            const matchPeriod = empresa.workPeriod === period;
+            
+            return matchDate && matchStage && matchPeriod;
+        });
+
+        console.log('🏢 Empresas filtradas pelo turno:', {
+            empresasEncontradas: empresasDoTurno.length,
+            empresas: empresasDoTurno.map((e: any) => ({
+                nome: e.nome,
+                workDate: e.workDate,
+                workStage: e.workStage,
+                workPeriod: e.workPeriod
+            }))
+        });
+
+        // ✅ Para cada empresa do turno, buscar participantes e calcular estatísticas
         empresasDoTurno.forEach((empresa: any) => {
+            // Buscar participantes desta empresa no turno específico
             const participantesEmpresa = participantesDoDia.filter((participant: any) => 
                 participant.company === empresa.nome
             );
 
-            const checkedInParticipants = participantesEmpresa.filter((p: any) => 
-                hasCheckIn(p.id, selectedDay)
-            );
+            // Contar presenças válidas
+            const checkedInParticipants = participantesEmpresa.filter((p: any) => {
+                return hasCheckIn(p.id, selectedDay);
+            });
 
-            stats[empresa.nome] = {
-                total: participantesEmpresa.length,
-                checkedIn: checkedInParticipants.length,
-                companyName: empresa.nome
+            // Debug para verificação
+            console.log(`🏢 Empresa "${empresa.nome}" no turno:`, {
+                turnoSelecionado: selectedDay,
+                totalParticipantes: participantesEmpresa.length,
+                participantesPresentes: checkedInParticipants.length,
+                workDate: empresa.workDate,
+                workStage: empresa.workStage,
+                workPeriod: empresa.workPeriod
+            });
+
+            // Só adicionar se houver participantes
+            if (participantesEmpresa.length > 0) {
+                stats[empresa.nome] = {
+                    total: participantesEmpresa.length,
+                    checkedIn: checkedInParticipants.length,
+                    companyName: empresa.nome
+                };
             }
         });
 
-        // Também incluir participantes sem empresa registrada nas empresas
+        // ✅ Também incluir participantes com empresas que não estão registradas no sistema de empresas
+        const empresasRegistradas = empresasDoTurno.map((e: any) => e.nome);
         const participantesSemEmpresaRegistrada = participantesDoDia.filter((participant: any) => {
-            const temEmpresaRegistrada = empresasDoTurno.some((empresa: any) => 
-                empresa.nome === participant.company
-            );
-            return !temEmpresaRegistrada && participant.company;
+            return participant.company && 
+                   participant.company.trim() !== '' && 
+                   !empresasRegistradas.includes(participant.company);
         });
 
-        // Agrupar participantes sem empresa registrada por nome da empresa
-        const participantsByCompany = participantesSemEmpresaRegistrada.reduce((acc: any, participant: any) => {
-            const companyName = participant.company || 'SEM EMPRESA';
-            if (!acc[companyName]) {
-                acc[companyName] = [];
-            }
-            acc[companyName].push(participant);
-            return acc;
-        }, {});
+        if (participantesSemEmpresaRegistrada.length > 0) {
+            console.log('👥 Participantes com empresas não registradas:', {
+                quantidade: participantesSemEmpresaRegistrada.length,
+                empresas: [...new Set(participantesSemEmpresaRegistrada.map((p: any) => p.company))]
+            });
 
-        // Adicionar estatísticas para participantes sem empresa registrada
-        Object.entries(participantsByCompany).forEach(([companyName, participants]: [string, any]) => {
-            const checkedInParticipants = participants.filter((p: any) => hasCheckIn(p.id, selectedDay));
+            // Agrupar por empresa não registrada
+            const participantsByUnregisteredCompany = participantesSemEmpresaRegistrada.reduce((acc: any, participant: any) => {
+                const companyName = participant.company;
+                if (!acc[companyName]) {
+                    acc[companyName] = [];
+                }
+                acc[companyName].push(participant);
+                return acc;
+            }, {});
 
-            stats[companyName] = {
-                total: participants.length,
-                checkedIn: checkedInParticipants.length,
-                companyName
-            }
-        });
+            // Calcular stats para empresas não registradas
+            Object.entries(participantsByUnregisteredCompany).forEach(([companyName, participants]: [string, any]) => {
+                const checkedInParticipants = participants.filter((p: any) => {
+                    return hasCheckIn(p.id, selectedDay);
+                });
 
+                stats[companyName] = {
+                    total: participants.length,
+                    checkedIn: checkedInParticipants.length,
+                    companyName
+                };
+            });
+        }
+
+        console.log('📊 Stats finais das empresas:', Object.keys(stats));
         return stats;
-    }, [participantesDoDia, hasCheckIn, selectedDay, empresasArray]);
+    }, [participantesDoDia, hasCheckIn, selectedDay, shiftInfo, empresasArray]);
 
     // Definir primeiro dia como padrão se não houver seleção
     const eventDays = getEventDays();
@@ -454,6 +560,13 @@ export default function EventDashboardPage() {
 
     const credentialStats = getCredentialStats();
     const companySummary = getCompanySummary();
+    
+    // ✅ Debug: Verificar se companySummary tem dados
+    console.log('🔍 Verificando dados das empresas:', {
+        credentialStats: Object.keys(credentialStats).length,
+        companySummary: Object.keys(companySummary).length,
+        companySummaryData: companySummary
+    });
 
     // Estatísticas das empresas (mesmo modelo da página de empresas)
     const empresasStats = useMemo(() => {
@@ -520,6 +633,11 @@ export default function EventDashboardPage() {
             color: string
         }> = []
 
+        console.log('🔧 Preparando dashboard items:', {
+            credentialStats: Object.keys(credentialStats),
+            companySummary: Object.keys(companySummary)
+        });
+
         // Adicionar credenciais
         Object.entries(credentialStats).forEach(([credentialId, stats]) => {
             items.push({
@@ -535,6 +653,8 @@ export default function EventDashboardPage() {
 
         // Adicionar empresas
         Object.entries(companySummary).forEach(([companyName, stats]) => {
+            console.log(`➕ Adicionando empresa: ${companyName}`, stats);
+            
             // Gerar cor baseada no nome da empresa
             const getCompanyColor = (name: string) => {
                 const colors = [
@@ -560,6 +680,13 @@ export default function EventDashboardPage() {
             })
         })
 
+        console.log('✅ Dashboard items criados:', {
+            totalItems: items.length,
+            credenciais: items.filter(i => i.type === 'credential').length,
+            empresas: items.filter(i => i.type === 'company').length,
+            empresasList: items.filter(i => i.type === 'company').map(i => i.name)
+        });
+
         return items
     }, [credentialStats, companySummary])
 
@@ -574,12 +701,22 @@ export default function EventDashboardPage() {
     }, [dashboardItems, credentialFilter])
 
     const companyItems = useMemo(() => {
-        return dashboardItems
+        const companyItemsFiltered = dashboardItems
             .filter(item => item.type === 'company')
             .filter(item => 
                 companyFilter === '' || 
                 item.name.toLowerCase().includes(companyFilter.toLowerCase())
             )
+            
+        console.log('🏢 Company items filtrados:', {
+            totalDashboardItems: dashboardItems.length,
+            companyItemsBeforeFilter: dashboardItems.filter(item => item.type === 'company').length,
+            companyFilter,
+            companyItemsAfterFilter: companyItemsFiltered.length,
+            companyItemsList: companyItemsFiltered.map(item => ({ name: item.name, total: item.total, checkedIn: item.checkedIn }))
+        });
+        
+        return companyItemsFiltered;
     }, [dashboardItems, companyFilter])
 
     const isLoading = participantsLoading || empresasLoading || attendanceLoading;

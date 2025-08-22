@@ -817,10 +817,19 @@ export default function EventoDetalhesPage() {
         credentialsArray,
     })
 
-    // Override uniqueEmpresas to show only companies scheduled for the selected day
+    // ✅ CORRIGIDO: Mostrar todas as empresas dos participantes do turno, não apenas as agendadas para o dia
     const uniqueEmpresasFiltered = useMemo(() => {
-        return empresasDoDia.map(empresa => empresa.nome).sort()
-    }, [empresasDoDia])
+        // Extrair empresas únicas dos participantes do turno atual
+        const empresasDoTurno = new Set<string>()
+        
+        participantesDoDia.forEach(participant => {
+            if (participant.company && participant.company.trim()) {
+                empresasDoTurno.add(participant.company.trim())
+            }
+        })
+        
+        return Array.from(empresasDoTurno).sort()
+    }, [participantesDoDia])
 
     // Memoizar KPIs baseados no dia selecionado para evitar recálculos
     const kpiStats = useMemo(() => {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
@@ -121,6 +122,7 @@ export default function ImportExportPage() {
     const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
     // Creation States
+    const [colorsConfirmed, setColorsConfirmed] = useState(false) // ✅ Novo estado para controlar confirmação das cores
     const [creationProgress, setCreationProgress] = useState<CreationProgress>({
         type: "credential",
         current: 0,
@@ -147,6 +149,7 @@ export default function ImportExportPage() {
     const [dragActive, setDragActive] = useState(false)
     const [isExporting, setIsExporting] = useState(false)
     const [selectedEventDates, setSelectedEventDates] = useState<string[]>([])
+    const [shiftValidationErrors, setShiftValidationErrors] = useState<{ [shiftId: string]: { missingCompanies: string[], missingCredentials: string[] } }>({})
     const [searchTerm, setSearchTerm] = useState("")
     const [sortBy, setSortBy] = useState<"name" | "company" | "role">("name")
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
@@ -321,23 +324,90 @@ export default function ImportExportPage() {
         return name.toString().trim().toUpperCase()
     }
 
-    const findCredentialByName = (name: string) => {
+    // Função para extrair informações do ID do turno
+    const parseShiftId = (shiftId: string) => {
+        const parts = shiftId.split('-');
+        if (parts.length >= 5) {
+            // Formato: YYYY-MM-DD-stage-period
+            const dateISO = `${parts[0]}-${parts[1]}-${parts[2]}`;
+            const stage = parts[3];
+            const period = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro';
+            return { dateISO, stage, period };
+        }
+        // Fallback para IDs mal formados
+        console.warn('⚠️ ShiftId mal formatado:', shiftId);
+        return { dateISO: new Date().toISOString().split('T')[0], stage: 'evento', period: 'diurno' as 'diurno' | 'noturno' | 'dia_inteiro' };
+    };
+
+    const findCredentialByName = (name: string, shiftId?: string) => {
         const normalizedName = normalizeCredentialName(name)
-        return credentials.find((credential) => normalizeCredentialName(credential.nome) === normalizedName)
+        console.log(`🔍 findCredentialByName: "${normalizedName}" ${shiftId ? `para turno ${shiftId}` : 'sem turno específico'}`)
+        console.log(`📋 Credenciais disponíveis:`, credentials.length)
+
+        const result = credentials.find((credential) => {
+            const nameMatches = normalizeCredentialName(credential.nome) === normalizedName
+            console.log(`📝 Verificando credencial:`, {
+                nome: credential.nome,
+                nameMatches,
+                shiftId: credential.shiftId,
+                workDate: credential.workDate,
+                workStage: credential.workStage,
+                workPeriod: credential.workPeriod
+            })
+
+            // If shiftId is provided, filter by shift-specific fields
+            if (shiftId) {
+                const { dateISO, stage, period } = parseShiftId(shiftId)
+                const shiftMatches = credential.shiftId === shiftId &&
+                    credential.workDate === dateISO &&
+                    credential.workStage === stage &&
+                    credential.workPeriod === period
+                console.log(`🎯 Verificação de turno:`, {
+                    buscando: { shiftId, dateISO, stage, period },
+                    credencial: {
+                        shiftId: credential.shiftId,
+                        workDate: credential.workDate,
+                        workStage: credential.workStage,
+                        workPeriod: credential.workPeriod
+                    },
+                    shiftMatches
+                })
+                return nameMatches && shiftMatches
+            }
+
+            // If no shiftId provided, return any matching credential (fallback behavior)
+            return nameMatches
+        })
+
+        console.log(`✅ Resultado findCredentialByName:`, result ? 'Encontrada' : 'Não encontrada')
+        return result
     }
 
-    const findCompanyByName = (name: string) => {
+    const findCompanyByName = (name: string, shiftId?: string) => {
         const normalizedName = normalizeCompanyName(name)
         return (empresas || []).find((empresa) => {
             const empresaNormalized = normalizeCompanyName(empresa.nome)
-            return empresaNormalized === normalizedName
+            const nameMatches = empresaNormalized === normalizedName
+
+            // If shiftId is provided, filter by shift-specific fields
+            if (shiftId) {
+                const { dateISO, stage, period } = parseShiftId(shiftId)
+                return nameMatches &&
+                    empresa.shiftId === shiftId &&
+                    empresa.workDate === dateISO &&
+                    empresa.workStage === stage &&
+                    empresa.workPeriod === period
+            }
+
+            // If no shiftId provided, return any matching company (fallback behavior)
+            return nameMatches
         })
     }
 
     // Creation functions with verification - CREATE FOR ALL SELECTED SHIFTS
     const createCredentialFunction = async (name: string, color: string): Promise<{ success: boolean; id: string | null }> => {
         const normalizedName = normalizeCredentialName(name)
-        
+
         if (selectedEventDates.length === 0) {
             console.warn('⚠️ Nenhum turno selecionado para criar credencial')
             return { success: false, id: null }
@@ -347,11 +417,11 @@ export default function ImportExportPage() {
 
         // Create credential for EACH selected shift
         const results: { success: boolean; id: string | null }[] = []
-        
+
         for (let i = 0; i < selectedEventDates.length; i++) {
             const shiftId = selectedEventDates[i]
             const { dateISO, stage, period } = parseShiftId(shiftId)
-            
+
             const shiftData = {
                 shiftId: shiftId,
                 workDate: dateISO,
@@ -379,11 +449,22 @@ export default function ImportExportPage() {
                 workPeriod: shiftData.workPeriod,
             }
 
+            console.log(`🚀 Enviando dados da credencial para API:`, {
+                nome: credentialData.nome,
+                normalizedName,
+                shiftId,
+                credentialData
+            })
+
             const result = await new Promise<{ success: boolean; id: string | null }>((resolve) => {
                 createCredential(credentialData, {
                     onSuccess: async (data) => {
-                        console.log(`✅ Credencial criada para turno ${shiftId}:`, data)
-                        
+                        console.log(`✅ Resposta da API ao criar credencial:`, {
+                            turno: shiftId,
+                            nomeEnviado: normalizedName,
+                            dadosRetornados: data
+                        })
+
                         // Wait and verify creation
                         setTimeout(async () => {
                             await refetchCredentials()
@@ -424,15 +505,15 @@ export default function ImportExportPage() {
             toast.error(`❌ Falha ao criar credencial "${normalizedName}" para todos os turnos`)
         }
 
-        return { 
-            success: successfulCreations > 0, 
-            id: results.find(r => r.success)?.id || null 
+        return {
+            success: successfulCreations > 0,
+            id: results.find(r => r.success)?.id || null
         }
     }
 
     const createCompanyFunction = async (name: string): Promise<{ success: boolean; id: string | null }> => {
         const normalizedName = normalizeCompanyName(name)
-        
+
         if (selectedEventDates.length === 0) {
             console.warn('⚠️ Nenhum turno selecionado para criar empresa')
             return { success: false, id: null }
@@ -442,11 +523,11 @@ export default function ImportExportPage() {
 
         // Create company for EACH selected shift
         const results: { success: boolean; id: string | null }[] = []
-        
+
         for (let i = 0; i < selectedEventDates.length; i++) {
             const shiftId = selectedEventDates[i]
             const { dateISO, stage, period } = parseShiftId(shiftId)
-            
+
             const shiftData = {
                 shiftId: shiftId,
                 workDate: dateISO,
@@ -477,11 +558,11 @@ export default function ImportExportPage() {
                 createEmpresa(companyData, {
                     onSuccess: async (data) => {
                         console.log(`✅ Empresa criada para turno ${shiftId}:`, data)
-                        
+
                         // If we get creation data, consider it success
                         if (data && data.id) {
                             resolve({ success: true, id: data.id })
-                            
+
                             // Background refresh
                             setTimeout(async () => {
                                 try {
@@ -490,7 +571,7 @@ export default function ImportExportPage() {
                                     console.warn('⚠️ Erro ao atualizar cache de empresas:', error)
                                 }
                             }, 1000)
-                            
+
                             return
                         }
 
@@ -545,9 +626,9 @@ export default function ImportExportPage() {
             toast.error(`❌ Falha ao criar empresa "${normalizedName}" para todos os turnos`)
         }
 
-        return { 
-            success: successfulCreations > 0, 
-            id: results.find(r => r.success)?.id || null 
+        return {
+            success: successfulCreations > 0,
+            id: results.find(r => r.success)?.id || null
         }
     }
 
@@ -558,14 +639,24 @@ export default function ImportExportPage() {
         setIsCreationDialogOpen(true)
         setShouldCancelCreation(false)
 
-        // Create credentials first
+        // Create credentials first (both general missing and shift-specific)
         if (processedData.missingCredentials.length > 0) {
             await createMissingCredentials()
         }
 
-        // Then create companies
+        // Create shift-specific missing credentials
+        if (!shouldCancelCreation && Object.keys(shiftValidationErrors).length > 0) {
+            await createShiftSpecificCredentials()
+        }
+
+        // Then create companies (both general missing and shift-specific)
         if (processedData.missingCompanies.length > 0 && !shouldCancelCreation) {
             await createMissingCompanies()
+        }
+
+        // Create shift-specific missing companies
+        if (!shouldCancelCreation && Object.keys(shiftValidationErrors).length > 0) {
+            await createShiftSpecificCompanies()
         }
 
         setIsCreationDialogOpen(false)
@@ -669,6 +760,123 @@ export default function ImportExportPage() {
         }
     }
 
+    const createShiftSpecificCredentials = async () => {
+        if (Object.keys(shiftValidationErrors).length === 0) return
+
+        // Collect all unique credentials missing from all shifts
+        const uniqueCredentials = new Set<string>()
+        Object.values(shiftValidationErrors).forEach(error => {
+            error.missingCredentials.forEach(cred => uniqueCredentials.add(cred))
+        })
+
+        if (uniqueCredentials.size === 0) return
+
+        setCreationProgress({
+            type: "credential",
+            current: 0,
+            total: uniqueCredentials.size,
+            currentItem: "",
+            isCreating: true,
+            completed: [],
+            failed: [],
+        })
+
+        const credentialArray = Array.from(uniqueCredentials)
+        for (let i = 0; i < credentialArray.length; i++) {
+            if (shouldCancelCreation) break
+
+            const credentialName = credentialArray[i]
+            const color = credentialColors[credentialName] || "#3B82F6"
+
+            setCreationProgress((prev) => ({
+                ...prev,
+                current: i + 1,
+                currentItem: credentialName,
+            }))
+
+            const result = await createCredentialFunction(credentialName, color)
+
+            console.log(`📊 Atualizando progresso para credencial:`, {
+                credentialName,
+                success: result.success,
+                completedAntesAntes: setCreationProgress.length
+            })
+
+            setCreationProgress((prev) => ({
+                ...prev,
+                completed: result.success ? [...prev.completed, credentialName] : prev.completed,
+                failed: !result.success ? [...prev.failed, credentialName] : prev.failed,
+            }))
+
+            console.log(`📋 Progress atualizado para credencial ${credentialName}`)
+
+            if (!result.success) {
+                toast.error(`❌ Falha ao criar credencial: ${credentialName}`)
+            } else {
+                toast.success(`✅ Credencial criada para turnos: ${credentialName}`)
+            }
+
+            // Pause between creations
+            if (i < credentialArray.length - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 2000))
+            }
+        }
+    }
+
+    const createShiftSpecificCompanies = async () => {
+        if (Object.keys(shiftValidationErrors).length === 0) return
+
+        // Collect all unique companies missing from all shifts
+        const uniqueCompanies = new Set<string>()
+        Object.values(shiftValidationErrors).forEach(error => {
+            error.missingCompanies.forEach(comp => uniqueCompanies.add(comp))
+        })
+
+        if (uniqueCompanies.size === 0) return
+
+        setCreationProgress({
+            type: "company",
+            current: 0,
+            total: uniqueCompanies.size,
+            currentItem: "",
+            isCreating: true,
+            completed: [],
+            failed: [],
+        })
+
+        const companyArray = Array.from(uniqueCompanies)
+        for (let i = 0; i < companyArray.length; i++) {
+            if (shouldCancelCreation) break
+
+            const companyName = companyArray[i]
+
+            setCreationProgress((prev) => ({
+                ...prev,
+                current: i + 1,
+                currentItem: companyName,
+            }))
+
+            const result = await createCompanyFunction(companyName)
+
+            setCreationProgress((prev) => ({
+                ...prev,
+                completed: result.success ? [...prev.completed, companyName] : prev.completed,
+                failed: !result.success ? [...prev.failed, companyName] : prev.failed,
+            }))
+
+            if (!result.success) {
+                toast.error(`❌ Falha ao criar empresa: ${companyName}`)
+            } else {
+                toast.success(`✅ Empresa criada para turnos: ${companyName}`)
+            }
+
+            // Pause between creations
+            if (i < companyArray.length - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 3000))
+            }
+        }
+    }
+
     const handleVerificationStep = async () => {
         if (!uploadedFile) return
 
@@ -727,6 +935,72 @@ export default function ImportExportPage() {
         }
     }
 
+    // Validate if companies and credentials exist for specific shifts
+    const validateShiftRequirements = useCallback((processedData: ProcessedData, selectedShifts: string[]) => {
+        console.log('🔍 validateShiftRequirements iniciada:', { selectedShifts })
+        const shiftValidationErrors: { [shiftId: string]: { missingCompanies: string[], missingCredentials: string[] } } = {}
+
+        selectedShifts.forEach(shiftId => {
+            console.log(`🎯 Validando turno: ${shiftId}`)
+            const { dateISO, stage, period } = parseShiftId(shiftId)
+            const missingCompanies: string[] = [];
+            const missingCredentials: string[] = [];
+
+            // Verifica cada empresa única nos dados processados
+            Array.isArray(processedData.missingCompanies) && processedData.missingCompanies.forEach((company: any) => {
+                const existingCompany = findCompanyByName(company.name, shiftId)
+                if (!existingCompany) {
+                    missingCompanies.push(company.name)
+                }
+            })
+
+            // Verifica cada credencial única nos dados processados
+            Array.isArray(processedData.missingCredentials) && processedData.missingCredentials.forEach((credential: any) => {
+                const existingCredential = findCredentialByName(credential.name, shiftId)
+                if (!existingCredential) {
+                    missingCredentials.push(credential.name)
+                }
+            })
+
+            // Also check companies and credentials that exist in general but not for this specific shift
+            processedData.data.forEach(participant => {
+                if (participant.empresa) {
+                    const companyName = normalizeCompanyName(participant.empresa)
+                    const existingCompany = findCompanyByName(companyName, shiftId)
+                    if (!existingCompany && !missingCompanies.includes(companyName)) {
+                        console.log(`❌ Empresa "${companyName}" não encontrada para turno ${shiftId}`)
+                        missingCompanies.push(companyName)
+                    }
+                }
+
+                if (participant.credencial) {
+                    const credentialName = normalizeCredentialName(participant.credencial)
+                    console.log(`🔍 Verificando credencial "${credentialName}" para turno ${shiftId}`)
+                    const existingCredential = findCredentialByName(credentialName, shiftId)
+                    console.log(`📋 Resultado da busca:`, existingCredential ? '✅ Encontrada' : '❌ Não encontrada')
+                    if (!existingCredential && !missingCredentials.includes(credentialName)) {
+                        console.log(`❌ Credencial "${credentialName}" não encontrada para turno ${shiftId}`)
+                        missingCredentials.push(credentialName)
+                    }
+                }
+            })
+
+            console.log(`📊 Resultado para turno ${shiftId}:`, {
+                missingCompanies: missingCompanies.length,
+                missingCredentials: missingCredentials.length,
+                companies: missingCompanies,
+                credentials: missingCredentials
+            })
+
+            if (missingCompanies.length > 0 || missingCredentials.length > 0) {
+                shiftValidationErrors[shiftId] = { missingCompanies, missingCredentials }
+            }
+        })
+
+        console.log('🏁 Validação finalizada:', shiftValidationErrors)
+        return shiftValidationErrors
+    }, [findCompanyByName, findCredentialByName, parseShiftId])
+
     // Process Excel file
     const processExcelFile = useCallback(async (file: File): Promise<ProcessedData> => {
         return new Promise((resolve, reject) => {
@@ -756,7 +1030,7 @@ export default function ImportExportPage() {
                     setProcessingProgress({ current: 0, total: jsonData.length, percentage: 0 })
 
                     // Filtrar participantes apenas dos turnos selecionados para verificação de duplicados
-                    const participantsInSelectedShifts = participants.filter((p) => 
+                    const participantsInSelectedShifts = participants.filter((p) =>
                         selectedEventDates.some(shiftId => p.shiftId === shiftId)
                     )
                     console.log(`🔍 Verificando duplicados apenas nos turnos selecionados:`, {
@@ -764,7 +1038,7 @@ export default function ImportExportPage() {
                         participantsInSelectedShifts: participantsInSelectedShifts.length,
                         selectedShifts: selectedEventDates
                     })
-                    
+
                     const existingCPFs = new Set(participantsInSelectedShifts.map((p) => p.cpf.replace(/\D/g, "")))
                     const processedCPFs = new Set<string>()
                     const credentialCounts: { [key: string]: number } = {}
@@ -823,7 +1097,7 @@ export default function ImportExportPage() {
                                     rgJaExiste: cleanedRG ? existingCPFs.has(cleanedRG) : false,
                                     totalExisting: existingCPFs.size
                                 })
-                                
+
                                 const existing = participantsInSelectedShifts.find(
                                     (p) => p.cpf.replace(/\D/g, "") === cleanedCPF || (cleanedRG && p.cpf.replace(/\D/g, "") === cleanedRG),
                                 )
@@ -832,7 +1106,7 @@ export default function ImportExportPage() {
                                         novo: { nome: row.nome, cpf: cleanedCPF },
                                         existente: { nome: existing.name, cpf: existing.cpf, id: existing.id }
                                     })
-                                    
+
                                     result.duplicates.push({
                                         item: row,
                                         existing,
@@ -855,7 +1129,7 @@ export default function ImportExportPage() {
                                     processedCPFs: Array.from(processedCPFs).slice(0, 5), // Primeiros 5 para debug
                                     totalProcessed: processedCPFs.size
                                 })
-                                
+
                                 result.duplicates.push({
                                     item: row,
                                     existing: {} as EventParticipant,
@@ -868,7 +1142,7 @@ export default function ImportExportPage() {
                             if (cleanedCPF) processedCPFs.add(cleanedCPF)
                             if (cleanedRG) processedCPFs.add(cleanedRG)
 
-                            // Process credential
+                            // Process credential (general check - shift-specific validation happens later)
                             let credentialId: string | undefined = undefined
                             if (row.credencial) {
                                 const credentialName = normalizeCredentialName(row.credencial)
@@ -919,7 +1193,7 @@ export default function ImportExportPage() {
                                 nome: participantData.name,
                                 funcao: participantData.role || "",
                                 empresa: participantData.company || "",
-                                credencial: participantData.credentialId || "",
+                                credencial: row.credencial?.toString().trim() || "", // ✅ Use original credential name, not ID
                             })
                             result.validRows++
                         })
@@ -1076,13 +1350,66 @@ export default function ImportExportPage() {
     }, [processExcelFile])
 
     const handleNextStep = () => {
-        if (currentStep === "preview") {
+        if (currentStep === "date") {
+            setCurrentStep("upload")
+        } else if (currentStep === "upload") {
+            setCurrentStep("preview")
+        } else if (currentStep === "preview") {
             setCurrentStep("validation")
         } else if (currentStep === "validation") {
-            // Check if we need to create credentials or companies
-            if (processedData?.missingCredentials?.length || processedData?.missingCompanies?.length) {
+            // Validate if companies and credentials exist for selected shifts
+            let shiftErrors = {}
+            if (processedData && selectedEventDates.length > 0) {
+                console.log('🔍 Iniciando validação por turnos:', {
+                    processedData: processedData.data.length,
+                    selectedShifts: selectedEventDates
+                })
+                shiftErrors = validateShiftRequirements(processedData, selectedEventDates)
+                console.log('📊 Resultados da validação por turnos:', shiftErrors)
+                setShiftValidationErrors(shiftErrors)
+
+                // ✅ Initialize colors for shift-specific missing credentials
+                if (Object.keys(shiftErrors).length > 0) {
+                    const uniqueCredentials = new Set<string>()
+                    Object.values(shiftErrors).forEach((error: any) => {
+                        if (error && Array.isArray(error.missingCredentials)) {
+                            error.missingCredentials.forEach((cred: string) => uniqueCredentials.add(cred))
+                        }
+                    })
+
+                    if (uniqueCredentials.size > 0) {
+                        const colors = {}
+                        Array.from(uniqueCredentials).forEach((credName, index) => {
+                            const hue = (index * 137.5) % 360 // Golden angle for good color distribution
+                                ; (colors as Record<string, string>)[credName] = `hsl(${hue}, 70%, 50%)`
+                        })
+                        setCredentialColors(prev => ({ ...prev, ...colors }))
+                        console.log('🎨 Cores inicializadas para credenciais dos turnos:', colors)
+                    }
+                }
+            }
+
+            // Check if we need to create credentials or companies (including shift-specific ones)
+            const hasShiftSpecificErrors = Object.keys(shiftErrors).length > 0
+            const hasMissingItems = processedData?.missingCredentials?.length || processedData?.missingCompanies?.length
+
+            console.log('🎯 Verificação final:', {
+                hasShiftSpecificErrors,
+                hasMissingItems,
+                missingCredentials: processedData?.missingCredentials?.length || 0,
+                missingCompanies: processedData?.missingCompanies?.length || 0,
+                shiftErrorsCount: Object.keys(shiftErrors).length
+            })
+
+            if (hasMissingItems || hasShiftSpecificErrors) {
+                if (hasShiftSpecificErrors) {
+                    toast.info("Algumas empresas ou credenciais não existem para os turnos selecionados. Vamos criá-las!")
+                }
+                console.log('➡️ Indo para etapa de criação')
                 setCurrentStep("creation")
+                setColorsConfirmed(false) // ✅ Reset do estado para permitir escolher cores novamente
             } else {
+                console.log('➡️ Indo diretamente para importação')
                 setCurrentStep("import")
             }
         } else if (currentStep === "creation") {
@@ -1095,6 +1422,7 @@ export default function ImportExportPage() {
     const handlePrevStep = () => {
         if (currentStep === "verification") {
             setCurrentStep("creation")
+            setColorsConfirmed(false) // ✅ Reset quando voltar para criação
         } else if (currentStep === "creation") {
             setCurrentStep("validation")
         } else if (currentStep === "validation") {
@@ -1125,18 +1453,40 @@ export default function ImportExportPage() {
         try {
             // Create participant entries for each shift (new shift-based system)
             const participantsWithShifts: CreateEventParticipantRequest[] = []
-            
+
             processedData.data.forEach((item) => {
                 selectedEventDates.forEach((shiftId) => {
                     const { dateISO, stage, period } = parseShiftId(shiftId)
-                    
+
+                    // Validate credential exists for this specific shift
+                    let credentialId: string | undefined = undefined
+                    if (item.credencial) {
+                        const credentialName = typeof item.credencial === 'string' ? item.credencial : normalizeCredentialName(item.credencial)
+                        const existingCredential = findCredentialByName(credentialName, shiftId)
+                        if (existingCredential) {
+                            credentialId = existingCredential.id
+                        } else {
+                            console.warn(`⚠️ Credencial "${credentialName}" não encontrada para turno ${shiftId}`)
+                        }
+                    }
+
+                    // Validate company exists for this specific shift
+                    let companyName = item.empresa ? normalizeCompanyName(item.empresa) : undefined
+                    if (companyName) {
+                        const existingCompany = findCompanyByName(companyName, shiftId)
+                        if (!existingCompany) {
+                            console.warn(`⚠️ Empresa "${companyName}" não encontrada para turno ${shiftId}`)
+                            // Still use the company name even if not found for this shift (will be handled during creation)
+                        }
+                    }
+
                     participantsWithShifts.push({
                         eventId: eventId,
                         name: normalizeStaffName(item.nome), // Normalizar nome para maiúsculas
                         cpf: item.cpf,
                         role: normalizeFunctionName(item.funcao), // Normalizar função para maiúsculas
-                        company: normalizeCompanyName(item.empresa), // Normalizar empresa para maiúsculas
-                        credentialId: item.credencial,
+                        company: companyName || "",
+                        credentialId: credentialId,
                         // New shift-based fields
                         shiftId: shiftId,
                         workDate: dateISO,
@@ -1146,7 +1496,7 @@ export default function ImportExportPage() {
                     })
                 })
             })
-            
+
             const result = await importParticipants(participantsWithShifts)
             setImportResult({
                 success: participantsWithShifts,
@@ -1172,6 +1522,7 @@ export default function ImportExportPage() {
         setProcessedData(null)
         setImportResult(null)
         setSelectedEventDates([])
+        setShiftValidationErrors({})
         setCredentialColors({})
         setProgress({ total: 0, processed: 0, success: 0, errors: 0, duplicates: 0 })
     }
@@ -1227,16 +1578,16 @@ export default function ImportExportPage() {
                 Função: p.role,
                 Email: p.email || "",
                 Telefone: p.phone || "",
-                
+
                 // Shift-based system fields
                 Turno_ID: p.shiftId || "",
                 Data_Trabalho: p.workDate || "",
                 Estagio: p.workStage ? p.workStage.toUpperCase() : "",
                 Periodo: p.workPeriod ? (p.workPeriod === 'diurno' ? 'DIURNO' : p.workPeriod === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO') : "",
-                
+
                 // Legacy field for compatibility (using workDate if available)
                 Dias_Trabalho: p.daysWork?.join(", ") || (p.workDate ? formatEventDate(p.workDate + 'T00:00:00') : ""),
-                
+
                 Check_in: p.checkIn ? formatEventDate(p.checkIn) : "",
                 Horario_Check_in: p.checkIn ? new Date(p.checkIn).toLocaleTimeString('pt-BR') : "",
                 Check_out: p.checkOut ? formatEventDate(p.checkOut) : "",
@@ -1304,15 +1655,15 @@ export default function ImportExportPage() {
     // Date functions - Processa diretamente dos objetos SimpleEventDay do evento
     const getEventDates = () => {
         if (!evento) return [];
-        
+
         const shiftIds: string[] = [];
-        
+
         // Processar nova estrutura SimpleEventDay diretamente
         const processEventPhase = (phaseData: any, phaseName: 'montagem' | 'evento' | 'desmontagem') => {
             if (!phaseData) return;
-            
+
             let eventDays: any[] = [];
-            
+
             try {
                 // Se for string JSON, fazer parse
                 if (typeof phaseData === 'string') {
@@ -1326,16 +1677,16 @@ export default function ImportExportPage() {
                 else {
                     return;
                 }
-                
+
                 // Processar cada SimpleEventDay
                 eventDays.forEach(eventDay => {
                     if (eventDay && eventDay.date && eventDay.period) {
                         // Usar diretamente os dados do SimpleEventDay
                         const dateISO = eventDay.date; // já no formato YYYY-MM-DD
                         const period = eventDay.period; // 'diurno' ou 'noturno'
-                        
+
                         const shiftId = `${dateISO}-${phaseName}-${period}`;
-                        
+
                         // Evitar duplicatas
                         if (!shiftIds.includes(shiftId)) {
                             shiftIds.push(shiftId);
@@ -1346,22 +1697,22 @@ export default function ImportExportPage() {
                 console.warn(`Erro ao processar ${phaseName}:`, error);
             }
         };
-        
+
         // Processar cada fase do evento usando a nova estrutura
         processEventPhase(evento.montagem, 'montagem');
-        processEventPhase(evento.evento, 'evento'); 
+        processEventPhase(evento.evento, 'evento');
         processEventPhase(evento.desmontagem, 'desmontagem');
-        
+
         // Fallback para estrutura legacy (apenas se não tiver a nova estrutura)
         if (shiftIds.length === 0) {
             console.warn('🔄 Usando fallback para estrutura legacy de eventos');
-            
+
             // Legacy: setupStartDate/setupEndDate = montagem
             if (evento.setupStartDate && evento.setupEndDate) {
                 const startDate = new Date(evento.setupStartDate);
                 const endDate = new Date(evento.setupEndDate);
                 const currentDate = new Date(startDate);
-                
+
                 while (currentDate <= endDate) {
                     const dateISO = currentDate.toISOString().split("T")[0];
                     shiftIds.push(`${dateISO}-montagem-diurno`);
@@ -1369,13 +1720,13 @@ export default function ImportExportPage() {
                     currentDate.setDate(currentDate.getDate() + 1);
                 }
             }
-            
+
             // Legacy: preparationStartDate/preparationEndDate = evento
             if (evento.preparationStartDate && evento.preparationEndDate) {
                 const startDate = new Date(evento.preparationStartDate);
                 const endDate = new Date(evento.preparationEndDate);
                 const currentDate = new Date(startDate);
-                
+
                 while (currentDate <= endDate) {
                     const dateISO = currentDate.toISOString().split("T")[0];
                     shiftIds.push(`${dateISO}-evento-diurno`);
@@ -1383,13 +1734,13 @@ export default function ImportExportPage() {
                     currentDate.setDate(currentDate.getDate() + 1);
                 }
             }
-            
+
             // Legacy: finalizationStartDate/finalizationEndDate = desmontagem
             if (evento.finalizationStartDate && evento.finalizationEndDate) {
                 const startDate = new Date(evento.finalizationStartDate);
                 const endDate = new Date(evento.finalizationEndDate);
                 const currentDate = new Date(startDate);
-                
+
                 while (currentDate <= endDate) {
                     const dateISO = currentDate.toISOString().split("T")[0];
                     shiftIds.push(`${dateISO}-desmontagem-diurno`);
@@ -1398,17 +1749,17 @@ export default function ImportExportPage() {
                 }
             }
         }
-        
+
         // Ordenar cronologicamente e por hierarquia
         shiftIds.sort((a, b) => {
             const { dateISO: dateA, stage: stageA, period: periodA } = parseShiftId(a);
             const { dateISO: dateB, stage: stageB, period: periodB } = parseShiftId(b);
-            
+
             // Primeiro por data
             if (dateA !== dateB) {
                 return dateA.localeCompare(dateB);
             }
-            
+
             // Depois por estágio (montagem -> evento -> desmontagem)
             const stageOrder = { 'montagem': 1, 'evento': 2, 'desmontagem': 3 };
             const orderA = stageOrder[stageA as keyof typeof stageOrder] || 2;
@@ -1416,35 +1767,21 @@ export default function ImportExportPage() {
             if (orderA !== orderB) {
                 return orderA - orderB;
             }
-            
+
             // Por último por período (diurno antes de noturno)
             return periodA === 'diurno' ? -1 : 1;
         });
-        
+
         console.log('📅 Turnos processados:', {
             total: shiftIds.length,
             montagem: shiftIds.filter(id => id.includes('-montagem-')).length,
             evento: shiftIds.filter(id => id.includes('-evento-')).length,
             desmontagem: shiftIds.filter(id => id.includes('-desmontagem-')).length
         });
-        
+
         return shiftIds;
     }
 
-    // Função para extrair informações do ID do turno
-    const parseShiftId = (shiftId: string) => {
-        const parts = shiftId.split('-');
-        if (parts.length >= 5) {
-            // Formato: YYYY-MM-DD-stage-period
-            const dateISO = `${parts[0]}-${parts[1]}-${parts[2]}`;
-            const stage = parts[3];
-            const period = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro';
-            return { dateISO, stage, period };
-        }
-        // Fallback para IDs mal formados
-        console.warn('⚠️ ShiftId mal formatado:', shiftId);
-        return { dateISO: new Date().toISOString().split('T')[0], stage: 'evento', period: 'diurno' as 'diurno' | 'noturno' | 'dia_inteiro' };
-    };
 
     // Função para obter informações de exibição de um turno
     const getShiftDisplayInfo = (shiftId: string) => {
@@ -1452,7 +1789,7 @@ export default function ImportExportPage() {
         const formattedDate = formatEventDate(dateISO + 'T00:00:00');
         const stageUpper = stage.toUpperCase();
         const periodLabel = period === 'diurno' ? 'DIURNO' : period === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO';
-        
+
         return {
             dateISO,
             stage,
@@ -1471,22 +1808,27 @@ export default function ImportExportPage() {
                 return [...prev, date].sort()
             }
         })
+
+        // Clear shift validation errors when selection changes
+        setShiftValidationErrors({})
     }
 
     const handleSelectAllDates = () => {
         const allDates = getEventDates()
         setSelectedEventDates(allDates)
+        setShiftValidationErrors({})
     }
 
     const handleClearDates = () => {
         setSelectedEventDates([])
+        setShiftValidationErrors({})
     }
 
     // Helper function to extract date from shiftId and format it
     const formatShiftDate = (shiftId: string) => {
         const { dateISO } = parseShiftId(shiftId);
         const fullDate = formatEventDate(dateISO + 'T00:00:00');
-        
+
         const date = new Date(dateISO + 'T12:00:00');
         const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" });
         const day = date.getDate().toString().padStart(2, '0');
@@ -1536,8 +1878,8 @@ export default function ImportExportPage() {
         return period === 'diurno' ?
             <Sun className="h-3 w-3 text-yellow-500" /> :
             period === 'noturno' ?
-            <Moon className="h-3 w-3 text-blue-500" /> :
-            <Clock className="h-3 w-3 text-green-500" />;
+                <Moon className="h-3 w-3 text-blue-500" /> :
+                <Clock className="h-3 w-3 text-green-500" />;
     }
 
     // Função para obter cor do estágio
@@ -1752,7 +2094,7 @@ export default function ImportExportPage() {
                                             {Object.entries(groupShiftsByMonth(getEventDates())).map(([month, shiftIds]) => (
                                                 <div key={month} className="border border-gray-200 rounded-lg p-4">
                                                     <h3 className="text-lg font-semibold text-gray-900 mb-4">{month}</h3>
-                                                    
+
                                                     {/* Agrupar turnos por data */}
                                                     <div className="space-y-4">
                                                         {Object.entries(groupShiftsByDate(shiftIds))
@@ -1760,21 +2102,19 @@ export default function ImportExportPage() {
                                                             .map(([dateISO, dateShifts]) => {
                                                                 const isToday = dateISO === new Date().toISOString().split("T")[0];
                                                                 const dateObj = new Date(dateISO + 'T12:00:00');
-                                                                const formattedDate = dateObj.toLocaleDateString("pt-BR", { 
-                                                                    weekday: "long", 
-                                                                    day: "2-digit", 
-                                                                    month: "long" 
+                                                                const formattedDate = dateObj.toLocaleDateString("pt-BR", {
+                                                                    weekday: "long",
+                                                                    day: "2-digit",
+                                                                    month: "long"
                                                                 });
 
                                                                 return (
-                                                                    <div key={dateISO} className={`border rounded-lg p-4 ${
-                                                                        isToday ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'
-                                                                    }`}>
+                                                                    <div key={dateISO} className={`border rounded-lg p-4 ${isToday ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'
+                                                                        }`}>
                                                                         {/* Cabeçalho da data */}
                                                                         <div className="flex items-center justify-between mb-3">
-                                                                            <h4 className={`text-base font-semibold ${
-                                                                                isToday ? 'text-blue-800' : 'text-gray-800'
-                                                                            }`}>
+                                                                            <h4 className={`text-base font-semibold ${isToday ? 'text-blue-800' : 'text-gray-800'
+                                                                                }`}>
                                                                                 {formattedDate}
                                                                                 {isToday && <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">HOJE</span>}
                                                                             </h4>
@@ -1790,7 +2130,7 @@ export default function ImportExportPage() {
                                                                                     const { stage: shiftStage } = parseShiftId(shiftId);
                                                                                     return shiftStage === stage;
                                                                                 });
-                                                                                
+
                                                                                 if (stageShifts.length === 0) return null;
 
                                                                                 return (
@@ -1828,14 +2168,13 @@ export default function ImportExportPage() {
                                                                                                                     period === 'diurno' ?
                                                                                                                         <Sun className="h-4 w-4 text-yellow-200" /> :
                                                                                                                         period === 'noturno' ?
-                                                                                                                        <Moon className="h-4 w-4 text-blue-200" /> :
-                                                                                                                        <Clock className="h-4 w-4 text-green-200" />
+                                                                                                                            <Moon className="h-4 w-4 text-blue-200" /> :
+                                                                                                                            <Clock className="h-4 w-4 text-green-200" />
                                                                                                                 ) : (
                                                                                                                     getPeriodIcon(period)
                                                                                                                 )}
-                                                                                                                <span className={`text-sm font-medium ${
-                                                                                                                    isSelected ? 'text-white' : 'text-gray-700'
-                                                                                                                }`}>
+                                                                                                                <span className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'
+                                                                                                                    }`}>
                                                                                                                     {period === 'diurno' ? 'DIURNO' : period === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO'}
                                                                                                                 </span>
                                                                                                             </div>
@@ -2082,19 +2421,18 @@ export default function ImportExportPage() {
                                                 <div className="flex items-center justify-between mb-2">
                                                     <span className="text-sm font-medium text-gray-700">Status da API</span>
                                                     <div className="flex items-center gap-2">
-                                                        <div className={`w-2 h-2 rounded-full ${
-                                                            apiMetrics.consecutiveErrors === 0 ? 'bg-green-500' :
+                                                        <div className={`w-2 h-2 rounded-full ${apiMetrics.consecutiveErrors === 0 ? 'bg-green-500' :
                                                             apiMetrics.consecutiveErrors < 2 ? 'bg-yellow-500' : 'bg-red-500'
-                                                        }`} />
+                                                            }`} />
                                                         <span className="text-xs text-gray-600">
                                                             {apiMetrics.consecutiveErrors === 0 ? 'Saudável' :
-                                                             apiMetrics.consecutiveErrors < 2 ? 'Instável' : 'Sobrecarregada'}
+                                                                apiMetrics.consecutiveErrors < 2 ? 'Instável' : 'Sobrecarregada'}
                                                         </span>
                                                     </div>
                                                 </div>
                                                 {apiMetrics.totalRequests > 0 && (
                                                     <div className="text-xs text-gray-600">
-                                                        Requests: {apiMetrics.totalRequests} | 
+                                                        Requests: {apiMetrics.totalRequests} |
                                                         Avg: {Math.round(apiMetrics.avgResponseTime)}ms |
                                                         Erros: {apiMetrics.consecutiveErrors}
                                                     </div>
@@ -2268,6 +2606,41 @@ export default function ImportExportPage() {
                                                 </AlertDescription>
                                             </Alert>
                                         )}
+
+                                        {/* Shift-specific validation errors */}
+                                        {Object.keys(shiftValidationErrors).length > 0 && (
+                                            <Alert variant="destructive" className="mb-4">
+                                                <AlertTriangle className="h-4 w-4" />
+                                                <AlertDescription>
+                                                    <div className="space-y-3">
+                                                        <div className="font-semibold">Empresas ou credenciais faltando para turnos específicos:</div>
+                                                        {Object.entries(shiftValidationErrors).map(([shiftId, errors]) => {
+                                                            const shiftInfo = getShiftDisplayInfo(shiftId)
+                                                            return (
+                                                                <div key={shiftId} className="border-l-4 border-red-300 pl-4 py-2">
+                                                                    <div className="font-medium text-sm">
+                                                                        {shiftInfo.formattedDate} - {shiftInfo.stage} ({shiftInfo.period})
+                                                                    </div>
+                                                                    {errors.missingCompanies.length > 0 && (
+                                                                        <div className="text-sm mt-1">
+                                                                            <span className="font-medium">Empresas faltantes:</span> {errors.missingCompanies.join(', ')}
+                                                                        </div>
+                                                                    )}
+                                                                    {errors.missingCredentials.length > 0 && (
+                                                                        <div className="text-sm mt-1">
+                                                                            <span className="font-medium">Credenciais faltantes:</span> {errors.missingCredentials.join(', ')}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )
+                                                        })}
+                                                        <div className="text-sm mt-2 italic">
+                                                            💡 Dica: Vá para a página de Empresas ou Credenciais e crie estes itens para os turnos específicos antes de continuar.
+                                                        </div>
+                                                    </div>
+                                                </AlertDescription>
+                                            </Alert>
+                                        )}
                                     </CardContent>
                                 </Card>
 
@@ -2295,64 +2668,107 @@ export default function ImportExportPage() {
                                     </Badge>
                                 </div>
 
-                                {/* Missing Credentials */}
-                                {processedData.missingCredentials.length > 0 && (
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <FileText className="h-5 w-5 text-blue-600" />
-                                                Credenciais Faltantes ({processedData.missingCredentials.length})
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="space-y-4">
-                                                {processedData.missingCredentials.map((cred) => (
-                                                    <div key={cred.name} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                                                        <div className="flex items-center gap-3">
-                                                            <div
-                                                                className="w-6 h-6 rounded border-2 border-gray-300"
-                                                                style={{ backgroundColor: credentialColors[cred.name] || "#3B82F6" }}
-                                                            />
-                                                            <div>
-                                                                <div className="font-medium">{cred.name}</div>
-                                                                <div className="text-sm text-gray-600">{cred.count} participantes</div>
+                                {/* Missing Credentials - Include both regular missing and shift-specific missing */}
+                                {(processedData.missingCredentials.length > 0 || Object.keys(shiftValidationErrors).length > 0) && (() => {
+                                    // ✅ Combine regular missing credentials with shift-specific ones
+                                    const allMissingCredentials = [...processedData.missingCredentials]
+
+                                    // Add shift-specific missing credentials
+                                    const shiftSpecificCredentials = new Set<string>()
+                                    Object.values(shiftValidationErrors).forEach(error => {
+                                        error.missingCredentials.forEach(cred => shiftSpecificCredentials.add(cred))
+                                    })
+
+                                    // Add shift-specific credentials that aren't already in the regular missing list
+                                    Array.from(shiftSpecificCredentials).forEach(credName => {
+                                        if (!allMissingCredentials.find(c => c.name === credName)) {
+                                            allMissingCredentials.push({ name: credName, count: 1 }) // Placeholder count
+                                        }
+                                    })
+
+                                    return allMissingCredentials.length > 0
+                                })() && (
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <FileText className="h-5 w-5 text-blue-600" />
+                                                    Credenciais Faltantes ({(() => {
+                                                        const allMissingCredentials = [...processedData.missingCredentials]
+                                                        const shiftSpecificCredentials = new Set<string>()
+                                                        Object.values(shiftValidationErrors).forEach(error => {
+                                                            error.missingCredentials.forEach(cred => shiftSpecificCredentials.add(cred))
+                                                        })
+                                                        Array.from(shiftSpecificCredentials).forEach(credName => {
+                                                            if (!allMissingCredentials.find(c => c.name === credName)) {
+                                                                allMissingCredentials.push({ name: credName, count: 1 })
+                                                            }
+                                                        })
+                                                        return allMissingCredentials.length
+                                                    })()})
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-4">
+                                                    {(() => {
+                                                        // ✅ Create combined credentials list for rendering
+                                                        const allMissingCredentials = [...processedData.missingCredentials]
+                                                        const shiftSpecificCredentials = new Set<string>()
+                                                        Object.values(shiftValidationErrors).forEach(error => {
+                                                            error.missingCredentials.forEach(cred => shiftSpecificCredentials.add(cred))
+                                                        })
+                                                        Array.from(shiftSpecificCredentials).forEach(credName => {
+                                                            if (!allMissingCredentials.find(c => c.name === credName)) {
+                                                                allMissingCredentials.push({ name: credName, count: 1 })
+                                                            }
+                                                        })
+                                                        return allMissingCredentials
+                                                    })().map((cred) => (
+                                                        <div key={cred.name} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                                                            <div className="flex items-center gap-3">
+                                                                <div
+                                                                    className="w-6 h-6 rounded border-2 border-gray-300"
+                                                                    style={{ backgroundColor: credentialColors[cred.name] || "#3B82F6" }}
+                                                                />
+                                                                <div>
+                                                                    <div className="font-medium">{cred.name}</div>
+                                                                    <div className="text-sm text-gray-600">{cred.count} participantes</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <input
+                                                                    type="color"
+                                                                    value={credentialColors[cred.name] || "#3B82F6"}
+                                                                    onChange={(e) =>
+                                                                        setCredentialColors((prev) => ({
+                                                                            ...prev,
+                                                                            [cred.name]: e.target.value,
+                                                                        }))
+                                                                    }
+                                                                    className="w-8 h-8 rounded border cursor-pointer"
+                                                                    title="Escolher cor"
+                                                                />
+                                                                <Palette className="w-4 h-4 text-gray-400" />
                                                             </div>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <input
-                                                                type="color"
-                                                                value={credentialColors[cred.name] || "#3B82F6"}
-                                                                onChange={(e) =>
-                                                                    setCredentialColors((prev) => ({
-                                                                        ...prev,
-                                                                        [cred.name]: e.target.value,
-                                                                    }))
-                                                                }
-                                                                className="w-8 h-8 rounded border cursor-pointer"
-                                                                title="Escolher cor"
-                                                            />
-                                                            <Palette className="w-4 h-4 text-gray-400" />
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-                                                <div className="text-sm text-blue-800">
-                                                    <p className="font-medium mb-1">Configurações das credenciais:</p>
-                                                    <p>• Evento: {evento?.name}</p>
-                                                    <p>
-                                                        • Dias de trabalho:{" "}
-                                                        {selectedEventDates.map((shiftId) => {
-                                                            const { dateISO } = parseShiftId(shiftId);
-                                                            return formatEventDate(dateISO + 'T00:00:00');
-                                                        }).join(", ")}
-                                                    </p>
-                                                    <p>• Atribuição automática baseada na função do participante</p>
+                                                    ))}
                                                 </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )}
+                                                <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+                                                    <div className="text-sm text-blue-800">
+                                                        <p className="font-medium mb-1">Configurações das credenciais:</p>
+                                                        <p>• Evento: {evento?.name}</p>
+                                                        <p>
+                                                            • Dias de trabalho:{" "}
+                                                            {selectedEventDates.map((shiftId) => {
+                                                                const { dateISO } = parseShiftId(shiftId);
+                                                                return formatEventDate(dateISO + 'T00:00:00');
+                                                            }).join(", ")}
+                                                        </p>
+                                                        <p>• Atribuição automática baseada na função do participante</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
 
                                 {/* Missing Companies */}
                                 {processedData.missingCompanies.length > 0 && (
@@ -2430,24 +2846,56 @@ export default function ImportExportPage() {
                                             </AlertDescription>
                                         </Alert>
 
-                                        <div className="mt-4">
-                                            <Button
-                                                onClick={handleStartCreation}
-                                                className="w-full bg-purple-600 hover:bg-purple-700"
-                                                disabled={creationProgress.isCreating}
-                                            >
-                                                {creationProgress.isCreating ? (
-                                                    <>
-                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                        Criando...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Plus className="w-4 h-4 mr-2" />
-                                                        Criar Todos os Itens
-                                                    </>
-                                                )}
-                                            </Button>
+                                        <div className="mt-4 space-y-3">
+                                            {!colorsConfirmed ? (
+                                                // ✅ Primeira etapa: Confirmar cores escolhidas
+                                                <Button
+                                                    onClick={() => setColorsConfirmed(true)}
+                                                    className="w-full bg-blue-600 hover:bg-blue-700"
+                                                    disabled={creationProgress.isCreating}
+                                                >
+                                                    <Palette className="w-4 h-4 mr-2" />
+                                                    Confirmar Cores e Prosseguir
+                                                </Button>
+                                            ) : (
+                                                // ✅ Segunda etapa: Botão de criação
+                                                <>
+                                                    <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                                                        <div className="flex items-center gap-2 text-green-700">
+                                                            <CheckCircle className="w-4 h-4" />
+                                                            <span className="text-sm font-medium">Cores confirmadas! Pronto para criar.</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            onClick={() => setColorsConfirmed(false)}
+                                                            variant="outline"
+                                                            className="flex-1"
+                                                            disabled={creationProgress.isCreating}
+                                                        >
+                                                            <ArrowLeft className="w-4 h-4 mr-2" />
+                                                            Alterar Cores
+                                                        </Button>
+                                                        <Button
+                                                            onClick={handleStartCreation}
+                                                            className="flex-1 bg-purple-600 hover:bg-purple-700"
+                                                            disabled={creationProgress.isCreating}
+                                                        >
+                                                            {creationProgress.isCreating ? (
+                                                                <>
+                                                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                                    Criando...
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Plus className="w-4 h-4 mr-2" />
+                                                                    Criar Agora
+                                                                </>
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -2701,12 +3149,11 @@ export default function ImportExportPage() {
                                                     </div>
                                                     <div className="pt-2 border-t border-blue-200">
                                                         <div className="flex items-center gap-1 text-xs text-blue-600">
-                                                            <span className={`w-2 h-2 rounded-full ${
-                                                                apiMetrics.consecutiveErrors === 0 ? 'bg-green-500' :
+                                                            <span className={`w-2 h-2 rounded-full ${apiMetrics.consecutiveErrors === 0 ? 'bg-green-500' :
                                                                 apiMetrics.consecutiveErrors < 2 ? 'bg-yellow-500' : 'bg-red-500'
-                                                            }`} />
-                                                            Status API: {apiMetrics.consecutiveErrors === 0 ? 'Saudável' : 
-                                                                        apiMetrics.consecutiveErrors < 2 ? 'Instável' : 'Sobrecarregada'}
+                                                                }`} />
+                                                            Status API: {apiMetrics.consecutiveErrors === 0 ? 'Saudável' :
+                                                                apiMetrics.consecutiveErrors < 2 ? 'Instável' : 'Sobrecarregada'}
                                                         </div>
                                                     </div>
                                                 </div>

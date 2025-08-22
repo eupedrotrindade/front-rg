@@ -217,7 +217,7 @@ const EmpresasList = memo<{
         title={`Todas as empresas (${totalCount})`}
       />
       {uniqueEmpresas.map(empresa => {
-        const empresaData = dayStats.empresas.get(empresa)!
+        const empresaData = dayStats?.empresas?.get(empresa)
         return (
           <CommandItemMemo
             key={empresa}
@@ -225,7 +225,7 @@ const EmpresasList = memo<{
             isSelected={selectedEmpresa === empresa}
             onSelect={onSelectEmpresa}
             title={empresa}
-            subtitle={`${empresaData.total} pessoas • ${empresaData.checkedIn} check-in • ${empresaData.checkedOut} check-out`}
+            subtitle={`${empresaData?.total || 0} pessoas • ${empresaData?.checkedIn || 0} check-in • ${empresaData?.checkedOut || 0} check-out`}
           />
         )
       })}
@@ -265,7 +265,7 @@ const FuncoesList = memo<{
         title={`Todas as funções (${totalCount})`}
       />
       {uniqueFuncoes.map(funcao => {
-        const funcaoData = dayStats.funcoes.get(funcao)!
+        const funcaoData = dayStats?.funcoes?.get(funcao)
         return (
           <CommandItemMemo
             key={funcao}
@@ -273,7 +273,7 @@ const FuncoesList = memo<{
             isSelected={selectedFuncao === funcao}
             onSelect={onSelectFuncao}
             title={funcao}
-            subtitle={`${funcaoData.total} pessoas • ${funcaoData.checkedIn} check-in • ${funcaoData.checkedOut} check-out`}
+            subtitle={`${funcaoData?.total || 0} pessoas • ${funcaoData?.checkedIn || 0} check-in • ${funcaoData?.checkedOut || 0} check-out`}
           />
         )
       })}
