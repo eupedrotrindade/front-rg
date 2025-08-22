@@ -38,7 +38,8 @@ import {
   AlertCircle,
   Building,
   UserCheck,
-  UserX
+  UserX,
+  Eye
 } from 'lucide-react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
@@ -67,8 +68,10 @@ export default function RetiradaCrachaPage() {
   const [isPickupModalOpen, setIsPickupModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [isQuickInsertModalOpen, setIsQuickInsertModalOpen] = useState(false)
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [editingBadge, setEditingBadge] = useState<BadgePickup | null>(null)
   const [selectedBadgeForPickup, setSelectedBadgeForPickup] = useState<BadgePickup | null>(null)
+  const [selectedBadgeForView, setSelectedBadgeForView] = useState<BadgePickup | null>(null)
   const [isEditing, setIsEditing] = useState(false)
 
   // Estados do formulário
@@ -373,6 +376,11 @@ export default function RetiradaCrachaPage() {
     setIsPickupModalOpen(true)
   }
 
+  const openViewModal = (badge: BadgePickup) => {
+    setSelectedBadgeForView(badge)
+    setIsViewModalOpen(true)
+  }
+
   // Função para baixar template Excel
   const downloadTemplate = () => {
     const templateData = [
@@ -383,7 +391,7 @@ export default function RetiradaCrachaPage() {
       },
       {
         'Nome': 'Maria Santos',
-        'CPF': '', 
+        'CPF': '',
         'Empresa': 'Empresa XYZ'
       },
       {
@@ -460,14 +468,14 @@ OBSERVAÇÕES:
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer)
         const workbook = XLSX.read(data, { type: 'array' })
-        
+
         // Pegar a primeira planilha
         const firstSheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[firstSheetName]
-        
+
         // Converter para JSON
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-        
+
         if (jsonData.length < 2) {
           toast.error('Arquivo deve conter pelo menos uma linha de cabeçalho e uma linha de dados')
           return
@@ -591,8 +599,8 @@ OBSERVAÇÕES:
 
   // Função para alternar seleção de turno
   const toggleShiftSelection = (shiftId: string) => {
-    setSelectedShifts(prev => 
-      prev.includes(shiftId) 
+    setSelectedShifts(prev =>
+      prev.includes(shiftId)
         ? prev.filter(id => id !== shiftId)
         : [...prev, shiftId]
     )
@@ -1000,6 +1008,14 @@ OBSERVAÇÕES:
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => openViewModal(badge)}
+                            className="text-gray-600 border-gray-200 hover:bg-gray-50"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => handleEditBadge(badge)}
                             className="text-blue-600 border-blue-200 hover:bg-blue-50"
                           >
@@ -1170,7 +1186,7 @@ OBSERVAÇÕES:
                 Adicione múltiplas entradas rapidamente. Uma linha por pessoa, separando dados por vírgula.
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-6">
               {/* Instruções */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1179,9 +1195,9 @@ OBSERVAÇÕES:
                   <p><strong>Formato por linha:</strong> Nome,CPF,Empresa</p>
                   <p><strong>Exemplo:</strong></p>
                   <div className="bg-blue-100 rounded p-2 mt-2 font-mono text-xs">
-                    Ryan Silva,123.456.789-00,Empresa ABC<br/>
-                    Ana Santos,,Empresa XYZ<br/>
-                    Pedro,987.654.321-00,<br/>
+                    Ryan Silva,123.456.789-00,Empresa ABC<br />
+                    Ana Santos,,Empresa XYZ<br />
+                    Pedro,987.654.321-00,<br />
                     Maria Silva
                   </div>
                   <p className="mt-2"><strong>Observações:</strong></p>
@@ -1329,7 +1345,7 @@ OBSERVAÇÕES:
                 Faça o upload de um arquivo Excel com os dados dos participantes
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-6">
               {/* Download Template */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1409,7 +1425,7 @@ OBSERVAÇÕES:
                       {selectedShifts.length === eventDays.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
                     </Button>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto border rounded-lg p-3">
                     {eventDays.map((day) => (
                       <div key={day.id} className="flex items-center space-x-2">
@@ -1424,7 +1440,7 @@ OBSERVAÇÕES:
                       </div>
                     ))}
                   </div>
-                  
+
                   {selectedShifts.length > 0 && (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                       <p className="text-sm text-green-800">
@@ -1515,6 +1531,180 @@ OBSERVAÇÕES:
                 </Button>
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para visualizar detalhes */}
+        <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                Detalhes do Crachá
+              </DialogTitle>
+              <DialogDescription>
+                Informações completas da entrada
+              </DialogDescription>
+            </DialogHeader>
+            {selectedBadgeForView && (
+              <div className="space-y-4">
+                {/* Informações básicas */}
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Nome</Label>
+                    <p className="text-sm font-medium text-gray-900 mt-1">
+                      {selectedBadgeForView.nome}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-600">CPF</Label>
+                      <p className="text-sm text-gray-900 mt-1">
+                        {selectedBadgeForView.cpf || 'Não informado'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-600">Empresa</Label>
+                      <p className="text-sm text-gray-900 mt-1">
+                        {selectedBadgeForView.empresa || 'Não informada'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Status</Label>
+                    <div className="mt-1">
+                      {getStatusBadge(selectedBadgeForView.status, selectedBadgeForView.isSelfPickup)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Turno</Label>
+                    <p className="text-sm text-gray-900 mt-1">
+                      {selectedBadgeForView.shiftId ? (
+                        eventDays.find(day => day.id === selectedBadgeForView.shiftId)?.label || selectedBadgeForView.shiftId
+                      ) : (
+                        'Não informado'
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Informações de trabalho */}
+                  {(selectedBadgeForView.workDate || selectedBadgeForView.workStage || selectedBadgeForView.workPeriod) && (
+                    <div className="border-t pt-3">
+                      <Label className="text-sm font-medium text-gray-600">Informações de Trabalho</Label>
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        {selectedBadgeForView.workDate && (
+                          <div>
+                            <Label className="text-xs text-gray-500">Data</Label>
+                            <p className="text-sm text-gray-900">
+                              {new Date(selectedBadgeForView.workDate).toLocaleDateString('pt-BR')}
+                            </p>
+                          </div>
+                        )}
+                        {selectedBadgeForView.workStage && (
+                          <div>
+                            <Label className="text-xs text-gray-500">Etapa</Label>
+                            <p className="text-sm text-gray-900 capitalize">
+                              {selectedBadgeForView.workStage}
+                            </p>
+                          </div>
+                        )}
+                        {selectedBadgeForView.workPeriod && (
+                          <div>
+                            <Label className="text-xs text-gray-500">Período</Label>
+                            <p className="text-sm text-gray-900 flex items-center gap-1">
+                              {selectedBadgeForView.workPeriod === 'diurno' && <Sun className="h-3 w-3 text-yellow-500" />}
+                              {selectedBadgeForView.workPeriod === 'noturno' && <Moon className="h-3 w-3 text-blue-500" />}
+                              {selectedBadgeForView.workPeriod === 'diurno' ? 'Diurno' :
+                                selectedBadgeForView.workPeriod === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Informações de retirada */}
+                  {selectedBadgeForView.status === 'retirada' && (
+                    <div className="border-t pt-3">
+                      <Label className="text-sm font-medium text-gray-600">Informações de Retirada</Label>
+                      <div className="space-y-2 mt-2">
+                        <div>
+                          <Label className="text-xs text-gray-500">Tipo de Retirada</Label>
+                          <p className="text-sm text-gray-900 flex items-center gap-1">
+                            {selectedBadgeForView.isSelfPickup ? (
+                              <>
+                                <UserCheck className="h-3 w-3 text-green-600" />
+                                Retirada pela própria pessoa
+                              </>
+                            ) : (
+                              <>
+                                <UserX className="h-3 w-3 text-orange-600" />
+                                Retirada por terceiro
+                              </>
+                            )}
+                          </p>
+                        </div>
+
+                        {!selectedBadgeForView.isSelfPickup && (
+                          <>
+                            {selectedBadgeForView.nome && (
+                              <div>
+                                <Label className="text-xs text-gray-500">Quem retirou</Label>
+                                <p className="text-sm text-gray-900">{selectedBadgeForView.nome}</p>
+                              </div>
+                            )}
+                            {selectedBadgeForView.pickerCompany && (
+                              <div>
+                                <Label className="text-xs text-gray-500">Empresa de quem retirou</Label>
+                                <p className="text-sm text-gray-900">{selectedBadgeForView.pickerCompany}</p>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Timestamps */}
+                  <div className="border-t pt-3">
+                    <Label className="text-sm font-medium text-gray-600">Informações do Sistema</Label>
+                    <div className="grid grid-cols-1 gap-2 mt-2">
+                      {selectedBadgeForView.createdAt && (
+                        <div>
+                          <Label className="text-xs text-gray-500">Criado em</Label>
+                          <p className="text-sm text-gray-900">
+                            {new Date(selectedBadgeForView.createdAt).toLocaleString('pt-BR')}
+                          </p>
+                        </div>
+                      )}
+                      {selectedBadgeForView.updatedAt && selectedBadgeForView.updatedAt !== selectedBadgeForView.createdAt && (
+                        <div>
+                          <Label className="text-xs text-gray-500">Atualizado em</Label>
+                          <p className="text-sm text-gray-900">
+                            {new Date(selectedBadgeForView.updatedAt).toLocaleString('pt-BR')}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Botão de fechar */}
+                <div className="flex gap-4 pt-4">
+                  <Button
+                    onClick={() => setIsViewModalOpen(false)}
+                    className="flex-1"
+                  >
+                    Fechar
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

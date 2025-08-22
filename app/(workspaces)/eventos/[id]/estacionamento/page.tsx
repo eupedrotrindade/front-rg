@@ -8,7 +8,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Clock, User, Plus, Check, X, RotateCcw, Car, Download, Upload, History, Package, Sun, Moon, FileDown } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Calendar, Clock, User, Plus, Check, X, RotateCcw, Car, Download, Upload, History, Package, Sun, Moon, FileDown, CheckCircle } from 'lucide-react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import { formatEventDate } from '@/lib/utils'
@@ -34,6 +37,11 @@ export default function VagasPage() {
     const [isEditing, setIsEditing] = useState(false)
     const [isHistoricoModalOpen, setIsHistoricoModalOpen] = useState(false)
     const [selectedVeiculoForHistorico, setSelectedVeiculoForHistorico] = useState<EventVehicle | null>(null)
+    const [isQuickInsertModalOpen, setIsQuickInsertModalOpen] = useState(false)
+
+    // Estados para inserção rápida
+    const [quickInsertText, setQuickInsertText] = useState('')
+    const [isProcessingQuickInsert, setIsProcessingQuickInsert] = useState(false)
 
     // Hook para exportar/importar Excel
     const { exportToExcel, importFromExcel, isExporting, isImporting } = useExcelExportImport()
@@ -844,6 +852,90 @@ export default function VagasPage() {
         event.target.value = '';
     };
 
+    // Função para processar inserção rápida
+    const handleQuickInsert = async () => {
+        if (!quickInsertText.trim()) {
+            toast.error('Digite pelo menos uma entrada');
+            return;
+        }
+
+        if (!selectedDay) {
+            toast.error('Selecione um turno');
+            return;
+        }
+
+        setIsProcessingQuickInsert(true);
+
+        try {
+            // Processar texto: cada linha é uma entrada, separada por vírgula para empresa,modelo,placa,tipo_credencial
+            const lines = quickInsertText
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+
+            if (lines.length === 0) {
+                toast.error('Nenhuma entrada válida encontrada');
+                return;
+            }
+
+            // Extrair informações do shift
+            const shiftInfo = parseShiftId(selectedDay);
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const line of lines) {
+                // Separar por vírgula: empresa,modelo,placa,tipo_credencial
+                const parts = line.split(',').map(part => part.trim());
+                const empresa = parts[0] || '';
+                const modelo = parts[1] || '';
+                const placa = parts[2] || '';
+                const tipo_credencial = parts[3] || '';
+
+                if (!empresa && !placa) {
+                    errorCount++;
+                    continue;
+                }
+
+                const vehicleData = {
+                    eventId,
+                    empresa,
+                    modelo,
+                    placa,
+                    tipo_de_credencial: tipo_credencial,
+                    retirada: 'pendente' as const,
+                    shiftId: selectedDay,
+                    workDate: shiftInfo.workDate,
+                    workStage: shiftInfo.workStage,
+                    workPeriod: shiftInfo.workPeriod,
+                };
+
+                try {
+                    await createVehicleMutation.mutateAsync(vehicleData);
+                    successCount++;
+                } catch (error) {
+                    errorCount++;
+                    console.error('Erro ao criar entrada:', error);
+                }
+            }
+
+            if (successCount > 0) {
+                toast.success(`${successCount} veículo(s) criado(s) com sucesso!`);
+            }
+            if (errorCount > 0) {
+                toast.error(`${errorCount} entrada(s) falharam`);
+            }
+
+            // Limpar estados
+            setQuickInsertText('');
+            setIsQuickInsertModalOpen(false);
+        } catch (error) {
+            toast.error('Erro durante a inserção rápida');
+        } finally {
+            setIsProcessingQuickInsert(false);
+        }
+    };
+
     return (
         <EventLayout eventId={eventId} eventName={evento.name}>
             <div className="p-8">
@@ -898,6 +990,16 @@ export default function VagasPage() {
                             >
                                 <Plus className="w-4 h-4 mr-2" />
                                 Nova Retirada
+                            </Button>
+
+                            <Button
+                                onClick={() => setIsQuickInsertModalOpen(true)}
+                                disabled={!selectedDay}
+                                variant="outline"
+                                className="border-purple-500 text-purple-600 hover:bg-purple-50"
+                            >
+                                <Package className="w-4 h-4 mr-2" />
+                                Inserção Rápida
                             </Button>
 
                             <Button
@@ -1198,6 +1300,167 @@ export default function VagasPage() {
                     onClose={handleCloseHistoricoModal}
                     veiculo={selectedVeiculoForHistorico}
                 />
+
+                {/* Modal para inserção rápida */}
+                <Dialog open={isQuickInsertModalOpen} onOpenChange={setIsQuickInsertModalOpen}>
+                    <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Inserção Rápida de Veículos</DialogTitle>
+                            <DialogDescription>
+                                Adicione múltiplos veículos rapidamente. Uma linha por veículo, separando dados por vírgula.
+                            </DialogDescription>
+                        </DialogHeader>
+                        
+                        <div className="space-y-6">
+                            {/* Instruções */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <h3 className="font-medium text-blue-900 mb-2">🚗 Como usar:</h3>
+                                <div className="text-sm text-blue-700 space-y-1">
+                                    <p><strong>Formato por linha:</strong> Empresa,Modelo,Placa,Tipo de Credencial</p>
+                                    <p><strong>Exemplo:</strong></p>
+                                    <div className="bg-blue-100 rounded p-2 mt-2 font-mono text-xs">
+                                        Empresa ABC,Civic,ABC-1234,Temporária<br/>
+                                        Empresa XYZ,Corolla,,Permanente<br/>
+                                        ,HB20,XYZ-9876,<br/>
+                                        Empresa DEF,,,Visitante
+                                    </div>
+                                    <p className="mt-2"><strong>Observações:</strong></p>
+                                    <ul className="list-disc list-inside space-y-1">
+                                        <li>Pelo menos <strong>Empresa</strong> ou <strong>Placa</strong> é obrigatório</li>
+                                        <li>Modelo e Tipo de Credencial são opcionais</li>
+                                        <li>Separe os campos por vírgula</li>
+                                        <li>Uma linha = um veículo</li>
+                                        <li>Todos os veículos serão criados para o turno selecionado</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            {/* Turno selecionado */}
+                            <div className="space-y-2">
+                                <Label>Turno Selecionado</Label>
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-md">
+                                    <p className="text-sm font-medium text-gray-900">
+                                        {selectedDay ? (
+                                            eventDays.find(day => day.id === selectedDay)?.label || selectedDay
+                                        ) : (
+                                            'Nenhum turno selecionado'
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Área de texto */}
+                            <div className="space-y-2">
+                                <Label htmlFor="quick-text">Dados dos Veículos *</Label>
+                                <Textarea
+                                    id="quick-text"
+                                    value={quickInsertText}
+                                    onChange={(e) => setQuickInsertText(e.target.value)}
+                                    placeholder={`Digite um veículo por linha:\n\nEmpresa ABC,Civic,ABC-1234,Temporária\nEmpresa XYZ,Corolla,,Permanente\n,HB20,XYZ-9876,\nEmpresa DEF,,,Visitante`}
+                                    className="min-h-[200px] font-mono text-sm"
+                                />
+                                <div className="text-xs text-gray-500">
+                                    {quickInsertText.split('\n').filter(line => line.trim()).length} linha(s) digitada(s)
+                                </div>
+                            </div>
+
+                            {/* Preview */}
+                            {quickInsertText.trim() && (
+                                <div className="space-y-2">
+                                    <Label>Preview dos Veículos</Label>
+                                    <div className="border rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Empresa</th>
+                                                    <th className="px-3 py-2 text-left">Modelo</th>
+                                                    <th className="px-3 py-2 text-left">Placa</th>
+                                                    <th className="px-3 py-2 text-left">Tipo Credencial</th>
+                                                    <th className="px-3 py-2 text-left">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200">
+                                                {quickInsertText
+                                                    .split('\n')
+                                                    .map(line => line.trim())
+                                                    .filter(line => line.length > 0)
+                                                    .slice(0, 10)
+                                                    .map((line, index) => {
+                                                        const parts = line.split(',').map(part => part.trim());
+                                                        const empresa = parts[0] || '';
+                                                        const modelo = parts[1] || '';
+                                                        const placa = parts[2] || '';
+                                                        const tipo_credencial = parts[3] || '';
+                                                        const isValid = empresa.length > 0 || placa.length > 0;
+
+                                                        return (
+                                                            <tr key={index} className={isValid ? '' : 'bg-red-50'}>
+                                                                <td className="px-3 py-2">
+                                                                    {empresa || <span className="text-gray-400 italic">vazio</span>}
+                                                                </td>
+                                                                <td className="px-3 py-2 text-gray-600">
+                                                                    {modelo || <span className="text-gray-400 italic">vazio</span>}
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    {placa || <span className="text-gray-400 italic">vazio</span>}
+                                                                </td>
+                                                                <td className="px-3 py-2 text-gray-600">
+                                                                    {tipo_credencial || <span className="text-gray-400 italic">vazio</span>}
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    {isValid ? (
+                                                                        <span className="text-green-600 text-xs">✓ Válido</span>
+                                                                    ) : (
+                                                                        <span className="text-red-600 text-xs">✗ Empresa ou Placa obrigatória</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                            </tbody>
+                                        </table>
+                                        {quickInsertText.split('\n').filter(line => line.trim()).length > 10 && (
+                                            <div className="px-3 py-2 text-center text-gray-500 text-sm bg-gray-50">
+                                                ... e mais {quickInsertText.split('\n').filter(line => line.trim()).length - 10} linhas
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Botões */}
+                            <div className="flex gap-4 pt-4">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setIsQuickInsertModalOpen(false);
+                                        setQuickInsertText('');
+                                    }}
+                                    className="flex-1"
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    onClick={handleQuickInsert}
+                                    disabled={!quickInsertText.trim() || !selectedDay || isProcessingQuickInsert}
+                                    className="flex-1"
+                                >
+                                    {isProcessingQuickInsert ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                                            Processando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CheckCircle className="h-4 w-4 mr-2" />
+                                            Criar Veículos
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </div>
         </EventLayout>
     )

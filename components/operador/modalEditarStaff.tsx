@@ -474,65 +474,58 @@ export default function ModalEditarStaff({
               <label className="block text-sm font-medium mb-2">Empresa *</label>
               {empresasArray.length > 0 ? (
                 <div className="relative">
-                  <Select
-                    value={staffData.empresa}
-                    onValueChange={(value) => {
-                      setStaffData({ ...staffData, empresa: applyUppercaseMask(value) });
-                      setEmpresaSearch("");
-                      setIsEmpresaSelectOpen(false);
-                    }}
+                  <button
+                    type="button"
+                    onClick={() => setIsEmpresaSelectOpen(!isEmpresaSelectOpen)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-left focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     disabled={loading}
-                    open={isEmpresaSelectOpen}
-                    onOpenChange={setIsEmpresaSelectOpen}
+                    style={{ textTransform: 'uppercase' }}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma empresa" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px] bg-white border-none">
-                      {/* Campo de pesquisa */}
-                      <div className="sticky top-0 z-10 border-none p-2">
-                        <div className="relative">
-                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Pesquisar empresa..."
-                            value={empresaSearch}
-                            onChange={(e) => setEmpresaSearch(applyUppercaseMask(e.target.value))}
-                            className="pl-8 h-8 bg-white"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ textTransform: 'uppercase' }}
-                          />
-                          {empresaSearch && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="absolute right-1 top-1 h-6 w-6 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEmpresaSearch("");
-                              }}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
+                    {staffData.empresa ? (
+                      <span>{staffData.empresa}</span>
+                    ) : (
+                      <span className="text-gray-500">SELECIONE UMA EMPRESA</span>
+                    )}
+                    <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  </button>
 
-                      {/* Lista de empresas filtradas */}
-                      <div className="max-h-[150px] overflow-y-auto">
+                  {isEmpresaSelectOpen && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      <div className="p-2 border-b">
+                        <Input
+                          placeholder="Pesquisar empresa..."
+                          value={empresaSearch}
+                          onChange={(e) => setEmpresaSearch(applyUppercaseMask(e.target.value))}
+                          className="w-full"
+                          style={{ textTransform: 'uppercase' }}
+                          autoFocus
+                        />
+                      </div>
+                      <div className="py-1">
                         {filteredEmpresas.length > 0 ? (
                           filteredEmpresas.map((empresa) => (
-                            <SelectItem key={empresa.id} value={empresa.nome.toUpperCase()}>
+                            <button
+                              key={empresa.id}
+                              type="button"
+                              onClick={() => {
+                                setStaffData({ ...staffData, empresa: applyUppercaseMask(empresa.nome) })
+                                setIsEmpresaSelectOpen(false)
+                                setEmpresaSearch('')
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+                              style={{ textTransform: 'uppercase' }}
+                            >
                               {empresa.nome.toUpperCase()}
-                            </SelectItem>
+                            </button>
                           ))
                         ) : (
-                          <div className="p-2 text-center text-sm text-muted-foreground">
+                          <div className="px-3 py-2 text-gray-500 text-sm">
                             Nenhuma empresa encontrada
                           </div>
                         )}
                       </div>
-                    </SelectContent>
-                  </Select>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <Input

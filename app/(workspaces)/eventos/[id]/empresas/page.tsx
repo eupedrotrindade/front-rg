@@ -783,6 +783,14 @@ export default function EmpresasPage() {
                                                         <Edit className="w-4 h-4 mr-1" />
                                                         Editar
                                                     </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => window.open(generatePublicToken(empresa), '_blank')}
+                                                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                                    >
+                                                        <ExternalLink className="w-4 h-4" />
+                                                    </Button>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
                                                             <Button
