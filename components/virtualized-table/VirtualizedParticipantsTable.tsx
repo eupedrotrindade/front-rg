@@ -58,6 +58,30 @@ const normalizeDate = (dateStr: string): string => {
   return dateStr
 }
 
+// Função para determinar cor do texto baseada na cor de fundo
+const getTextColor = (backgroundColor: string): string => {
+  // Remove # se existir
+  const hex = backgroundColor.replace('#', '')
+  
+  // Se a cor for muito curta ou inválida, usar preto como padrão
+  if (hex.length !== 6) {
+    return 'text-black'
+  }
+  
+  // Converter hex para RGB
+  const r = parseInt(hex.substr(0, 2), 16)
+  const g = parseInt(hex.substr(2, 2), 16)
+  const b = parseInt(hex.substr(4, 2), 16)
+  
+  // Calcular luminância usando a fórmula padrão
+  // https://en.wikipedia.org/wiki/Relative_luminance
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  
+  // Se a luminância for alta (cor clara), usar texto preto
+  // Se a luminância for baixa (cor escura), usar texto branco
+  return luminance > 0.5 ? 'text-black' : 'text-white'
+}
+
 // Função para obter botão de ação (movida para fora do componente)
 const getBotaoAcao = (
   participant: EventParticipant,
@@ -214,7 +238,7 @@ const ParticipantRow = React.memo<{
           <div className="space-y-1">
             {credentialInfo ? (
               <span 
-                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white uppercase"
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium uppercase ${getTextColor(credentialInfo.cor)}`}
                 style={{ backgroundColor: credentialInfo.cor }}
               >
                 {credentialInfo.nome}
