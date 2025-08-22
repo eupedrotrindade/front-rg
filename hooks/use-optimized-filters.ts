@@ -15,6 +15,7 @@ interface FilterState {
   empresa: string;
   funcao: string;
   checkedIn: string;
+  credencial: string;
 }
 
 interface DayStats {
@@ -51,6 +52,7 @@ export const useOptimizedFilters = ({
     empresa: "all",
     funcao: "all",
     checkedIn: "all",
+    credencial: "all",
   });
 
   // Estados para controle dos popovers
@@ -58,6 +60,7 @@ export const useOptimizedFilters = ({
     empresa: false,
     funcao: false,
     status: false,
+    credencial: false,
   });
 
   // Usar useDeferredValue para debounce automático do React 18
@@ -193,6 +196,24 @@ export const useOptimizedFilters = ({
     return Array.from(dayStats.funcoes.keys()).sort();
   }, [dayStats.funcoes]);
 
+  const uniqueCredenciais = useMemo(() => {
+    return Array.from(dayStats.credentialsStats.keys()).map(credentialId => {
+      const credentialData = dayStats.credentialsStats.get(credentialId)!;
+      return {
+        id: credentialId,
+        name: credentialData.name,
+        color: credentialData.color,
+        total: credentialData.total,
+        checkedIn: credentialData.checkedIn
+      };
+    }).sort((a, b) => {
+      // Ordenar: "SEM CREDENCIAL" primeiro, depois por nome
+      if (a.name === "SEM CREDENCIAL") return -1;
+      if (b.name === "SEM CREDENCIAL") return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [dayStats.credentialsStats]);
+
   // Participantes filtrados (usando deferred values para melhor performance)
   const filteredParticipants = useMemo(() => {
     let filtered = participants;
@@ -238,6 +259,17 @@ export const useOptimizedFilters = ({
       }
     }
 
+    // Aplicar filtro de credencial
+    if (deferredFilters.credencial && deferredFilters.credencial !== "all") {
+      if (deferredFilters.credencial === "no-credential") {
+        // Filtrar participantes sem credencial
+        filtered = filtered.filter((p) => !p.credentialId);
+      } else {
+        // Filtrar por credencial específica
+        filtered = filtered.filter((p) => p.credentialId === deferredFilters.credencial);
+      }
+    }
+
     return filtered;
   }, [
     participants,
@@ -259,6 +291,7 @@ export const useOptimizedFilters = ({
       empresa: "all",
       funcao: "all",
       checkedIn: "all",
+      credencial: "all",
     });
   }, []);
 
@@ -275,7 +308,8 @@ export const useOptimizedFilters = ({
       filters.searchTerm ||
         (filters.empresa && filters.empresa !== "all") ||
         (filters.funcao && filters.funcao !== "all") ||
-        (filters.checkedIn && filters.checkedIn !== "all")
+        (filters.checkedIn && filters.checkedIn !== "all") ||
+        (filters.credencial && filters.credencial !== "all")
     );
   }, [filters]);
 
@@ -288,6 +322,7 @@ export const useOptimizedFilters = ({
     dayStats,
     uniqueEmpresas,
     uniqueFuncoes,
+    uniqueCredenciais,
     filteredParticipants,
     hasActiveFilters,
 
@@ -301,6 +336,7 @@ export const useOptimizedFilters = ({
       deferredSearchTerm !== filters.searchTerm ||
       deferredFilters.empresa !== filters.empresa ||
       deferredFilters.funcao !== filters.funcao ||
-      deferredFilters.checkedIn !== filters.checkedIn,
+      deferredFilters.checkedIn !== filters.checkedIn ||
+      deferredFilters.credencial !== filters.credencial,
   };
 };

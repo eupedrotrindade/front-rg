@@ -22,11 +22,13 @@ interface OptimizedFiltersProps {
     empresa: string
     funcao: string
     checkedIn: string
+    credencial: string
   }
   popoverStates: {
     empresa: boolean
     funcao: boolean
     status: boolean
+    credencial: boolean
   }
   dayStats: {
     empresas: Map<
@@ -45,6 +47,13 @@ interface OptimizedFiltersProps {
   }
   uniqueEmpresas: string[]
   uniqueFuncoes: string[]
+  uniqueCredenciais: Array<{
+    id: string
+    name: string
+    color: string
+    total: number
+    checkedIn: number
+  }>
   participantesDoDia: EventParticipant[]
   filteredParticipants: EventParticipant[]
   hasActiveFilters: boolean
@@ -56,7 +65,7 @@ interface OptimizedFiltersProps {
 
 // Componente de filtro individual memoizado
 const FilterPopover = memo<{
-  type: 'empresa' | 'funcao' | 'status'
+  type: 'empresa' | 'funcao' | 'status' | 'credencial'
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   triggerText: string
@@ -84,6 +93,8 @@ const FilterPopover = memo<{
             ? 'w-[300px]'
             : type === 'funcao'
             ? 'w-[280px]'
+            : type === 'credencial'
+            ? 'w-[320px]'
             : 'w-[260px]'
         } p-0 bg-white`}
         align="start"
@@ -101,7 +112,7 @@ const CommandItemMemo = memo<{
   value: string
   isSelected: boolean
   onSelect: (value: string) => void
-  title: string
+  title: string | React.ReactNode
   subtitle?: string
   count?: number
 }>(({ value, isSelected, onSelect, title, subtitle, count }) => (
@@ -135,7 +146,15 @@ const FilterSummary = memo<{
     empresa: string
     funcao: string
     checkedIn: string
+    credencial: string
   }
+  uniqueCredenciais: Array<{
+    id: string
+    name: string
+    color: string
+    total: number
+    checkedIn: number
+  }>
   getStatusLabel: (status: string) => string
 }>(
   ({
@@ -143,6 +162,7 @@ const FilterSummary = memo<{
     totalCount,
     isFilteringInProgress,
     filters,
+    uniqueCredenciais,
     getStatusLabel,
   }) => (
     <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -172,6 +192,13 @@ const FilterSummary = memo<{
           {filters.funcao && filters.funcao !== 'all' && (
             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
               Função: {filters.funcao}
+            </span>
+          )}
+          {filters.credencial && filters.credencial !== 'all' && (
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+              Credencial: {filters.credencial === 'no-credential' 
+                ? 'SEM CREDENCIAL' 
+                : uniqueCredenciais.find(c => c.id === filters.credencial)?.name || filters.credencial}
             </span>
           )}
           {filters.checkedIn && filters.checkedIn !== 'all' && (
@@ -283,6 +310,70 @@ const FuncoesList = memo<{
 
 FuncoesList.displayName = 'FuncoesList'
 
+// Componente otimizado para lista de credenciais
+const CredenciaisList = memo<{
+  uniqueCredenciais: Array<{
+    id: string
+    name: string
+    color: string
+    total: number
+    checkedIn: number
+  }>
+  selectedCredencial: string
+  onSelectAll: () => void
+  onSelectCredencial: (value: string) => void
+  totalCount: number
+}>(
+  ({
+    uniqueCredenciais,
+    selectedCredencial,
+    onSelectAll,
+    onSelectCredencial,
+    totalCount,
+  }) => (
+    <>
+      <CommandItemMemo
+        value="all"
+        isSelected={selectedCredencial === 'all'}
+        onSelect={onSelectAll}
+        title={`Todas as credenciais (${totalCount})`}
+      />
+      {uniqueCredenciais.map(credencial => (
+        <CommandItemMemo
+          key={credencial.id}
+          value={credencial.id}
+          isSelected={selectedCredencial === credencial.id}
+          onSelect={onSelectCredencial}
+          title={
+            <div className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full border-2 border-black flex-shrink-0"
+                style={{ backgroundColor: credencial.color }}
+              />
+              {credencial.name}
+            </div>
+          }
+          subtitle={`${credencial.total} pessoas • ${credencial.checkedIn} check-in`}
+        />
+      ))}
+      <CommandItemMemo
+        value="no-credential"
+        isSelected={selectedCredencial === 'no-credential'}
+        onSelect={onSelectCredencial}
+        title={
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full border-2 border-gray-400 bg-gray-200 flex-shrink-0" />
+            SEM CREDENCIAL
+          </div>
+        }
+        subtitle={`Participantes sem credencial atribuída`}
+      />
+    </>
+  ),
+)
+
+CredenciaisList.displayName = 'CredenciaisList'
+
 /**
  * OTIMIZAÇÕES APLICADAS PARA RESOLVER TRAVADAS:
  *
@@ -303,6 +394,7 @@ const OptimizedFilters: React.FC<OptimizedFiltersProps> = ({
   dayStats,
   uniqueEmpresas,
   uniqueFuncoes,
+  uniqueCredenciais,
   participantesDoDia,
   filteredParticipants,
   hasActiveFilters,
@@ -346,6 +438,14 @@ const OptimizedFilters: React.FC<OptimizedFiltersProps> = ({
           : `${filters.funcao} (${
               dayStats.funcoes.get(filters.funcao)?.total || 0
             })`,
+      credencial: (() => {
+        if (filters.credencial === 'all') return `Credencial (${uniqueCredenciais.length})`
+        if (filters.credencial === 'no-credential') return 'SEM CREDENCIAL'
+        const credencial = uniqueCredenciais.find(c => c.id === filters.credencial)
+        return credencial 
+          ? `${credencial.name} (${credencial.total})`
+          : 'Credencial'
+      })(),
       status: (() => {
         if (filters.checkedIn === 'all') return 'Status Check-in'
         switch (filters.checkedIn) {
@@ -363,9 +463,11 @@ const OptimizedFilters: React.FC<OptimizedFiltersProps> = ({
     [
       filters.empresa,
       filters.funcao,
+      filters.credencial,
       filters.checkedIn,
       uniqueEmpresas.length,
       uniqueFuncoes.length,
+      uniqueCredenciais,
       dayStats,
     ],
   )
@@ -405,6 +507,19 @@ const OptimizedFilters: React.FC<OptimizedFiltersProps> = ({
     onSetPopoverState('funcao', false)
   }, [onUpdateFilter, onSetPopoverState])
 
+  const handleCredencialSelect = useCallback(
+    (value: string) => {
+      onUpdateFilter('credencial', value === filters.credencial ? 'all' : value)
+      onSetPopoverState('credencial', false)
+    },
+    [onUpdateFilter, onSetPopoverState, filters.credencial],
+  )
+
+  const handleCredencialClearAll = useCallback(() => {
+    onUpdateFilter('credencial', 'all')
+    onSetPopoverState('credencial', false)
+  }, [onUpdateFilter, onSetPopoverState])
+
   // Memoizar callbacks de popover para evitar re-renders
   const handleEmpresaPopover = useCallback(
     (open: boolean) => onSetPopoverState('empresa', open),
@@ -416,6 +531,10 @@ const OptimizedFilters: React.FC<OptimizedFiltersProps> = ({
   )
   const handleStatusPopover = useCallback(
     (open: boolean) => onSetPopoverState('status', open),
+    [onSetPopoverState],
+  )
+  const handleCredencialPopover = useCallback(
+    (open: boolean) => onSetPopoverState('credencial', open),
     [onSetPopoverState],
   )
 
@@ -470,6 +589,32 @@ const OptimizedFilters: React.FC<OptimizedFiltersProps> = ({
                       selectedFuncao={filters.funcao}
                       onSelectAll={handleFuncaoClearAll}
                       onSelectFuncao={handleFuncaoSelect}
+                      totalCount={participantesDoDia.length}
+                    />
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            )}
+          </FilterPopover>
+
+          {/* Filtro por Credencial */}
+          <FilterPopover
+            type="credencial"
+            isOpen={popoverStates.credencial}
+            onOpenChange={handleCredencialPopover}
+            triggerText={triggerTexts.credencial}
+          >
+            {popoverStates.credencial && (
+              <Command>
+                <CommandInput placeholder="Procurar credencial..." />
+                <CommandEmpty>Credencial não encontrada.</CommandEmpty>
+                <CommandList>
+                  <CommandGroup>
+                    <CredenciaisList
+                      uniqueCredenciais={uniqueCredenciais}
+                      selectedCredencial={filters.credencial}
+                      onSelectAll={handleCredencialClearAll}
+                      onSelectCredencial={handleCredencialSelect}
                       totalCount={participantesDoDia.length}
                     />
                   </CommandGroup>
@@ -545,6 +690,7 @@ const OptimizedFilters: React.FC<OptimizedFiltersProps> = ({
           totalCount={participantesDoDia.length}
           isFilteringInProgress={isFilteringInProgress}
           filters={filters}
+          uniqueCredenciais={uniqueCredenciais}
           getStatusLabel={getStatusLabel}
         />
       )}

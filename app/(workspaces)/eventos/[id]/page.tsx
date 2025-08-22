@@ -803,6 +803,7 @@ export default function EventoDetalhesPage() {
         dayStats,
         uniqueEmpresas,
         uniqueFuncoes,
+        uniqueCredenciais,
         filteredParticipants,
         hasActiveFilters,
         updateFilter,
@@ -2002,6 +2003,7 @@ export default function EventoDetalhesPage() {
                         dayStats={dayStats}
                         uniqueEmpresas={uniqueEmpresasFiltered}
                         uniqueFuncoes={uniqueFuncoes}
+                        uniqueCredenciais={uniqueCredenciais}
                         participantesDoDia={participantesDoDia}
                         filteredParticipants={filteredParticipants}
                         hasActiveFilters={hasActiveFilters}
