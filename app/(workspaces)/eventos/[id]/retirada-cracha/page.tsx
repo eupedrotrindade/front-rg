@@ -66,6 +66,7 @@ export default function RetiradaCrachaPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isPickupModalOpen, setIsPickupModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [isQuickInsertModalOpen, setIsQuickInsertModalOpen] = useState(false)
   const [editingBadge, setEditingBadge] = useState<BadgePickup | null>(null)
   const [selectedBadgeForPickup, setSelectedBadgeForPickup] = useState<BadgePickup | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -94,6 +95,11 @@ export default function RetiradaCrachaPage() {
   const [importData, setImportData] = useState<any[]>([])
   const [isProcessingImport, setIsProcessingImport] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Estados para inserção rápida
+  const [quickInsertText, setQuickInsertText] = useState('')
+  const [quickInsertShift, setQuickInsertShift] = useState('')
+  const [isProcessingQuickInsert, setIsProcessingQuickInsert] = useState(false)
 
   // Hooks para dados
   const { data: eventos = [] } = useEventos()
@@ -592,6 +598,95 @@ OBSERVAÇÕES:
     )
   }
 
+  // Função para processar inserção rápida
+  const handleQuickInsert = async () => {
+    if (!quickInsertText.trim()) {
+      toast.error('Digite pelo menos um nome')
+      return
+    }
+
+    if (!quickInsertShift) {
+      toast.error('Selecione um turno')
+      return
+    }
+
+    setIsProcessingQuickInsert(true)
+
+    try {
+      // Processar texto: cada linha é uma entrada, separada por vírgula para nome,cpf,empresa
+      const lines = quickInsertText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+
+      if (lines.length === 0) {
+        toast.error('Nenhuma entrada válida encontrada')
+        return
+      }
+
+      // Extrair informações do shift
+      const parts = quickInsertShift.split('-')
+      const workDate = `${parts[0]}-${parts[1]}-${parts[2]}`
+      const workStage = parts[3] as 'montagem' | 'evento' | 'desmontagem'
+      const workPeriod = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro'
+
+      let successCount = 0
+      let errorCount = 0
+
+      for (const line of lines) {
+        // Separar por vírgula: nome,cpf,empresa
+        const parts = line.split(',').map(part => part.trim())
+        const nome = parts[0] || ''
+        const cpf = parts[1] || ''
+        const empresa = parts[2] || ''
+
+        if (!nome) {
+          errorCount++
+          continue
+        }
+
+        const badgeData = {
+          eventId,
+          nome,
+          cpf: cpf || undefined,
+          empresa: empresa || undefined,
+          status: 'pendente' as const,
+          shiftId: quickInsertShift,
+          workDate,
+          workStage,
+          workPeriod,
+        }
+
+        try {
+          await createBadgePickupMutation.mutateAsync(badgeData)
+          successCount++
+        } catch (error) {
+          errorCount++
+          console.error('Erro ao criar entrada:', error)
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`${successCount} entrada(s) criada(s) com sucesso!`)
+      }
+      if (errorCount > 0) {
+        toast.error(`${errorCount} entrada(s) falharam`)
+      }
+
+      // Limpar estados
+      setQuickInsertText('')
+      setQuickInsertShift('')
+      setIsQuickInsertModalOpen(false)
+
+      // Recarregar dados
+      refetch()
+    } catch (error) {
+      toast.error('Erro durante a inserção rápida')
+    } finally {
+      setIsProcessingQuickInsert(false)
+    }
+  }
+
   // Função para selecionar/desselecionar todos os turnos
   const toggleAllShifts = () => {
     if (selectedShifts.length === eventDays.length) {
@@ -666,6 +761,10 @@ OBSERVAÇÕES:
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setIsQuickInsertModalOpen(true)}>
+              <Package className="h-4 w-4 mr-2" />
+              Inserção Rápida
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setIsImportModalOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Importar Excel
@@ -1056,6 +1155,165 @@ OBSERVAÇÕES:
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Confirmar Retirada
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para inserção rápida */}
+        <Dialog open={isQuickInsertModalOpen} onOpenChange={setIsQuickInsertModalOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Inserção Rápida de Crachás</DialogTitle>
+              <DialogDescription>
+                Adicione múltiplas entradas rapidamente. Uma linha por pessoa, separando dados por vírgula.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-6">
+              {/* Instruções */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-medium text-blue-900 mb-2">📝 Como usar:</h3>
+                <div className="text-sm text-blue-700 space-y-1">
+                  <p><strong>Formato por linha:</strong> Nome,CPF,Empresa</p>
+                  <p><strong>Exemplo:</strong></p>
+                  <div className="bg-blue-100 rounded p-2 mt-2 font-mono text-xs">
+                    Ryan Silva,123.456.789-00,Empresa ABC<br/>
+                    Ana Santos,,Empresa XYZ<br/>
+                    Pedro,987.654.321-00,<br/>
+                    Maria Silva
+                  </div>
+                  <p className="mt-2"><strong>Observações:</strong></p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Apenas o <strong>Nome</strong> é obrigatório</li>
+                    <li>CPF e Empresa são opcionais (podem ficar vazios)</li>
+                    <li>Separe os campos por vírgula</li>
+                    <li>Uma linha = uma pessoa</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Seleção de turno */}
+              <div className="space-y-2">
+                <Label htmlFor="quick-shift">Turno *</Label>
+                <Select value={quickInsertShift} onValueChange={setQuickInsertShift}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o turno para todas as entradas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eventDays.map(day => (
+                      <SelectItem key={day.id} value={day.id}>
+                        {day.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Área de texto */}
+              <div className="space-y-2">
+                <Label htmlFor="quick-text">Dados dos Participantes *</Label>
+                <Textarea
+                  id="quick-text"
+                  value={quickInsertText}
+                  onChange={(e) => setQuickInsertText(e.target.value)}
+                  placeholder={`Digite uma pessoa por linha:\n\nRyan Silva,123.456.789-00,Empresa ABC\nAna Santos,,Empresa XYZ\nPedro,987.654.321-00,\nMaria Silva`}
+                  className="min-h-[200px] font-mono text-sm"
+                />
+                <div className="text-xs text-gray-500">
+                  {quickInsertText.split('\n').filter(line => line.trim()).length} linha(s) digitada(s)
+                </div>
+              </div>
+
+              {/* Preview */}
+              {quickInsertText.trim() && (
+                <div className="space-y-2">
+                  <Label>Preview das Entradas</Label>
+                  <div className="border rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Nome</th>
+                          <th className="px-3 py-2 text-left">CPF</th>
+                          <th className="px-3 py-2 text-left">Empresa</th>
+                          <th className="px-3 py-2 text-left">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {quickInsertText
+                          .split('\n')
+                          .map(line => line.trim())
+                          .filter(line => line.length > 0)
+                          .slice(0, 10)
+                          .map((line, index) => {
+                            const parts = line.split(',').map(part => part.trim())
+                            const nome = parts[0] || ''
+                            const cpf = parts[1] || ''
+                            const empresa = parts[2] || ''
+                            const isValid = nome.length > 0
+
+                            return (
+                              <tr key={index} className={isValid ? '' : 'bg-red-50'}>
+                                <td className="px-3 py-2">
+                                  {nome || <span className="text-red-500 italic">Nome obrigatório</span>}
+                                </td>
+                                <td className="px-3 py-2 text-gray-600">
+                                  {cpf || <span className="text-gray-400 italic">vazio</span>}
+                                </td>
+                                <td className="px-3 py-2 text-gray-600">
+                                  {empresa || <span className="text-gray-400 italic">vazio</span>}
+                                </td>
+                                <td className="px-3 py-2">
+                                  {isValid ? (
+                                    <span className="text-green-600 text-xs">✓ Válido</span>
+                                  ) : (
+                                    <span className="text-red-600 text-xs">✗ Inválido</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                      </tbody>
+                    </table>
+                    {quickInsertText.split('\n').filter(line => line.trim()).length > 10 && (
+                      <div className="px-3 py-2 text-center text-gray-500 text-sm bg-gray-50">
+                        ... e mais {quickInsertText.split('\n').filter(line => line.trim()).length - 10} linhas
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Botões */}
+              <div className="flex gap-4 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsQuickInsertModalOpen(false)
+                    setQuickInsertText('')
+                    setQuickInsertShift('')
+                  }}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleQuickInsert}
+                  disabled={!quickInsertText.trim() || !quickInsertShift || isProcessingQuickInsert}
+                  className="flex-1"
+                >
+                  {isProcessingQuickInsert ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Criar Entradas
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
