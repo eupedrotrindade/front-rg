@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Calendar, Edit, Loader2, Search, X, Sun, Moon } from 'lucide-react';
+import { Calendar, Edit, Loader2, Search, X, Sun, Moon, ChevronDown } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { useUpdateEventParticipant } from "@/features/eventos/api/mutation/use-update-event-participant";
@@ -21,19 +21,21 @@ interface ModalEditarStaffProps {
   evento?: any;
 }
 
-export default function ModalEditarStaff({ 
-  isOpen, 
-  onClose, 
-  eventId, 
-  participant, 
-  selectedDay, 
-  onSuccess, 
-  evento 
+export default function ModalEditarStaff({
+  isOpen,
+  onClose,
+  eventId,
+  participant,
+  selectedDay,
+  onSuccess,
+  evento
 }: ModalEditarStaffProps) {
   const [loading, setLoading] = useState(false);
   const [empresaSearch, setEmpresaSearch] = useState("");
   const [isEmpresaSelectOpen, setIsEmpresaSelectOpen] = useState(false);
-  
+  const [credentialSearch, setCredentialSearch] = useState("");
+  const [isCredentialSelectOpen, setIsCredentialSelectOpen] = useState(false);
+
   // Estado do formulário baseado no participante
   const [staffData, setStaffData] = useState({
     name: "",
@@ -108,7 +110,7 @@ export default function ModalEditarStaff({
   }, [formatEventDate]);
 
   const activeCredentials = credentials.filter((credential: Credential) => credential.isActive !== false);
-  
+
   const empresasArray = useMemo(() => {
     return Array.isArray(empresas) ? empresas : [];
   }, [empresas]);
@@ -120,6 +122,14 @@ export default function ModalEditarStaff({
       empresa.nome.toLowerCase().includes(empresaSearch.toLowerCase())
     );
   }, [empresasArray, empresaSearch]);
+
+  // Filtrar credenciais baseado na busca
+  const filteredCredentials = useMemo(() => {
+    if (!credentialSearch.trim()) return activeCredentials;
+    return activeCredentials.filter(credential =>
+      credential.nome.toLowerCase().includes(credentialSearch.toLowerCase())
+    );
+  }, [activeCredentials, credentialSearch]);
 
   // Função helper para garantir que os dados sejam arrays válidos
   const ensureArray = useCallback((data: any): any[] => {
@@ -381,6 +391,8 @@ export default function ModalEditarStaff({
     });
     setEmpresaSearch("");
     setIsEmpresaSelectOpen(false);
+    setCredentialSearch("");
+    setIsCredentialSelectOpen(false);
     onClose();
   };
 
@@ -397,7 +409,7 @@ export default function ModalEditarStaff({
   useEffect(() => {
     if (isOpen && participant) {
       console.log('🔧 Inicializando formulário de edição com participante:', participant);
-      
+
       // Preencher dados do formulário
       setStaffData({
         name: participant.name || "",
@@ -485,7 +497,7 @@ export default function ModalEditarStaff({
                             placeholder="Pesquisar empresa..."
                             value={empresaSearch}
                             onChange={(e) => setEmpresaSearch(applyUppercaseMask(e.target.value))}
-                            className="pl-8 h-8"
+                            className="pl-8 h-8 bg-white"
                             onClick={(e) => e.stopPropagation()}
                             style={{ textTransform: 'uppercase' }}
                           />
@@ -538,28 +550,67 @@ export default function ModalEditarStaff({
           <div>
             <label className="block text-sm font-medium mb-2">Tipo de Credencial *</label>
             {activeCredentials.length > 0 ? (
-              <Select
-                value={staffData.tipo_credencial}
-                onValueChange={(value) => setStaffData({ ...staffData, tipo_credencial: value })}
-                disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo de credencial" />
-                </SelectTrigger>
-                <SelectContent className="border-none">
-                  {activeCredentials.map((credential) => (
-                    <SelectItem key={credential.id} value={credential.id}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: credential.cor }}
-                        />
-                        {credential.nome}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsCredentialSelectOpen(!isCredentialSelectOpen)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-left focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  disabled={loading}
+                >
+                  {staffData.tipo_credencial ? (
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded-full border-2 border-black"
+                        style={{ backgroundColor: activeCredentials.find(c => c.id === staffData.tipo_credencial)?.cor }}
+                      />
+                      {activeCredentials.find(c => c.id === staffData.tipo_credencial)?.nome}
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">Selecione o tipo de credencial</span>
+                  )}
+                  <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                </button>
+
+                {isCredentialSelectOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    <div className="p-2 border-b">
+                      <Input
+                        placeholder="Pesquisar credencial..."
+                        value={credentialSearch}
+                        onChange={(e) => setCredentialSearch(e.target.value)}
+                        className="w-full"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="py-1">
+                      {filteredCredentials.length > 0 ? (
+                        filteredCredentials.map((credential) => (
+                          <button
+                            key={credential.id}
+                            type="button"
+                            onClick={() => {
+                              setStaffData({ ...staffData, tipo_credencial: credential.id })
+                              setIsCredentialSelectOpen(false)
+                              setCredentialSearch('')
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-gray-100 focus:bg-gray-100 focus:outline-none flex items-center gap-2"
+                          >
+                            <div
+                              className="w-3 h-3 rounded-full border-2 border-black"
+                              style={{ backgroundColor: credential.cor }}
+                            />
+                            {credential.nome}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-gray-500 text-sm">
+                          Nenhuma credencial encontrada
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                 <p className="text-sm text-yellow-800">
