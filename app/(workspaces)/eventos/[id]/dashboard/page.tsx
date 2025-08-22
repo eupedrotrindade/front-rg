@@ -501,13 +501,15 @@ export default function EventDashboardPage() {
 
             console.log(`🎫 Credencial "${credential.nome}": ${checkedInWithCredential.length}/${participantsWithCredential.length} presentes`);
 
-            if (participantsWithCredential.length > 0) {
-                stats[credential.id] = {
-                    total: participantsWithCredential.length,
-                    checkedIn: checkedInWithCredential.length,
-                    credentialName: credential.nome,
-                    color: credential.cor || '#3B82F6'
-                }
+            // Sempre incluir credencial, mesmo sem participantes no turno
+            const total = Number(participantsWithCredential.length) || 0;
+            const checkedIn = Number(checkedInWithCredential.length) || 0;
+            
+            stats[credential.id] = {
+                total,
+                checkedIn,
+                credentialName: credential.nome || 'Credencial',
+                color: credential.cor || '#3B82F6'
             }
         })
 
@@ -596,10 +598,13 @@ export default function EventDashboardPage() {
             });
 
             // ✅ CORRIGIDO: Sempre adicionar empresa, mesmo sem participantes
+            const total = Number(participantesEmpresa.length) || 0;
+            const checkedIn = Number(checkedInParticipants.length) || 0;
+
             stats[empresa.nome] = {
-                total: participantesEmpresa.length,
-                checkedIn: checkedInParticipants.length,
-                companyName: empresa.nome
+                total,
+                checkedIn,
+                companyName: empresa.nome || 'Empresa'
             };
         });
 
@@ -633,10 +638,13 @@ export default function EventDashboardPage() {
                     return hasCheckIn(p.id, selectedDay);
                 });
 
+                const total = Number(participants.length) || 0;
+                const checkedIn = Number(checkedInParticipants.length) || 0;
+
                 stats[companyName] = {
-                    total: participants.length,
-                    checkedIn: checkedInParticipants.length,
-                    companyName
+                    total,
+                    checkedIn,
+                    companyName: companyName || 'Empresa'
                 };
             });
         }
