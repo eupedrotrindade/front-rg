@@ -213,11 +213,12 @@ export default function ImportExportPage() {
         if (cleaned.length === 0) return "00000000000"
 
         if (cleaned.length === 11) {
-            // Se tem 11 dígitos, é CPF - manter como está
-            return cleaned
+            // Se tem 11 dígitos, é CPF - formatar com pontos e traço
+            return `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6, 9)}-${cleaned.slice(9, 11)}`
         } else {
-            // Qualquer outro tamanho, pad para 11 dígitos para compatibilidade com o sistema
-            return cleaned.padStart(11, "0")
+            // Qualquer outro tamanho, pad para 11 dígitos e formatar como CPF
+            const padded = cleaned.padStart(11, "0")
+            return `${padded.slice(0, 3)}.${padded.slice(3, 6)}.${padded.slice(6, 9)}-${padded.slice(9, 11)}`
         }
     }
 
@@ -754,7 +755,17 @@ export default function ImportExportPage() {
                     // Initialize processing progress
                     setProcessingProgress({ current: 0, total: jsonData.length, percentage: 0 })
 
-                    const existingCPFs = new Set(participants.map((p) => p.cpf.replace(/\D/g, "")))
+                    // Filtrar participantes apenas dos turnos selecionados para verificação de duplicados
+                    const participantsInSelectedShifts = participants.filter((p) => 
+                        selectedEventDates.some(shiftId => p.shiftId === shiftId)
+                    )
+                    console.log(`🔍 Verificando duplicados apenas nos turnos selecionados:`, {
+                        totalParticipants: participants.length,
+                        participantsInSelectedShifts: participantsInSelectedShifts.length,
+                        selectedShifts: selectedEventDates
+                    })
+                    
+                    const existingCPFs = new Set(participantsInSelectedShifts.map((p) => p.cpf.replace(/\D/g, "")))
                     const processedCPFs = new Set<string>()
                     const credentialCounts: { [key: string]: number } = {}
                     const companyCounts: { [key: string]: number } = {}
@@ -804,10 +815,24 @@ export default function ImportExportPage() {
                             const isDuplicateExisting = existingCPFs.has(cleanedCPF) || (cleanedRG && existingCPFs.has(cleanedRG))
 
                             if (isDuplicateExisting) {
-                                const existing = participants.find(
+                                console.log('🔍 Duplicado encontrado com participantes existentes:', {
+                                    nome: row.nome,
+                                    cpf: cleanedCPF,
+                                    rg: cleanedRG,
+                                    cpfJaExiste: existingCPFs.has(cleanedCPF),
+                                    rgJaExiste: cleanedRG ? existingCPFs.has(cleanedRG) : false,
+                                    totalExisting: existingCPFs.size
+                                })
+                                
+                                const existing = participantsInSelectedShifts.find(
                                     (p) => p.cpf.replace(/\D/g, "") === cleanedCPF || (cleanedRG && p.cpf.replace(/\D/g, "") === cleanedRG),
                                 )
                                 if (existing) {
+                                    console.log('👤 Participante existente encontrado:', {
+                                        novo: { nome: row.nome, cpf: cleanedCPF },
+                                        existente: { nome: existing.name, cpf: existing.cpf, id: existing.id }
+                                    })
+                                    
                                     result.duplicates.push({
                                         item: row,
                                         existing,
@@ -823,6 +848,14 @@ export default function ImportExportPage() {
                                 (cleanedCPF && processedCPFs.has(cleanedCPF)) || (cleanedRG && processedCPFs.has(cleanedRG))
 
                             if (hasDuplicateInFile) {
+                                console.log('🔍 Duplicado encontrado dentro do arquivo:', {
+                                    nome: row.nome,
+                                    cpf: cleanedCPF,
+                                    rg: cleanedRG,
+                                    processedCPFs: Array.from(processedCPFs).slice(0, 5), // Primeiros 5 para debug
+                                    totalProcessed: processedCPFs.size
+                                })
+                                
                                 result.duplicates.push({
                                     item: row,
                                     existing: {} as EventParticipant,
@@ -2014,7 +2047,9 @@ export default function ImportExportPage() {
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-2xl font-bold text-orange-600">{processedData.warnings.length}</div>
+                                            <div className="text-2xl font-bold text-orange-600">
+                                                {processedData.warnings.filter(w => w.warning.includes('SEM DOCUMENTO')).length}
+                                            </div>
                                             <p className="text-sm text-gray-600">participantes sem documento</p>
                                         </CardContent>
                                     </Card>
@@ -2205,8 +2240,10 @@ export default function ImportExportPage() {
                                             </div>
                                             <div className="text-center p-4 bg-orange-50 rounded-lg">
                                                 <AlertTriangle className="w-8 h-8 mx-auto text-orange-600 mb-2" />
-                                                <div className="text-2xl font-bold text-orange-600">{processedData.warnings.length}</div>
-                                                <div className="text-sm text-gray-600">Avisos</div>
+                                                <div className="text-2xl font-bold text-orange-600">
+                                                    {processedData.warnings.filter(w => w.warning.includes('SEM DOCUMENTO')).length}
+                                                </div>
+                                                <div className="text-sm text-gray-600">Sem Documento</div>
                                             </div>
                                         </div>
 

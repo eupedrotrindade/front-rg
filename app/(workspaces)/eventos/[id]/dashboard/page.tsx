@@ -42,7 +42,34 @@ export default function EventDashboardPage() {
 
     const participantsArray = useMemo(() => Array.isArray(participantsData) ? participantsData : [], [participantsData])
     const credentialsArray = useMemo(() => Array.isArray(credentials) ? credentials : [], [credentials])
-    const empresasArray = Array.isArray(empresas) ? empresas : []
+    
+    // Normalizar dados das empresas (mesmo modelo da página de empresas)
+    const normalizeEmpresas = useCallback((empresasArray: any[]) => {
+        console.log('🔍 Dashboard - Normalizando empresas (modelo individual):', empresasArray.length);
+
+        // No novo modelo, cada empresa já representa um shift específico
+        // Não precisamos mais de shiftData, pois os campos estão diretamente na empresa
+        return empresasArray.map(empresa => {
+            // Verificar se tem campos de turno individuais
+            if (empresa.shiftId && empresa.workDate && empresa.workStage && empresa.workPeriod) {
+                return empresa; // Já está no formato correto
+            }
+
+            // Fallback para compatibilidade (empresas antigas sem campos individuais)
+            return {
+                ...empresa,
+                shiftId: empresa.shiftId || '',
+                workDate: empresa.workDate || '',
+                workStage: empresa.workStage || 'evento',
+                workPeriod: empresa.workPeriod || 'diurno'
+            };
+        });
+    }, []);
+
+    // Normalizar todas as empresas
+    const empresasArray = useMemo(() => {
+        return Array.isArray(empresas) ? normalizeEmpresas(empresas) : [];
+    }, [empresas, normalizeEmpresas])
 
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
@@ -361,12 +388,42 @@ export default function EventDashboardPage() {
         return participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length;
     }, [participantesDoDia, hasCheckIn, selectedDay]);
 
-    // Calcular estatísticas resumidas por empresa
+    // Calcular estatísticas resumidas por empresa (baseado nas empresas reais + participantes)
     const getCompanySummary = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; companyName: string }> = {}
 
-        // Agrupar participantes por empresa
-        const participantsByCompany = participantesDoDia.reduce((acc: any, participant: any) => {
+        // Filtrar empresas do turno selecionado
+        const empresasDoTurno = empresasArray.filter((empresa: any) => 
+            empresa.shiftId === selectedDay
+        );
+
+        // Para cada empresa do turno, calcular estatísticas baseado nos participantes
+        empresasDoTurno.forEach((empresa: any) => {
+            const participantesEmpresa = participantesDoDia.filter((participant: any) => 
+                participant.company === empresa.nome
+            );
+
+            const checkedInParticipants = participantesEmpresa.filter((p: any) => 
+                hasCheckIn(p.id, selectedDay)
+            );
+
+            stats[empresa.nome] = {
+                total: participantesEmpresa.length,
+                checkedIn: checkedInParticipants.length,
+                companyName: empresa.nome
+            }
+        });
+
+        // Também incluir participantes sem empresa registrada nas empresas
+        const participantesSemEmpresaRegistrada = participantesDoDia.filter((participant: any) => {
+            const temEmpresaRegistrada = empresasDoTurno.some((empresa: any) => 
+                empresa.nome === participant.company
+            );
+            return !temEmpresaRegistrada && participant.company;
+        });
+
+        // Agrupar participantes sem empresa registrada por nome da empresa
+        const participantsByCompany = participantesSemEmpresaRegistrada.reduce((acc: any, participant: any) => {
             const companyName = participant.company || 'SEM EMPRESA';
             if (!acc[companyName]) {
                 acc[companyName] = [];
@@ -375,7 +432,7 @@ export default function EventDashboardPage() {
             return acc;
         }, {});
 
-        // Calcular estatísticas para cada empresa
+        // Adicionar estatísticas para participantes sem empresa registrada
         Object.entries(participantsByCompany).forEach(([companyName, participants]: [string, any]) => {
             const checkedInParticipants = participants.filter((p: any) => hasCheckIn(p.id, selectedDay));
 
@@ -387,7 +444,7 @@ export default function EventDashboardPage() {
         });
 
         return stats;
-    }, [participantesDoDia, hasCheckIn, selectedDay]);
+    }, [participantesDoDia, hasCheckIn, selectedDay, empresasArray]);
 
     // Definir primeiro dia como padrão se não houver seleção
     const eventDays = getEventDays();
@@ -397,6 +454,47 @@ export default function EventDashboardPage() {
 
     const credentialStats = getCredentialStats();
     const companySummary = getCompanySummary();
+
+    // Estatísticas das empresas (mesmo modelo da página de empresas)
+    const empresasStats = useMemo(() => {
+        if (!empresasArray) {
+            return {
+                total: 0,
+                configuradas: 0,
+                parcialmenteConfiguradas: 0,
+                naoConfiguradas: 0,
+                uniqueEmpresas: 0
+            }
+        }
+
+        // No novo modelo, cada record é um shift de uma empresa
+        const total = empresasArray.length
+
+        // Empresas únicas (agrupar por nome)
+        const uniqueEmpresasSet = new Set(empresasArray.map((e: any) => e.nome))
+        const uniqueEmpresas = uniqueEmpresasSet.size
+
+        // Uma empresa é considerada configurada se tem campos de shift individuais
+        const configuradas = empresasArray.filter((e: any) =>
+            e.shiftId && e.workDate && e.workStage && e.workPeriod
+        ).length
+
+        const parcialmenteConfiguradas = empresasArray.filter((e: any) =>
+            e.id_evento && (!e.shiftId || !e.workDate || !e.workStage || !e.workPeriod)
+        ).length
+
+        const naoConfiguradas = empresasArray.filter((e: any) =>
+            !e.id_evento && (!e.shiftId || !e.workDate || !e.workStage || !e.workPeriod)
+        ).length
+
+        return {
+            total,
+            configuradas,
+            parcialmenteConfiguradas,
+            naoConfiguradas,
+            uniqueEmpresas
+        }
+    }, [empresasArray])
 
     // Função para obter ícone do período
     const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
@@ -611,10 +709,10 @@ export default function EventDashboardPage() {
                                             <div>
                                                 <p className="text-orange-600 text-sm font-medium">Empresas Únicas</p>
                                                 <p className="text-3xl font-bold text-orange-900">
-                                                    {new Set(empresasArray.map(e => e.nome)).size}
+                                                    {empresasStats.uniqueEmpresas}
                                                 </p>
                                                 <p className="text-xs text-orange-600">
-                                                    {empresasArray.length} turnos totais
+                                                    {empresasStats.total} turnos totais
                                                 </p>
                                             </div>
                                             <Building className="w-8 h-8 text-orange-600" />
