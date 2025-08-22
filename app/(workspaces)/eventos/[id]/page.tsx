@@ -1104,8 +1104,8 @@ export default function EventoDetalhesPage() {
 
     // Função para confirmar check-in
     const confirmarCheckin = async () => {
-        if (!participantAction || !codigoPulseira.trim()) {
-            toast.error('Dados insuficientes para realizar check-in')
+        if (!participantAction) {
+            toast.error('Participante não selecionado')
             return
         }
 
@@ -1140,20 +1140,22 @@ export default function EventoDetalhesPage() {
                 date: dateToUse,
                 validatedBy: 'Sistema',
                 performedBy: 'Sistema',
-                notes: `Check-in realizado via painel de eventos - Pulseira: ${codigoPulseira.trim()}`,
+                notes: `Check-in realizado via painel de eventos${codigoPulseira.trim() ? ` - Pulseira: ${codigoPulseira.trim()}` : ''}`,
                 workPeriod: period,
                 workStage: stage,
             })
 
-            // Salvar pulseira no sistema de movement_credentials
-            try {
-                await changeCredentialCode(
-                    String(params.id),
-                    participantAction.id,
-                    codigoPulseira.trim(),
-                )
-            } catch (error) {
-                console.error('⚠️ Erro ao salvar pulseira no sistema:', error)
+            // Salvar pulseira no sistema de movement_credentials (apenas se foi informada)
+            if (codigoPulseira.trim()) {
+                try {
+                    await changeCredentialCode(
+                        String(params.id),
+                        participantAction.id,
+                        codigoPulseira.trim(),
+                    )
+                } catch (error) {
+                    console.error('⚠️ Erro ao salvar pulseira no sistema:', error)
+                }
             }
 
             toast.success('Check-in realizado com sucesso!')
@@ -2486,20 +2488,20 @@ export default function EventoDetalhesPage() {
                             Realizar Check-in
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Digite o código da pulseira para realizar o check-in.
+                            Realize o check-in do participante. O código da pulseira é opcional.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
 
                     <div className="space-y-4 py-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Código da Pulseira
+                                Código da Pulseira (opcional)
                             </label>
                             <Input
                                 type="text"
                                 value={codigoPulseira}
                                 onChange={e => setCodigoPulseira(e.target.value)}
-                                placeholder="Digite o código da pulseira"
+                                placeholder="Digite o código da pulseira (opcional)"
                                 className="w-full"
                                 onKeyDown={e => {
                                     if (e.key === 'Enter') {
@@ -2528,7 +2530,7 @@ export default function EventoDetalhesPage() {
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={confirmarCheckin}
-                            disabled={loading || !codigoPulseira.trim()}
+                            disabled={loading}
                             className="bg-green-600 hover:bg-green-700"
                         >
                             {loading ? 'Processando...' : 'Confirmar Check-in'}
