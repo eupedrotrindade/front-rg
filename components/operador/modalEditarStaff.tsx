@@ -2,8 +2,20 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Calendar, Edit, Loader2, Search, X, Sun, Moon, ChevronDown } from 'lucide-react';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar, Edit, Loader2, Search, X, Sun, Moon, ChevronDown, Check } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { useUpdateEventParticipant } from "@/features/eventos/api/mutation/use-update-event-participant";
@@ -31,10 +43,8 @@ export default function ModalEditarStaff({
   evento
 }: ModalEditarStaffProps) {
   const [loading, setLoading] = useState(false);
-  const [empresaSearch, setEmpresaSearch] = useState("");
-  const [isEmpresaSelectOpen, setIsEmpresaSelectOpen] = useState(false);
-  const [credentialSearch, setCredentialSearch] = useState("");
-  const [isCredentialSelectOpen, setIsCredentialSelectOpen] = useState(false);
+  const [isEmpresaPopoverOpen, setIsEmpresaPopoverOpen] = useState(false);
+  const [isCredentialPopoverOpen, setIsCredentialPopoverOpen] = useState(false);
 
   // Estado do formulário baseado no participante
   const [staffData, setStaffData] = useState({
@@ -114,22 +124,6 @@ export default function ModalEditarStaff({
   const empresasArray = useMemo(() => {
     return Array.isArray(empresas) ? empresas : [];
   }, [empresas]);
-
-  // Filtrar empresas baseado na busca
-  const filteredEmpresas = useMemo(() => {
-    if (!empresaSearch.trim()) return empresasArray;
-    return empresasArray.filter(empresa =>
-      empresa.nome.toLowerCase().includes(empresaSearch.toLowerCase())
-    );
-  }, [empresasArray, empresaSearch]);
-
-  // Filtrar credenciais baseado na busca
-  const filteredCredentials = useMemo(() => {
-    if (!credentialSearch.trim()) return activeCredentials;
-    return activeCredentials.filter(credential =>
-      credential.nome.toLowerCase().includes(credentialSearch.toLowerCase())
-    );
-  }, [activeCredentials, credentialSearch]);
 
   // Função helper para garantir que os dados sejam arrays válidos
   const ensureArray = useCallback((data: any): any[] => {
@@ -389,10 +383,8 @@ export default function ModalEditarStaff({
       tipo_credencial: "",
       daysWork: []
     });
-    setEmpresaSearch("");
-    setIsEmpresaSelectOpen(false);
-    setCredentialSearch("");
-    setIsCredentialSelectOpen(false);
+    setIsEmpresaPopoverOpen(false);
+    setIsCredentialPopoverOpen(false);
     onClose();
   };
 
@@ -473,60 +465,53 @@ export default function ModalEditarStaff({
             <div>
               <label className="block text-sm font-medium mb-2">Empresa *</label>
               {empresasArray.length > 0 ? (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsEmpresaSelectOpen(!isEmpresaSelectOpen)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-left focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    disabled={loading}
-                    style={{ textTransform: 'uppercase' }}
-                  >
-                    {staffData.empresa ? (
-                      <span>{staffData.empresa}</span>
-                    ) : (
-                      <span className="text-gray-500">SELECIONE UMA EMPRESA</span>
-                    )}
-                    <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  </button>
-
-                  {isEmpresaSelectOpen && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                      <div className="p-2 border-b">
-                        <Input
-                          placeholder="Pesquisar empresa..."
-                          value={empresaSearch}
-                          onChange={(e) => setEmpresaSearch(applyUppercaseMask(e.target.value))}
-                          className="w-full"
-                          style={{ textTransform: 'uppercase' }}
-                          autoFocus
-                        />
-                      </div>
-                      <div className="py-1">
-                        {filteredEmpresas.length > 0 ? (
-                          filteredEmpresas.map((empresa) => (
-                            <button
+                <Popover open={isEmpresaPopoverOpen} onOpenChange={setIsEmpresaPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={isEmpresaPopoverOpen}
+                      className="w-full justify-between bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      disabled={loading}
+                      style={{ textTransform: 'uppercase' }}
+                    >
+                      {staffData.empresa ? (
+                        <span>{staffData.empresa}</span>
+                      ) : (
+                        <span className="text-gray-500">SELECIONE UMA EMPRESA</span>
+                      )}
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[400px] p-0 bg-white" align="start">
+                    <Command>
+                      <CommandInput placeholder="Pesquisar empresa..." className="h-9" />
+                      <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
+                      <CommandList>
+                        <CommandGroup>
+                          {empresasArray.map((empresa) => (
+                            <CommandItem
                               key={empresa.id}
-                              type="button"
-                              onClick={() => {
+                              value={empresa.nome}
+                              onSelect={() => {
                                 setStaffData({ ...staffData, empresa: applyUppercaseMask(empresa.nome) })
-                                setIsEmpresaSelectOpen(false)
-                                setEmpresaSearch('')
+                                setIsEmpresaPopoverOpen(false)
                               }}
-                              className="w-full px-3 py-2 text-left hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
-                              style={{ textTransform: 'uppercase' }}
+                              className="hover:bg-gray-100 hover:cursor-pointer"
                             >
-                              {empresa.nome.toUpperCase()}
-                            </button>
-                          ))
-                        ) : (
-                          <div className="px-3 py-2 text-gray-500 text-sm">
-                            Nenhuma empresa encontrada
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                              <Check
+                                className={`mr-2 h-4 w-4 ${
+                                  staffData.empresa === empresa.nome.toUpperCase() ? 'opacity-100' : 'opacity-0'
+                                }`}
+                              />
+                              <span style={{ textTransform: 'uppercase' }}>{empresa.nome.toUpperCase()}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               ) : (
                 <Input
                   value={staffData.empresa}
@@ -543,67 +528,83 @@ export default function ModalEditarStaff({
           <div>
             <label className="block text-sm font-medium mb-2">Tipo de Credencial *</label>
             {activeCredentials.length > 0 ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsCredentialSelectOpen(!isCredentialSelectOpen)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-left focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  disabled={loading}
-                >
-                  {staffData.tipo_credencial ? (
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full border-2 border-black"
-                        style={{ backgroundColor: activeCredentials.find(c => c.id === staffData.tipo_credencial)?.cor }}
-                      />
-                      {activeCredentials.find(c => c.id === staffData.tipo_credencial)?.nome}
-                    </div>
-                  ) : (
-                    <span className="text-gray-500">Selecione o tipo de credencial</span>
-                  )}
-                  <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                </button>
-
-                {isCredentialSelectOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    <div className="p-2 border-b">
-                      <Input
-                        placeholder="Pesquisar credencial..."
-                        value={credentialSearch}
-                        onChange={(e) => setCredentialSearch(e.target.value)}
-                        className="w-full"
-                        autoFocus
-                      />
-                    </div>
-                    <div className="py-1">
-                      {filteredCredentials.length > 0 ? (
-                        filteredCredentials.map((credential) => (
-                          <button
+              <Popover open={isCredentialPopoverOpen} onOpenChange={setIsCredentialPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isCredentialPopoverOpen}
+                    className="w-full justify-between bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    disabled={loading}
+                  >
+                    {staffData.tipo_credencial ? (
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full border-2 border-black"
+                          style={{ backgroundColor: activeCredentials.find(c => c.id === staffData.tipo_credencial)?.cor }}
+                        />
+                        {activeCredentials.find(c => c.id === staffData.tipo_credencial)?.nome}
+                      </div>
+                    ) : (
+                      <span className="text-gray-500">Selecione o tipo de credencial</span>
+                    )}
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0 bg-white" align="start">
+                  <Command>
+                    <CommandInput placeholder="Pesquisar credencial..." className="h-9" />
+                    <CommandEmpty>Nenhuma credencial encontrada.</CommandEmpty>
+                    <CommandList>
+                      <CommandGroup>
+                        {/* Opção para remover credencial */}
+                        <CommandItem
+                          value="remover-credencial"
+                          onSelect={() => {
+                            setStaffData({ ...staffData, tipo_credencial: "" })
+                            setIsCredentialPopoverOpen(false)
+                          }}
+                          className="hover:bg-gray-100 hover:cursor-pointer"
+                        >
+                          <Check
+                            className={`mr-2 h-4 w-4 ${
+                              !staffData.tipo_credencial ? 'opacity-100' : 'opacity-0'
+                            }`}
+                          />
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full border-2 border-gray-400 bg-gray-200" />
+                            <span className="text-gray-600">SEM CREDENCIAL</span>
+                          </div>
+                        </CommandItem>
+                        {activeCredentials.map((credential) => (
+                          <CommandItem
                             key={credential.id}
-                            type="button"
-                            onClick={() => {
+                            value={credential.nome}
+                            onSelect={() => {
                               setStaffData({ ...staffData, tipo_credencial: credential.id })
-                              setIsCredentialSelectOpen(false)
-                              setCredentialSearch('')
+                              setIsCredentialPopoverOpen(false)
                             }}
-                            className="w-full px-3 py-2 text-left hover:bg-gray-100 focus:bg-gray-100 focus:outline-none flex items-center gap-2"
+                            className="hover:bg-gray-100 hover:cursor-pointer"
                           >
-                            <div
-                              className="w-3 h-3 rounded-full border-2 border-black"
-                              style={{ backgroundColor: credential.cor }}
+                            <Check
+                              className={`mr-2 h-4 w-4 ${
+                                staffData.tipo_credencial === credential.id ? 'opacity-100' : 'opacity-0'
+                              }`}
                             />
-                            {credential.nome}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-3 py-2 text-gray-500 text-sm">
-                          Nenhuma credencial encontrada
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-full border-2 border-black"
+                                style={{ backgroundColor: credential.cor }}
+                              />
+                              {credential.nome}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             ) : (
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                 <p className="text-sm text-yellow-800">

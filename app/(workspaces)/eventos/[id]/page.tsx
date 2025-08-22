@@ -14,7 +14,20 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover'
 import {
     Select,
     SelectContent,
@@ -47,6 +60,7 @@ import { EventParticipant } from '@/features/eventos/types'
 import { useQueryClient } from '@tanstack/react-query'
 import {
     Check,
+    ChevronDown,
     Clock,
     Download,
     Filter,
@@ -177,6 +191,8 @@ export default function EventoDetalhesPage() {
         company: 'no-change',
     })
     const [bulkEditLoading, setBulkEditLoading] = useState(false)
+    const [bulkCredentialPopoverOpen, setBulkCredentialPopoverOpen] = useState(false)
+    const [bulkEmpresaPopoverOpen, setBulkEmpresaPopoverOpen] = useState(false)
 
     // Estados para remoção de duplicados
     const [showDuplicatesModal, setShowDuplicatesModal] = useState(false)
@@ -2686,32 +2702,100 @@ export default function EventoDetalhesPage() {
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Tipo de Credencial
                             </label>
-                            <Select
-                                value={bulkEditData.credentialId}
-                                onValueChange={value =>
-                                    setBulkEditData(prev => ({ ...prev, credentialId: value }))
-                                }
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Selecione uma credencial (opcional)" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="no-change">Não alterar</SelectItem>
-                                    {credentialsArray
-                                        .filter(c => c.isActive !== false)
-                                        .map(credential => (
-                                            <SelectItem key={credential.id} value={credential.id}>
-                                                <div className="flex items-center gap-2">
-                                                    <div
-                                                        className="w-3 h-3 rounded-full"
-                                                        style={{ backgroundColor: credential.cor }}
+                            <Popover open={bulkCredentialPopoverOpen} onOpenChange={setBulkCredentialPopoverOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        aria-expanded={bulkCredentialPopoverOpen}
+                                        className="w-full justify-between bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                    >
+                                        {bulkEditData.credentialId === 'no-change' ? (
+                                            <span className="text-gray-500">Não alterar</span>
+                                        ) : bulkEditData.credentialId ? (
+                                            <div className="flex items-center gap-2">
+                                                <div
+                                                    className="w-3 h-3 rounded-full border-2 border-black"
+                                                    style={{ backgroundColor: credentialsArray.find(c => c.id === bulkEditData.credentialId)?.cor }}
+                                                />
+                                                {credentialsArray.find(c => c.id === bulkEditData.credentialId)?.nome}
+                                            </div>
+                                        ) : (
+                                            <span className="text-gray-500">Selecione uma credencial (opcional)</span>
+                                        )}
+                                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[400px] p-0 bg-white" align="start">
+                                    <Command>
+                                        <CommandInput placeholder="Pesquisar credencial..." className="h-9" />
+                                        <CommandEmpty>Nenhuma credencial encontrada.</CommandEmpty>
+                                        <CommandList>
+                                            <CommandGroup>
+                                                <CommandItem
+                                                    value="no-change"
+                                                    onSelect={() => {
+                                                        setBulkEditData(prev => ({ ...prev, credentialId: 'no-change' }))
+                                                        setBulkCredentialPopoverOpen(false)
+                                                    }}
+                                                    className="hover:bg-gray-100 hover:cursor-pointer"
+                                                >
+                                                    <Check
+                                                        className={`mr-2 h-4 w-4 ${
+                                                            bulkEditData.credentialId === 'no-change' ? 'opacity-100' : 'opacity-0'
+                                                        }`}
                                                     />
-                                                    {credential.nome}
-                                                </div>
-                                            </SelectItem>
-                                        ))}
-                                </SelectContent>
-                            </Select>
+                                                    <span className="text-gray-600">Não alterar</span>
+                                                </CommandItem>
+                                                <CommandItem
+                                                    value="remover-credencial"
+                                                    onSelect={() => {
+                                                        setBulkEditData(prev => ({ ...prev, credentialId: '' }))
+                                                        setBulkCredentialPopoverOpen(false)
+                                                    }}
+                                                    className="hover:bg-gray-100 hover:cursor-pointer"
+                                                >
+                                                    <Check
+                                                        className={`mr-2 h-4 w-4 ${
+                                                            bulkEditData.credentialId === '' ? 'opacity-100' : 'opacity-0'
+                                                        }`}
+                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-3 h-3 rounded-full border-2 border-gray-400 bg-gray-200" />
+                                                        <span className="text-gray-600">SEM CREDENCIAL</span>
+                                                    </div>
+                                                </CommandItem>
+                                                {credentialsArray
+                                                    .filter(c => c.isActive !== false)
+                                                    .map(credential => (
+                                                        <CommandItem
+                                                            key={credential.id}
+                                                            value={credential.nome}
+                                                            onSelect={() => {
+                                                                setBulkEditData(prev => ({ ...prev, credentialId: credential.id }))
+                                                                setBulkCredentialPopoverOpen(false)
+                                                            }}
+                                                            className="hover:bg-gray-100 hover:cursor-pointer"
+                                                        >
+                                                            <Check
+                                                                className={`mr-2 h-4 w-4 ${
+                                                                    bulkEditData.credentialId === credential.id ? 'opacity-100' : 'opacity-0'
+                                                                }`}
+                                                            />
+                                                            <div className="flex items-center gap-2">
+                                                                <div
+                                                                    className="w-3 h-3 rounded-full border-2 border-black"
+                                                                    style={{ backgroundColor: credential.cor }}
+                                                                />
+                                                                {credential.nome}
+                                                            </div>
+                                                        </CommandItem>
+                                                    ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
                         </div>
 
                         {/* Campo Função */}
@@ -2735,24 +2819,69 @@ export default function EventoDetalhesPage() {
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Empresa
                             </label>
-                            <Select
-                                value={bulkEditData.company}
-                                onValueChange={value =>
-                                    setBulkEditData(prev => ({ ...prev, company: value }))
-                                }
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Selecione uma empresa (opcional)" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="no-change">Não alterar</SelectItem>
-                                    {empresas?.map(empresa => (
-                                        <SelectItem key={empresa.id} value={empresa.nome}>
-                                            {empresa.nome}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Popover open={bulkEmpresaPopoverOpen} onOpenChange={setBulkEmpresaPopoverOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        aria-expanded={bulkEmpresaPopoverOpen}
+                                        className="w-full justify-between bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                        style={{ textTransform: 'uppercase' }}
+                                    >
+                                        {bulkEditData.company === 'no-change' ? (
+                                            <span className="text-gray-500">NÃO ALTERAR</span>
+                                        ) : bulkEditData.company ? (
+                                            <span>{bulkEditData.company}</span>
+                                        ) : (
+                                            <span className="text-gray-500">SELECIONE UMA EMPRESA (OPCIONAL)</span>
+                                        )}
+                                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[400px] p-0 bg-white" align="start">
+                                    <Command>
+                                        <CommandInput placeholder="Pesquisar empresa..." className="h-9" />
+                                        <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
+                                        <CommandList>
+                                            <CommandGroup>
+                                                <CommandItem
+                                                    value="no-change"
+                                                    onSelect={() => {
+                                                        setBulkEditData(prev => ({ ...prev, company: 'no-change' }))
+                                                        setBulkEmpresaPopoverOpen(false)
+                                                    }}
+                                                    className="hover:bg-gray-100 hover:cursor-pointer"
+                                                >
+                                                    <Check
+                                                        className={`mr-2 h-4 w-4 ${
+                                                            bulkEditData.company === 'no-change' ? 'opacity-100' : 'opacity-0'
+                                                        }`}
+                                                    />
+                                                    <span className="text-gray-600" style={{ textTransform: 'uppercase' }}>NÃO ALTERAR</span>
+                                                </CommandItem>
+                                                {empresas?.map(empresa => (
+                                                    <CommandItem
+                                                        key={empresa.id}
+                                                        value={empresa.nome}
+                                                        onSelect={() => {
+                                                            setBulkEditData(prev => ({ ...prev, company: empresa.nome }))
+                                                            setBulkEmpresaPopoverOpen(false)
+                                                        }}
+                                                        className="hover:bg-gray-100 hover:cursor-pointer"
+                                                    >
+                                                        <Check
+                                                            className={`mr-2 h-4 w-4 ${
+                                                                bulkEditData.company === empresa.nome ? 'opacity-100' : 'opacity-0'
+                                                            }`}
+                                                        />
+                                                        <span style={{ textTransform: 'uppercase' }}>{empresa.nome.toUpperCase()}</span>
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
                         </div>
 
                         {/* Aviso */}
@@ -2778,6 +2907,8 @@ export default function EventoDetalhesPage() {
                                     role: '',
                                     company: 'no-change',
                                 })
+                                setBulkCredentialPopoverOpen(false)
+                                setBulkEmpresaPopoverOpen(false)
                             }}
                         >
                             Cancelar
