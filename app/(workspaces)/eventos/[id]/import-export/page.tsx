@@ -136,13 +136,20 @@ export default function ImportExportPage() {
     const [isCreationDialogOpen, setIsCreationDialogOpen] = useState(false)
     const [shouldCancelCreation, setShouldCancelCreation] = useState(false)
 
-    // Batch configuration
-    const [batchConfig, setBatchConfig] = useState({
-        batchSize: 10, // Reduced for Supabase
-        pauseBetweenBatches: 15000, // 15 seconds
-        pauseBetweenItems: 1000, // 1 second
+    // Intelligent rate limiting: 90 per minute with 100/min API limit safety
+    const rateLimitConfig = {
+        maxPerMinute: 90, // Our safe target (90/min)
+        apiLimit: 100, // API absolute limit (100/min) 
+        batchSize: 1, // Process one at a time for precise control
         maxRetries: 3,
         backoffMultiplier: 2,
+    }
+
+    // Rate limiting state
+    const [rateLimitTracker, setRateLimitTracker] = useState({
+        requests: [] as number[], // Timestamps of requests in current minute window
+        windowStart: 0, // Start of current minute window
+        totalSentThisWindow: 0
     })
 
     // UI States
@@ -202,6 +209,87 @@ export default function ImportExportPage() {
         document.addEventListener("keydown", handleKeyDown)
         return () => document.removeEventListener("keydown", handleKeyDown)
     }, [handleKeyDown])
+
+    // ✅ Intelligent Rate Limiting Function
+    const calculateOptimalDelay = (requestsSentThisMinute: number, minuteStart: number): number => {
+        const now = Date.now()
+        const timeElapsedInMinute = now - minuteStart
+        const timeRemainingInMinute = 60000 - timeElapsedInMinute
+        
+        console.log(`⏱️ Rate limit check:`, {
+            requestsSentThisMinute,
+            timeElapsedInMinute: Math.round(timeElapsedInMinute / 1000),
+            timeRemainingInMinute: Math.round(timeRemainingInMinute / 1000),
+            currentMinuteWindow: new Date(minuteStart).toISOString().slice(14, 19)
+        })
+
+        // If we've hit our 90/min limit, wait until next minute
+        if (requestsSentThisMinute >= rateLimitConfig.maxPerMinute) {
+            const waitTime = timeRemainingInMinute + 100 // Add 100ms buffer for next minute
+            console.log(`🚫 Rate limit reached (${requestsSentThisMinute}/90). Waiting ${Math.round(waitTime/1000)}s for next minute.`)
+            return waitTime
+        }
+
+        // If we're approaching the minute end and might exceed 90, wait for next minute
+        const requestsRemaining = rateLimitConfig.maxPerMinute - requestsSentThisMinute
+        const timeForRemainingRequests = requestsRemaining * (60000 / rateLimitConfig.maxPerMinute) // Ideal spacing
+        
+        if (timeRemainingInMinute < timeForRemainingRequests && timeRemainingInMinute < 10000) {
+            console.log(`⏰ Close to minute end. Waiting ${Math.round(timeRemainingInMinute/1000)}s for next minute.`)
+            return timeRemainingInMinute + 100
+        }
+
+        // Calculate optimal spacing: distribute remaining requests over remaining time
+        const optimalSpacing = Math.max(667, timeRemainingInMinute / (requestsRemaining || 1)) // Min 667ms (90/min)
+        
+        console.log(`✅ Optimal delay: ${Math.round(optimalSpacing)}ms (${requestsRemaining} remaining in window)`)
+        return Math.round(optimalSpacing)
+    }
+
+    // ✅ Smart Rate Limiter with Sliding Window
+    const waitForRateLimit = async (): Promise<void> => {
+        const now = Date.now()
+        const currentMinuteStart = Math.floor(now / 60000) * 60000 // Start of current minute
+        
+        setRateLimitTracker(prev => {
+            // Clean old requests outside current minute window
+            const validRequests = prev.requests.filter(timestamp => timestamp >= currentMinuteStart)
+            
+            const requestsThisMinute = validRequests.length
+            const delay = calculateOptimalDelay(requestsThisMinute, currentMinuteStart)
+            
+            // Update state for UI display
+            const newState = {
+                requests: validRequests,
+                windowStart: currentMinuteStart,
+                totalSentThisWindow: requestsThisMinute
+            }
+
+            // Schedule the delay and request recording
+            if (delay > 0) {
+                setTimeout(async () => {
+                    // After delay, record this request timestamp
+                    setRateLimitTracker(current => ({
+                        ...current,
+                        requests: [...current.requests, now + delay],
+                        totalSentThisWindow: current.totalSentThisWindow + 1
+                    }))
+                }, delay)
+            } else {
+                // Record request immediately
+                newState.requests = [...validRequests, now]
+                newState.totalSentThisWindow = requestsThisMinute + 1
+            }
+            
+            return newState
+        })
+
+        if (calculateOptimalDelay(rateLimitTracker.totalSentThisWindow, currentMinuteStart) > 0) {
+            const delay = calculateOptimalDelay(rateLimitTracker.totalSentThisWindow, currentMinuteStart)
+            console.log(`⏳ Waiting ${Math.round(delay/1000)}s before next request...`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+        }
+    }
 
     // Document handling functions
     const unformatDocument = (document: string): string => {
@@ -639,24 +727,36 @@ export default function ImportExportPage() {
         setIsCreationDialogOpen(true)
         setShouldCancelCreation(false)
 
-        // Create credentials first (both general missing and shift-specific)
-        if (processedData.missingCredentials.length > 0) {
-            await createMissingCredentials()
+        // ✅ Create all missing credentials (avoiding duplicates)
+        const allMissingCredentials = new Set<string>()
+        
+        // Add general missing credentials
+        processedData.missingCredentials.forEach(cred => allMissingCredentials.add(cred.name))
+        
+        // Add shift-specific missing credentials
+        Object.values(shiftValidationErrors).forEach(errors => {
+            errors.missingCredentials.forEach(cred => allMissingCredentials.add(cred))
+        })
+
+        if (allMissingCredentials.size > 0 && !shouldCancelCreation) {
+            console.log(`🎯 Criando ${allMissingCredentials.size} credenciais únicas:`, Array.from(allMissingCredentials))
+            await createUnifiedCredentials(Array.from(allMissingCredentials))
         }
 
-        // Create shift-specific missing credentials
-        if (!shouldCancelCreation && Object.keys(shiftValidationErrors).length > 0) {
-            await createShiftSpecificCredentials()
-        }
+        // ✅ Create all missing companies (avoiding duplicates)
+        const allMissingCompanies = new Set<string>()
+        
+        // Add general missing companies
+        processedData.missingCompanies.forEach(comp => allMissingCompanies.add(comp.name))
+        
+        // Add shift-specific missing companies
+        Object.values(shiftValidationErrors).forEach(errors => {
+            errors.missingCompanies.forEach(comp => allMissingCompanies.add(comp))
+        })
 
-        // Then create companies (both general missing and shift-specific)
-        if (processedData.missingCompanies.length > 0 && !shouldCancelCreation) {
-            await createMissingCompanies()
-        }
-
-        // Create shift-specific missing companies
-        if (!shouldCancelCreation && Object.keys(shiftValidationErrors).length > 0) {
-            await createShiftSpecificCompanies()
+        if (allMissingCompanies.size > 0 && !shouldCancelCreation) {
+            console.log(`🏢 Criando ${allMissingCompanies.size} empresas únicas:`, Array.from(allMissingCompanies))
+            await createUnifiedCompanies(Array.from(allMissingCompanies))
         }
 
         setIsCreationDialogOpen(false)
@@ -819,6 +919,102 @@ export default function ImportExportPage() {
             // Pause between creations
             if (i < credentialArray.length - 1) {
                 await new Promise((resolve) => setTimeout(resolve, 2000))
+            }
+        }
+    }
+
+    // ✅ Unified function to create credentials without duplicates
+    const createUnifiedCredentials = async (credentialNames: string[]) => {
+        if (credentialNames.length === 0) return
+
+        setCreationProgress({
+            type: "credential",
+            current: 0,
+            total: credentialNames.length,
+            currentItem: "",
+            isCreating: true,
+            completed: [],
+            failed: [],
+        })
+
+        for (let i = 0; i < credentialNames.length; i++) {
+            if (shouldCancelCreation) break
+
+            const credentialName = credentialNames[i]
+
+            setCreationProgress((prev) => ({
+                ...prev,
+                current: i + 1,
+                currentItem: credentialName,
+            }))
+
+            const result = await createCredentialFunction(credentialName, credentialColors[credentialName] || '#6B7280')
+
+            setCreationProgress((prev) => ({
+                ...prev,
+                completed: result.success ? [...prev.completed, credentialName] : prev.completed,
+                failed: !result.success ? [...prev.failed, credentialName] : prev.failed,
+            }))
+
+            if (!result.success) {
+                toast.error(`❌ Falha ao criar credencial: ${credentialName}`)
+                console.error(`❌ Credencial não foi criada: ${credentialName}`)
+            } else {
+                toast.success(`✅ Credencial criada: ${credentialName}`)
+                console.log(`✅ Credencial criada com sucesso: ${credentialName}`)
+            }
+
+            // Pause between creations
+            if (i < credentialNames.length - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 3000))
+            }
+        }
+    }
+
+    // ✅ Unified function to create companies without duplicates
+    const createUnifiedCompanies = async (companyNames: string[]) => {
+        if (companyNames.length === 0) return
+
+        setCreationProgress({
+            type: "company",
+            current: 0,
+            total: companyNames.length,
+            currentItem: "",
+            isCreating: true,
+            completed: [],
+            failed: [],
+        })
+
+        for (let i = 0; i < companyNames.length; i++) {
+            if (shouldCancelCreation) break
+
+            const companyName = companyNames[i]
+
+            setCreationProgress((prev) => ({
+                ...prev,
+                current: i + 1,
+                currentItem: companyName,
+            }))
+
+            const result = await createCompanyFunction(companyName)
+
+            setCreationProgress((prev) => ({
+                ...prev,
+                completed: result.success ? [...prev.completed, companyName] : prev.completed,
+                failed: !result.success ? [...prev.failed, companyName] : prev.failed,
+            }))
+
+            if (!result.success) {
+                toast.error(`❌ Falha ao criar empresa: ${companyName}`)
+                console.error(`❌ Empresa não foi criada: ${companyName}`)
+            } else {
+                toast.success(`✅ Empresa criada: ${companyName}`)
+                console.log(`✅ Empresa criada com sucesso: ${companyName}`)
+            }
+
+            // Pause between creations
+            if (i < companyNames.length - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 3000))
             }
         }
     }
@@ -1236,15 +1432,20 @@ export default function ImportExportPage() {
         })
     }, [participants, eventId, findCredentialByName, findCompanyByName, formatDocumentForStorage])
 
-    // Import participants with optimized batch processing
+    // Import participants with intelligent rate limiting (90/min max)
     const importParticipants = async (participants: CreateEventParticipantRequest[]) => {
-        const { batchSize, pauseBetweenBatches, pauseBetweenItems } = batchConfig
-        const totalBatches = Math.ceil(participants.length / batchSize)
         let success = 0
         let errors = 0
 
-        console.log(`🚀 Starting import of ${participants.length} participants in ${totalBatches} batches`)
-        console.log(`📊 Batch config: ${batchSize} per batch, ${pauseBetweenBatches}ms between batches, ${pauseBetweenItems}ms per item`)
+        console.log(`🚀 Starting import of ${participants.length} participants with intelligent rate limiting`)
+        console.log(`📊 Rate limit: Max 90/min (API limit: 100/min) with sliding window control`)
+
+        // Reset rate limiter for fresh start
+        setRateLimitTracker({
+            requests: [],
+            windowStart: Math.floor(Date.now() / 60000) * 60000,
+            totalSentThisWindow: 0
+        })
 
         setProgress({
             total: participants.length,
@@ -1252,74 +1453,64 @@ export default function ImportExportPage() {
             success: 0,
             errors: 0,
             duplicates: 0,
-            totalBatches,
+            totalBatches: participants.length, // Each participant is a "batch" now
             currentBatch: 0,
         })
 
-        for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-            const startIndex = batchIndex * batchSize
-            const endIndex = Math.min(startIndex + batchSize, participants.length)
-            const batch = participants.slice(startIndex, endIndex)
+        for (let i = 0; i < participants.length; i++) {
+            const participant = participants[i]
 
             setProgress((prev) => ({
                 ...prev,
-                currentBatch: batchIndex + 1,
-                currentItem: `Processando lote ${batchIndex + 1} de ${totalBatches} (${batch.length} participantes)`,
+                processed: i + 1,
+                currentBatch: i + 1,
+                currentItem: `${participant.name} (${i + 1}/${participants.length}) - Aguardando rate limit...`,
             }))
 
-            // Give browser time to update UI before processing batch (prevents UI freezing)
+            // ✅ Apply intelligent rate limiting before each request
+            await waitForRateLimit()
+
+            setProgress((prev) => ({
+                ...prev,
+                currentItem: `${participant.name} (${i + 1}/${participants.length}) - Enviando...`,
+            }))
+
+            // Give browser time to update UI
             await new Promise((resolve) => setTimeout(resolve, 0))
 
-            for (let i = 0; i < batch.length; i++) {
-                const participant = batch[i]
-                const globalIndex = startIndex + i
-
-                setProgress((prev) => ({
-                    ...prev,
-                    processed: globalIndex + 1,
-                    currentItem: `Lote ${batchIndex + 1}/${totalBatches} - ${participant.name} (${i + 1}/${batch.length})`,
-                }))
-
-                // Yield to browser every 5 participants to keep UI responsive
-                if (i % 5 === 0 && i > 0) {
-                    await new Promise((resolve) => setTimeout(resolve, 0))
-                }
-
-                try {
-                    await new Promise<void>((resolve) => {
-                        createParticipant(participant, {
-                            onSuccess: () => {
-                                success++
-                                setProgress((prev) => ({ ...prev, success }))
-                                resolve()
-                            },
-                            onError: (error) => {
-                                console.error(`Erro ao criar participante ${participant.name}:`, error)
-                                errors++
-                                setProgress((prev) => ({ ...prev, errors }))
-                                resolve()
-                            },
-                        })
+            try {
+                await new Promise<void>((resolve) => {
+                    createParticipant(participant, {
+                        onSuccess: () => {
+                            success++
+                            setProgress((prev) => ({ 
+                                ...prev, 
+                                success,
+                                currentItem: `✅ ${participant.name} - Criado com sucesso`
+                            }))
+                            resolve()
+                        },
+                        onError: (error) => {
+                            console.error(`❌ Erro ao criar participante ${participant.name}:`, error)
+                            errors++
+                            setProgress((prev) => ({ 
+                                ...prev, 
+                                errors,
+                                currentItem: `❌ ${participant.name} - Erro na criação`
+                            }))
+                            resolve()
+                        },
                     })
-                } catch (error) {
-                    console.error(`Erro inesperado para ${participant.name}:`, error)
-                    errors++
-                    setProgress((prev) => ({ ...prev, errors }))
-                }
-
-                if (i < batch.length - 1) {
-                    await new Promise((resolve) => setTimeout(resolve, pauseBetweenItems))
-                }
+                })
+            } catch (error) {
+                console.error(`❌ Erro inesperado para ${participant.name}:`, error)
+                errors++
+                setProgress((prev) => ({ ...prev, errors }))
             }
 
-            if (batchIndex < totalBatches - 1) {
-                for (let countdown = Math.ceil(pauseBetweenBatches / 1000); countdown > 0; countdown--) {
-                    setProgress((prev) => ({
-                        ...prev,
-                        currentItem: `Pausando ${countdown}s antes do próximo lote...`,
-                    }))
-                    await new Promise((resolve) => setTimeout(resolve, 1000))
-                }
+            // Brief pause for UI updates (doesn't affect rate limiting)
+            if (i < participants.length - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 50))
             }
         }
 
@@ -1453,10 +1644,23 @@ export default function ImportExportPage() {
         try {
             // Create participant entries for each shift (new shift-based system)
             const participantsWithShifts: CreateEventParticipantRequest[] = []
+            let skippedDuplicates = 0
 
             processedData.data.forEach((item) => {
                 selectedEventDates.forEach((shiftId) => {
                     const { dateISO, stage, period } = parseShiftId(shiftId)
+
+                    // ✅ Check if participant already exists for this specific shift
+                    const cleanedCPF = item.cpf ? item.cpf.toString().replace(/\D/g, "") : ""
+                    const existingInShift = participants.find((p) => 
+                        p.cpf.replace(/\D/g, "") === cleanedCPF && p.shiftId === shiftId
+                    )
+                    
+                    if (existingInShift) {
+                        console.log(`⚠️ Participante ${item.nome} (CPF: ${cleanedCPF}) já existe no turno ${shiftId}. Ignorando duplicação.`)
+                        skippedDuplicates++
+                        return // Skip this participant for this shift
+                    }
 
                     // Validate credential exists for this specific shift
                     let credentialId: string | undefined = undefined
@@ -1507,7 +1711,14 @@ export default function ImportExportPage() {
             const totalParticipants = processedData.data.length
             const totalShifts = selectedEventDates.length
             const totalImported = result.success
-            toast.success(`Importação concluída! ${totalImported} registros de participantes x turnos criados (${totalParticipants} participantes em ${totalShifts} turno(s)).`)
+            
+            let message = `Importação concluída! ${totalImported} registros criados`
+            if (skippedDuplicates > 0) {
+                message += ` (${skippedDuplicates} duplicatas ignoradas)`
+            }
+            message += ` de ${totalParticipants} participantes em ${totalShifts} turno(s).`
+            
+            toast.success(message)
         } catch (error) {
             toast.error("Erro durante a importação")
             console.error(error)
@@ -2439,90 +2650,24 @@ export default function ImportExportPage() {
                                                 )}
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Tamanho do Lote
-                                                        <span className="text-xs text-gray-500 ml-1">(Supabase otimizado)</span>
-                                                    </label>
-                                                    <select
-                                                        value={batchConfig.batchSize}
-                                                        onChange={(e) =>
-                                                            setBatchConfig((prev) => ({
-                                                                ...prev,
-                                                                batchSize: Number(e.target.value),
-                                                            }))
-                                                        }
-                                                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                                                    >
-                                                        <option value={5}>5 participantes (Mais seguro)</option>
-                                                        <option value={10}>10 participantes (Recomendado)</option>
-                                                        <option value={15}>15 participantes</option>
-                                                        <option value={20}>20 participantes (Arriscado)</option>
-                                                    </select>
+                                            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                                <div className="text-sm text-blue-800 font-medium mb-2">⚡ Configuração Otimizada de Importação</div>
+                                                <div className="grid grid-cols-2 gap-4 text-sm text-blue-700">
+                                                    <div>
+                                                        <span className="font-medium">Taxa de importação:</span> 90 por minuto
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-medium">Processamento:</span> Sequencial
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-medium">Retry automático:</span> 3 tentativas
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-medium">Controle:</span> Precisão otimizada
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Pausa entre Lotes
-                                                        <span className="text-xs text-gray-500 ml-1">(Rate limiting)</span>
-                                                    </label>
-                                                    <select
-                                                        value={batchConfig.pauseBetweenBatches / 1000}
-                                                        onChange={(e) =>
-                                                            setBatchConfig((prev) => ({
-                                                                ...prev,
-                                                                pauseBetweenBatches: Number(e.target.value) * 1000,
-                                                            }))
-                                                        }
-                                                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                                                    >
-                                                        <option value={10}>10 segundos (Rápido)</option>
-                                                        <option value={15}>15 segundos (Recomendado)</option>
-                                                        <option value={20}>20 segundos (Conservador)</option>
-                                                        <option value={30}>30 segundos (Muito seguro)</option>
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Pausa entre Itens
-                                                        <span className="text-xs text-gray-500 ml-1">(ms)</span>
-                                                    </label>
-                                                    <select
-                                                        value={batchConfig.pauseBetweenItems}
-                                                        onChange={(e) =>
-                                                            setBatchConfig((prev) => ({
-                                                                ...prev,
-                                                                pauseBetweenItems: Number(e.target.value),
-                                                            }))
-                                                        }
-                                                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                                                    >
-                                                        <option value={500}>500ms (Rápido)</option>
-                                                        <option value={1000}>1000ms (Recomendado)</option>
-                                                        <option value={1500}>1500ms (Conservador)</option>
-                                                        <option value={2000}>2000ms (Muito seguro)</option>
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Tentativas de Retry
-                                                        <span className="text-xs text-gray-500 ml-1">(Recuperação)</span>
-                                                    </label>
-                                                    <select
-                                                        value={batchConfig.maxRetries}
-                                                        onChange={(e) =>
-                                                            setBatchConfig((prev) => ({
-                                                                ...prev,
-                                                                maxRetries: Number(e.target.value),
-                                                            }))
-                                                        }
-                                                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                                                    >
-                                                        <option value={1}>1 tentativa (Sem retry)</option>
-                                                        <option value={2}>2 tentativas</option>
-                                                        <option value={3}>3 tentativas (Recomendado)</option>
-                                                        <option value={5}>5 tentativas (Máximo)</option>
-                                                    </select>
+                                                <div className="mt-2 text-xs text-blue-600">
+                                                    🔧 Configuração fixa para máxima confiabilidade e performance
                                                 </div>
                                             </div>
                                         </div>
@@ -2531,10 +2676,7 @@ export default function ImportExportPage() {
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-blue-800 font-medium">Tempo estimado:</span>
                                                     <span className="text-blue-700 font-bold">
-                                                        {Math.ceil(
-                                                            (processedData.validRows / batchConfig.batchSize) * (batchConfig.pauseBetweenBatches / 1000) +
-                                                            (processedData.validRows * batchConfig.pauseBetweenItems) / 1000,
-                                                        )} segundos
+                                                        {Math.ceil((processedData.validRows / rateLimitConfig.maxPerMinute) * 60)} segundos
                                                     </span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
@@ -2542,8 +2684,8 @@ export default function ImportExportPage() {
                                                     <span className="text-blue-600">{processedData.validRows}</span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-blue-700">Lotes:</span>
-                                                    <span className="text-blue-600">{Math.ceil(processedData.validRows / batchConfig.batchSize)}</span>
+                                                    <span className="text-blue-700">Taxa:</span>
+                                                    <span className="text-blue-600">{rateLimitConfig.maxPerMinute} por minuto</span>
                                                 </div>
                                                 <div className="pt-2 border-t border-blue-200">
                                                     <div className="text-xs text-blue-600">
@@ -3128,23 +3270,23 @@ export default function ImportExportPage() {
                                             </div>
                                             <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                                                 <div className="text-sm space-y-1">
-                                                    <div className="text-blue-800 font-medium mb-2">Configurações Otimizadas para Supabase:</div>
+                                                    <div className="text-blue-800 font-medium mb-2">⚡ Rate Limiting Inteligente:</div>
                                                     <div className="grid grid-cols-2 gap-2 text-xs">
                                                         <div className="flex justify-between">
-                                                            <span className="text-blue-700">Lote:</span>
-                                                            <span className="text-blue-600 font-medium">{batchConfig.batchSize} participantes</span>
+                                                            <span className="text-blue-700">Taxa alvo:</span>
+                                                            <span className="text-blue-600 font-medium">{rateLimitConfig.maxPerMinute}/min</span>
                                                         </div>
                                                         <div className="flex justify-between">
-                                                            <span className="text-blue-700">Pausa lotes:</span>
-                                                            <span className="text-blue-600 font-medium">{batchConfig.pauseBetweenBatches / 1000}s</span>
+                                                            <span className="text-blue-700">Limite API:</span>
+                                                            <span className="text-blue-600 font-medium">{rateLimitConfig.apiLimit}/min</span>
                                                         </div>
                                                         <div className="flex justify-between">
-                                                            <span className="text-blue-700">Pausa itens:</span>
-                                                            <span className="text-blue-600 font-medium">{batchConfig.pauseBetweenItems}ms</span>
+                                                            <span className="text-blue-700">Enviados:</span>
+                                                            <span className="text-blue-600 font-medium">{rateLimitTracker.totalSentThisWindow}/min</span>
                                                         </div>
                                                         <div className="flex justify-between">
-                                                            <span className="text-blue-700">Max retry:</span>
-                                                            <span className="text-blue-600 font-medium">{batchConfig.maxRetries}x</span>
+                                                            <span className="text-blue-700">Janela:</span>
+                                                            <span className="text-blue-600 font-medium">Deslizante</span>
                                                         </div>
                                                     </div>
                                                     <div className="pt-2 border-t border-blue-200">
