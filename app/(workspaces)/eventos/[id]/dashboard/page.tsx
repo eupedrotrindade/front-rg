@@ -455,11 +455,11 @@ export default function EventDashboardPage() {
                 empresa.workPeriod === period;
         });
 
-        // ✅ Se não houver empresas específicas do turno, mostrar todas para debug
-        if (empresasFiltradas.length === 0) {
-            console.log('⚠️ Nenhuma empresa encontrada para o turno específico, exibindo todas as empresas');
-            return empresasArray;
-        }
+        // ✅ Retornar apenas empresas do turno específico, mesmo que seja array vazio
+        console.log(`📊 Empresas filtradas para turno ${selectedDay}:`, {
+            total: empresasFiltradas.length,
+            empresas: empresasFiltradas.map(e => ({ nome: e.nome, workDate: e.workDate, workStage: e.workStage, workPeriod: e.workPeriod }))
+        });
 
         return empresasFiltradas;
     }, [empresasArray, selectedDay, shiftInfo]);

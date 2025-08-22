@@ -2,8 +2,9 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -64,6 +65,7 @@ export default function RetiradaCrachaPage() {
   // Estados para modais
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isPickupModalOpen, setIsPickupModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [editingBadge, setEditingBadge] = useState<BadgePickup | null>(null)
   const [selectedBadgeForPickup, setSelectedBadgeForPickup] = useState<BadgePickup | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -85,6 +87,13 @@ export default function RetiradaCrachaPage() {
     pickerName: '',
     pickerCompany: ''
   })
+
+  // Estados para importação
+  const [selectedShifts, setSelectedShifts] = useState<string[]>([])
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importData, setImportData] = useState<any[]>([])
+  const [isProcessingImport, setIsProcessingImport] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Hooks para dados
   const { data: eventos = [] } = useEventos()
@@ -358,6 +367,220 @@ export default function RetiradaCrachaPage() {
     setIsPickupModalOpen(true)
   }
 
+  // Função para baixar template Excel
+  const downloadTemplate = () => {
+    const templateData = [
+      {
+        'Nome': 'João Silva',
+        'CPF': '123.456.789-00',
+        'Empresa': 'Empresa ABC'
+      },
+      {
+        'Nome': 'Maria Santos',
+        'CPF': '987.654.321-00', 
+        'Empresa': 'Empresa XYZ'
+      }
+    ]
+
+    const ws = XLSX.utils.json_to_sheet(templateData)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Template')
+
+    // Adicionar instruções como comentário
+    const instructions = `
+INSTRUÇÕES PARA PREENCHIMENTO:
+- Nome: Nome completo da pessoa (obrigatório)
+- CPF: CPF da pessoa (opcional, formato: 000.000.000-00)
+- Empresa: Nome da empresa (opcional)
+
+OBSERVAÇÕES:
+- Mantenha os cabeçalhos na primeira linha
+- Remova as linhas de exemplo antes de importar
+- Os turnos serão selecionados na próxima etapa
+    `.trim()
+
+    // Adicionar uma planilha com instruções
+    const instructionWs = XLSX.utils.aoa_to_sheet([
+      ['INSTRUÇÕES PARA IMPORTAÇÃO'],
+      [''],
+      ['1. Preencha a planilha "Template" com os dados dos participantes'],
+      ['2. Nome é obrigatório, CPF e Empresa são opcionais'],
+      ['3. Mantenha os cabeçalhos na primeira linha'],
+      ['4. Remova as linhas de exemplo'],
+      ['5. Salve o arquivo e faça o upload'],
+      ['6. Selecione os turnos para associar aos participantes'],
+      [''],
+      ['COLUNAS:'],
+      ['- Nome: Nome completo (obrigatório)'],
+      ['- CPF: CPF no formato 000.000.000-00 (opcional)'],
+      ['- Empresa: Nome da empresa (opcional)']
+    ])
+    XLSX.utils.book_append_sheet(wb, instructionWs, 'Instruções')
+
+    XLSX.writeFile(wb, `template-crachas-${evento?.name || 'evento'}.xlsx`)
+    toast.success('Template baixado com sucesso!')
+  }
+
+  // Função para processar arquivo Excel
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      toast.error('Por favor, selecione um arquivo Excel (.xlsx ou .xls)')
+      return
+    }
+
+    setImportFile(file)
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        
+        // Pegar a primeira planilha
+        const firstSheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[firstSheetName]
+        
+        // Converter para JSON
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+        
+        if (jsonData.length < 2) {
+          toast.error('Arquivo deve conter pelo menos uma linha de cabeçalho e uma linha de dados')
+          return
+        }
+
+        // Assumir que a primeira linha são os cabeçalhos
+        const headers = jsonData[0] as string[]
+        const rows = jsonData.slice(1) as any[][]
+
+        // Mapear dados
+        const mappedData = rows
+          .filter(row => row && row.length > 0 && row[0]) // Filtrar linhas vazias
+          .map(row => {
+            const obj: any = {}
+            headers.forEach((header, index) => {
+              const normalizedHeader = header.toLowerCase().trim()
+              if (normalizedHeader.includes('nome')) {
+                obj.nome = row[index]?.toString().trim() || ''
+              } else if (normalizedHeader.includes('cpf')) {
+                obj.cpf = row[index]?.toString().trim() || ''
+              } else if (normalizedHeader.includes('empresa')) {
+                obj.empresa = row[index]?.toString().trim() || ''
+              }
+            })
+            return obj
+          })
+          .filter(item => item.nome) // Apenas itens com nome
+
+        if (mappedData.length === 0) {
+          toast.error('Nenhum dado válido encontrado no arquivo')
+          return
+        }
+
+        setImportData(mappedData)
+        toast.success(`${mappedData.length} registros carregados. Agora selecione os turnos.`)
+      } catch (error) {
+        console.error('Erro ao processar arquivo:', error)
+        toast.error('Erro ao processar arquivo. Verifique se é um arquivo Excel válido.')
+      }
+    }
+
+    reader.readAsArrayBuffer(file)
+  }
+
+  // Função para processar importação
+  const handleImport = async () => {
+    if (!importData.length) {
+      toast.error('Nenhum dado para importar')
+      return
+    }
+
+    if (selectedShifts.length === 0) {
+      toast.error('Selecione pelo menos um turno')
+      return
+    }
+
+    setIsProcessingImport(true)
+
+    try {
+      let successCount = 0
+      let errorCount = 0
+
+      for (const person of importData) {
+        for (const shiftId of selectedShifts) {
+          // Extrair informações do shift
+          const parts = shiftId.split('-')
+          const workDate = `${parts[0]}-${parts[1]}-${parts[2]}`
+          const workStage = parts[3] as 'montagem' | 'evento' | 'desmontagem'
+          const workPeriod = parts[4] as 'diurno' | 'noturno' | 'dia_inteiro'
+
+          const badgeData = {
+            eventId,
+            nome: person.nome,
+            cpf: person.cpf || undefined,
+            empresa: person.empresa || undefined,
+            status: 'pendente' as const,
+            shiftId,
+            workDate,
+            workStage,
+            workPeriod,
+          }
+
+          try {
+            await createBadgePickupMutation.mutateAsync(badgeData)
+            successCount++
+          } catch (error) {
+            errorCount++
+            console.error('Erro ao criar entrada:', error)
+          }
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`${successCount} entradas criadas com sucesso!`)
+      }
+      if (errorCount > 0) {
+        toast.error(`${errorCount} entradas falharam ao serem criadas`)
+      }
+
+      // Limpar estados
+      setImportData([])
+      setImportFile(null)
+      setSelectedShifts([])
+      setIsImportModalOpen(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+
+      // Recarregar dados
+      refetch()
+    } catch (error) {
+      toast.error('Erro durante a importação')
+    } finally {
+      setIsProcessingImport(false)
+    }
+  }
+
+  // Função para alternar seleção de turno
+  const toggleShiftSelection = (shiftId: string) => {
+    setSelectedShifts(prev => 
+      prev.includes(shiftId) 
+        ? prev.filter(id => id !== shiftId)
+        : [...prev, shiftId]
+    )
+  }
+
+  // Função para selecionar/desselecionar todos os turnos
+  const toggleAllShifts = () => {
+    if (selectedShifts.length === eventDays.length) {
+      setSelectedShifts([])
+    } else {
+      setSelectedShifts(eventDays.map(day => day.id))
+    }
+  }
+
   const closeModal = () => {
     setIsModalOpen(false)
     setIsEditing(false)
@@ -423,7 +646,7 @@ export default function RetiradaCrachaPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => setIsImportModalOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Importar Excel
             </Button>
@@ -813,6 +1036,196 @@ export default function RetiradaCrachaPage() {
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Confirmar Retirada
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para importação Excel */}
+        <Dialog open={isImportModalOpen} onOpenChange={setIsImportModalOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Importar Crachás via Excel</DialogTitle>
+              <DialogDescription>
+                Faça o upload de um arquivo Excel com os dados dos participantes
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-6">
+              {/* Download Template */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-blue-900">Baixar Template</h3>
+                    <p className="text-sm text-blue-700">
+                      Baixe o modelo Excel com as colunas corretas
+                    </p>
+                  </div>
+                  <Button onClick={downloadTemplate} variant="outline" size="sm">
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Baixar Template
+                  </Button>
+                </div>
+              </div>
+
+              {/* Upload File */}
+              <div className="space-y-2">
+                <Label>Arquivo Excel</Label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  {importFile ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center">
+                        <CheckCircle className="h-8 w-8 text-green-600" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {importFile.name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {importData.length} registros carregados
+                      </p>
+                      <Button
+                        onClick={() => fileInputRef.current?.click()}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Escolher outro arquivo
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center">
+                        <Upload className="h-8 w-8 text-gray-400" />
+                      </div>
+                      <Button
+                        onClick={() => fileInputRef.current?.click()}
+                        variant="outline"
+                      >
+                        Escolher arquivo Excel
+                      </Button>
+                      <p className="text-xs text-gray-500">
+                        Formatos aceitos: .xlsx, .xls
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Seleção de turnos */}
+              {importData.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Selecionar Turnos</Label>
+                    <Button
+                      onClick={toggleAllShifts}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {selectedShifts.length === eventDays.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                    </Button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto border rounded-lg p-3">
+                    {eventDays.map((day) => (
+                      <div key={day.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`shift-${day.id}`}
+                          checked={selectedShifts.includes(day.id)}
+                          onCheckedChange={() => toggleShiftSelection(day.id)}
+                        />
+                        <Label htmlFor={`shift-${day.id}`} className="text-sm flex-1 cursor-pointer">
+                          {day.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {selectedShifts.length > 0 && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-sm text-green-800">
+                        <strong>{selectedShifts.length}</strong> turno(s) selecionado(s) para{' '}
+                        <strong>{importData.length}</strong> pessoa(s) = {' '}
+                        <strong>{selectedShifts.length * importData.length}</strong> entradas serão criadas
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Preview dos dados */}
+              {importData.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Preview dos Dados ({importData.length} registros)</Label>
+                  <div className="border rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Nome</th>
+                          <th className="px-3 py-2 text-left">CPF</th>
+                          <th className="px-3 py-2 text-left">Empresa</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {importData.slice(0, 5).map((item, index) => (
+                          <tr key={index}>
+                            <td className="px-3 py-2">{item.nome}</td>
+                            <td className="px-3 py-2">{item.cpf || '-'}</td>
+                            <td className="px-3 py-2">{item.empresa || '-'}</td>
+                          </tr>
+                        ))}
+                        {importData.length > 5 && (
+                          <tr>
+                            <td colSpan={3} className="px-3 py-2 text-center text-gray-500">
+                              ... e mais {importData.length - 5} registros
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Botões */}
+              <div className="flex gap-4 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsImportModalOpen(false)
+                    setImportFile(null)
+                    setImportData([])
+                    setSelectedShifts([])
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = ''
+                    }
+                  }}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleImport}
+                  disabled={!importData.length || selectedShifts.length === 0 || isProcessingImport}
+                  className="flex-1"
+                >
+                  {isProcessingImport ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Importando...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Importar {importData.length > 0 && selectedShifts.length > 0 && `(${selectedShifts.length * importData.length} entradas)`}
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
