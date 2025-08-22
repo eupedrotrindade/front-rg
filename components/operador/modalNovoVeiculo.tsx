@@ -147,7 +147,7 @@ export default function ModalNovoVeiculo({
 
   return (
     <AlertDialog open={isOpen} onOpenChange={handleClose}>
-      <AlertDialogContent className="max-w-4xl bg-white text-gray-800">
+      <AlertDialogContent className="max-w-4xl bg-white text-gray-800 max-h-[70vh] overflow-y-auto">
         <AlertDialogHeader>
           <AlertDialogTitle>{isEditing ? "Editar Veículo" : "Nova Retirada de Veículo"}</AlertDialogTitle>
           <AlertDialogDescription>

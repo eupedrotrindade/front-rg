@@ -377,8 +377,18 @@ export default function RetiradaCrachaPage() {
       },
       {
         'Nome': 'Maria Santos',
-        'CPF': '987.654.321-00', 
+        'CPF': '', 
         'Empresa': 'Empresa XYZ'
+      },
+      {
+        'Nome': 'Pedro Costa',
+        'CPF': '555.666.777-88',
+        'Empresa': ''
+      },
+      {
+        'Nome': 'Ana Oliveira',
+        'CPF': '',
+        'Empresa': ''
       }
     ]
 
@@ -404,16 +414,22 @@ OBSERVAÇÕES:
       ['INSTRUÇÕES PARA IMPORTAÇÃO'],
       [''],
       ['1. Preencha a planilha "Template" com os dados dos participantes'],
-      ['2. Nome é obrigatório, CPF e Empresa são opcionais'],
+      ['2. Nome é obrigatório, CPF e Empresa são opcionais (podem ficar vazios)'],
       ['3. Mantenha os cabeçalhos na primeira linha'],
-      ['4. Remova as linhas de exemplo'],
+      ['4. Remova as linhas de exemplo antes de importar'],
       ['5. Salve o arquivo e faça o upload'],
       ['6. Selecione os turnos para associar aos participantes'],
       [''],
       ['COLUNAS:'],
-      ['- Nome: Nome completo (obrigatório)'],
-      ['- CPF: CPF no formato 000.000.000-00 (opcional)'],
-      ['- Empresa: Nome da empresa (opcional)']
+      ['- Nome: Nome completo (OBRIGATÓRIO - não pode ficar vazio)'],
+      ['- CPF: CPF no formato 000.000.000-00 (OPCIONAL - pode ficar vazio)'],
+      ['- Empresa: Nome da empresa (OPCIONAL - pode ficar vazio)'],
+      [''],
+      ['EXEMPLOS NO TEMPLATE:'],
+      ['- João Silva: tem CPF e Empresa'],
+      ['- Maria Santos: só tem Empresa (CPF vazio)'],
+      ['- Pedro Costa: só tem CPF (Empresa vazia)'],
+      ['- Ana Oliveira: só tem Nome (CPF e Empresa vazios)']
     ])
     XLSX.utils.book_append_sheet(wb, instructionWs, 'Instruções')
 
@@ -465,14 +481,18 @@ OBSERVAÇÕES:
               if (normalizedHeader.includes('nome')) {
                 obj.nome = row[index]?.toString().trim() || ''
               } else if (normalizedHeader.includes('cpf')) {
-                obj.cpf = row[index]?.toString().trim() || ''
+                // CPF pode ficar vazio
+                const cpfValue = row[index]?.toString().trim()
+                obj.cpf = cpfValue || null
               } else if (normalizedHeader.includes('empresa')) {
-                obj.empresa = row[index]?.toString().trim() || ''
+                // Empresa pode ficar vazia
+                const empresaValue = row[index]?.toString().trim()
+                obj.empresa = empresaValue || null
               }
             })
             return obj
           })
-          .filter(item => item.nome) // Apenas itens com nome
+          .filter(item => item.nome && item.nome.trim() !== '') // Apenas itens com nome não vazio
 
         if (mappedData.length === 0) {
           toast.error('Nenhum dado válido encontrado no arquivo')
@@ -519,8 +539,8 @@ OBSERVAÇÕES:
           const badgeData = {
             eventId,
             nome: person.nome,
-            cpf: person.cpf || undefined,
-            empresa: person.empresa || undefined,
+            cpf: person.cpf && person.cpf.trim() !== '' ? person.cpf : undefined,
+            empresa: person.empresa && person.empresa.trim() !== '' ? person.empresa : undefined,
             status: 'pendente' as const,
             shiftId,
             workDate,
@@ -1175,9 +1195,17 @@ OBSERVAÇÕES:
                       <tbody className="divide-y divide-gray-200">
                         {importData.slice(0, 5).map((item, index) => (
                           <tr key={index}>
-                            <td className="px-3 py-2">{item.nome}</td>
-                            <td className="px-3 py-2">{item.cpf || '-'}</td>
-                            <td className="px-3 py-2">{item.empresa || '-'}</td>
+                            <td className="px-3 py-2 font-medium">{item.nome}</td>
+                            <td className="px-3 py-2 text-gray-600">
+                              {item.cpf && item.cpf.trim() !== '' ? item.cpf : (
+                                <span className="text-gray-400 italic">vazio</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-gray-600">
+                              {item.empresa && item.empresa.trim() !== '' ? item.empresa : (
+                                <span className="text-gray-400 italic">vazio</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                         {importData.length > 5 && (

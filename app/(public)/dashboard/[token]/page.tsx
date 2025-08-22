@@ -18,6 +18,10 @@ import '@/styles/virtualized-dashboard.css'
 import { formatEventDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
+
+// Importar ApexCharts dinamicamente para evitar problemas de SSR
+const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
 
 export default function PublicDashboardPage() {
     const params = useParams();
@@ -510,7 +514,7 @@ export default function PublicDashboardPage() {
             // Sempre incluir credencial, mesmo sem participantes no turno
             const total = Number(participantsWithCredential.length) || 0;
             const checkedIn = Number(checkedInWithCredential.length) || 0;
-            
+
             stats[credential.id] = {
                 total,
                 checkedIn,
@@ -547,6 +551,26 @@ export default function PublicDashboardPage() {
         const filtered = participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay));
         return Number(filtered.length) || 0;
     }, [participantesDoDia, hasCheckIn, selectedDay]);
+
+    // Filtrar attendance do dia atual para os gráficos
+    const attendanceToday = useMemo(() => {
+        if (!selectedDay || !allAttendanceData?.length || !shiftInfo) return [];
+
+        const { dateISO, stage, period } = shiftInfo;
+
+        return allAttendanceData.filter((attendance: any) => {
+            // Verificar se tem checkIn válido
+            if (!attendance.checkIn) return false;
+
+            // Comparar data, estágio e período
+            const attendanceDateISO = formatDateForAPI(attendance.date);
+            const shiftDateForAPI = formatDateForAPI(dateISO);
+
+            return attendanceDateISO === shiftDateForAPI &&
+                (attendance.workStage || 'evento') === stage &&
+                (attendance.workPeriod || 'diurno') === period;
+        });
+    }, [allAttendanceData, selectedDay, shiftInfo, formatDateForAPI]);
 
     // ✅ CORRIGIDO: Calcular estatísticas por empresa baseado em empresas filtradas pelo turno específico - IDENTICAL TO INTERNAL
     const getCompanySummary = useCallback(() => {
@@ -759,14 +783,14 @@ export default function PublicDashboardPage() {
             const checkedIn = Number(stats.checkedIn) || 0;
             const total = Number(stats.total) || 0;
             const percentage = total > 0 ? Math.round((checkedIn / total) * 100) : 0;
-            
+
             console.log(`🎫 Debug credencial ${stats.credentialName}:`, {
                 checkedIn,
                 total,
                 percentage,
                 isNaN: isNaN(percentage)
             });
-            
+
             items.push({
                 id: `credential-${credentialId}`,
                 name: stats.credentialName,
@@ -797,14 +821,14 @@ export default function PublicDashboardPage() {
             const checkedIn = Number(stats.checkedIn) || 0;
             const total = Number(stats.total) || 0;
             const percentage = total > 0 ? Math.round((checkedIn / total) * 100) : 0;
-            
+
             console.log(`🏢 Debug empresa ${stats.companyName}:`, {
                 checkedIn,
                 total,
                 percentage,
                 isNaN: isNaN(percentage)
             });
-            
+
             items.push({
                 id: `company-${companyName}`,
                 name: stats.companyName,
@@ -1186,7 +1210,7 @@ export default function PublicDashboardPage() {
                                             <CardContent className="p-4">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <div className="flex items-center gap-2">
-                                                        <div 
+                                                        <div
                                                             className="w-3 h-3 rounded-full border-2 border-black flex-shrink-0"
                                                             style={{ backgroundColor: item.color }}
                                                         />
@@ -1218,6 +1242,490 @@ export default function PublicDashboardPage() {
                             </div>
                         </TabsContent>
                     </Tabs>
+
+                    {/* Seção de Gráficos em Tempo Real para Produtoras de Eventos */}
+                    <div className="mt-8 space-y-6">
+                        <div className="flex items-center gap-2 mb-6">
+                            <Activity className="w-5 h-5 text-blue-600" />
+                            <h2 className="text-xl font-semibold text-gray-900">
+                                Análise em Tempo Real - Produção de Eventos
+                            </h2>
+                            <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                LIVE
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Gráfico de Check-ins em Tempo Real */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <TrendingUp className="w-4 h-4 text-green-600" />
+                                        Check-ins por Hora
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div style={{ height: '300px' }}>
+                                        <Chart
+                                            options={{
+                                                chart: {
+                                                    type: 'line',
+                                                    height: 300,
+                                                    animations: {
+                                                        enabled: true,
+                                                        speed: 800
+                                                    },
+                                                    toolbar: {
+                                                        show: false
+                                                    }
+                                                },
+                                                theme: {
+                                                    mode: 'light'
+                                                },
+                                                stroke: {
+                                                    width: [3, 3],
+                                                    curve: 'smooth',
+                                                    dashArray: [0, 5]
+                                                },
+                                                colors: ['#3B82F6', '#10B981'],
+                                                xaxis: {
+                                                    categories: (() => {
+                                                        if (!attendanceToday?.length) return [];
+                                                        const hourlyData = Array.from({ length: 24 }, (_, hour) => `${hour.toString().padStart(2, '0')}:00`);
+                                                        return hourlyData;
+                                                    })(),
+                                                    title: {
+                                                        text: 'Hora do Dia'
+                                                    }
+                                                },
+                                                yaxis: {
+                                                    title: {
+                                                        text: 'Quantidade de Check-ins'
+                                                    }
+                                                },
+                                                legend: {
+                                                    show: true,
+                                                    position: 'top'
+                                                },
+                                                grid: {
+                                                    borderColor: '#e7e7e7'
+                                                },
+                                                tooltip: {
+                                                    enabled: true,
+                                                    shared: true,
+                                                    intersect: false
+                                                }
+                                            }}
+                                            series={[
+                                                {
+                                                    name: 'Check-ins/hora',
+                                                    data: (() => {
+                                                        if (!attendanceToday?.length) return Array(24).fill(0);
+                                                        return Array.from({ length: 24 }, (_, hour) => {
+                                                            return attendanceToday.filter(attendance => {
+                                                                const attendanceHour = new Date(attendance.checkIn).getHours();
+                                                                return attendanceHour === hour;
+                                                            }).length;
+                                                        });
+                                                    })()
+                                                },
+                                                {
+                                                    name: 'Acumulado',
+                                                    data: (() => {
+                                                        if (!attendanceToday?.length) return Array(24).fill(0);
+                                                        return Array.from({ length: 24 }, (_, hour) => {
+                                                            return attendanceToday.filter(attendance => {
+                                                                const attendanceHour = new Date(attendance.checkIn).getHours();
+                                                                return attendanceHour <= hour;
+                                                            }).length;
+                                                        });
+                                                    })()
+                                                }
+                                            ]}
+                                            type="line"
+                                            height={300}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Distribuição por Credenciais */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <MapPin className="w-4 h-4 text-purple-600" />
+                                        Distribuição por Credenciais
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div style={{ height: '300px' }}>
+                                        <Chart
+                                            options={{
+                                                chart: {
+                                                    type: 'donut',
+                                                    height: 300,
+                                                    animations: {
+                                                        enabled: true,
+
+                                                        speed: 800
+                                                    }
+                                                },
+                                                colors: credentialItems.map(item => item.color),
+                                                labels: credentialItems.map(item => item.name),
+                                                legend: {
+                                                    show: true,
+                                                    position: 'bottom',
+                                                    horizontalAlign: 'center'
+                                                },
+                                                plotOptions: {
+                                                    pie: {
+                                                        donut: {
+                                                            size: '70%',
+                                                            labels: {
+                                                                show: true,
+                                                                total: {
+                                                                    show: true,
+                                                                    label: 'Total Check-ins',
+                                                                    formatter: () => {
+                                                                        return credentialItems.reduce((sum, item) => sum + item.checkedIn, 0).toString();
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                dataLabels: {
+                                                    enabled: true,
+                                                    formatter: function (val: number, opts: any) {
+                                                        const item = credentialItems[opts.seriesIndex];
+                                                        return `${item.checkedIn} (${Math.round(val)}%)`;
+                                                    }
+                                                },
+                                                tooltip: {
+                                                    enabled: true,
+                                                    custom: function ({ series, seriesIndex, dataPointIndex, w }: any) {
+                                                        const item = credentialItems[seriesIndex];
+                                                        return `
+                                                            <div class="px-3 py-2 bg-white border rounded shadow">
+                                                                <div class="font-semibold">${item.name}</div>
+                                                                <div class="text-sm">Check-ins: ${item.checkedIn}</div>
+                                                                <div class="text-sm">Total: ${item.total}</div>
+                                                                <div class="text-sm">Percentual: ${Math.round(series[seriesIndex])}%</div>
+                                                            </div>
+                                                        `;
+                                                    }
+                                                }
+                                            }}
+                                            series={credentialItems.map(item => item.checkedIn)}
+                                            type="donut"
+                                            height={300}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Top 5 Empresas */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Building className="w-4 h-4 text-orange-600" />
+                                        Top 5 Empresas
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div style={{ height: '300px' }}>
+                                        <Chart
+                                            options={{
+                                                chart: {
+                                                    type: 'bar',
+                                                    height: 300,
+                                                    animations: {
+                                                        enabled: true,
+
+                                                        speed: 800
+                                                    },
+                                                    toolbar: {
+                                                        show: false
+                                                    }
+                                                },
+                                                plotOptions: {
+                                                    bar: {
+                                                        horizontal: true,
+                                                        dataLabels: {
+                                                            position: 'top'
+                                                        }
+                                                    }
+                                                },
+                                                colors: ['#F97316', '#E5E7EB'],
+                                                xaxis: {
+                                                    categories: companyItems
+                                                        .sort((a, b) => b.checkedIn - a.checkedIn)
+                                                        .slice(0, 5)
+                                                        .map(item => item.name.length > 20 ? item.name.substring(0, 20) + '...' : item.name),
+                                                    title: {
+                                                        text: 'Quantidade'
+                                                    }
+                                                },
+                                                yaxis: {
+                                                    title: {
+                                                        text: 'Empresas'
+                                                    }
+                                                },
+                                                legend: {
+                                                    show: true,
+                                                    position: 'top'
+                                                },
+                                                dataLabels: {
+                                                    enabled: true,
+                                                    formatter: function (val: number) {
+                                                        return val.toString();
+                                                    }
+                                                },
+                                                tooltip: {
+                                                    enabled: true,
+                                                    shared: true,
+                                                    intersect: false,
+                                                    custom: function ({ series, seriesIndex, dataPointIndex, w }: any) {
+                                                        const topCompanies = companyItems
+                                                            .sort((a, b) => b.checkedIn - a.checkedIn)
+                                                            .slice(0, 5);
+                                                        const company = topCompanies[dataPointIndex];
+
+                                                        return `
+                                                            <div class="px-3 py-2 bg-white border rounded shadow">
+                                                                <div class="font-semibold">${company.name}</div>
+                                                                <div class="text-sm">Check-ins: ${company.checkedIn}</div>
+                                                                <div class="text-sm">Total: ${company.total}</div>
+                                                                <div class="text-sm">Taxa: ${Math.round(company.percentage)}%</div>
+                                                            </div>
+                                                        `;
+                                                    }
+                                                }
+                                            }}
+                                            series={[
+                                                {
+                                                    name: 'Check-ins',
+                                                    data: companyItems
+                                                        .sort((a, b) => b.checkedIn - a.checkedIn)
+                                                        .slice(0, 5)
+                                                        .map(item => item.checkedIn)
+                                                },
+                                                {
+                                                    name: 'Total',
+                                                    data: companyItems
+                                                        .sort((a, b) => b.checkedIn - a.checkedIn)
+                                                        .slice(0, 5)
+                                                        .map(item => item.total)
+                                                }
+                                            ]}
+                                            type="bar"
+                                            height={300}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Timeline dos Últimos Check-ins */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Clock className="w-4 h-4 text-blue-600" />
+                                        Últimos 10 Check-ins
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-4 max-h-80 overflow-y-auto">
+                                        {attendanceToday
+                                            ?.sort((a, b) => new Date(b.checkIn).getTime() - new Date(a.checkIn).getTime())
+                                            .slice(0, 10)
+                                            .map((attendance, index) => {
+                                                // Usar o participant aninhado do attendance ou buscar nos participantes
+                                                const participant = attendance.participant || participantesDoDia.find(p => p.id === attendance.participantId);
+                                                const empresa = participant?.company;
+                                                const credential = participant?.credential;
+
+                                                return (
+                                                    <div key={attendance.id} className="relative flex items-start gap-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-gray-200 hover:shadow-md transition-all duration-200">
+                                                        {/* Avatar e Indicador */}
+                                                        <div className="flex-shrink-0 relative">
+                                                            <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center">
+                                                                <UserCheck className="w-5 h-5 text-white" />
+                                                            </div>
+                                                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse border-2 border-white"></div>
+                                                        </div>
+
+                                                        {/* Informações do Participante */}
+                                                        <div className="flex-1 min-w-0">
+                                                            {/* Nome e Horário */}
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <h4 className="text-sm font-semibold text-gray-900 truncate">
+                                                                    {participant?.name || 'Participante Não Identificado'}
+                                                                </h4>
+                                                                <div className="flex items-center gap-1 text-xs text-gray-500">
+                                                                    <Clock className="w-3 h-3" />
+                                                                    {new Date(attendance.checkIn).toLocaleTimeString('pt-BR', {
+                                                                        hour: '2-digit',
+                                                                        minute: '2-digit',
+                                                                        second: '2-digit'
+                                                                    })}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Detalhes do Participante */}
+                                                            <div className="space-y-1 text-xs text-gray-600">
+                                                                {participant?.cpf && (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="font-medium">CPF:</span>
+                                                                        <span>{participant.cpf}</span>
+                                                                    </div>
+                                                                )}
+                                                                {participant?.phone && (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="font-medium">Tel:</span>
+                                                                        <span>{participant.phone}</span>
+                                                                    </div>
+                                                                )}
+                                                                {participant?.email && (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="font-medium">Email:</span>
+                                                                        <span className="truncate">{participant.email}</span>
+                                                                    </div>
+                                                                )}
+                                                                {participant?.role && (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="font-medium">Função:</span>
+                                                                        <span>{participant.role}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Tags de Empresa e Credencial */}
+                                                            <div className="flex items-center gap-2 mt-3">
+                                                                {empresa && (
+                                                                    <div className="flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded-md">
+                                                                        <Building className="w-3 h-3" />
+                                                                        <span className="text-xs font-medium">
+                                                                            {empresa.length > 25 ? empresa.substring(0, 25) + '...' : empresa}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                                {credential && (
+                                                                    <div
+                                                                        className="flex items-center gap-1 px-2 py-1 rounded-md text-white"
+                                                                        style={{
+                                                                            backgroundColor: (() => {
+                                                                                const cred = credentials?.find((c) => c.nome === credential);
+                                                                                return cred?.cor || '#6B7280';
+                                                                            })()
+                                                                        }}
+                                                                    >
+                                                                        <MapPin className="w-3 h-3" />
+                                                                        <span className="text-xs font-medium">{credential}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Informações Adicionais */}
+                                                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+                                                                <div className="text-xs text-gray-500">
+                                                                    Check-in #{String(index + 1).padStart(2, '0')}
+                                                                </div>
+                                                                <div className="flex items-center gap-1 text-xs text-green-600">
+                                                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                                    Confirmado
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }) || (
+                                                <div className="text-center py-8">
+                                                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                        <Clock className="w-8 h-8 text-gray-400" />
+                                                    </div>
+                                                    <p className="text-gray-500 text-sm">
+                                                        Nenhum check-in registrado ainda
+                                                    </p>
+                                                    <p className="text-gray-400 text-xs mt-1">
+                                                        Os check-ins aparecerão aqui em tempo real
+                                                    </p>
+                                                </div>
+                                            )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Indicadores de Performance */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+                                <CardContent className="p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-blue-100 text-sm">Taxa de Check-in</p>
+                                            <p className="text-2xl font-bold">
+                                                {participantesDoDia.length > 0
+                                                    ? Math.round((totalCheckedInToday / participantesDoDia.length) * 100)
+                                                    : 0
+                                                }%
+                                            </p>
+                                        </div>
+                                        <TrendingUp className="w-8 h-8 text-blue-200" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+                                <CardContent className="p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-green-100 text-sm">Check-ins/Hora</p>
+                                            <p className="text-2xl font-bold">
+                                                {(() => {
+                                                    if (!attendanceToday?.length) return 0;
+                                                    const currentHour = new Date().getHours();
+                                                    return attendanceToday.filter(attendance => {
+                                                        const attendanceHour = new Date(attendance.checkIn).getHours();
+                                                        return attendanceHour === currentHour;
+                                                    }).length;
+                                                })()}
+                                            </p>
+                                        </div>
+                                        <Activity className="w-8 h-8 text-green-200" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                                <CardContent className="p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-purple-100 text-sm">Empresas Ativas</p>
+                                            <p className="text-2xl font-bold">
+                                                {companyItems.filter(item => item.checkedIn > 0).length}
+                                            </p>
+                                        </div>
+                                        <Building className="w-8 h-8 text-purple-200" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+                                <CardContent className="p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-orange-100 text-sm">Credenciais Ativas</p>
+                                            <p className="text-2xl font-bold">
+                                                {credentialItems.filter(item => item.checkedIn > 0).length}
+                                            </p>
+                                        </div>
+                                        <MapPin className="w-8 h-8 text-orange-200" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
