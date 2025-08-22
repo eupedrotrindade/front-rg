@@ -324,7 +324,7 @@ export default function EventDashboardPage() {
         const today = new Date();
         return today.toLocaleDateString('pt-BR', {
             day: '2-digit',
-            month: '2-digit', 
+            month: '2-digit',
             year: 'numeric'
         });
     }, []);
@@ -338,7 +338,7 @@ export default function EventDashboardPage() {
     const refreshAllData = useCallback(async () => {
         console.log('🔄 Iniciando refresh dos dados...');
         setIsRefreshing(true);
-        
+
         try {
             await Promise.all([
                 refetchEventos?.(),
@@ -381,13 +381,13 @@ export default function EventDashboardPage() {
         const interval = setInterval(() => {
             console.log('⏰ Auto-refresh iniciado (1 minuto)');
             refreshAllData();
-            
+
             // ✅ Verificar se mudou o dia e atualizar automaticamente
             if (selectedDay && eventDays.length > 0) {
                 const todayBR = getTodayBR();
                 const currentSelectedDay = eventDays.find(day => day.id === selectedDay);
                 const todayEvent = eventDays.find(day => day.date === todayBR);
-                
+
                 // Se o dia selecionado não é hoje, mas hoje está disponível, mudar para hoje
                 if (currentSelectedDay && todayEvent && currentSelectedDay.date !== todayBR) {
                     console.log('📅 Mudança de dia detectada, atualizando para hoje:', todayEvent);
@@ -504,7 +504,7 @@ export default function EventDashboardPage() {
             // Sempre incluir credencial, mesmo sem participantes no turno
             const total = Number(participantsWithCredential.length) || 0;
             const checkedIn = Number(checkedInWithCredential.length) || 0;
-            
+
             stats[credential.id] = {
                 total,
                 checkedIn,
@@ -661,14 +661,14 @@ export default function EventDashboardPage() {
     useEffect(() => {
         if (!selectedDay && eventDays.length > 0) {
             console.log('🗓️ Auto-selecionando dia:', eventDays.length, 'dias disponíveis');
-            
+
             const todayBR = getTodayBR();
             console.log('📅 Data atual (BR):', todayBR);
             console.log('📋 Dias disponíveis:', eventDays.map(d => ({ id: d.id, label: d.label, date: d.date })));
-            
+
             // Tentar encontrar o dia atual na lista
             const todayEvent = eventDays.find(day => day.date === todayBR);
-            
+
             if (todayEvent) {
                 console.log('✅ Dia atual encontrado no evento:', todayEvent);
                 setSelectedDay(todayEvent.id);
@@ -922,7 +922,7 @@ export default function EventDashboardPage() {
                             <SelectContent>
                                 {eventDays.map((day) => {
                                     const isToday = day.date === getTodayBR();
-                                    
+
                                     return (
                                         <SelectItem key={day.id} value={day.id}>
                                             <div className="flex items-center gap-2">
@@ -1007,9 +1007,7 @@ export default function EventDashboardPage() {
                                                 <p className="text-3xl font-bold text-orange-900">
                                                     {empresasStats.uniqueEmpresas}
                                                 </p>
-                                                <p className="text-xs text-orange-600">
-                                                    {empresasStats.total} turnos totais
-                                                </p>
+
                                             </div>
                                             <Building className="w-8 h-8 text-orange-600" />
                                         </div>
@@ -1102,7 +1100,7 @@ export default function EventDashboardPage() {
                                             )}
                                         </div>
                                     </div>
-                                    
+
                                     {/* 📱 Tabela responsiva para empresas */}
                                     <div className="overflow-x-auto rounded-lg border border-gray-200">
                                         <table className="w-full bg-white min-w-[500px]">
@@ -1161,7 +1159,7 @@ export default function EventDashboardPage() {
                                                                         {item.percentage}%
                                                                     </span>
                                                                     <div className="w-6 sm:w-8 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                                                        <div 
+                                                                        <div
                                                                             className="h-full bg-blue-500 transition-all duration-300"
                                                                             style={{ width: `${item.percentage}%` }}
                                                                         />

@@ -95,7 +95,7 @@ export default function EmpresasPage() {
                         const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
 
                         const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
-                        
+
                         days.push({
                             id: dayId,
                             label: `${formattedDate} (${stageName} - ${periodLabel})`,
@@ -578,7 +578,7 @@ export default function EmpresasPage() {
                                 <div>
                                     <p className="text-sm opacity-90">Empresas Únicas</p>
                                     <p className="text-3xl font-bold">{stats.uniqueEmpresas}</p>
-                                    <p className="text-xs opacity-75">{stats.total} turnos totais</p>
+
                                 </div>
                                 <Building className="h-8 w-8 opacity-80" />
                             </div>
