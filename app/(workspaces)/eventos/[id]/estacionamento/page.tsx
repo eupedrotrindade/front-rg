@@ -339,7 +339,7 @@ export default function VagasPage() {
                     };
 
                     const normalizedStage = stageMap[shiftStageFromId] || stageMap[veiculo.workStage] || 'evento';
-                    const normalizedPeriod = (shiftPeriodFromId === 'diurno' || shiftPeriodFromId === 'noturno')
+                    const normalizedPeriod = (shiftPeriodFromId === 'diurno' || shiftPeriodFromId === 'noturno' || shiftPeriodFromId === 'dia_inteiro')
                         ? shiftPeriodFromId
                         : (veiculo.workPeriod === 'diurno' || veiculo.workPeriod === 'noturno' || veiculo.workPeriod === 'dia_inteiro')
                             ? veiculo.workPeriod
@@ -624,7 +624,7 @@ export default function VagasPage() {
 
             // Validar valores antes de criar o payload
             const allowedStages = ['montagem', 'evento', 'desmontagem'];
-            const allowedPeriods = ['diurno', 'noturno'];
+            const allowedPeriods = ['diurno', 'noturno', 'dia_inteiro'];
 
             if (!allowedStages.includes(shiftInfo.workStage)) {
                 console.error('❌ workStage inválido:', shiftInfo.workStage);

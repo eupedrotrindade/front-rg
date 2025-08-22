@@ -31,7 +31,7 @@ const DashboardListItem = ({ index, style, data }: any) => {
           {/* Nome e tipo */}
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div
-              className="w-4 h-4 rounded-full flex-shrink-0"
+              className="w-4 h-4 rounded-full flex-shrink-0 border-2 border-black"
               style={{ backgroundColor: item.color }}
             />
             <div className="min-w-0 flex-1">

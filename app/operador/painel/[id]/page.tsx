@@ -1919,7 +1919,7 @@ export default function Painel() {
 
       await registerOperatorActionInColumn({
         type: actionType,
-        staffId: participantId ? String(participantId) : undefined,
+        staffId: participantId ? Number(participantId) : undefined,
         staffName: participant.name,
         staffCpf: participant.cpf,
         empresa: participant.company,
@@ -2103,7 +2103,7 @@ export default function Painel() {
   // Função para registrar ações na coluna acao do operador
   const registerOperatorActionInColumn = async (actionData: {
     type: string
-    staffId?: string
+    staffId?: number
     staffName?: string
     staffCpf?: string
     pulseira?: string
@@ -2288,7 +2288,7 @@ export default function Painel() {
       // });
       await registerOperatorActionInColumn({
         type: 'update_wristband',
-        staffId: participantAction.id ? String(participantAction.id) : undefined,
+        staffId: participantAction.id ? Number(participantAction.id) : undefined,
         staffName: participantAction.name,
         staffCpf: participantAction.cpf,
         empresa: participantAction.company,
@@ -2493,7 +2493,7 @@ export default function Painel() {
       // });
       await registerOperatorActionInColumn({
         type: 'checkin',
-        staffId: participantAction.id ? String(participantAction.id) : undefined,
+        staffId: participantAction.id ? Number(participantAction.id) : undefined,
         staffName: participantAction.name,
         staffCpf: participantAction.cpf,
         empresa: participantAction.company,
@@ -2582,7 +2582,7 @@ export default function Painel() {
       // });
       await registerOperatorActionInColumn({
         type: 'checkout',
-        staffId: participantAction.id ? String(participantAction.id) : undefined,
+        staffId: participantAction.id ? Number(participantAction.id) : undefined,
         staffName: participantAction.name,
         staffCpf: participantAction.cpf,
         empresa: participantAction.company,

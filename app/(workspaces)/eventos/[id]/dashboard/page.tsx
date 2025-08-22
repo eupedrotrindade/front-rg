@@ -4,7 +4,7 @@
 import { useParams } from 'next/navigation'
 import { useEventos } from '@/features/eventos/api/query/use-eventos'
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
-import { useEventAttendanceByEventAndDate, useEventAttendanceByShift } from '@/features/eventos/api/query/use-event-attendance'
+import { useEventAttendance } from '@/features/eventos/api/query/use-event-attendance'
 import { useCredentials } from '@/features/eventos/api/query'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,29 +12,32 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, BarChart3, Building, Calendar, TrendingUp, Users, Clock, Activity, MapPin, CalendarDays, UserCheck, Sun, Moon, Search, X } from 'lucide-react'
+import { ArrowLeft, BarChart3, Building, Calendar, TrendingUp, Users, Clock, Activity, MapPin, CalendarDays, UserCheck, Sun, Moon, Search, X, RefreshCw, ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import EventLayout from '@/components/dashboard/dashboard-layout'
 import VirtualizedDashboardList from '@/components/virtualized-dashboard/VirtualizedDashboardList'
 import '@/styles/virtualized-dashboard.css'
 import { formatEventDate } from '@/lib/utils'
+import { toast } from 'sonner'
 
 export default function EventDashboardPage() {
     const params = useParams()
     const router = useRouter()
-    const { data: eventos } = useEventos()
+    const { data: eventos, refetch: refetchEventos } = useEventos()
     const {
         data: participantsData = [],
         isLoading: participantsLoading,
+        refetch: refetchParticipants
     } = useEventParticipantsByEvent({ eventId: String(params.id) });
 
-    const { data: credentials } = useCredentials({ eventId: String(params.id) })
-    const { data: empresas = [], isLoading: empresasLoading } = useEmpresasByEvent(String(params.id))
+    const { data: credentials, refetch: refetchCredentials } = useCredentials({ eventId: String(params.id) })
+    const { data: empresas = [], isLoading: empresasLoading, refetch: refetchEmpresas } = useEmpresasByEvent(String(params.id))
 
     const [selectedDay, setSelectedDay] = useState<string>('')
     const [credentialFilter, setCredentialFilter] = useState<string>('')
     const [companyFilter, setCompanyFilter] = useState<string>('')
+    const [isRefreshing, setIsRefreshing] = useState<boolean>(false)
 
     const evento = Array.isArray(eventos)
         ? eventos.find((e) => String(e.id) === String(params.id))
@@ -42,7 +45,7 @@ export default function EventDashboardPage() {
 
     const participantsArray = useMemo(() => Array.isArray(participantsData) ? participantsData : [], [participantsData])
     const credentialsArray = useMemo(() => Array.isArray(credentials) ? credentials : [], [credentials])
-    
+
     // Normalizar dados das empresas (mesmo modelo da página de empresas)
     const normalizeEmpresas = useCallback((empresasArray: any[]) => {
         console.log('🔍 Dashboard - Normalizando empresas (modelo individual):', empresasArray.length);
@@ -112,7 +115,7 @@ export default function EventDashboardPage() {
             const day = parts[2];
             const stage = parts[3];
             const period = parts[4] as 'diurno' | 'noturno';
-            
+
             return {
                 dateISO: `${year}-${month}-${day}`,
                 dateFormatted: formatEventDate(`${year}-${month}-${day}T00:00:00`),
@@ -120,7 +123,7 @@ export default function EventDashboardPage() {
                 period
             };
         }
-        
+
         // Fallback para formato simples (apenas data)
         return {
             dateISO: shiftId,
@@ -136,13 +139,20 @@ export default function EventDashboardPage() {
         return parseShiftId(selectedDay);
     }, [selectedDay, parseShiftId]);
 
-    // Hook para buscar dados de attendance do turno selecionado
-    const { data: attendanceData = [], isLoading: attendanceLoading } = useEventAttendanceByShift(
-        String(params.id),
-        shiftInfo ? formatDateForAPI(shiftInfo.dateISO) : '',
-        shiftInfo ? shiftInfo.stage : '',
-        shiftInfo ? shiftInfo.period : ''
+    // ✅ Hook simplificado: buscar TODOS os attendances do evento
+    const { data: attendanceRawData, isLoading: attendanceLoading, refetch: refetchAttendance } = useEventAttendance(
+        { eventId: String(params.id) }
     )
+
+    // ✅ Normalizar dados de attendance para garantir que seja sempre um array
+    const allAttendanceData = useMemo(() => {
+        if (!attendanceRawData) return [];
+        if (Array.isArray(attendanceRawData)) return attendanceRawData;
+        if (typeof attendanceRawData === 'object' && attendanceRawData.data && Array.isArray(attendanceRawData.data)) {
+            return attendanceRawData.data;
+        }
+        return [];
+    }, [attendanceRawData])
 
     // Função para normalizar formato de data
     const normalizeDate = useCallback((dateStr: string): string => {
@@ -176,10 +186,10 @@ export default function EventDashboardPage() {
         // Função helper para processar arrays de dados do evento (nova estrutura)
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
             if (!eventData) return;
-            
+
             try {
                 let dataArray: any[] = [];
-                
+
                 // Se for string JSON, fazer parse
                 if (typeof eventData === 'string') {
                     dataArray = JSON.parse(eventData);
@@ -198,7 +208,7 @@ export default function EventDashboardPage() {
                     if (item && item.date) {
                         const formattedDate = formatEventDate(item.date);
                         const dateISO = new Date(item.date).toISOString().split('T')[0]; // YYYY-MM-DD para ID
-                        
+
                         // Usar período do item se disponível, senão calcular baseado na hora
                         let period: 'diurno' | 'noturno' | 'dia_inteiro';
                         if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
@@ -209,9 +219,9 @@ export default function EventDashboardPage() {
                             const hour = dateObj.getHours();
                             period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
                         }
-                        
+
                         const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
-                        
+
                         days.push({
                             id: `${dateISO}-${stage}-${period}`, // ID único incluindo o turno
                             label: `${formattedDate} (${stageName} - ${periodLabel})`,
@@ -232,7 +242,7 @@ export default function EventDashboardPage() {
             evento: evento.evento,
             desmontagem: evento.desmontagem
         });
-        
+
         processEventArray(evento.montagem, 'montagem', 'MONTAGEM');
         processEventArray(evento.evento, 'evento', 'EVENTO');
         processEventArray(evento.desmontagem, 'desmontagem', 'DESMONTAGEM');
@@ -247,7 +257,7 @@ export default function EventDashboardPage() {
                 const hour = date.getHours();
                 const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
                 const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
-                
+
                 days.push({
                     id: `${dateISO}-montagem-${period}`,
                     label: `${dateStr} (MONTAGEM - ${periodLabel})`,
@@ -267,7 +277,7 @@ export default function EventDashboardPage() {
                 const hour = date.getHours();
                 const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
                 const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
-                
+
                 days.push({
                     id: `${dateISO}-evento-${period}`,
                     label: `${dateStr} (EVENTO - ${periodLabel})`,
@@ -287,7 +297,7 @@ export default function EventDashboardPage() {
                 const hour = date.getHours();
                 const period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
                 const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
-                
+
                 days.push({
                     id: `${dateISO}-desmontagem-${period}`,
                     label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
@@ -309,57 +319,150 @@ export default function EventDashboardPage() {
         return days;
     }, [evento]);
 
-    // Função para filtrar participantes por turno selecionado (com suporte a turnos completos)
+    // ✅ Função para obter data atual no formato brasileiro
+    const getTodayBR = useCallback(() => {
+        const today = new Date();
+        return today.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit', 
+            year: 'numeric'
+        });
+    }, []);
+
+    // ✅ Usar useMemo para eventDays (deve vir antes do auto-refresh)
+    const eventDays = useMemo(() => {
+        return getEventDays();
+    }, [getEventDays]);
+
+    // 🔄 Função para atualizar todos os dados
+    const refreshAllData = useCallback(async () => {
+        console.log('🔄 Iniciando refresh dos dados...');
+        setIsRefreshing(true);
+        
+        try {
+            await Promise.all([
+                refetchEventos?.(),
+                refetchParticipants?.(),
+                refetchCredentials?.(),
+                refetchEmpresas?.(),
+                refetchAttendance?.()
+            ]);
+            console.log('✅ Refresh concluído com sucesso');
+        } catch (error) {
+            console.error('❌ Erro durante refresh:', error);
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [refetchEventos, refetchParticipants, refetchCredentials, refetchEmpresas, refetchAttendance]);
+
+    // 🔗 Função para gerar token de acesso público para dashboard
+    const generatePublicDashboardToken = () => {
+        const token = btoa(`${params.id}:${Date.now()}`)
+        const publicUrl = `${window.location.origin}/dashboard/${token}`
+        return publicUrl
+    }
+
+    // 🔗 Função para copiar URL pública do dashboard
+    const copyPublicDashboardUrl = async () => {
+        try {
+            const publicUrl = generatePublicDashboardToken()
+            await navigator.clipboard.writeText(publicUrl)
+            toast.success('URL pública da dashboard copiada para a área de transferência!', {
+                description: 'Link válido por 7 dias. Compartilhe para acesso sem login.'
+            })
+        } catch (error) {
+            console.error('Erro ao copiar URL:', error)
+            toast.error('Erro ao copiar URL pública')
+        }
+    }
+
+    // 🕐 Auto-refresh a cada 1 minuto
+    useEffect(() => {
+        const interval = setInterval(() => {
+            console.log('⏰ Auto-refresh iniciado (1 minuto)');
+            refreshAllData();
+            
+            // ✅ Verificar se mudou o dia e atualizar automaticamente
+            if (selectedDay && eventDays.length > 0) {
+                const todayBR = getTodayBR();
+                const currentSelectedDay = eventDays.find(day => day.id === selectedDay);
+                const todayEvent = eventDays.find(day => day.date === todayBR);
+                
+                // Se o dia selecionado não é hoje, mas hoje está disponível, mudar para hoje
+                if (currentSelectedDay && todayEvent && currentSelectedDay.date !== todayBR) {
+                    console.log('📅 Mudança de dia detectada, atualizando para hoje:', todayEvent);
+                    setSelectedDay(todayEvent.id);
+                }
+            }
+        }, 60000); // 60 segundos = 1 minuto
+
+        // Cleanup do interval quando componente for desmontado
+        return () => {
+            clearInterval(interval);
+            console.log('🧹 Auto-refresh limpo');
+        };
+    }, [refreshAllData, selectedDay, eventDays, getTodayBR]);
+
+    // ✅ Simplificado: filtrar participantes por turno baseado nos campos workDate, workStage, workPeriod
     const getParticipantesPorDia = useCallback((shiftId: string) => {
         if (!shiftId) return participantsArray;
 
+        const { dateISO, stage, period } = parseShiftId(shiftId);
+
         return participantsArray.filter((participant: any) => {
-            if (!participant.daysWork || participant.daysWork.length === 0) {
-                return false;
-            }
-
-            // Verificar se o participante trabalha neste turno específico
-            return participant.daysWork.includes(shiftId);
+            // Verificar se o participante tem workDate, workStage, workPeriod correspondentes
+            return participant.workDate === dateISO &&
+                participant.workStage === stage &&
+                participant.workPeriod === period;
         });
-    }, [participantsArray]);
+    }, [participantsArray, parseShiftId]);
 
-    // ✅ CORRIGIDO: Verificar check-in baseado no turno, data, estágio e período específicos
+    // ✅ Simplificado: verificar check-in vinculando participant com attendance
     const hasCheckIn = useCallback((participantId: string, shiftId: string): boolean => {
-        if (!attendanceData || attendanceData.length === 0 || !shiftInfo) return false;
+        if (!allAttendanceData || !Array.isArray(allAttendanceData) || allAttendanceData.length === 0) return false;
 
-        // Extrair informações do turno para validação precisa
-        const { dateISO, stage, period } = shiftInfo;
+        const { dateISO, stage, period } = parseShiftId(shiftId);
 
-        // Verificar se existe attendance que corresponde exatamente ao turno selecionado
-        return attendanceData.some((attendance: any) => {
+        // Buscar attendance correspondente ao participante e turno
+        return allAttendanceData.some((attendance: any) => {
             // Verificar se é o mesmo participante e tem check-in
-            if (attendance.participantId !== participantId || attendance.checkIn === null) {
+            if (attendance.participantId !== participantId || !attendance.checkIn) {
                 return false;
             }
 
-            // Verificar se a data corresponde (converter attendance.date para ISO)
+            // Verificar se a data, estágio e período correspondem
             const attendanceDateISO = formatDateForAPI(attendance.date);
             const shiftDateForAPI = formatDateForAPI(dateISO);
-            
-            if (attendanceDateISO !== shiftDateForAPI) {
-                return false;
-            }
 
-            // Verificar se o estágio e período correspondem (se disponíveis no attendance)
-            if (attendance.workStage && attendance.workStage !== stage) {
-                return false;
-            }
-            
-            if (attendance.workPeriod && attendance.workPeriod !== period) {
-                return false;
-            }
-
-            return true;
+            return attendanceDateISO === shiftDateForAPI &&
+                (attendance.workStage || 'evento') === stage &&
+                (attendance.workPeriod || 'diurno') === period;
         });
-    }, [attendanceData, shiftInfo, formatDateForAPI]);
+    }, [allAttendanceData, parseShiftId, formatDateForAPI]);
 
     // KPIs baseados no turno selecionado
     const participantesDoDia = getParticipantesPorDia(selectedDay)
+
+    // ✅ Empresas filtradas pelo turno selecionado
+    const empresasDoTurno = useMemo(() => {
+        if (!selectedDay || !shiftInfo) return empresasArray;
+
+        const { dateISO, stage, period } = shiftInfo;
+
+        const empresasFiltradas = empresasArray.filter((empresa: any) => {
+            return empresa.workDate === dateISO &&
+                empresa.workStage === stage &&
+                empresa.workPeriod === period;
+        });
+
+        // ✅ Se não houver empresas específicas do turno, mostrar todas para debug
+        if (empresasFiltradas.length === 0) {
+            console.log('⚠️ Nenhuma empresa encontrada para o turno específico, exibindo todas as empresas');
+            return empresasArray;
+        }
+
+        return empresasFiltradas;
+    }, [empresasArray, selectedDay, shiftInfo]);
 
     // Debug: Log para verificar se está funcionando corretamente
     useEffect(() => {
@@ -368,60 +471,54 @@ export default function EventDashboardPage() {
                 selectedDay,
                 shiftInfo,
                 participantesDoDia: participantesDoDia.length,
-                attendanceData: attendanceData.length,
-                totalCheckedIn: participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length
+                allAttendanceData: allAttendanceData.length,
+                totalCheckedIn: participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length,
+                empresasDoTurno: empresasDoTurno.length,
+                empresasArray: empresasArray.length
             });
         }
-    }, [selectedDay, shiftInfo, participantesDoDia, attendanceData, hasCheckIn]);
+    }, [selectedDay, shiftInfo, participantesDoDia, allAttendanceData, hasCheckIn, empresasDoTurno, empresasArray]);
 
-    // ✅ CORRIGIDO: Calcular estatísticas baseado em participantes atribuídos a cada credencial no turno específico
+    // ✅ Simplificado: calcular estatísticas das credenciais vinculando participantes → credenciais → attendance
     const getCredentialStats = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; credentialName: string; color: string }> = {}
 
         if (!selectedDay) return stats;
 
+        console.log('🎫 Calculando stats das credenciais para turno:', selectedDay);
+        console.log('📊 Participantes do dia:', participantesDoDia.length);
+        console.log('📋 Credenciais disponíveis:', credentialsArray.length);
+
+        // Para cada credencial, buscar participantes que a possuem
         credentialsArray.forEach((credential: any) => {
-            // ✅ Buscar participantes atribuídos a esta credencial no turno específico
-            const participantsWithCredential = participantesDoDia.filter((p: any) => {
-                // Verificar se o participante tem a credencial atribuída
-                return p.credentialId === credential.id;
-            });
+            const participantsWithCredential = participantesDoDia.filter((p: any) =>
+                p.credentialId === credential.id
+            );
 
-            // ✅ Contar presenças válidas: participantes com attendance correspondente ao turno exato
-            const checkedInWithCredential = participantsWithCredential.filter((p: any) => {
-                return hasCheckIn(p.id, selectedDay);
-            });
+            const checkedInWithCredential = participantsWithCredential.filter((p: any) =>
+                hasCheckIn(p.id, selectedDay)
+            );
 
-            // Debug para verificação
+            console.log(`🎫 Credencial "${credential.nome}": ${checkedInWithCredential.length}/${participantsWithCredential.length} presentes`);
+
             if (participantsWithCredential.length > 0) {
-                console.log(`🎫 Credencial "${credential.nome}":`, {
-                    turnoSelecionado: selectedDay,
-                    totalParticipantes: participantsWithCredential.length,
-                    participantesPresentes: checkedInWithCredential.length,
-                    participantes: participantsWithCredential.map(p => ({ nome: p.name, id: p.id }))
-                });
-            }
-
-            stats[credential.id] = {
-                total: participantsWithCredential.length,
-                checkedIn: checkedInWithCredential.length,
-                credentialName: credential.nome,
-                color: credential.cor
+                stats[credential.id] = {
+                    total: participantsWithCredential.length,
+                    checkedIn: checkedInWithCredential.length,
+                    credentialName: credential.nome,
+                    color: credential.cor || '#3B82F6'
+                }
             }
         })
 
-        // ✅ Adicionar participantes sem credencial no turno específico
+        // Participantes sem credencial
         const participantsWithoutCredential = participantesDoDia.filter((p: any) => !p.credentialId);
-        const checkedInWithoutCredential = participantsWithoutCredential.filter((p: any) => {
-            return hasCheckIn(p.id, selectedDay);
-        });
+        const checkedInWithoutCredential = participantsWithoutCredential.filter((p: any) =>
+            hasCheckIn(p.id, selectedDay)
+        );
 
         if (participantsWithoutCredential.length > 0) {
-            console.log('👤 Participantes sem credencial:', {
-                turnoSelecionado: selectedDay,
-                totalSemCredencial: participantsWithoutCredential.length,
-                presentesSemCredencial: checkedInWithoutCredential.length
-            });
+            console.log(`👤 Sem credencial: ${checkedInWithoutCredential.length}/${participantsWithoutCredential.length} presentes`);
 
             stats['no-credential'] = {
                 total: participantsWithoutCredential.length,
@@ -443,45 +540,43 @@ export default function EventDashboardPage() {
     const getCompanySummary = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; companyName: string }> = {}
 
-        if (!selectedDay || !shiftInfo) {
-            console.log('⚠️ Nenhum dia selecionado ou shiftInfo indisponível para calcular empresas');
-            return stats;
-        }
+        if (!selectedDay) return stats;
 
-        const { dateISO, stage, period } = shiftInfo;
+        console.log('🏢 Calculando stats das empresas para turno:', selectedDay);
+        console.log('📊 Participantes do dia:', participantesDoDia.length);
 
-        console.log('🔍 Debug empresas - filtros:', {
-            selectedDay,
-            workDate: dateISO,
-            workStage: stage,
-            workPeriod: period,
-            totalEmpresasArray: empresasArray.length,
-            totalParticipantes: participantesDoDia.length
+        // ✅ Simplificado: agrupar participantes por empresa diretamente
+        const participantsByCompany: Record<string, any[]> = {};
+
+        participantesDoDia.forEach((participant: any) => {
+            const companyName = participant.company || 'SEM EMPRESA';
+            if (!participantsByCompany[companyName]) {
+                participantsByCompany[companyName] = [];
+            }
+            participantsByCompany[companyName].push(participant);
         });
 
-        // ✅ Filtrar empresas pelo turno específico (workDate, workStage, workPeriod)
-        const empresasDoTurno = empresasArray.filter((empresa: any) => {
-            const matchDate = empresa.workDate === dateISO;
-            const matchStage = empresa.workStage === stage;
-            const matchPeriod = empresa.workPeriod === period;
-            
-            return matchDate && matchStage && matchPeriod;
+        // Calcular estatísticas para cada empresa
+        Object.entries(participantsByCompany).forEach(([companyName, participants]) => {
+            const checkedInParticipants = participants.filter((p: any) =>
+                hasCheckIn(p.id, selectedDay)
+            );
+
+            console.log(`🏢 Empresa "${companyName}": ${checkedInParticipants.length}/${participants.length} presentes`);
+
+            stats[companyName] = {
+                total: participants.length,
+                checkedIn: checkedInParticipants.length,
+                companyName
+            };
         });
 
-        console.log('🏢 Empresas filtradas pelo turno:', {
-            empresasEncontradas: empresasDoTurno.length,
-            empresas: empresasDoTurno.map((e: any) => ({
-                nome: e.nome,
-                workDate: e.workDate,
-                workStage: e.workStage,
-                workPeriod: e.workPeriod
-            }))
-        });
+        console.log('📊 Total de empresas com participantes:', Object.keys(stats).length);
 
         // ✅ Para cada empresa do turno, buscar participantes e calcular estatísticas
         empresasDoTurno.forEach((empresa: any) => {
             // Buscar participantes desta empresa no turno específico
-            const participantesEmpresa = participantesDoDia.filter((participant: any) => 
+            const participantesEmpresa = participantesDoDia.filter((participant: any) =>
                 participant.company === empresa.nome
             );
 
@@ -500,22 +595,20 @@ export default function EventDashboardPage() {
                 workPeriod: empresa.workPeriod
             });
 
-            // Só adicionar se houver participantes
-            if (participantesEmpresa.length > 0) {
-                stats[empresa.nome] = {
-                    total: participantesEmpresa.length,
-                    checkedIn: checkedInParticipants.length,
-                    companyName: empresa.nome
-                };
-            }
+            // ✅ CORRIGIDO: Sempre adicionar empresa, mesmo sem participantes
+            stats[empresa.nome] = {
+                total: participantesEmpresa.length,
+                checkedIn: checkedInParticipants.length,
+                companyName: empresa.nome
+            };
         });
 
         // ✅ Também incluir participantes com empresas que não estão registradas no sistema de empresas
         const empresasRegistradas = empresasDoTurno.map((e: any) => e.nome);
         const participantesSemEmpresaRegistrada = participantesDoDia.filter((participant: any) => {
-            return participant.company && 
-                   participant.company.trim() !== '' && 
-                   !empresasRegistradas.includes(participant.company);
+            return participant.company &&
+                participant.company.trim() !== '' &&
+                !empresasRegistradas.includes(participant.company);
         });
 
         if (participantesSemEmpresaRegistrada.length > 0) {
@@ -548,19 +641,40 @@ export default function EventDashboardPage() {
             });
         }
 
-        console.log('📊 Stats finais das empresas:', Object.keys(stats));
+        console.log('📊 Stats finais das empresas:', {
+            totalEmpresas: Object.keys(stats).length,
+            empresasNomes: Object.keys(stats),
+            empresasCompletas: stats
+        });
         return stats;
-    }, [participantesDoDia, hasCheckIn, selectedDay, shiftInfo, empresasArray]);
+    }, [participantesDoDia, hasCheckIn, selectedDay, shiftInfo, empresasDoTurno]);
 
-    // Definir primeiro dia como padrão se não houver seleção
-    const eventDays = getEventDays();
-    if (!selectedDay && eventDays.length > 0) {
-        setSelectedDay(eventDays[0].id);
-    }
+    // ✅ Auto-selecionar o dia atual (hoje) quando disponível
+    useEffect(() => {
+        if (!selectedDay && eventDays.length > 0) {
+            console.log('🗓️ Auto-selecionando dia:', eventDays.length, 'dias disponíveis');
+            
+            const todayBR = getTodayBR();
+            console.log('📅 Data atual (BR):', todayBR);
+            console.log('📋 Dias disponíveis:', eventDays.map(d => ({ id: d.id, label: d.label, date: d.date })));
+            
+            // Tentar encontrar o dia atual na lista
+            const todayEvent = eventDays.find(day => day.date === todayBR);
+            
+            if (todayEvent) {
+                console.log('✅ Dia atual encontrado no evento:', todayEvent);
+                setSelectedDay(todayEvent.id);
+            } else {
+                // Fallback: selecionar o primeiro dia disponível
+                console.log('⚠️ Dia atual não encontrado, selecionando primeiro dia:', eventDays[0]);
+                setSelectedDay(eventDays[0].id);
+            }
+        }
+    }, [selectedDay, eventDays, getTodayBR]);
 
     const credentialStats = getCredentialStats();
     const companySummary = getCompanySummary();
-    
+
     // ✅ Debug: Verificar se companySummary tem dados
     console.log('🔍 Verificando dados das empresas:', {
         credentialStats: Object.keys(credentialStats).length,
@@ -635,7 +749,9 @@ export default function EventDashboardPage() {
 
         console.log('🔧 Preparando dashboard items:', {
             credentialStats: Object.keys(credentialStats),
-            companySummary: Object.keys(companySummary)
+            companySummary: Object.keys(companySummary),
+            companySummaryData: companySummary,
+            totalCompanies: Object.keys(companySummary).length
         });
 
         // Adicionar credenciais
@@ -654,7 +770,7 @@ export default function EventDashboardPage() {
         // Adicionar empresas
         Object.entries(companySummary).forEach(([companyName, stats]) => {
             console.log(`➕ Adicionando empresa: ${companyName}`, stats);
-            
+
             // Gerar cor baseada no nome da empresa
             const getCompanyColor = (name: string) => {
                 const colors = [
@@ -694,8 +810,8 @@ export default function EventDashboardPage() {
     const credentialItems = useMemo(() => {
         return dashboardItems
             .filter(item => item.type === 'credential')
-            .filter(item => 
-                credentialFilter === '' || 
+            .filter(item =>
+                credentialFilter === '' ||
                 item.name.toLowerCase().includes(credentialFilter.toLowerCase())
             )
     }, [dashboardItems, credentialFilter])
@@ -703,21 +819,27 @@ export default function EventDashboardPage() {
     const companyItems = useMemo(() => {
         const companyItemsFiltered = dashboardItems
             .filter(item => item.type === 'company')
-            .filter(item => 
-                companyFilter === '' || 
+            .filter(item =>
+                companyFilter === '' ||
                 item.name.toLowerCase().includes(companyFilter.toLowerCase())
             )
-            
-        console.log('🏢 Company items filtrados:', {
+            .sort((a, b) => a.name.localeCompare(b.name)); // ✅ Ordenação alfabética
+
+        console.log('🏢 Company items filtrados e ordenados:', {
             totalDashboardItems: dashboardItems.length,
             companyItemsBeforeFilter: dashboardItems.filter(item => item.type === 'company').length,
             companyFilter,
             companyItemsAfterFilter: companyItemsFiltered.length,
             companyItemsList: companyItemsFiltered.map(item => ({ name: item.name, total: item.total, checkedIn: item.checkedIn }))
         });
-        
+
         return companyItemsFiltered;
     }, [dashboardItems, companyFilter])
+
+    // ✅ Função para calcular check-out (total - check-in)
+    const getCheckOut = useCallback((total: number, checkedIn: number) => {
+        return total - checkedIn;
+    }, []);
 
     const isLoading = participantsLoading || empresasLoading || attendanceLoading;
 
@@ -734,25 +856,47 @@ export default function EventDashboardPage() {
 
     return (
         <EventLayout eventId={String(params.id)} eventName={evento.name}>
-            <div className="p-8">
+            <div className="p-4 sm:p-6 lg:p-8">
                 {/* Header */}
                 <div className="mb-8">
-                    <div className="flex items-center gap-4 mb-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-4">
                         <Button
                             variant="outline"
                             onClick={() => router.push(`/eventos/${params.id}`)}
-                            className="flex items-center gap-2"
+                            className="flex items-center gap-2 text-sm"
                         >
                             <ArrowLeft className="w-4 h-4" />
-                            Voltar para Participantes
+                            <span className="hidden sm:inline">Voltar para Participantes</span>
+                            <span className="sm:hidden">Voltar</span>
                         </Button>
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-                                <Activity className="w-8 h-8 text-blue-600" />
-                                Dashboard do Evento
+                        <Button
+                            variant="outline"
+                            onClick={refreshAllData}
+                            disabled={isRefreshing}
+                            className="flex items-center gap-2 text-sm"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                            <span className="hidden sm:inline">{isRefreshing ? 'Atualizando...' : 'Atualizar Dados'}</span>
+                            <span className="sm:hidden">{isRefreshing ? 'Atualizando...' : 'Atualizar'}</span>
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={copyPublicDashboardUrl}
+                            className="flex items-center gap-2 text-sm"
+                        >
+                            <ExternalLink className="w-4 h-4" />
+                            <span className="hidden sm:inline">Link Público</span>
+                            <span className="sm:hidden">Link</span>
+                        </Button>
+                        <div className="flex-1">
+                            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 flex items-center gap-2">
+                                <Activity className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
+                                <span className="hidden sm:inline">Dashboard do Evento</span>
+                                <span className="sm:hidden">Dashboard</span>
                             </h1>
-                            <p className="text-gray-600">
-                                Visão geral e acompanhamento em tempo real do evento
+                            <p className="text-sm sm:text-base text-gray-600 mt-1">
+                                <span className="hidden sm:inline">Visão geral e acompanhamento em tempo real do evento • Atualização automática a cada 1 minuto</span>
+                                <span className="sm:hidden">Acompanhamento em tempo real • Auto-refresh 1min</span>
                             </p>
                         </div>
                     </div>
@@ -768,14 +912,21 @@ export default function EventDashboardPage() {
                                 <SelectValue placeholder="Selecione um dia" />
                             </SelectTrigger>
                             <SelectContent>
-                                {eventDays.map((day) => (
-                                    <SelectItem key={day.id} value={day.id}>
-                                        <div className="flex items-center gap-2">
-                                            <span>{day.label}</span>
-                                            {getPeriodIcon(day.period)}
-                                        </div>
-                                    </SelectItem>
-                                ))}
+                                {eventDays.map((day) => {
+                                    const isToday = day.date === getTodayBR();
+                                    
+                                    return (
+                                        <SelectItem key={day.id} value={day.id}>
+                                            <div className="flex items-center gap-2">
+                                                <span className={isToday ? 'font-semibold text-blue-600' : ''}>
+                                                    {day.label}
+                                                    {isToday && ' (HOJE)'}
+                                                </span>
+                                                {getPeriodIcon(day.period)}
+                                            </div>
+                                        </SelectItem>
+                                    );
+                                })}
                             </SelectContent>
                         </Select>
                     </div>
@@ -874,7 +1025,7 @@ export default function EventDashboardPage() {
                                     })()}
                                 </h2>
                                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                                    <span>Total: {dashboardItems.reduce((sum, item) => sum + item.checkedIn, 0)}/{dashboardItems.reduce((sum, item) => sum + item.total, 0)} presentes</span>
+                                    <span>Total: {totalCheckedInToday}/{participantesDoDia.length} presentes</span>
                                 </div>
                             </div>
 
@@ -943,11 +1094,78 @@ export default function EventDashboardPage() {
                                             )}
                                         </div>
                                     </div>
-                                    <VirtualizedDashboardList
-                                        items={companyItems}
-                                        height={600}
-                                        itemHeight={100}
-                                    />
+                                    
+                                    {/* 📱 Tabela responsiva para empresas */}
+                                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                                        <table className="w-full bg-white min-w-[500px]">
+                                            <thead className="bg-gray-50 border-b border-gray-200">
+                                                <tr>
+                                                    <th className="text-left py-3 px-3 sm:px-4 font-medium text-gray-700 text-xs sm:text-sm">
+                                                        Empresa
+                                                    </th>
+                                                    <th className="text-center py-3 px-1 sm:px-2 font-medium text-gray-700 text-xs sm:text-sm">
+                                                        Total
+                                                    </th>
+                                                    <th className="text-center py-3 px-1 sm:px-2 font-medium text-gray-700 text-xs sm:text-sm">
+                                                        Check-in
+                                                    </th>
+                                                    <th className="text-center py-3 px-1 sm:px-2 font-medium text-gray-700 text-xs sm:text-sm">
+                                                        Check-out
+                                                    </th>
+                                                    <th className="text-center py-3 px-1 sm:px-2 font-medium text-gray-700 text-xs sm:text-sm">
+                                                        %
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {companyItems.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={5} className="text-center py-8 text-gray-500">
+                                                            Nenhuma empresa encontrada
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    companyItems.map((item) => (
+                                                        <tr key={item.id} className="hover:bg-gray-50">
+                                                            <td className="py-2 sm:py-3 px-3 sm:px-4">
+                                                                <span className="font-medium text-gray-900 text-xs sm:text-sm truncate">
+                                                                    {item.name}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2 sm:py-3 px-1 sm:px-2 text-center">
+                                                                <span className="text-xs sm:text-sm font-semibold text-gray-900">
+                                                                    {item.total}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2 sm:py-3 px-1 sm:px-2 text-center">
+                                                                <span className="text-xs sm:text-sm font-semibold text-green-600">
+                                                                    {item.checkedIn}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2 sm:py-3 px-1 sm:px-2 text-center">
+                                                                <span className="text-xs sm:text-sm font-semibold text-red-600">
+                                                                    {getCheckOut(item.total, item.checkedIn)}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2 sm:py-3 px-1 sm:px-2 text-center">
+                                                                <div className="flex items-center justify-center gap-1 sm:gap-2">
+                                                                    <span className="text-xs sm:text-sm font-semibold text-gray-900">
+                                                                        {item.percentage}%
+                                                                    </span>
+                                                                    <div className="w-6 sm:w-8 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                                        <div 
+                                                                            className="h-full bg-blue-500 transition-all duration-300"
+                                                                            style={{ width: `${item.percentage}%` }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </TabsContent>
                             </Tabs>
                         </div>
@@ -1005,67 +1223,67 @@ export default function EventDashboardPage() {
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 {/* Montagem - Nova estrutura com fallback */}
-                                {((evento.montagem && evento.montagem.length > 0) || 
-                                  (evento.setupStartDate && evento.setupEndDate)) && (
-                                    <Card>
-                                        <CardContent className="p-4">
-                                            <div className="text-center">
-                                                <div className="text-sm font-medium text-green-600 mb-1">MONTAGEM</div>
-                                                <div className="text-sm text-gray-600">
-                                                    {evento.montagem && evento.montagem.length > 0 ? (
-                                                        evento.montagem.length === 1 ? 
-                                                        formatEventDate(evento.montagem[0].date) :
-                                                        `${formatEventDate(evento.montagem[0].date)} - ${formatEventDate(evento.montagem[evento.montagem.length - 1].date)}`
-                                                    ) : (
-                                                        `${formatEventDate(evento.setupStartDate!)} - ${formatEventDate(evento.setupEndDate!)}`
-                                                    )}
+                                {((evento.montagem && evento.montagem.length > 0) ||
+                                    (evento.setupStartDate && evento.setupEndDate)) && (
+                                        <Card>
+                                            <CardContent className="p-4">
+                                                <div className="text-center">
+                                                    <div className="text-sm font-medium text-green-600 mb-1">MONTAGEM</div>
+                                                    <div className="text-sm text-gray-600">
+                                                        {evento.montagem && evento.montagem.length > 0 ? (
+                                                            evento.montagem.length === 1 ?
+                                                                formatEventDate(evento.montagem[0].date) :
+                                                                `${formatEventDate(evento.montagem[0].date)} - ${formatEventDate(evento.montagem[evento.montagem.length - 1].date)}`
+                                                        ) : (
+                                                            `${formatEventDate(evento.setupStartDate!)} - ${formatEventDate(evento.setupEndDate!)}`
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )}
+                                            </CardContent>
+                                        </Card>
+                                    )}
 
                                 {/* Evento - Nova estrutura com fallback */}
-                                {((evento.evento && evento.evento.length > 0) || 
-                                  (evento.preparationStartDate && evento.preparationEndDate)) && (
-                                    <Card>
-                                        <CardContent className="p-4">
-                                            <div className="text-center">
-                                                <div className="text-sm font-medium text-blue-600 mb-1">EVENTO</div>
-                                                <div className="text-sm text-gray-600">
-                                                    {evento.evento && evento.evento.length > 0 ? (
-                                                        evento.evento.length === 1 ? 
-                                                        formatEventDate(evento.evento[0].date) :
-                                                        `${formatEventDate(evento.evento[0].date)} - ${formatEventDate(evento.evento[evento.evento.length - 1].date)}`
-                                                    ) : (
-                                                        `${formatEventDate(evento.preparationStartDate!)} - ${formatEventDate(evento.preparationEndDate!)}`
-                                                    )}
+                                {((evento.evento && evento.evento.length > 0) ||
+                                    (evento.preparationStartDate && evento.preparationEndDate)) && (
+                                        <Card>
+                                            <CardContent className="p-4">
+                                                <div className="text-center">
+                                                    <div className="text-sm font-medium text-blue-600 mb-1">EVENTO</div>
+                                                    <div className="text-sm text-gray-600">
+                                                        {evento.evento && evento.evento.length > 0 ? (
+                                                            evento.evento.length === 1 ?
+                                                                formatEventDate(evento.evento[0].date) :
+                                                                `${formatEventDate(evento.evento[0].date)} - ${formatEventDate(evento.evento[evento.evento.length - 1].date)}`
+                                                        ) : (
+                                                            `${formatEventDate(evento.preparationStartDate!)} - ${formatEventDate(evento.preparationEndDate!)}`
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )}
+                                            </CardContent>
+                                        </Card>
+                                    )}
 
                                 {/* Desmontagem - Nova estrutura com fallback */}
-                                {((evento.desmontagem && evento.desmontagem.length > 0) || 
-                                  (evento.finalizationStartDate && evento.finalizationEndDate)) && (
-                                    <Card>
-                                        <CardContent className="p-4">
-                                            <div className="text-center">
-                                                <div className="text-sm font-medium text-purple-600 mb-1">DESMONTAGEM</div>
-                                                <div className="text-sm text-gray-600">
-                                                    {evento.desmontagem && evento.desmontagem.length > 0 ? (
-                                                        evento.desmontagem.length === 1 ? 
-                                                        formatEventDate(evento.desmontagem[0].date) :
-                                                        `${formatEventDate(evento.desmontagem[0].date)} - ${formatEventDate(evento.desmontagem[evento.desmontagem.length - 1].date)}`
-                                                    ) : (
-                                                        `${formatEventDate(evento.finalizationStartDate!)} - ${formatEventDate(evento.finalizationEndDate!)}`
-                                                    )}
+                                {((evento.desmontagem && evento.desmontagem.length > 0) ||
+                                    (evento.finalizationStartDate && evento.finalizationEndDate)) && (
+                                        <Card>
+                                            <CardContent className="p-4">
+                                                <div className="text-center">
+                                                    <div className="text-sm font-medium text-purple-600 mb-1">DESMONTAGEM</div>
+                                                    <div className="text-sm text-gray-600">
+                                                        {evento.desmontagem && evento.desmontagem.length > 0 ? (
+                                                            evento.desmontagem.length === 1 ?
+                                                                formatEventDate(evento.desmontagem[0].date) :
+                                                                `${formatEventDate(evento.desmontagem[0].date)} - ${formatEventDate(evento.desmontagem[evento.desmontagem.length - 1].date)}`
+                                                        ) : (
+                                                            `${formatEventDate(evento.finalizationStartDate!)} - ${formatEventDate(evento.finalizationEndDate!)}`
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )}
+                                            </CardContent>
+                                        </Card>
+                                    )}
                             </div>
                         </div>
                     </>
