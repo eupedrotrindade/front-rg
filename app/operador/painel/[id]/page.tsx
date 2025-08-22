@@ -1467,19 +1467,27 @@ export default function Painel() {
       >
         <div className="flex items-center min-h-full">
           {/* Nome - sempre visível */}
-          <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-            <div className="flex items-center">
-              <div className={isMobileTable ? '' : 'ml-4'}>
-                <div className="text-sm font-semibold text-gray-900">
-                  {colab.name}
-                </div>
-              </div>
+          <div 
+            className={`text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}
+            style={{ width: isMobileTable ? '40%' : '25%' }}
+          >
+            <div className="text-sm font-semibold text-gray-900 truncate">
+              {colab.name}
             </div>
+            {/* Informações adicionais em mobile */}
+            {isMobileTable && (
+              <div className="text-xs text-gray-500 mt-1 truncate">
+                {formatCPF(colab.cpf?.trim() || '')} • {colab.role}
+              </div>
+            )}
           </div>
 
           {/* CPF - esconder em mobile */}
           {!isMobileTable && (
-            <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+            <div 
+              className="px-6 py-4 whitespace-nowrap text-gray-600"
+              style={{ width: '15%' }}
+            >
               <p className="text-sm text-gray-900 font-mono">
                 {formatCPF(colab.cpf?.trim() || '')}
               </p>
@@ -1488,15 +1496,21 @@ export default function Painel() {
 
           {/* Função - esconder em mobile */}
           {!isMobileTable && (
-            <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-              <p className="text-sm text-gray-600">{colab.role}</p>
+            <div 
+              className="px-6 py-4 whitespace-nowrap text-gray-600"
+              style={{ width: '18%' }}
+            >
+              <p className="text-sm text-gray-600 truncate">{colab.role}</p>
             </div>
           )}
 
           {/* Empresa - esconder em mobile */}
           {!isMobileTable && (
-            <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+            <div 
+              className="px-6 py-4 whitespace-nowrap text-gray-600"
+              style={{ width: '18%' }}
+            >
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 max-w-full truncate">
                 {colab.company}
               </span>
             </div>
@@ -1504,9 +1518,12 @@ export default function Painel() {
 
           {/* Credencial - esconder em mobile */}
           {!isMobileTable && (
-            <div className={`flex-1 whitespace-nowrap text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}>
+            <div 
+              className="px-6 py-4 whitespace-nowrap text-gray-600"
+              style={{ width: '16%' }}
+            >
               <span
-                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium max-w-full truncate"
                 style={{
                   backgroundColor: getCredencialCor(colab),
                   color: getContrastingTextColor(getCredencialCor(colab)),
@@ -1519,9 +1536,12 @@ export default function Painel() {
           )}
 
           {/* Ação - sempre visível e sticky à direita */}
-          <div className={`flex-none whitespace-nowrap text-sm font-medium sticky right-0 bg-white ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
+          <div 
+            className={`whitespace-nowrap text-sm font-medium sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`} 
+            style={{ width: isMobileTable ? '30%' : '8%', zIndex: 10 }}
+          >
             <div
-              className="flex space-x-2"
+              className="flex justify-center"
               onClick={e => e.stopPropagation()}
             >
               {botaoTipo === 'checkin' && (
@@ -1547,7 +1567,7 @@ export default function Painel() {
                 </Button>
               )}
               {botaoTipo === null && (
-                <p className='text-emerald-700'>CONCLUIDO</p>
+                <p className='text-emerald-700 text-xs font-medium'>CONCLUÍDO</p>
               )}
             </div>
           </div>
@@ -3128,31 +3148,29 @@ export default function Painel() {
 
               {/* 🚀 VIRTUALIZED TABLE CONTAINER */}
               <div className="overflow-x-auto">
-                <div className="min-w-full">
-                  <Table>
+                <div className="min-w-full" style={{ minWidth: isMobileTable ? '100%' : '1000px' }}>
+                  <Table className="table-fixed"  style={{ width: '100%' }}>
                     <TableHeader>
                       <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-600">
                         {/* Nome - sempre visível */}
-                        <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`}>
+                        <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`} style={{ width: isMobileTable ? '40%' : '25%' }}>
                           <div className="flex items-center justify-between">
-                            <span>Nome</span>
-
+                            <span>{isMobileTable ? 'Nome / CPF / Função' : 'Nome'}</span>
                           </div>
                         </TableHead>
 
                         {/* CPF - esconder em mobile */}
                         {!isMobileTable && (
-                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ width: '15%' }}>
                             <div className="flex items-center justify-between">
                               <span>CPF</span>
-
                             </div>
                           </TableHead>
                         )}
 
                         {/* Função - esconder em mobile */}
                         {!isMobileTable && (
-                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ width: '18%' }}>
                             <div className="flex items-center justify-between">
                               <span>Função</span>
                               <ExcelColumnFilter
@@ -3175,7 +3193,7 @@ export default function Painel() {
 
                         {/* Empresa - esconder em mobile */}
                         {!isMobileTable && (
-                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ width: '18%' }}>
                             <div className="flex items-center justify-between">
                               <span>Empresa</span>
                               <ExcelColumnFilter
@@ -3196,7 +3214,7 @@ export default function Painel() {
 
                         {/* Credencial - esconder em mobile */}
                         {!isMobileTable && (
-                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">
+                          <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ width: '16%' }}>
                             <div className="flex items-center justify-between">
                               <span>Tipo de Credencial</span>
                               <ExcelColumnFilter
@@ -3216,8 +3234,8 @@ export default function Painel() {
                         )}
 
                         {/* Ação - sempre visível e sticky à direita */}
-                        <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`} style={{ zIndex: 10 }}>
-                          Ação
+                        <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider sticky right-0 bg-white border-l border-gray-200 ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`} style={{ width: isMobileTable ? '30%' : '8%', zIndex: 10 }}>
+                          {isMobileTable ? 'Check-in/out' : 'Ação'}
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -3261,16 +3279,18 @@ export default function Painel() {
                     )}
 
                     {/* Lista virtualizada usando react-window */}
-                    <List
-                      key={`${selectedDay}-${filtro.nome}-${finalData.data.length}`}
-                      height={Math.min(finalData.data.length * itemHeight, 600)}
-                      width="100%"
-                      itemCount={finalData.data.length}
-                      itemSize={itemHeight}
-                      className="scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-                    >
-                      {VirtualizedTableRow}
-                    </List>
+                    <div style={{ minWidth: isMobileTable ? '100%' : '1000px' }}>
+                      <List
+                        key={`${selectedDay}-${filtro.nome}-${finalData.data.length}`}
+                        height={Math.min(finalData.data.length * itemHeight, isMobileTable ? 500 : 600)}
+                        width="100%"
+                        itemCount={finalData.data.length}
+                        itemSize={itemHeight}
+                        className="scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+                      >
+                        {VirtualizedTableRow}
+                      </List>
+                    </div>
                   </div>
                 )}
 
