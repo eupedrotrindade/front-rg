@@ -165,7 +165,7 @@ export default function ModalEditarStaff({
       label: string;
       date: string;
       type: string;
-      period?: 'diurno' | 'noturno';
+      period?: 'diurno' | 'noturno' | 'dia_inteiro';
     }> = [];
 
     // Usar a nova estrutura SimpleEventDay se disponível com suporte a turnos
@@ -177,7 +177,7 @@ export default function ModalEditarStaff({
           try {
             const dateStr = formatEventDate(day.date);
             const dateISO = new Date(day.date).toISOString().split('T')[0];
-            const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
+            const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando montagem (modal edit): ${dateStr} - ${periodLabel}`);
             days.push({
@@ -225,7 +225,7 @@ export default function ModalEditarStaff({
           try {
             const dateStr = formatEventDate(day.date);
             const dateISO = new Date(day.date).toISOString().split('T')[0];
-            const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
+            const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando evento (modal edit): ${dateStr} - ${periodLabel}`);
             days.push({
@@ -273,7 +273,7 @@ export default function ModalEditarStaff({
           try {
             const dateStr = formatEventDate(day.date);
             const dateISO = new Date(day.date).toISOString().split('T')[0];
-            const periodLabel = day.period === 'diurno' ? 'Diurno' : 'Noturno';
+            const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando desmontagem (modal edit): ${dateStr} - ${periodLabel}`);
             days.push({
@@ -391,9 +391,10 @@ export default function ModalEditarStaff({
   const eventDays = getEventDays();
   const hasDefinedShifts = eventDays.length > 0;
 
-  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno') => {
+  const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
     if (period === 'diurno') return <Sun className="h-3 w-3 text-yellow-500" />;
     if (period === 'noturno') return <Moon className="h-3 w-3 text-blue-500" />;
+    if (period === 'dia_inteiro') return <Calendar className="h-3 w-3 text-purple-500" />;
     return null;
   }, []);
 
@@ -401,15 +402,19 @@ export default function ModalEditarStaff({
   useEffect(() => {
     if (isOpen && participant) {
       console.log('🔧 Inicializando formulário de edição com participante:', participant);
+      console.log('📅 Dias de trabalho do participante:', participant.daysWork);
 
       // Preencher dados do formulário
+      const participantDaysWork = participant.daysWork || [];
+      console.log('📅 Dias que serão pré-selecionados:', participantDaysWork);
+
       setStaffData({
         name: participant.name || "",
         cpf: participant.cpf || "",
         funcao: participant.role || "",
         empresa: participant.company || "",
         tipo_credencial: participant.credentialId || participant.wristbandId || "",
-        daysWork: participant.daysWork || []
+        daysWork: participantDaysWork
       });
     }
   }, [isOpen, participant]);
@@ -656,7 +661,7 @@ export default function ModalEditarStaff({
                                 >
                                   {getPeriodIcon(shift.period)}
                                   <span>
-                                    {shift.period === 'diurno' ? 'Diurno' : 'Noturno'}
+                                    {shift.period === 'diurno' ? 'Diurno' : shift.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
                                   </span>
                                 </Button>
                               ))}
@@ -694,7 +699,7 @@ export default function ModalEditarStaff({
                                 {shift.type === 'montagem' ? 'Mont' :
                                   shift.type === 'evento' ? 'Evt' :
                                     shift.type === 'desmontagem' ? 'Desm' : 'Fin'} -
-                                {shift.period === 'diurno' ? 'Dia' : 'Noite'}
+                                {shift.period === 'diurno' ? 'Dia' : shift.period === 'noturno' ? 'Noite' : 'Inteiro'}
                               </span>
                             ))}
                           </div>
