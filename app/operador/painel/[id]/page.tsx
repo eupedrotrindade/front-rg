@@ -122,15 +122,6 @@ export default function Painel() {
 
   // Estados para adicionar novo staff
   const [popupNovoStaff, setPopupNovoStaff] = useState(false)
-  const [novoStaff, setNovoStaff] = useState({
-    name: '',
-    cpf: '',
-    funcao: '',
-    empresa: '',
-    tipo_credencial: '',
-    cadastrado_por: '',
-    daysWork: [] as string[],
-  })
 
   // Estados para troca de pulseira
   const [popupTrocaPulseira, setPopupTrocaPulseira] = useState(false)
@@ -965,31 +956,6 @@ export default function Painel() {
     )
   }, [evento])
 
-  const toggleDateSelection = useCallback((date: string) => {
-    setNovoStaff(prev => {
-      const currentDates = [...prev.daysWork]
-      const dateIndex = currentDates.indexOf(date)
-      if (dateIndex > -1) {
-        currentDates.splice(dateIndex, 1)
-      } else {
-        currentDates.push(date)
-      }
-      return { ...prev, daysWork: currentDates.sort() }
-    })
-  }, [])
-
-  const atualizarCadastradoPor = useCallback(() => {
-    if (operadorInfo) {
-      const operadorRaw = localStorage.getItem('operador')
-      if (operadorRaw) {
-        try {
-          const operador = JSON.parse(operadorRaw)
-          const cadastradoPor = `${operador.nome}-${operador.cpf}-${operador.id}`
-          setNovoStaff(prev => ({ ...prev, cadastrado_por: cadastradoPor }))
-        } catch { }
-      }
-    }
-  }, [operadorInfo])
 
   // Função de limpeza otimizada
   const clearCache = () => {
@@ -2317,78 +2283,6 @@ export default function Painel() {
   const capitalizeWords = (str: string): string =>
     str.replace(/(\b\w)/g, char => char)
 
-  // Função para adicionar novo staff
-  const adicionarNovoStaff = async () => {
-    if (
-      !novoStaff.name.trim() ||
-      !novoStaff.cpf.trim() ||
-      !novoStaff.funcao.trim() ||
-      !novoStaff.empresa.trim() ||
-      !novoStaff.tipo_credencial?.trim() ||
-      !novoStaff.cadastrado_por?.trim()
-    ) {
-      toast.error('Todos os campos são obrigatórios!')
-      return
-    }
-
-    const cpfNovo = novoStaff.cpf.trim().replace(/\D/g, '')
-    const cpfExistente = participantsData.some(
-      c => c.cpf && c.cpf.trim().replace(/\D/g, '') === cpfNovo,
-    )
-    if (cpfExistente) {
-      toast.error('Já existe um staff cadastrado com este CPF.')
-      return
-    }
-    const credentialSelected = credential.find(
-      w => w.nome === novoStaff.tipo_credencial,
-    )
-    setLoading(true)
-    try {
-      await createEventParticipant({
-        eventId: params?.id as string,
-        credentialId: credentialSelected?.id || '',
-        name: novoStaff.name,
-        cpf: novoStaff.cpf,
-        role: novoStaff.funcao,
-        company: novoStaff.empresa,
-        validatedBy: operadorInfo?.nome || undefined,
-        daysWork: novoStaff.daysWork,
-      })
-      // await registerOperatorAction({
-      //     action: "created",
-      //     entityId: "new",
-      //     details: `Novo staff adicionado: ${novoStaff.name} (${formatCPF(novoStaff.cpf?.trim() || '')}) - Função: ${novoStaff.funcao} - Empresa: ${novoStaff.empresa}`,
-      // });
-      await registerOperatorActionInColumn({
-        type: 'add_staff',
-        staffName: novoStaff.name,
-        staffCpf: novoStaff.cpf,
-        empresa: novoStaff.empresa,
-        funcao: novoStaff.funcao,
-        credencial: (() => {
-          const credentialSelected = credential.find(
-            w => w.nome === novoStaff.tipo_credencial,
-          )
-          return credentialSelected?.nome || ''
-        })(),
-        observacoes: `Novo staff adicionado: ${novoStaff.name} (${formatCPF(novoStaff.cpf)}) - ${novoStaff.empresa} - ${novoStaff.funcao}`
-      })
-      toast.success('Novo staff adicionado com sucesso!')
-      setNovoStaff({
-        name: '',
-        cpf: '',
-        funcao: '',
-        empresa: '',
-        tipo_credencial: '',
-        cadastrado_por: '',
-        daysWork: [],
-      })
-      setPopupNovoStaff(false)
-    } catch (error) {
-      toast.error('Erro ao adicionar staff.')
-    }
-    setLoading(false)
-  }
 
   const sair = () => {
     setPreLoading(true)
@@ -2827,7 +2721,6 @@ export default function Painel() {
                     onClick={() => {
                       if (operadorLogado) {
                         setPopupNovoStaff(true)
-                        atualizarCadastradoPor()
                       }
                     }}
                     className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
@@ -4016,6 +3909,7 @@ export default function Painel() {
               onClose={() => setPopupNovoStaff(false)}
               evento={evento}
               operadorInfo={operadorInfo}
+              existingParticipants={participantsData}
               onSuccess={async () => {
                 // Recarregar dados se necessário
                 await refetchParticipants();

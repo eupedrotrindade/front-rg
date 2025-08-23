@@ -2,8 +2,20 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Calendar, Plus, Loader2, Search, X, Sun, Moon, Clock } from 'lucide-react';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar, Plus, Loader2, Search, X, Sun, Moon, Clock, ChevronDown, Check } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
@@ -24,6 +36,13 @@ interface ModalAdicionarStaffProps {
     id?: string;
     id_events?: string;
   } | null;
+  existingParticipants?: Array<{
+    id: string;
+    name: string;
+    cpf: string;
+    role?: string;
+    company?: string;
+  }>;
 }
 
 const initialStaff = {
@@ -35,11 +54,11 @@ const initialStaff = {
   daysWork: [] as string[]
 };
 
-export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selectedDay, onSuccess, evento, operadorInfo }: ModalAdicionarStaffProps) {
+export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selectedDay, onSuccess, evento, operadorInfo, existingParticipants = [] }: ModalAdicionarStaffProps) {
   const [loading, setLoading] = useState(false);
   const [novoStaff, setNovoStaff] = useState(initialStaff);
-  const [empresaSearch, setEmpresaSearch] = useState("");
-  const [isEmpresaSelectOpen, setIsEmpresaSelectOpen] = useState(false);
+  const [isEmpresaPopoverOpen, setIsEmpresaPopoverOpen] = useState(false);
+  const [isCredentialPopoverOpen, setIsCredentialPopoverOpen] = useState(false);
 
   const { data: credentials = [] } = useCredentials({ eventId });
   const { data: empresas = [] } = useEmpresasByEvent(eventId);
@@ -108,14 +127,6 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   const empresasArray = useMemo(() => {
     return Array.isArray(empresas) ? empresas : [];
   }, [empresas]);
-
-  // Filtrar empresas baseado na busca
-  const filteredEmpresas = useMemo(() => {
-    if (!empresaSearch.trim()) return empresasArray;
-    return empresasArray.filter(empresa =>
-      empresa.nome.toLowerCase().includes(empresaSearch.toLowerCase())
-    );
-  }, [empresasArray, empresaSearch]);
 
   const getDateRange = useCallback((startDate?: string, endDate?: string): string[] => {
     if (!startDate || !endDate) return [];
@@ -425,6 +436,17 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       return;
     }
 
+    // Validação de CPF duplicado
+    const cpfLimpo = cpf.trim().replace(/\D/g, '');
+    const cpfExistente = existingParticipants.some(
+      participant => participant.cpf && participant.cpf.trim().replace(/\D/g, '') === cpfLimpo
+    );
+
+    if (cpfExistente) {
+      toast.error("Já existe um staff cadastrado com este CPF!");
+      return;
+    }
+
     setLoading(true);
     try {
       await createEventParticipant({
@@ -450,8 +472,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
   const handleClose = () => {
     setNovoStaff(initialStaff);
-    setEmpresaSearch("");
-    setIsEmpresaSelectOpen(false);
+    setIsEmpresaPopoverOpen(false);
+    setIsCredentialPopoverOpen(false);
     onClose();
   };
 
@@ -545,67 +567,53 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             <div>
               <label className="block text-sm font-medium mb-2">Empresa *</label>
               {empresasArray.length > 0 ? (
-                <div className="relative">
-                  <Select
-                    value={novoStaff.empresa}
-                    onValueChange={(value) => {
-                      setNovoStaff({ ...novoStaff, empresa: applyUppercaseMask(value) });
-                      setEmpresaSearch("");
-                      setIsEmpresaSelectOpen(false);
-                    }}
-                    disabled={loading}
-                    open={isEmpresaSelectOpen}
-                    onOpenChange={setIsEmpresaSelectOpen}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma empresa" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px] bg-white border-none">
-                      {/* Campo de pesquisa */}
-                      <div className="sticky top-0 z-10  border-none p-2">
-                        <div className="relative">
-                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Pesquisar empresa..."
-                            value={empresaSearch}
-                            onChange={(e) => setEmpresaSearch(applyUppercaseMask(e.target.value))}
-                            className="pl-8 h-8"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ textTransform: 'uppercase' }}
-                          />
-                          {empresaSearch && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="absolute right-1 top-1 h-6 w-6 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEmpresaSearch("");
+                <Popover open={isEmpresaPopoverOpen} onOpenChange={setIsEmpresaPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={isEmpresaPopoverOpen}
+                      className="w-full justify-between bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      disabled={loading}
+                      style={{ textTransform: 'uppercase' }}
+                    >
+                      {novoStaff.empresa ? (
+                        <span>{novoStaff.empresa}</span>
+                      ) : (
+                        <span className="text-gray-500">SELECIONE UMA EMPRESA</span>
+                      )}
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[400px] p-0 bg-white" align="start">
+                    <Command>
+                      <CommandInput placeholder="Pesquisar empresa..." className="h-9" />
+                      <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
+                      <CommandList>
+                        <CommandGroup>
+                          {empresasArray.map((empresa) => (
+                            <CommandItem
+                              key={empresa.id}
+                              value={empresa.nome}
+                              onSelect={() => {
+                                setNovoStaff({ ...novoStaff, empresa: applyUppercaseMask(empresa.nome) })
+                                setIsEmpresaPopoverOpen(false)
                               }}
+                              className="hover:bg-gray-100 hover:cursor-pointer"
                             >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Lista de empresas filtradas */}
-                      <div className="max-h-[150px] overflow-y-auto">
-                        {filteredEmpresas.length > 0 ? (
-                          filteredEmpresas.map((empresa) => (
-                            <SelectItem key={empresa.id} value={empresa.nome.toUpperCase()}>
-                              {empresa.nome.toUpperCase()}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <div className="p-2 text-center text-sm text-muted-foreground">
-                            Nenhuma empresa encontrada
-                          </div>
-                        )}
-                      </div>
-                    </SelectContent>
-                  </Select>
-                </div>
+                              <Check
+                                className={`mr-2 h-4 w-4 ${
+                                  novoStaff.empresa === empresa.nome.toUpperCase() ? 'opacity-100' : 'opacity-0'
+                                }`}
+                              />
+                              <span style={{ textTransform: 'uppercase' }}>{empresa.nome.toUpperCase()}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               ) : (
                 <Input
                   value={novoStaff.empresa}
@@ -622,28 +630,64 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
           <div>
             <label className="block text-sm font-medium mb-2">Tipo de Credencial *</label>
             {activeCredentials.length > 0 ? (
-              <Select
-                value={novoStaff.tipo_credencial}
-                onValueChange={(value) => setNovoStaff({ ...novoStaff, tipo_credencial: value })}
-                disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo de credencial" />
-                </SelectTrigger>
-                <SelectContent className="border-none">
-                  {activeCredentials.map((credential) => (
-                    <SelectItem key={credential.id} value={credential.id}>
+              <Popover open={isCredentialPopoverOpen} onOpenChange={setIsCredentialPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isCredentialPopoverOpen}
+                    className="w-full justify-between bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    disabled={loading}
+                  >
+                    {novoStaff.tipo_credencial ? (
                       <div className="flex items-center gap-2">
                         <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: credential.cor }}
+                          className="w-3 h-3 rounded-full border-2 border-black"
+                          style={{ backgroundColor: activeCredentials.find(c => c.id === novoStaff.tipo_credencial)?.cor }}
                         />
-                        {credential.nome}
+                        {activeCredentials.find(c => c.id === novoStaff.tipo_credencial)?.nome}
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    ) : (
+                      <span className="text-gray-500">Selecione o tipo de credencial</span>
+                    )}
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0 bg-white" align="start">
+                  <Command>
+                    <CommandInput placeholder="Pesquisar credencial..." className="h-9" />
+                    <CommandEmpty>Nenhuma credencial encontrada.</CommandEmpty>
+                    <CommandList>
+                      <CommandGroup>
+                        {activeCredentials.map((credential) => (
+                          <CommandItem
+                            key={credential.id}
+                            value={credential.nome}
+                            onSelect={() => {
+                              setNovoStaff({ ...novoStaff, tipo_credencial: credential.id })
+                              setIsCredentialPopoverOpen(false)
+                            }}
+                            className="hover:bg-gray-100 hover:cursor-pointer"
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${
+                                novoStaff.tipo_credencial === credential.id ? 'opacity-100' : 'opacity-0'
+                              }`}
+                            />
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-full border-2 border-black"
+                                style={{ backgroundColor: credential.cor }}
+                              />
+                              {credential.nome}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             ) : (
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                 <p className="text-sm text-yellow-800">
