@@ -249,9 +249,10 @@ export default function EventoDetalhesPage() {
         try {
             const date = new Date(dateStr)
             if (!isNaN(date.getTime())) {
-                const day = date.getDate().toString().padStart(2, '0')
-                const month = (date.getMonth() + 1).toString().padStart(2, '0')
-                const year = date.getFullYear().toString()
+                // ✅ CORREÇÃO: Usar UTC para evitar problemas de fuso horário
+                const day = date.getUTCDate().toString().padStart(2, '0')
+                const month = (date.getUTCMonth() + 1).toString().padStart(2, '0')
+                const year = date.getUTCFullYear().toString()
                 const result = `${day}-${month}-${year}`;
                 console.log('✅ Data JavaScript convertida de', dateStr, 'para', result);
                 return result
@@ -434,7 +435,10 @@ export default function EventoDetalhesPage() {
                 if (day && day.date && day.period) {
                     try {
                         const dateStr = formatEventDate(day.date)
-                        const dateISO = new Date(day.date).toISOString().split('T')[0]
+                        // ✅ CORREÇÃO: Extrair dateISO diretamente da string para evitar problemas de fuso horário
+                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/) 
+                            ? day.date.split('T')[0] 
+                            : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
                         const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
                         console.log(`✅ Adicionando montagem: ${dateStr} - ${periodLabel}`)
@@ -459,8 +463,12 @@ export default function EventoDetalhesPage() {
                 date <= endDate;
                 date.setDate(date.getDate() + 1)
             ) {
-                const dateStr = formatEventDate(date.toISOString())
-                const dateISO = date.toISOString().split('T')[0]
+                // ✅ CORREÇÃO: Usar UTC para evitar problemas de fuso horário
+                const year = date.getUTCFullYear()
+                const month = (date.getUTCMonth() + 1).toString().padStart(2, '0')
+                const day = date.getUTCDate().toString().padStart(2, '0')
+                const dateISO = `${year}-${month}-${day}`
+                const dateStr = `${day}/${month}/${year}`
 
                     // Adicionar ambos os períodos (diurno e noturno) para cada data
                     ; (['diurno', 'noturno'] as Array<'diurno' | 'noturno'>).forEach((period) => {
@@ -486,7 +494,10 @@ export default function EventoDetalhesPage() {
                 if (day && day.date && day.period) {
                     try {
                         const dateStr = formatEventDate(day.date)
-                        const dateISO = new Date(day.date).toISOString().split('T')[0]
+                        // ✅ CORREÇÃO: Extrair dateISO diretamente da string para evitar problemas de fuso horário
+                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/) 
+                            ? day.date.split('T')[0] 
+                            : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
                         const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
                         console.log(`✅ Adicionando evento: ${dateStr} - ${periodLabel}`)
@@ -511,8 +522,12 @@ export default function EventoDetalhesPage() {
                 date <= endDate;
                 date.setDate(date.getDate() + 1)
             ) {
-                const dateStr = formatEventDate(date.toISOString())
-                const dateISO = date.toISOString().split('T')[0];
+                // ✅ CORREÇÃO: Usar UTC para evitar problemas de fuso horário
+                const year = date.getUTCFullYear()
+                const month = (date.getUTCMonth() + 1).toString().padStart(2, '0')
+                const day = date.getUTCDate().toString().padStart(2, '0')
+                const dateISO = `${year}-${month}-${day}`
+                const dateStr = `${day}/${month}/${year}`;
 
                 // Adicionar ambos os períodos (diurno e noturno) para cada data
                 (['diurno', 'noturno'] as Array<'diurno' | 'noturno'>).forEach(period => {
@@ -539,7 +554,10 @@ export default function EventoDetalhesPage() {
                 if (day && day.date && day.period) {
                     try {
                         const dateStr = formatEventDate(day.date)
-                        const dateISO = new Date(day.date).toISOString().split('T')[0]
+                        // ✅ CORREÇÃO: Extrair dateISO diretamente da string para evitar problemas de fuso horário
+                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/) 
+                            ? day.date.split('T')[0] 
+                            : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
                         const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
                         console.log(`✅ Adicionando desmontagem: ${dateStr} - ${periodLabel}`)
@@ -564,8 +582,12 @@ export default function EventoDetalhesPage() {
                 date <= endDate;
                 date.setDate(date.getDate() + 1)
             ) {
-                const dateStr = formatEventDate(date.toISOString())
-                const dateISO = date.toISOString().split('T')[0];
+                // ✅ CORREÇÃO: Usar UTC para evitar problemas de fuso horário
+                const year = date.getUTCFullYear()
+                const month = (date.getUTCMonth() + 1).toString().padStart(2, '0')
+                const day = date.getUTCDate().toString().padStart(2, '0')
+                const dateISO = `${year}-${month}-${day}`
+                const dateStr = `${day}/${month}/${year}`;
 
                 // Adicionar ambos os períodos (diurno e noturno) para cada data
                 (['diurno', 'noturno'] as const).forEach((period) => {

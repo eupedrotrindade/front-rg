@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import HeaderWorkspace from "@/components/layout/header-work"
 import { SimpleEventDay } from "@/public/types/simple-event-days"
+import { formatEventDate } from "@/lib/utils"
 
 
 const EventosPage = () => {
@@ -281,12 +282,24 @@ const EventosPage = () => {
                                             <Calendar className="h-4 w-4" />
                                             <span>
                                                 {(() => {
+                                                    // ✅ CORREÇÃO: Usar formatEventDate do utils para evitar problemas de fuso horário
                                                     const eventDays = getEventDaysDisplay(evento);
                                                     if (eventDays?.evento && eventDays.evento.length > 0) {
-                                                        return formatEventDays(eventDays.evento);
+                                                        // Formatação simples e segura das datas
+                                                        const firstDay = eventDays.evento[0];
+                                                        const lastDay = eventDays.evento[eventDays.evento.length - 1];
+                                                        
+                                                        if (eventDays.evento.length === 1) {
+                                                            // Uma só data
+                                                            return formatEventDate(firstDay.date);
+                                                        } else {
+                                                            // Range de datas
+                                                            return `${formatEventDate(firstDay.date)} - ${formatEventDate(lastDay.date)}`;
+                                                        }
                                                     }
                                                     if (evento.preparationStartDate) {
-                                                        return formatDate(evento.preparationStartDate);
+                                                        // Usar formatEventDate que já trata corretamente os fusos horários
+                                                        return formatEventDate(evento.preparationStartDate);
                                                     }
                                                     return 'Data a definir';
                                                 })()}

@@ -50,6 +50,7 @@ import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { formatEventDate } from "@/lib/utils"
+import VirtualizedDuplicatesTable from "@/components/virtualized-table/VirtualizedDuplicatesTable"
 
 interface ImportProgress {
     total: number
@@ -297,6 +298,15 @@ export default function ImportExportPage() {
         return document.toString().replace(/[^\d]/g, "")
     }
 
+    // Helper function to check if a value should be treated as empty
+    const isEmptyValue = (value: any): boolean => {
+        if (!value || value.toString().trim() === "") return true
+        
+        const valueStr = value.toString().trim().toLowerCase()
+        const emptyValues = ['n/a', 'na', 'n.a', 'não aplicável', 'nao aplicavel', '-', '--', '---', 'null', 'undefined']
+        return emptyValues.includes(valueStr)
+    }
+
     const formatDocumentForStorage = (document: string): string => {
         if (!document) return "00000000000"
 
@@ -318,73 +328,105 @@ export default function ImportExportPage() {
         const warnings: string[] = []
 
         // Validação detalhada do nome
-        if (!data.nome) {
+        if (!data.nome || data.nome.toString().trim() === "") {
             errors.push("❌ CAMPO OBRIGATÓRIO: Nome não foi informado ou está em branco")
-        } else if (data.nome.toString().trim().length < 2) {
-            errors.push(`❌ NOME INVÁLIDO: "${data.nome}" tem apenas ${data.nome.toString().trim().length} caractere(s), mínimo são 2`)
-        } else if (data.nome.toString().trim().length > 100) {
-            errors.push(`❌ NOME MUITO LONGO: "${data.nome}" tem ${data.nome.toString().trim().length} caracteres, máximo são 100`)
+        } else {
+            const nomeStr = data.nome.toString().trim()
+            if (nomeStr.length < 2) {
+                errors.push(`❌ NOME INVÁLIDO: "${data.nome}" tem apenas ${nomeStr.length} caractere(s), mínimo são 2`)
+            } else if (nomeStr.length > 100) {
+                errors.push(`❌ NOME MUITO LONGO: "${data.nome}" tem ${nomeStr.length} caracteres, máximo são 100`)
+            }
         }
 
         // Validação detalhada da empresa
-        if (!data.empresa) {
+        if (!data.empresa || data.empresa.toString().trim() === "") {
             errors.push("❌ CAMPO OBRIGATÓRIO: Empresa não foi informada ou está em branco")
-        } else if (data.empresa.toString().trim().length < 2) {
-            errors.push(`❌ EMPRESA INVÁLIDA: "${data.empresa}" tem apenas ${data.empresa.toString().trim().length} caractere(s), mínimo são 2`)
-        } else if (data.empresa.toString().trim().length > 100) {
-            errors.push(`❌ EMPRESA MUITO LONGA: "${data.empresa}" tem ${data.empresa.toString().trim().length} caracteres, máximo são 100`)
+        } else {
+            const empresaStr = data.empresa.toString().trim()
+            if (empresaStr.length < 2) {
+                errors.push(`❌ EMPRESA INVÁLIDA: "${data.empresa}" tem apenas ${empresaStr.length} caractere(s), mínimo são 2`)
+            } else if (empresaStr.length > 100) {
+                errors.push(`❌ EMPRESA MUITO LONGA: "${data.empresa}" tem ${empresaStr.length} caracteres, máximo são 100`)
+            }
         }
 
         // Validação detalhada da função
-        if (!data.funcao) {
+        if (!data.funcao || data.funcao.toString().trim() === "") {
             errors.push("❌ CAMPO OBRIGATÓRIO: Função não foi informada ou está em branco")
-        } else if (data.funcao.toString().trim().length < 2) {
-            errors.push(`❌ FUNÇÃO INVÁLIDA: "${data.funcao}" tem apenas ${data.funcao.toString().trim().length} caractere(s), mínimo são 2`)
-        } else if (data.funcao.toString().trim().length > 100) {
-            errors.push(`❌ FUNÇÃO MUITO LONGA: "${data.funcao}" tem ${data.funcao.toString().trim().length} caracteres, máximo são 100`)
+        } else {
+            const funcaoStr = data.funcao.toString().trim()
+            if (funcaoStr.length < 2) {
+                errors.push(`❌ FUNÇÃO INVÁLIDA: "${data.funcao}" tem apenas ${funcaoStr.length} caractere(s), mínimo são 2`)
+            } else if (funcaoStr.length > 100) {
+                errors.push(`❌ FUNÇÃO MUITO LONGA: "${data.funcao}" tem ${funcaoStr.length} caracteres, máximo são 100`)
+            }
         }
 
         // Validação de credencial (se fornecida)
-        if (data.credencial && data.credencial.toString().trim().length > 0) {
-            if (data.credencial.toString().trim().length < 2) {
-                errors.push(`❌ CREDENCIAL INVÁLIDA: "${data.credencial}" tem apenas ${data.credencial.toString().trim().length} caractere(s), mínimo são 2`)
-            } else if (data.credencial.toString().trim().length > 100) {
-                errors.push(`❌ CREDENCIAL MUITO LONGA: "${data.credencial}" tem ${data.credencial.toString().trim().length} caracteres, máximo são 100`)
+        if (data.credencial && data.credencial.toString().trim() !== "") {
+            const credencialStr = data.credencial.toString().trim()
+            if (credencialStr.length < 2) {
+                errors.push(`❌ CREDENCIAL INVÁLIDA: "${data.credencial}" tem apenas ${credencialStr.length} caractere(s), mínimo são 2`)
+            } else if (credencialStr.length > 100) {
+                errors.push(`❌ CREDENCIAL MUITO LONGA: "${data.credencial}" tem ${credencialStr.length} caracteres, máximo são 100`)
             }
         }
 
         // Validação simplificada de documento - aceita qualquer valor nas colunas CPF ou RG
         let hasDocument = false
-        let documentInfo = []
+        let documentInfo: string[] = []
 
-        // Verificar coluna CPF
-        if (data.cpf && data.cpf.toString().trim() !== "") {
-            hasDocument = true
-            documentInfo.push(`CPF: ${data.cpf}`)
+        // Verificar coluna CPF - com tratamento de erro e valores "n/a"
+        try {
+            if (!isEmptyValue(data.cpf)) {
+                hasDocument = true
+                documentInfo.push(`CPF: ${data.cpf}`)
+            }
+        } catch (error) {
+            console.warn(`Erro ao verificar CPF:`, error)
         }
 
-        // Verificar coluna RG
-        if (data.rg && data.rg.toString().trim() !== "") {
-            hasDocument = true
-            documentInfo.push(`RG: ${data.rg}`)
+        // Verificar coluna RG - com tratamento de erro e valores "n/a"
+        try {
+            if (!isEmptyValue(data.rg)) {
+                hasDocument = true
+                documentInfo.push(`RG: ${data.rg}`)
+            }
+        } catch (error) {
+            console.warn(`Erro ao verificar RG:`, error)
         }
 
         // Permitir participantes sem documento mas mostrar aviso
         if (!hasDocument) {
-            warnings.push(`⚠️ SEM DOCUMENTO: ${data.nome || 'Nome não informado'} não possui CPF nem RG preenchido - será processado mesmo assim`)
+            const nome = data.nome ? data.nome.toString().trim() : 'Nome não informado'
+            warnings.push(`⚠️ SEM DOCUMENTO: ${nome} não possui CPF nem RG preenchido - será processado mesmo assim`)
         } else {
-            warnings.push(`✅ DOCUMENTO OK: ${documentInfo.join(', ')}`)
+            // Se só tem CPF (sem RG), isso é normal e não deve gerar aviso
+            const hasCpf = data.cpf && data.cpf.toString().trim() !== ""
+            const hasRg = data.rg && data.rg.toString().trim() !== ""
+            
+            if (hasCpf && !hasRg) {
+                // Participante com CPF mas sem RG - totalmente normal
+                warnings.push(`✅ DOCUMENTO OK: CPF fornecido (RG não informado - normal)`)
+            } else {
+                warnings.push(`✅ DOCUMENTO OK: ${documentInfo.join(', ')}`)
+            }
         }
 
         // Validação adicional de caracteres especiais problemáticos
         const fieldsToCheck = ['nome', 'empresa', 'funcao', 'credencial']
         fieldsToCheck.forEach(field => {
-            if (data[field]) {
-                const value = data[field].toString()
-                const problematicChars = value.match(/[^\w\sÀ-ÿ\-\.]/g)
-                if (problematicChars) {
-                    warnings.push(`⚠️ CARACTERES ESPECIAIS em ${field.toUpperCase()}: "${problematicChars.join('')}" podem causar problemas`)
+            try {
+                if (data[field] && data[field].toString().trim() !== "") {
+                    const value = data[field].toString()
+                    const problematicChars = value.match(/[^\w\sÀ-ÿ\-\.]/g)
+                    if (problematicChars) {
+                        warnings.push(`⚠️ CARACTERES ESPECIAIS em ${field.toUpperCase()}: "${problematicChars.join('')}" podem causar problemas`)
+                    }
                 }
+            } catch (error) {
+                console.warn(`Erro ao verificar caracteres especiais no campo ${field}:`, error)
             }
         })
 
@@ -410,6 +452,39 @@ export default function ImportExportPage() {
 
     const normalizeFunctionName = (name: string): string => {
         return name.toString().trim().toUpperCase()
+    }
+
+    // Gerar CPF temporário único baseado em nome + empresa para participantes sem documento
+    const generateTemporaryCPF = (nome: string, empresa: string): string => {
+        try {
+            const nomeClean = nome ? nome.toString().trim().replace(/\s/g, '') : 'SemNome'
+            const empresaClean = empresa ? empresa.toString().trim().replace(/\s/g, '') : 'SemEmpresa'
+            const combined = `${nomeClean}${empresaClean}`.toUpperCase()
+            
+            // Criar um hash simples do nome + empresa
+            let hash = 0
+            for (let i = 0; i < combined.length; i++) {
+                const char = combined.charCodeAt(i)
+                hash = ((hash << 5) - hash) + char
+                hash = hash & hash // Converter para 32-bit integer
+            }
+            
+            // Converter hash para positivo e usar como base para CPF
+            const positiveHash = Math.abs(hash)
+            const cpfBase = positiveHash.toString().padStart(11, '0').slice(-11)
+            
+            // Garantir que sempre tenha 11 dígitos
+            const cpfFormatted = cpfBase.padStart(11, '9')
+            
+            console.log(`🔢 CPF temporário gerado para ${nome} (${empresa}): ${cpfFormatted}`)
+            return cpfFormatted
+            
+        } catch (error) {
+            console.warn(`Erro ao gerar CPF temporário:`, error)
+            // Fallback: CPF com timestamp
+            const timestamp = Date.now().toString().slice(-11)
+            return timestamp.padStart(11, '9')
+        }
     }
 
     // Função para extrair informações do ID do turno
@@ -1205,8 +1280,20 @@ export default function ImportExportPage() {
                 try {
                     const data = new Uint8Array(e.target?.result as ArrayBuffer)
                     const workbook = XLSX.read(data, { type: "array" })
+                    
+                    if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                        throw new Error("Arquivo Excel não contém planilhas válidas")
+                    }
+                    
                     const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+                    if (!worksheet) {
+                        throw new Error("Não foi possível ler a primeira planilha do arquivo")
+                    }
+                    
                     const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
+                    if (!jsonData || jsonData.length === 0) {
+                        throw new Error("Planilha está vazia ou não contém dados válidos")
+                    }
 
                     const result: ProcessedData = {
                         fileName: file.name,
@@ -1225,7 +1312,7 @@ export default function ImportExportPage() {
                     // Initialize processing progress
                     setProcessingProgress({ current: 0, total: jsonData.length, percentage: 0 })
 
-                    // Filtrar participantes apenas dos turnos selecionados para verificação de duplicados
+                    // Verificar duplicatas apenas nos turnos selecionados
                     const participantsInSelectedShifts = participants.filter((p) =>
                         selectedEventDates.some(shiftId => p.shiftId === shiftId)
                     )
@@ -1235,8 +1322,17 @@ export default function ImportExportPage() {
                         selectedShifts: selectedEventDates
                     })
 
-                    const existingCPFs = new Set(participantsInSelectedShifts.map((p) => p.cpf.replace(/\D/g, "")))
-                    const processedCPFs = new Set<string>()
+                    // Usar apenas participantes dos turnos selecionados para verificação de duplicados
+                    const existingDocuments = new Set(participantsInSelectedShifts.map((p) => p.cpf.replace(/\D/g, "")))
+                    const existingNameCompanyCombos = new Set(
+                        participantsInSelectedShifts
+                            .filter((p) => !isEmptyValue(p.name) && !isEmptyValue(p.company))
+                            .map((p) =>
+                                `${normalizeStaffName(p.name)}|${normalizeCompanyName(p.company)}`
+                            )
+                    )
+                    const processedDocuments = new Set<string>()
+                    const processedNameCompanyCombos = new Set<string>()
                     const credentialCounts: { [key: string]: number } = {}
                     const companyCounts: { [key: string]: number } = {}
 
@@ -1255,7 +1351,85 @@ export default function ImportExportPage() {
                         chunk.forEach((row, chunkIndex) => {
                             const index = i + chunkIndex
                             const rowNumber = index + 2
-                            const validation = validateParticipant(row)
+                            
+                            try {
+                                const validation = validateParticipant(row)
+
+                            // 📊 DEBUG: Console log unificado com comparação de dados
+                            let cleanedCPF = ""
+                            let cleanedRG = ""
+                            
+                            try {
+                                cleanedCPF = isEmptyValue(row.cpf) ? "" : row.cpf.toString().replace(/\D/g, "")
+                            } catch (error) {
+                                console.warn(`Erro ao processar CPF na linha ${rowNumber}:`, error)
+                                cleanedCPF = ""
+                            }
+                            
+                            try {
+                                cleanedRG = isEmptyValue(row.rg) ? "" : row.rg.toString().replace(/\D/g, "")
+                            } catch (error) {
+                                console.warn(`Erro ao processar RG na linha ${rowNumber}:`, error)
+                                cleanedRG = ""
+                            }
+                            
+                            const primaryDocument = cleanedCPF || cleanedRG
+
+                            // Create name + company combination for duplicate detection (with safety checks)
+                            let nameCompanyCombo = "|"
+                            try {
+                                const nomePart = row.nome ? normalizeStaffName(row.nome) : ''
+                                const empresaPart = row.empresa ? normalizeCompanyName(row.empresa) : ''
+                                nameCompanyCombo = `${nomePart}|${empresaPart}`
+                            } catch (error) {
+                                console.warn(`Erro ao criar combinação nome+empresa na linha ${rowNumber}:`, error)
+                                nameCompanyCombo = "|"
+                            }
+
+                            const existingParticipant = primaryDocument ?
+                                participantsInSelectedShifts.find((p) => p.cpf.replace(/\D/g, "") === primaryDocument) :
+                                (!isEmptyValue(row.nome) && !isEmptyValue(row.empresa)) ?
+                                participantsInSelectedShifts.find((p) => p.name && p.company && 
+                                    `${normalizeStaffName(p.name)}|${normalizeCompanyName(p.company)}` === nameCompanyCombo) : null
+
+                            const debugInfo = {
+                                linha: rowNumber,
+                                dados_enviados: {
+                                    nome: row.nome?.toString().trim() || "",
+                                    cpf: cleanedCPF || "não informado",
+                                    rg: cleanedRG || "não informado",
+                                    documento_primario: primaryDocument || "nenhum",
+                                    empresa: row.empresa?.toString().trim() || "",
+                                    funcao: row.funcao?.toString().trim() || "",
+                                    credencial: row.credencial?.toString().trim() || "",
+                                    email: row.email?.toString().trim() || ""
+                                },
+                                dados_sistema_existente: existingParticipant ? {
+                                    id: existingParticipant.id,
+                                    nome: existingParticipant.name,
+                                    cpf: existingParticipant.cpf,
+                                    empresa: existingParticipant.company,
+                                    funcao: existingParticipant.role,
+                                    turno: existingParticipant.shiftId,
+                                } : "❌ Não encontrado no sistema",
+                                status_validacao: {
+                                    valido: validation.isValid,
+                                    erros: validation.errors,
+                                    avisos: validation.warnings
+                                },
+                                status_duplicacao: {
+                                    duplicado_sistema: !!existingParticipant,
+                                    duplicado_arquivo_documento: primaryDocument ? processedDocuments.has(primaryDocument) : false,
+
+                                    total_processados_documento: processedDocuments.size,
+                                    total_processados_nome_empresa: processedNameCompanyCombos.size,
+                                    total_existentes: participantsInSelectedShifts.length,
+                                    metodo_verificacao: primaryDocument ? 'documento' : 'nome_empresa',
+
+                                }
+                            }
+
+                            console.log(`📋 LINHA ${rowNumber} - ANÁLISE COMPLETA:`, debugInfo)
 
                             if (!validation.isValid) {
                                 result.errors.push({
@@ -1278,65 +1452,123 @@ export default function ImportExportPage() {
                                 })
                             }
 
-                            const cleanedCPF = row.cpf ? row.cpf.toString().replace(/\D/g, "") : ""
-                            const cleanedRG = row.rg ? row.rg.toString().replace(/\D/g, "") : ""
+                            // Determine primary document (prioritize CPF over RG)
+                            // cleanedCPF and cleanedRG already declared above
+                            // nameCompanyCombo already declared above
 
-                            // Check for duplicates in existing participants
-                            const isDuplicateExisting = existingCPFs.has(cleanedCPF) || (cleanedRG && existingCPFs.has(cleanedRG))
-
-                            if (isDuplicateExisting) {
-                                console.log('🔍 Duplicado encontrado com participantes existentes:', {
+                            if (!primaryDocument) {
+                                // No document provided, check for duplicate by name + company
+                                // But only if both name and company are provided and not empty
+                                const hasValidNameAndCompany = !isEmptyValue(row.nome) && !isEmptyValue(row.empresa)
+                                    
+                                console.log('🔍 Participante sem documento, verificando por nome + empresa:', {
                                     nome: row.nome,
-                                    cpf: cleanedCPF,
-                                    rg: cleanedRG,
-                                    cpfJaExiste: existingCPFs.has(cleanedCPF),
-                                    rgJaExiste: cleanedRG ? existingCPFs.has(cleanedRG) : false,
-                                    totalExisting: existingCPFs.size
+                                    empresa: row.empresa,
+                                    combo: nameCompanyCombo,
+                                    hasValidNameAndCompany,
+                                    linha: rowNumber
                                 })
 
-                                const existing = participantsInSelectedShifts.find(
-                                    (p) => p.cpf.replace(/\D/g, "") === cleanedCPF || (cleanedRG && p.cpf.replace(/\D/g, "") === cleanedRG),
-                                )
-                                if (existing) {
-                                    console.log('👤 Participante existente encontrado:', {
-                                        novo: { nome: row.nome, cpf: cleanedCPF },
-                                        existente: { nome: existing.name, cpf: existing.cpf, id: existing.id }
+                                // Check for duplicates in existing participants by name + company (only if valid data)
+                                if (hasValidNameAndCompany && existingNameCompanyCombos.has(nameCompanyCombo)) {
+                                    console.log('🔍 Duplicado encontrado por nome + empresa (participantes existentes):', {
+                                        nome: row.nome,
+                                        empresa: row.empresa,
+                                        combo: nameCompanyCombo,
+                                        linha: rowNumber
+                                    })
+
+                                    const existing = participantsInSelectedShifts.find(
+                                        (p) => p.name && p.company && 
+                                            `${normalizeStaffName(p.name)}|${normalizeCompanyName(p.company)}` === nameCompanyCombo
+                                    )
+
+                                    if (existing) {
+                                        result.duplicates.push({
+                                            item: row,
+                                            existing,
+                                            row: rowNumber,
+                                        })
+                                        result.duplicateRows++
+                                        return // Skip this duplicate
+                                    }
+                                }
+
+                                // Check for duplicates within the file by name + company (only if valid data)
+                                if (hasValidNameAndCompany && processedNameCompanyCombos.has(nameCompanyCombo)) {
+                                    console.log('🔍 Duplicado encontrado por nome + empresa (dentro do arquivo):', {
+                                        nome: row.nome,
+                                        empresa: row.empresa,
+                                        combo: nameCompanyCombo,
+                                        linha: rowNumber
                                     })
 
                                     result.duplicates.push({
                                         item: row,
-                                        existing,
+                                        existing: {} as EventParticipant,
                                         row: rowNumber,
                                     })
                                     result.duplicateRows++
                                     return // Skip this duplicate
                                 }
+
+                                // Add to processed name + company combinations (only if valid data)
+                                if (hasValidNameAndCompany) {
+                                    processedNameCompanyCombos.add(nameCompanyCombo)
+                                }
+                            } else {
+                                // Check for duplicates in existing participants (only for CPF, since existing participants only have CPF)
+                                if (cleanedCPF && existingDocuments.has(cleanedCPF)) {
+                                    console.log('🔍 Duplicado encontrado com participantes existentes:', {
+                                        nome: row.nome,
+                                        documento: cleanedCPF,
+                                        tipo: 'CPF',
+                                        linha: rowNumber
+                                    })
+
+                                    const existing = participantsInSelectedShifts.find(
+                                        (p) => p.cpf.replace(/\D/g, "") === cleanedCPF
+                                    )
+
+                                    if (existing) {
+                                        result.duplicates.push({
+                                            item: row,
+                                            existing,
+                                            row: rowNumber,
+                                        })
+                                        result.duplicateRows++
+                                        return // Skip this duplicate
+                                    }
+                                }
+
+                                // Check for duplicates within the file
+                                const hasDuplicateInFile = processedDocuments.has(primaryDocument)
+
+                                if (hasDuplicateInFile) {
+                                    console.log('🔍 Duplicado encontrado dentro do arquivo:', {
+                                        nome: row.nome,
+                                        documento: primaryDocument,
+                                        tipo: cleanedCPF ? 'CPF' : 'RG',
+                                        linha: rowNumber,
+                                        totalProcessados: processedDocuments.size
+                                    })
+
+                                    result.duplicates.push({
+                                        item: row,
+                                        existing: {} as EventParticipant,
+                                        row: rowNumber,
+                                    })
+                                    result.duplicateRows++
+                                    return // Skip this duplicate
+                                }
+
+                                // Add to processed documents and name + company combination
+                                processedDocuments.add(primaryDocument)
+                                // Only add name+company if both are valid
+                                if (!isEmptyValue(row.nome) && !isEmptyValue(row.empresa)) {
+                                    processedNameCompanyCombos.add(nameCompanyCombo)
+                                }
                             }
-
-                            // Check for duplicates within the file (only upload first occurrence)
-                            const hasDuplicateInFile =
-                                (cleanedCPF && processedCPFs.has(cleanedCPF)) || (cleanedRG && processedCPFs.has(cleanedRG))
-
-                            if (hasDuplicateInFile) {
-                                console.log('🔍 Duplicado encontrado dentro do arquivo:', {
-                                    nome: row.nome,
-                                    cpf: cleanedCPF,
-                                    rg: cleanedRG,
-                                    processedCPFs: Array.from(processedCPFs).slice(0, 5), // Primeiros 5 para debug
-                                    totalProcessed: processedCPFs.size
-                                })
-
-                                result.duplicates.push({
-                                    item: row,
-                                    existing: {} as EventParticipant,
-                                    row: rowNumber,
-                                })
-                                result.duplicateRows++
-                                return // Skip this duplicate - first occurrence already processed
-                            }
-
-                            if (cleanedCPF) processedCPFs.add(cleanedCPF)
-                            if (cleanedRG) processedCPFs.add(cleanedRG)
 
                             // Process credential (general check - shift-specific validation happens later)
                             let credentialId: string | undefined = undefined
@@ -1359,25 +1591,41 @@ export default function ImportExportPage() {
                                 }
                             }
 
+                            // Validar se o participante tem dados mínimos para importação
+                            const hasMinimumData = validation.isValid && (
+                                // Deve ter documento OU (nome + empresa válidos)
+                                primaryDocument || 
+                                (!isEmptyValue(row.nome) && !isEmptyValue(row.empresa))
+                            )
+
+                            if (!hasMinimumData) {
+                                console.log(`❌ Participante na linha ${rowNumber} não tem dados mínimos para importação:`, {
+                                    nome: row.nome,
+                                    empresa: row.empresa,
+                                    documento: primaryDocument,
+                                    temDocumento: !!primaryDocument,
+                                    temNomeEmpresa: !isEmptyValue(row.nome) && !isEmptyValue(row.empresa)
+                                })
+                                
+                                result.errors.push({
+                                    item: row,
+                                    error: "❌ DADOS INSUFICIENTES: Participante precisa ter documento (CPF/RG) OU nome + empresa válidos",
+                                    row: rowNumber,
+                                })
+                                result.invalidRows++
+                                return
+                            }
+
                             // Store simplified participant data for validation and processing
                             const participantData = {
                                 eventId: eventId,
                                 credentialId: credentialId,
-                                name: row.nome.toString().trim(),
-                                cpf: (() => {
-                                    // Priorizar coluna CPF, depois RG
-                                    if (row.cpf && row.cpf.toString().trim() !== "") {
-                                        return formatDocumentForStorage(row.cpf.toString())
-                                    }
-                                    if (row.rg && row.rg.toString().trim() !== "") {
-                                        return formatDocumentForStorage(row.rg.toString())
-                                    }
-                                    return "00000000000"
-                                })(),
+                                name: row.nome ? row.nome.toString().trim() : '',
+                                cpf: primaryDocument ? formatDocumentForStorage(primaryDocument) : "",
                                 email: row.email?.toString().trim() || undefined,
                                 phone: row.phone?.toString().trim() || undefined,
-                                role: row.funcao.toString().trim(),
-                                company: row.empresa.toString().trim(),
+                                role: row.funcao ? row.funcao.toString().trim() : '',
+                                company: row.empresa ? row.empresa.toString().trim() : '',
                                 // Additional fields preserved for reference
                                 staffId: row.staffId || undefined,
                                 notes: row.notes?.toString().trim() || undefined,
@@ -1385,13 +1633,33 @@ export default function ImportExportPage() {
                             }
 
                             result.data.push({
-                                cpf: participantData.cpf,
+                                cpf: participantData.cpf || "",
                                 nome: participantData.name,
                                 funcao: participantData.role || "",
                                 empresa: participantData.company || "",
                                 credencial: row.credencial?.toString().trim() || "", // ✅ Use original credential name, not ID
                             })
                             result.validRows++
+                            
+                            } catch (error) {
+                                console.error(`❌ Erro ao processar linha ${rowNumber}:`, {
+                                    erro: error,
+                                    dados_linha: row,
+                                    linha: rowNumber
+                                })
+                                
+                                // Tratar erro de forma segura
+                                const errorMessage = error instanceof Error ? error.message : 
+                                    (error && typeof error === 'object' && error.toString !== Object.prototype.toString) ? error.toString() :
+                                    'Erro desconhecido ao processar linha'
+                                
+                                result.errors.push({
+                                    item: row,
+                                    error: `Erro interno ao processar linha: ${errorMessage}`,
+                                    row: rowNumber,
+                                })
+                                result.invalidRows++
+                            }
                         })
 
                         // Yield to browser after each chunk to prevent UI freezing
@@ -1422,9 +1690,44 @@ export default function ImportExportPage() {
                     // Reset processing progress
                     setProcessingProgress({ current: 0, total: 0, percentage: 0 })
 
+                    // 📊 DEBUG: Resumo final do processamento
+                    const resumoProcessamento = {
+                        arquivo: {
+                            nome: file.name,
+                            total_linhas: jsonData.length,
+                            linhas_validas: result.validRows,
+                            linhas_invalidas: result.invalidRows,
+                            duplicados_encontrados: result.duplicateRows
+                        },
+                        sistema_atual: {
+                            participantes_existentes: participantsInSelectedShifts.length,
+                            turnos_selecionados: selectedEventDates.length,
+                            credenciais_existentes: credentials.length,
+                        },
+                        necessidades_criacao: {
+                            credenciais_faltantes: result.missingCredentials.length,
+                            empresas_faltantes: result.missingCompanies.length,
+                            lista_credenciais: result.missingCredentials.map(c => c.name),
+                            lista_empresas: result.missingCompanies.map(c => c.name)
+                        },
+                        analise_duplicados: {
+                            duplicados_sistema: result.duplicates.filter(d => d.existing.id).length,
+                            duplicados_arquivo: result.duplicates.filter(d => !d.existing.id).length,
+                            documentos_processados: processedDocuments.size,
+                            documentos_existentes: existingDocuments.size,
+                            nome_empresa_processados: processedNameCompanyCombos.size,
+                            nome_empresa_existentes: existingNameCompanyCombos.size,
+                            metodos_deteccao: ['documento (CPF/RG)', 'nome + empresa']
+                        }
+                    }
+
+                    console.log(`🎯 RESUMO COMPLETO DO PROCESSAMENTO:`, resumoProcessamento)
+
                     resolve(result)
                 } catch (error) {
-                    reject(new Error("Erro ao processar arquivo Excel"))
+                    console.error("❌ Erro detalhado ao processar arquivo Excel:", error)
+                    const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
+                    reject(new Error(`Erro ao processar arquivo Excel: ${errorMessage}`))
                 }
             }
             reader.onerror = () => reject(new Error("Erro ao ler arquivo"))
@@ -1533,8 +1836,9 @@ export default function ImportExportPage() {
             setCurrentStep("preview")
             toast.success("Arquivo processado com sucesso!")
         } catch (error) {
-            toast.error("Erro ao processar arquivo")
-            console.error(error)
+            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
+            toast.error(`Erro ao processar arquivo: ${errorMessage}`)
+            console.error("❌ Erro completo:", error)
         } finally {
             setIsProcessing(false)
         }
@@ -1646,18 +1950,42 @@ export default function ImportExportPage() {
             const participantsWithShifts: CreateEventParticipantRequest[] = []
             let skippedDuplicates = 0
 
+            // Filtrar participantes apenas dos turnos selecionados (mesmo filtro usado no processamento)
+            const participantsInSelectedShifts = participants.filter((p) =>
+                selectedEventDates.some(shiftId => p.shiftId === shiftId)
+            )
+
+            console.log(`🔍 IMPORTAÇÃO - Verificando duplicados apenas nos turnos selecionados:`, {
+                totalParticipants: participants.length,
+                participantsInSelectedShifts: participantsInSelectedShifts.length,
+                selectedShifts: selectedEventDates
+            })
+
             processedData.data.forEach((item) => {
                 selectedEventDates.forEach((shiftId) => {
                     const { dateISO, stage, period } = parseShiftId(shiftId)
 
-                    // ✅ Check if participant already exists for this specific shift
-                    const cleanedCPF = item.cpf ? item.cpf.toString().replace(/\D/g, "") : ""
-                    const existingInShift = participants.find((p) =>
-                        p.cpf.replace(/\D/g, "") === cleanedCPF && p.shiftId === shiftId
-                    )
+                    // ✅ Check if participant already exists for this specific shift (usando lista filtrada)
+                    const documentForCheck = item.cpf ? item.cpf.toString().replace(/\D/g, "") : ""
+                    
+                    let existingInShift = null
+                    if (documentForCheck && documentForCheck !== "") {
+                        // Se tem documento, verificar por documento
+                        existingInShift = participantsInSelectedShifts.find((p) =>
+                            p.cpf.replace(/\D/g, "") === documentForCheck && p.shiftId === shiftId
+                        )
+                    } else if (item.nome && item.empresa) {
+                        // Se não tem documento, verificar por nome + empresa
+                        const nameCompanyToCheck = `${normalizeStaffName(item.nome)}|${normalizeCompanyName(item.empresa)}`
+                        existingInShift = participantsInSelectedShifts.find((p) =>
+                            p.name && p.company && 
+                            `${normalizeStaffName(p.name)}|${normalizeCompanyName(p.company)}` === nameCompanyToCheck &&
+                            p.shiftId === shiftId
+                        )
+                    }
 
                     if (existingInShift) {
-                        console.log(`⚠️ Participante ${item.nome} (CPF: ${cleanedCPF}) já existe no turno ${shiftId}. Ignorando duplicação.`)
+                        console.log(`⚠️ Participante ${item.nome} (Documento: ${documentForCheck}) já existe no turno ${shiftId}. Ignorando duplicação.`)
                         skippedDuplicates++
                         return // Skip this participant for this shift
                     }
@@ -1684,10 +2012,15 @@ export default function ImportExportPage() {
                         }
                     }
 
-                    participantsWithShifts.push({
+                    // Garantir CPF válido para o participante
+                    const cpfForParticipant = item.cpf && item.cpf.trim() !== "" 
+                        ? item.cpf 
+                        : generateTemporaryCPF(item.nome, item.empresa)
+
+                    const participantToCreate = {
                         eventId: eventId,
                         name: normalizeStaffName(item.nome), // Normalizar nome para maiúsculas
-                        cpf: item.cpf,
+                        cpf: cpfForParticipant,
                         role: normalizeFunctionName(item.funcao), // Normalizar função para maiúsculas
                         company: companyName || "",
                         credentialId: credentialId,
@@ -1697,7 +2030,35 @@ export default function ImportExportPage() {
                         workStage: stage as "montagem" | "evento" | "desmontagem",
                         workPeriod: period,
                         validatedBy: "Sistema - Importação em Massa"
+                    }
+
+                    // 📊 DEBUG: Log do participante que será criado
+                    console.log(`🚀 CRIANDO PARTICIPANTE:`, {
+                        dados_originais: {
+                            linha_planilha: `Linha original da planilha`,
+                            nome_original: item.nome,
+                            cpf_original: item.cpf,
+                            empresa_original: item.empresa,
+                            funcao_original: item.funcao,
+                            credencial_original: item.credencial
+                        },
+                        dados_processados: participantToCreate,
+                        contexto: {
+                            turno_selecionado: shiftId,
+                            data_trabalho: dateISO,
+                            estagio: stage,
+                            periodo: period,
+                            credencial_encontrada: !!credentialId,
+                            empresa_normalizada: companyName
+                        },
+                        verificacoes: {
+                            ja_existe_no_turno: false, // Se chegou aqui, não existe
+                            documento_valido: !!documentForCheck,
+                            credencial_valida: !!credentialId
+                        }
                     })
+
+                    participantsWithShifts.push(participantToCreate)
                 })
             })
 
@@ -2605,6 +2966,12 @@ export default function ImportExportPage() {
                                     </Card>
                                 </div>
 
+                                {/* Tabela de Duplicados */}
+                                <VirtualizedDuplicatesTable
+                                    duplicates={processedData.duplicates}
+                                    maxDisplayItems={processedData.duplicates.length}
+                                />
+
                                 <div className="flex justify-between">
                                     <Button variant="outline" onClick={handlePrevStep}>
                                         <ArrowLeft className="w-4 h-4 mr-2" />
@@ -2727,16 +3094,6 @@ export default function ImportExportPage() {
                                             </div>
                                         </div>
 
-                                        {/* Warnings summary */}
-                                        {processedData.warnings.length > 0 && (
-                                            <Alert className="mb-4 border-orange-200 bg-orange-50">
-                                                <AlertTriangle className="h-4 w-4 text-orange-600" />
-                                                <AlertDescription className="text-orange-800">
-                                                    <strong>Avisos encontrados:</strong> {processedData.warnings.length} participante(s) sem CPF ou RG.
-                                                    Estes participantes serão processados mesmo assim, mas é recomendado revisar os dados.
-                                                </AlertDescription>
-                                            </Alert>
-                                        )}
 
                                         {/* Missing items summary */}
                                         {(processedData.missingCredentials.length > 0 || processedData.missingCompanies.length > 0) && (
