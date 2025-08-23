@@ -298,6 +298,45 @@ export default function ImportExportPage() {
         return document.toString().replace(/[^\d]/g, "")
     }
 
+    // Enhanced function to detect document type and format accordingly
+    const detectDocumentType = (document: string): { type: 'cpf' | 'state_id' | 'other', original: string, normalized: string } => {
+        if (!document) return { type: 'other', original: '', normalized: '' }
+        
+        const trimmed = document.toString().trim()
+        
+        // Check for state ID patterns (MG, SP, RJ, etc. followed by numbers)
+        const stateIdPattern = /^([A-Z]{2})\s*([\d\.\s]+)$/i
+        const stateMatch = trimmed.match(stateIdPattern)
+        
+        if (stateMatch) {
+            const stateCode = stateMatch[1].toUpperCase()
+            const numbers = stateMatch[2].replace(/[^\d]/g, '')
+            return {
+                type: 'state_id',
+                original: trimmed,
+                normalized: `${stateCode} ${numbers}`
+            }
+        }
+        
+        // Check if it's a potential CPF (11 digits after cleaning)
+        const numbersOnly = trimmed.replace(/[^\d]/g, '')
+        if (numbersOnly.length === 11) {
+            return {
+                type: 'cpf',
+                original: trimmed,
+                normalized: numbersOnly
+            }
+        }
+        
+        // For other document types, preserve original format but clean it up
+        const cleanedOther = trimmed.replace(/\s+/g, ' ').trim()
+        return {
+            type: 'other',
+            original: trimmed,
+            normalized: cleanedOther
+        }
+    }
+
     // Helper function to check if a value should be treated as empty
     const isEmptyValue = (value: any): boolean => {
         if (!value || value.toString().trim() === "") return true
@@ -310,16 +349,34 @@ export default function ImportExportPage() {
     const formatDocumentForStorage = (document: string): string => {
         if (!document) return "00000000000"
 
-        const cleaned = unformatDocument(document)
-        if (cleaned.length === 0) return "00000000000"
-
-        if (cleaned.length === 11) {
-            // Se tem 11 dígitos, é CPF - formatar com pontos e traço
-            return `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6, 9)}-${cleaned.slice(9, 11)}`
-        } else {
-            // Qualquer outro tamanho, pad para 11 dígitos e formatar como CPF
-            const padded = cleaned.padStart(11, "0")
-            return `${padded.slice(0, 3)}.${padded.slice(3, 6)}.${padded.slice(6, 9)}-${padded.slice(9, 11)}`
+        const docInfo = detectDocumentType(document)
+        
+        switch (docInfo.type) {
+            case 'cpf':
+                // Format as traditional CPF with dots and dash
+                const cpfNumbers = docInfo.normalized
+                if (cpfNumbers.length === 11) {
+                    return `${cpfNumbers.slice(0, 3)}.${cpfNumbers.slice(3, 6)}.${cpfNumbers.slice(6, 9)}-${cpfNumbers.slice(9, 11)}`
+                } else {
+                    // Pad and format as CPF if not exactly 11 digits
+                    const padded = cpfNumbers.padStart(11, "0")
+                    return `${padded.slice(0, 3)}.${padded.slice(3, 6)}.${padded.slice(6, 9)}-${padded.slice(9, 11)}`
+                }
+            
+            case 'state_id':
+                // Keep state ID format (e.g., "MG 12870831")
+                return docInfo.normalized
+            
+            case 'other':
+                // For other document types, store normalized version
+                // If it's empty after normalization, use default CPF
+                if (docInfo.normalized.length === 0) {
+                    return "00000000000"
+                }
+                return docInfo.normalized
+            
+            default:
+                return "00000000000"
         }
     }
 
@@ -373,25 +430,49 @@ export default function ImportExportPage() {
             }
         }
 
-        // Validação simplificada de documento - aceita qualquer valor nas colunas CPF ou RG
+        // Enhanced document validation - supports CPF, RG, and other document types
         let hasDocument = false
         let documentInfo: string[] = []
 
-        // Verificar coluna CPF - com tratamento de erro e valores "n/a"
+        // Verificar coluna CPF/Documento - com tratamento de erro e valores "n/a"
         try {
             if (!isEmptyValue(data.cpf)) {
+                const docInfo = detectDocumentType(data.cpf)
                 hasDocument = true
-                documentInfo.push(`CPF: ${data.cpf}`)
+                
+                switch (docInfo.type) {
+                    case 'cpf':
+                        documentInfo.push(`CPF: ${data.cpf}`)
+                        break
+                    case 'state_id':
+                        documentInfo.push(`Documento Estadual: ${data.cpf}`)
+                        break
+                    case 'other':
+                        documentInfo.push(`Documento: ${data.cpf}`)
+                        break
+                }
             }
         } catch (error) {
-            console.warn(`Erro ao verificar CPF:`, error)
+            console.warn(`Erro ao verificar documento CPF:`, error)
         }
 
         // Verificar coluna RG - com tratamento de erro e valores "n/a"
         try {
             if (!isEmptyValue(data.rg)) {
+                const docInfo = detectDocumentType(data.rg)
                 hasDocument = true
-                documentInfo.push(`RG: ${data.rg}`)
+                
+                switch (docInfo.type) {
+                    case 'cpf':
+                        documentInfo.push(`RG/CPF: ${data.rg}`)
+                        break
+                    case 'state_id':
+                        documentInfo.push(`RG/Documento Estadual: ${data.rg}`)
+                        break
+                    case 'other':
+                        documentInfo.push(`RG: ${data.rg}`)
+                        break
+                }
             }
         } catch (error) {
             console.warn(`Erro ao verificar RG:`, error)
@@ -407,8 +488,13 @@ export default function ImportExportPage() {
             const hasRg = data.rg && data.rg.toString().trim() !== ""
             
             if (hasCpf && !hasRg) {
-                // Participante com CPF mas sem RG - totalmente normal
-                warnings.push(`✅ DOCUMENTO OK: CPF fornecido (RG não informado - normal)`)
+                // Participante com documento na coluna CPF mas sem RG - totalmente normal
+                const docInfo = detectDocumentType(data.cpf)
+                let docTypeLabel = 'Documento'
+                if (docInfo.type === 'cpf') docTypeLabel = 'CPF'
+                else if (docInfo.type === 'state_id') docTypeLabel = 'Documento Estadual'
+                
+                warnings.push(`✅ DOCUMENTO OK: ${docTypeLabel} fornecido (RG não informado - normal)`)
             } else {
                 warnings.push(`✅ DOCUMENTO OK: ${documentInfo.join(', ')}`)
             }
