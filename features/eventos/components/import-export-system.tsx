@@ -131,7 +131,7 @@ export default function ImportExportSystem({ eventId, isOpen, onClose }: ImportE
                     }
 
                     // Verificar duplicatas existentes
-                    const existingCPFs = new Set(participants.map(p => p.cpf.replace(/\D/g, '')))
+                    const existingCPFs = new Set(participants.map(p => p.cpf?.replace(/\D/g, '')))
 
                     jsonData.forEach((row, index) => {
                         const validation = validateParticipant(row)
@@ -146,7 +146,7 @@ export default function ImportExportSystem({ eventId, isOpen, onClose }: ImportE
 
                         const cleanedCPF = row.cpf.replace(/\D/g, '')
                         if (existingCPFs.has(cleanedCPF)) {
-                            const existing = participants.find(p => p.cpf.replace(/\D/g, '') === cleanedCPF)
+                            const existing = participants.find(p => p.cpf?.replace(/\D/g, '') === cleanedCPF)
                             if (existing) {
                                 result.duplicates.push({
                                     item: row,

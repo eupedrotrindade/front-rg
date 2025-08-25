@@ -125,7 +125,7 @@ export default function VagasPage() {
                         const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
 
                         const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
-                        
+
                         days.push({
                             id: dayId,
                             label: `${formattedDate} (${stageName} - ${periodLabel})`,
@@ -234,6 +234,13 @@ export default function VagasPage() {
             return dateA.getTime() - dateB.getTime();
         });
 
+        console.log('📅 Turnos disponíveis:', days.map(d => ({
+            id: d.id,
+            label: d.label,
+            type: d.type,
+            period: d.period
+        })));
+
         return days
     }, [evento])
 
@@ -244,7 +251,10 @@ export default function VagasPage() {
 
     // Função para extrair informações do shift ID
     const parseShiftId = useCallback((shiftId: string) => {
+        console.log('🔍 parseShiftId chamada com:', shiftId);
+
         if (!shiftId) {
+            console.warn('⚠️ shiftId vazio, usando valores padrão');
             return {
                 workDate: new Date().toISOString().split('T')[0],
                 workStage: 'evento' as const,
@@ -253,6 +263,8 @@ export default function VagasPage() {
         }
 
         const parts = shiftId.split('-');
+        console.log('🔍 Partes do shiftId:', parts);
+
         if (parts.length >= 5) {
             // Mapear os tipos do frontend para os valores esperados pelo backend
             const stageMap: Record<string, 'montagem' | 'evento' | 'desmontagem'> = {
@@ -266,32 +278,43 @@ export default function VagasPage() {
                 'finalization': 'desmontagem'
             };
 
-            const stage = stageMap[parts[3]];
-            const period = parts[4];
+            const rawStage = parts[3];
+            const rawPeriod = parts[4];
+            const stage = stageMap[rawStage];
+
+            console.log('🔍 Mapeamento stage:', { rawStage, stage, rawPeriod });
 
             // Validar que temos valores válidos
-            if (!stage || (period !== 'diurno' && period !== 'noturno' && period !== 'dia_inteiro')) {
-                console.warn('Valores inválidos no shiftId:', { parts, stage, period });
-                return {
+            if (!stage || (rawPeriod !== 'diurno' && rawPeriod !== 'noturno' && rawPeriod !== 'dia_inteiro')) {
+                console.warn('⚠️ Valores inválidos no shiftId:', { parts, rawStage, stage, rawPeriod });
+                const fallbackResult = {
                     workDate: `${parts[0]}-${parts[1]}-${parts[2]}`,
                     workStage: 'evento' as const,
                     workPeriod: 'diurno' as const
                 };
+                console.log('🔧 Usando fallback:', fallbackResult);
+                return fallbackResult;
             }
 
-            return {
+            const result = {
                 workDate: `${parts[0]}-${parts[1]}-${parts[2]}`, // YYYY-MM-DD
                 workStage: stage,
-                workPeriod: period as 'diurno' | 'noturno' | 'dia_inteiro'
+                workPeriod: rawPeriod as 'diurno' | 'noturno' | 'dia_inteiro'
             };
+
+            console.log('✅ parseShiftId resultado:', result);
+            return result;
         }
 
         // Se não conseguir parsear, usar valores padrão
-        return {
+        console.warn('⚠️ shiftId com formato incorreto, usando fallback');
+        const fallbackResult = {
             workDate: shiftId.includes('-') ? shiftId.split('-').slice(0, 3).join('-') : shiftId,
             workStage: 'evento' as const,
             workPeriod: 'diurno' as const
         };
+        console.log('🔧 Fallback final:', fallbackResult);
+        return fallbackResult;
     }, []);
 
     // Query para buscar todos os veículos do evento (para contadores das abas)
@@ -314,16 +337,23 @@ export default function VagasPage() {
 
     // Função para normalizar dados dos veículos
     const normalizeVeiculos = useCallback((veiculosArray: any[]) => {
-        return veiculosArray.map(veiculo => {
-            // Debug temporário - remover após testar
-            console.log('🔍 Normalizando veículo:', {
-                id: veiculo.id,
-                empresa: veiculo.empresa,
-                shiftId: veiculo.shiftId,
-                workStage: veiculo.workStage,
-                workPeriod: veiculo.workPeriod,
-                dia: veiculo.dia
-            });
+        console.log('🔄 normalizeVeiculos chamada com', veiculosArray.length, 'veículos');
+
+        return veiculosArray.map((veiculo, index) => {
+            // Debug detalhado dos primeiros veículos
+            if (index < 3) {
+                console.log(`🔍 Normalizando veículo ${index + 1}:`, {
+                    id: veiculo.id,
+                    empresa: veiculo.empresa,
+                    shiftId: veiculo.shiftId,
+                    shiftIdType: typeof veiculo.shiftId,
+                    workDate: veiculo.workDate,
+                    workStage: veiculo.workStage,
+                    workPeriod: veiculo.workPeriod,
+                    dia: veiculo.dia,
+                    rawObject: veiculo
+                });
+            }
 
             // Se já tem campos de turno, verificar consistência e corrigir se necessário
             if (veiculo.shiftId && veiculo.workDate && veiculo.workStage && veiculo.workPeriod) {
@@ -423,6 +453,20 @@ export default function VagasPage() {
 
             // console.log('⚠️ Veículo padrão:', defaultVeiculo.shiftId);
             return defaultVeiculo;
+        }).map((normalized, index) => {
+            // Log do resultado final dos primeiros veículos
+            if (index < 3) {
+                console.log(`✅ Veículo ${index + 1} normalizado final:`, {
+                    id: normalized.id,
+                    empresa: normalized.empresa,
+                    shiftId: normalized.shiftId,
+                    shiftIdType: typeof normalized.shiftId,
+                    workDate: normalized.workDate,
+                    workStage: normalized.workStage,
+                    workPeriod: normalized.workPeriod
+                });
+            }
+            return normalized;
         });
     }, [eventDays, parseShiftId]);
 
@@ -493,15 +537,21 @@ export default function VagasPage() {
 
     // Filtrar veículos
     const filteredVeiculos = useMemo(() => {
-        console.log('🔍 Debug filtro:', {
+        console.log('🔍 Debug filtro detalhado:', {
             totalVeiculos: veiculos.length,
             selectedDay,
             searchTerm,
             showOnlyActive,
-            primeirosVeiculos: veiculos.slice(0, 2).map(v => ({
+            primeirosVeiculos: veiculos.slice(0, 3).map(v => ({
+                id: v.id,
                 empresa: v.empresa,
                 shiftId: v.shiftId,
-                retirada: v.retirada
+                workDate: v.workDate,
+                workStage: v.workStage,
+                workPeriod: v.workPeriod,
+                retirada: v.retirada,
+                shiftIdType: typeof v.shiftId,
+                selectedDayType: typeof selectedDay
             }))
         });
 
@@ -509,12 +559,26 @@ export default function VagasPage() {
 
         // Filtrar por turno selecionado
         if (selectedDay) {
+            console.log('🔍 Filtrando por turno:', selectedDay);
             filtered = filtered.filter(veiculo => {
-                const match = veiculo.shiftId === selectedDay;
+                const veiculoShiftId = String(veiculo.shiftId || '');
+                const selectedDayStr = String(selectedDay);
+                const match = veiculoShiftId === selectedDayStr;
+
                 if (!match) {
-                    console.log('❌ Não match:', { veiculoShiftId: veiculo.shiftId, selectedDay });
+                    console.log('❌ Não match:', {
+                        veiculoShiftId,
+                        selectedDay: selectedDayStr,
+                        veiculoId: veiculo.id,
+                        empresa: veiculo.empresa
+                    });
                 } else {
-                    console.log('✅ Match encontrado:', { veiculoShiftId: veiculo.shiftId, selectedDay });
+                    console.log('✅ Match encontrado:', {
+                        veiculoShiftId,
+                        selectedDay: selectedDayStr,
+                        veiculoId: veiculo.id,
+                        empresa: veiculo.empresa
+                    });
                 }
                 return match;
             });
@@ -612,22 +676,25 @@ export default function VagasPage() {
 
     const handleSaveVeiculo = async (data: Omit<EventVehicle, 'id' | 'event_id' | 'created_at' | 'updated_at'>) => {
         try {
-            // Usar shiftId do modal ou selectedDay como fallback
-            const finalShiftId = data.shiftId || selectedDay || effectiveSelectedDay;
+            if (!selectedDay) {
+                toast.error('Selecione um turno primeiro');
+                return;
+            }
 
             // Extrair informações do shift para o modelo de turno
-            const shiftInfo = parseShiftId(finalShiftId);
+            const shiftInfo = parseShiftId(selectedDay);
 
-            // Debug: verificar o que está sendo gerado
+            // Debug detalhado: verificar o que está sendo gerado
             console.log('🔍 Debug handleSaveVeiculo:', {
-                finalShiftId,
-                shiftInfo,
                 selectedDay,
-                effectiveSelectedDay,
-                dataShiftId: data.shiftId,
+                shiftInfo,
+                originalData: data,
                 workStageType: typeof shiftInfo.workStage,
                 workStageValue: shiftInfo.workStage,
-                allowedValues: ['montagem', 'evento', 'desmontagem']
+                workPeriodType: typeof shiftInfo.workPeriod,
+                workPeriodValue: shiftInfo.workPeriod,
+                allowedStages: ['montagem', 'evento', 'desmontagem'],
+                allowedPeriods: ['diurno', 'noturno', 'dia_inteiro']
             });
 
             // Validar valores antes de criar o payload
@@ -636,50 +703,77 @@ export default function VagasPage() {
 
             if (!allowedStages.includes(shiftInfo.workStage)) {
                 console.error('❌ workStage inválido:', shiftInfo.workStage);
-                toast.error(`Erro: workStage inválido: ${shiftInfo.workStage}`);
+                toast.error(`Erro: Etapa de trabalho inválida: ${shiftInfo.workStage}`);
                 return;
             }
 
             if (!allowedPeriods.includes(shiftInfo.workPeriod)) {
                 console.error('❌ workPeriod inválido:', shiftInfo.workPeriod);
-                toast.error(`Erro: workPeriod inválido: ${shiftInfo.workPeriod}`);
+                toast.error(`Erro: Período de trabalho inválido: ${shiftInfo.workPeriod}`);
+                return;
+            }
+
+            // Validar dados obrigatórios
+            if (!data.empresa?.trim() && !data.placa?.trim()) {
+                toast.error('Empresa ou Placa é obrigatória');
                 return;
             }
 
             const vehicleData = {
-                empresa: data.empresa,
-                modelo: data.modelo,
-                placa: data.placa,
-                tipo_de_credencial: data.tipo_de_credencial,
-                retirada: data.retirada,
-                // Novos campos do modelo de turno
-                shiftId: finalShiftId,
-                workDate: shiftInfo.workDate,
-                workStage: shiftInfo.workStage,
-                workPeriod: shiftInfo.workPeriod
+                empresa: data.empresa?.trim() || '',
+                modelo: data.modelo?.trim() || '',
+                placa: data.placa?.trim() || '',
+                tipo_de_credencial: data.tipo_de_credencial?.trim() || '',
+                retirada: (data.retirada || 'pendente') as 'pendente' | 'retirada',
+                // Campos do modelo de turno (garantir que não são undefined)
+                shiftId: selectedDay,
+                workDate: shiftInfo.workDate || new Date().toISOString().split('T')[0],
+                workStage: shiftInfo.workStage || 'evento',
+                workPeriod: shiftInfo.workPeriod || 'diurno'
             };
 
-            // Debug: verificar dados antes de enviar
-            console.log('📤 Dados enviados para backend:', vehicleData);
+            console.log('📤 Dados validados para envio:', {
+                vehicleData,
+                isEditing,
+                eventId,
+                mutation: isEditing ? 'update' : 'create'
+            });
 
             if (isEditing && editingVeiculo) {
+                console.log('🔄 Atualizando veículo ID:', editingVeiculo.id);
                 await updateVehicleMutation.mutateAsync({
                     id: editingVeiculo.id,
                     data: vehicleData
-                })
+                });
+                toast.success('Veículo atualizado com sucesso!');
             } else {
                 const payloadToSend = {
                     eventId,
                     ...vehicleData
                 };
-                console.log('📤 Payload completo para criação:', payloadToSend);
-                await createVehicleMutation.mutateAsync(payloadToSend)
+                console.log('➕ Criando novo veículo:', payloadToSend);
+                await createVehicleMutation.mutateAsync(payloadToSend);
+                toast.success('Veículo criado com sucesso!');
             }
+
             // Fechar modal após sucesso
-            handleCloseModal()
+            handleCloseModal();
         } catch (error) {
-            console.error("Erro ao salvar veículo:", error)
-            toast.error("Erro ao salvar veículo")
+            console.error("❌ Erro completo ao salvar veículo:", {
+                error,
+                errorMessage: (error as any)?.message,
+                errorResponse: (error as any)?.response?.data,
+                errorStatus: (error as any)?.response?.status
+            });
+
+            // Toast de erro mais específico
+            if ((error as any)?.response?.status === 500) {
+                toast.error("Erro interno do servidor. Verifique os dados e tente novamente.");
+            } else if ((error as any)?.response?.status === 400) {
+                toast.error(`Dados inválidos: ${(error as any)?.response?.data?.message || 'Verifique os campos obrigatórios'}`);
+            } else {
+                toast.error(`Erro ao salvar veículo: ${(error as any)?.message || 'Erro desconhecido'}`);
+            }
         }
     }
 
@@ -727,23 +821,23 @@ export default function VagasPage() {
     // Funções de importar/exportar
     const handleExportVeiculos = async () => {
         try {
-            // Preparar dados para exportação
+            // Preparar dados para exportação (formato simplificado sem dados de turno)
             const exportData = filteredVeiculos.map(veiculo => ({
                 'Empresa': veiculo.empresa || '',
                 'Modelo': veiculo.modelo || '',
                 'Placa': veiculo.placa || '',
                 'Tipo de Credencial': veiculo.tipo_de_credencial || '',
-                'Status': veiculo.retirada === 'retirada' ? 'Retirada' : 'Pendente',
-                'Data': veiculo.workDate ? formatEventDate(veiculo.workDate + 'T00:00:00') : '',
-                'Etapa': veiculo.workStage?.toUpperCase() || '',
-                'Período': veiculo.workPeriod?.toUpperCase() || '',
-                'Turno ID': veiculo.shiftId || ''
+                'Status': veiculo.retirada === 'retirada' ? 'Retirada' : 'Pendente'
             }));
 
+            const turnoInfo = selectedDay ? eventDays.find(d => d.id === selectedDay)?.label || selectedDay : 'todos_turnos';
+
             await exportToExcel(exportData, {
-                filename: `veiculos_${evento?.name || 'evento'}_${selectedDay ? eventDays.find(d => d.id === selectedDay)?.label || selectedDay : 'todos'}`,
+                filename: `veiculos_${evento?.name || 'evento'}_${turnoInfo.replace(/[^\w\s]/gi, '_')}`,
                 sheetName: 'Veículos'
             });
+
+            toast.success(`✅ Dados exportados com sucesso! ${exportData.length} veículo(s)`);
         } catch (error) {
             console.error('Erro ao exportar veículos:', error);
             toast.error('Erro ao exportar veículos');
@@ -752,17 +846,14 @@ export default function VagasPage() {
 
     const handleDownloadTemplate = async () => {
         try {
-            // Template com exemplo de dados para facilitar preenchimento
+            // Template simplificado - sem dados de turno pois será usado o turno selecionado
             const templateData = [
                 {
                     'Empresa': 'Exemplo Ltda',
                     'Modelo': 'Civic',
                     'Placa': 'ABC-1234',
                     'Tipo de Credencial': 'Temporária',
-                    'Status': 'Pendente',
-                    'Data': formatEventDate(new Date().toISOString()),
-                    'Etapa': 'EVENTO',
-                    'Período': 'DIURNO'
+                    'Status': 'Pendente'
                 }
             ];
 
@@ -778,56 +869,84 @@ export default function VagasPage() {
 
     const handleImportVeiculos = async (file: File) => {
         try {
+            if (!selectedDay) {
+                toast.error('Selecione um turno antes de importar');
+                return;
+            }
+
+            // Extrair informações do turno selecionado
+            const shiftInfo = parseShiftId(selectedDay);
+
             await importFromExcel(file, async (data) => {
+                console.log('📥 Iniciando importação para turno:', {
+                    selectedDay,
+                    shiftInfo,
+                    totalRows: data.length
+                });
+
                 // Processar dados importados
                 let successCount = 0;
                 let errorCount = 0;
 
                 for (const row of data) {
                     try {
-                        // Mapear campos do Excel para o formato esperado
+                        // Mapear campos do Excel para o formato esperado (apenas campos básicos)
                         const vehicleData = {
-                            empresa: String(row['Empresa'] || ''),
-                            modelo: String(row['Modelo'] || ''),
-                            placa: String(row['Placa'] || ''),
-                            tipo_de_credencial: String(row['Tipo de Credencial'] || ''),
+                            empresa: String(row['Empresa'] || '').trim(),
+                            modelo: String(row['Modelo'] || '').trim(),
+                            placa: String(row['Placa'] || '').trim(),
+                            tipo_de_credencial: String(row['Tipo de Credencial'] || '').trim(),
                             retirada: row['Status'] === 'Retirada' ? 'retirada' as const : 'pendente' as const,
-                            shiftId: selectedDay || effectiveSelectedDay, // Usar turno selecionado
-                            workDate: parseShiftId(selectedDay || effectiveSelectedDay).workDate,
-                            workStage: parseShiftId(selectedDay || effectiveSelectedDay).workStage,
-                            workPeriod: parseShiftId(selectedDay || effectiveSelectedDay).workPeriod
+                            // Usar sempre o turno selecionado (com fallbacks)
+                            shiftId: selectedDay,
+                            workDate: shiftInfo.workDate || new Date().toISOString().split('T')[0],
+                            workStage: shiftInfo.workStage || 'evento',
+                            workPeriod: shiftInfo.workPeriod || 'diurno'
                         };
 
                         // Validar dados obrigatórios
                         if (!vehicleData.empresa && !vehicleData.placa) {
-                            console.warn('Linha ignorada: empresa ou placa obrigatória', row);
+                            console.warn('❌ Linha ignorada: empresa ou placa obrigatória', row);
                             errorCount++;
                             continue;
                         }
 
+                        console.log('📤 Criando veículo:', vehicleData);
+
                         // Criar veículo
-                        await createVehicleMutation.mutateAsync({
+                        const payloadCompleto = {
                             eventId,
                             ...vehicleData
-                        });
+                        };
+
+                        console.log('📤 Payload importação (linha):', payloadCompleto);
+                        await createVehicleMutation.mutateAsync(payloadCompleto);
 
                         successCount++;
                     } catch (error) {
-                        console.error('Erro ao importar linha:', row, error);
+                        console.error('❌ Erro ao importar linha:', {
+                            row,
+                            error,
+                            errorMessage: (error as any)?.response?.message,
+                            errorResponse: (error as any)?.response?.data,
+                            errorStatus: (error as any)?.response?.status
+                        });
                         errorCount++;
                     }
                 }
 
                 // Mostrar resultado
                 if (successCount > 0) {
-                    toast.success(`${successCount} veículo(s) importado(s) com sucesso!`);
+                    toast.success(`✅ ${successCount} veículo(s) importado(s) com sucesso para ${eventDays.find(d => d.id === selectedDay)?.label || selectedDay}!`);
                 }
                 if (errorCount > 0) {
-                    toast.warning(`${errorCount} linha(s) com erro foram ignoradas.`);
+                    toast.warning(`⚠️ ${errorCount} linha(s) com erro foram ignoradas.`);
                 }
+
+                console.log('📊 Importação finalizada:', { successCount, errorCount });
             });
         } catch (error) {
-            console.error('Erro na importação:', error);
+            console.error('❌ Erro na importação:', error);
             toast.error('Erro ao importar arquivo');
         }
     };
@@ -905,17 +1024,24 @@ export default function VagasPage() {
                     tipo_de_credencial: tipo_credencial,
                     retirada: 'pendente' as const,
                     shiftId: selectedDay,
-                    workDate: shiftInfo.workDate,
-                    workStage: shiftInfo.workStage,
-                    workPeriod: shiftInfo.workPeriod,
+                    workDate: shiftInfo.workDate || new Date().toISOString().split('T')[0],
+                    workStage: shiftInfo.workStage || 'evento',
+                    workPeriod: shiftInfo.workPeriod || 'diurno',
                 };
 
                 try {
+                    console.log('📤 Criando veículo (inserção rápida):', vehicleData);
                     await createVehicleMutation.mutateAsync(vehicleData);
                     successCount++;
                 } catch (error) {
                     errorCount++;
-                    console.error('Erro ao criar entrada:', error);
+                    console.error('❌ Erro ao criar entrada (inserção rápida):', {
+                        error,
+                        vehicleData,
+                        errorMessage: (error as any)?.message,
+                        errorResponse: (error as any)?.response?.data,
+                        errorStatus: (error as any)?.response?.status
+                    });
                 }
             }
 
@@ -979,12 +1105,19 @@ export default function VagasPage() {
 
                 </div>
 
+
                 {/* Action Bar */}
                 <div className="mb-8">
                     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                         <div className="flex flex-wrap gap-3">
                             <Button
-                                onClick={() => handleOpenModal()}
+                                onClick={() => {
+                                    if (!selectedDay) {
+                                        toast.error('Selecione um turno primeiro');
+                                        return;
+                                    }
+                                    handleOpenModal();
+                                }}
                                 disabled={!selectedDay}
                                 className="bg-purple-600 hover:bg-purple-700 text-white"
                             >
@@ -993,7 +1126,13 @@ export default function VagasPage() {
                             </Button>
 
                             <Button
-                                onClick={() => setIsQuickInsertModalOpen(true)}
+                                onClick={() => {
+                                    if (!selectedDay) {
+                                        toast.error('Selecione um turno primeiro');
+                                        return;
+                                    }
+                                    setIsQuickInsertModalOpen(true);
+                                }}
                                 disabled={!selectedDay}
                                 variant="outline"
                                 className="border-purple-500 text-purple-600 hover:bg-purple-50"
@@ -1025,6 +1164,7 @@ export default function VagasPage() {
                                     variant="outline"
                                     disabled={isImporting || !selectedDay}
                                     className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                                    title={selectedDay ? `Importar para: ${eventDays.find(d => d.id === selectedDay)?.label || selectedDay}` : 'Selecione um turno primeiro'}
                                 >
                                     <Upload className="w-4 h-4 mr-2" />
                                     {isImporting ? 'Importando...' : 'Importar'}
@@ -1205,15 +1345,15 @@ export default function VagasPage() {
                                                     </div>
                                                     <div className="flex items-center gap-2 text-xs text-gray-600">
                                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${veiculo.workStage === 'montagem' ? 'bg-orange-100 text-orange-700' :
-                                                                veiculo.workStage === 'evento' ? 'bg-blue-100 text-blue-700' :
-                                                                    veiculo.workStage === 'desmontagem' ? 'bg-red-100 text-red-700' :
-                                                                        'bg-gray-100 text-gray-700'
+                                                            veiculo.workStage === 'evento' ? 'bg-blue-100 text-blue-700' :
+                                                                veiculo.workStage === 'desmontagem' ? 'bg-red-100 text-red-700' :
+                                                                    'bg-gray-100 text-gray-700'
                                                             }`}>
                                                             {veiculo.workStage?.toUpperCase() || 'EVENTO'}
                                                         </span>
                                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${veiculo.workPeriod === 'diurno' ? 'bg-yellow-100 text-yellow-700' :
-                                                                veiculo.workPeriod === 'noturno' ? 'bg-blue-100 text-blue-700' :
-                                                                    'bg-gray-100 text-gray-700'
+                                                            veiculo.workPeriod === 'noturno' ? 'bg-blue-100 text-blue-700' :
+                                                                'bg-gray-100 text-gray-700'
                                                             }`}>
                                                             {veiculo.workPeriod ? veiculo.workPeriod.toUpperCase() : 'DIURNO'}
                                                         </span>
@@ -1310,7 +1450,7 @@ export default function VagasPage() {
                                 Adicione múltiplos veículos rapidamente. Uma linha por veículo, separando dados por vírgula.
                             </DialogDescription>
                         </DialogHeader>
-                        
+
                         <div className="space-y-6">
                             {/* Instruções */}
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1319,9 +1459,9 @@ export default function VagasPage() {
                                     <p><strong>Formato por linha:</strong> Empresa,Modelo,Placa,Tipo de Credencial</p>
                                     <p><strong>Exemplo:</strong></p>
                                     <div className="bg-blue-100 rounded p-2 mt-2 font-mono text-xs">
-                                        Empresa ABC,Civic,ABC-1234,Temporária<br/>
-                                        Empresa XYZ,Corolla,,Permanente<br/>
-                                        ,HB20,XYZ-9876,<br/>
+                                        Empresa ABC,Civic,ABC-1234,Temporária<br />
+                                        Empresa XYZ,Corolla,,Permanente<br />
+                                        ,HB20,XYZ-9876,<br />
                                         Empresa DEF,,,Visitante
                                     </div>
                                     <p className="mt-2"><strong>Observações:</strong></p>
@@ -1330,7 +1470,8 @@ export default function VagasPage() {
                                         <li>Modelo e Tipo de Credencial são opcionais</li>
                                         <li>Separe os campos por vírgula</li>
                                         <li>Uma linha = um veículo</li>
-                                        <li>Todos os veículos serão criados para o turno selecionado</li>
+                                        <li><strong>Turno será aplicado automaticamente:</strong> todos os veículos criados para o turno selecionado</li>
+                                        <li>Status padrão: <strong>Pendente</strong> (pode ser alterado posteriormente)</li>
                                     </ul>
                                 </div>
                             </div>

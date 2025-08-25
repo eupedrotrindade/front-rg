@@ -242,7 +242,7 @@ export default function ExcelColumnFilter({
                 checked={allSelected}
                 ref={(el) => {
                   if (el && 'indeterminate' in el) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                     
                     (el as any).indeterminate = someSelected
                   }
                 }}

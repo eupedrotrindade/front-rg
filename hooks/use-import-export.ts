@@ -129,7 +129,7 @@ export const useImportExport = (
             };
 
             const existingCPFs = new Set(
-              participants.map((p) => p.cpf.replace(/\D/g, ""))
+              participants.map((p) => p.cpf?.replace(/\D/g, ""))
             );
             const processedCPFs = new Set<string>();
             const credentialCounts: { [key: string]: number } = {};
@@ -152,7 +152,7 @@ export const useImportExport = (
 
               if (existingCPFs.has(cleanedCPF)) {
                 const existing = participants.find(
-                  (p) => p.cpf.replace(/\D/g, "") === cleanedCPF
+                  (p) => p.cpf?.replace(/\D/g, "") === cleanedCPF
                 );
                 if (existing) {
                   result.duplicates.push({
