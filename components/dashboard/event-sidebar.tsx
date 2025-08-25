@@ -117,6 +117,12 @@ const EventSidebar = ({
             icon: BarChart3,
             description: 'Relatórios e análises'
 
+        },
+        {
+            name: 'Configuracoes',
+            href: `/eventos/${eventId}/configuracoes`,
+            icon: Settings,
+            description: 'Configurações gerais'
         }
         // ,
         // { name: "RG sincronização", href: `/eventos/${eventId}/rg-sync`, icon: RefreshCcw, description: 'Sincronização de dados CRED - RH' }

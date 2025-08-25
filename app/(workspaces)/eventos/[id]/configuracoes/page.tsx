@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
+import { useUpdateEvento } from "@/features/eventos/api/mutation/use-update-evento"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 
 export default function EventoConfiguracoesPage() {
@@ -85,63 +86,24 @@ export default function EventoConfiguracoesPage() {
         return []
     }, [])
 
-    // Estados para configurações
+    // Hook para atualizar evento
+    const updateEventoMutation = useUpdateEvento()
+
+    // Estados para configurações do evento
     const [configuracoes, setConfiguracoes] = useState({
-        // Informações Básicas
-        nome: evento?.name || "",
-        descricao: evento?.description || "",
-        dataInicio: "",
-        dataFim: "",
-        local: "",
-        capacidade: "",
-        status: evento?.isActive ? "ativo" : "inativo",
-
-        // Configurações de Participantes
-        maxParticipantes: "",
-        permitirInscricoes: true,
-        aprovarParticipantes: false,
-        permitirEmpresas: true,
-        obrigarCNPJ: false,
-
-        // Configurações de Staff
-        maxOperadores: "",
-        maxCoordenadores: "",
-        permitirAutoAtribuicao: true,
-        notificarNovosStaff: true,
-
-        // Configurações de Recursos
-        maxVagas: "",
-        maxRadios: "",
-        permitirReservaRecursos: true,
-        tempoReserva: "24",
-
-        // Configurações de Segurança
-        senhaEvento: "",
-        mostrarSenha: false,
-        permitirAcessoExterno: false,
-        logTodasAcoes: true,
-        backupAutomatico: true,
-
-        // Configurações de Notificações
-        notificarCheckin: true,
-        notificarCheckout: true,
-        notificarEmpresas: true,
-        notificarRelatorios: true,
-        emailNotificacoes: "",
-
-        // Configurações de Relatórios
-        gerarRelatoriosAutomaticos: false,
-        incluirDadosEmpresas: true,
-        incluirDadosStaff: true,
-        formatoRelatorio: "pdf",
-        frequenciaRelatorio: "diario",
-
-        // Configurações Avançadas
-        timezone: "America/Sao_Paulo",
-        idioma: "pt-BR",
-        tema: "claro",
-        modoDebug: false,
-        cacheAtivo: true
+        name: "",
+        description: "",
+        startDate: "",
+        endDate: "",
+        venue: "",
+        address: "",
+        status: "draft" as "active" | "closed" | "canceled" | "draft",
+        visibility: "private" as "public" | "private" | "restricted",
+        type: "",
+        categories: [] as string[],
+        registrationLink: "",
+        bannerUrl: "",
+        isActive: true
     })
 
     const [isLoading, setIsLoading] = useState(false)
@@ -149,75 +111,92 @@ export default function EventoConfiguracoesPage() {
     // Atualizar configurações quando evento mudar
     React.useEffect(() => {
         if (evento) {
-            setConfiguracoes(prev => ({
-                ...prev,
-                nome: evento.name || "",
-                descricao: evento.description || "",
-                status: evento.isActive ? "ativo" : "inativo"
-            }))
+            setConfiguracoes({
+                name: evento.name || "",
+                description: evento.description || "",
+                startDate: evento.startDate ? new Date(evento.startDate).toISOString().split('T')[0] : "",
+                endDate: evento.endDate ? new Date(evento.endDate).toISOString().split('T')[0] : "",
+                venue: evento.venue || "",
+                address: evento.address || "",
+                status: evento.status || "draft",
+                visibility: evento.visibility || "private",
+                type: evento.type || "",
+                categories: evento.categories || [],
+                registrationLink: evento.registrationLink || "",
+                bannerUrl: evento.bannerUrl || "",
+                isActive: evento.isActive ?? true
+            })
         }
     }, [evento])
 
     const handleSave = async () => {
+        if (!evento?.id) {
+            toast.error("ID do evento não encontrado")
+            return
+        }
+
+        if (!configuracoes.name.trim()) {
+            toast.error("Nome do evento é obrigatório")
+            return
+        }
+
+        if (!configuracoes.startDate || !configuracoes.endDate) {
+            toast.error("Data de início e fim são obrigatórias")
+            return
+        }
+
+        if (!configuracoes.venue.trim()) {
+            toast.error("Local do evento é obrigatório")
+            return
+        }
+
         setIsLoading(true)
         try {
-            // Simular salvamento
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-            toast.success("Configurações salvas com sucesso!")
+            const updateData = {
+                id: evento.id,
+                name: configuracoes.name.trim(),
+                description: configuracoes.description?.trim() || undefined,
+                startDate: configuracoes.startDate,
+                endDate: configuracoes.endDate,
+                venue: configuracoes.venue.trim(),
+                address: configuracoes.address?.trim() || undefined,
+                status: configuracoes.status,
+                visibility: configuracoes.visibility,
+                type: configuracoes.type?.trim() || undefined,
+                categories: configuracoes.categories.filter(c => c.trim()),
+                registrationLink: configuracoes.registrationLink?.trim() || undefined,
+                bannerUrl: configuracoes.bannerUrl?.trim() || undefined,
+                isActive: configuracoes.isActive
+            }
+
+            await updateEventoMutation.mutateAsync(updateData)
         } catch (error) {
-            toast.error("Erro ao salvar configurações", {
-                description: error instanceof Error ? error.message : "Erro desconhecido"
-            })
+            console.error('Erro ao salvar configurações:', error)
         } finally {
             setIsLoading(false)
         }
     }
 
     const handleReset = () => {
-        if (confirm("Tem certeza que deseja redefinir todas as configurações?")) {
-            setConfiguracoes({
-                nome: evento?.name || "",
-                descricao: evento?.description || "",
-                dataInicio: "",
-                dataFim: "",
-                local: "",
-                capacidade: "",
-                status: evento?.isActive ? "ativo" : "inativo",
-                maxParticipantes: "",
-                permitirInscricoes: true,
-                aprovarParticipantes: false,
-                permitirEmpresas: true,
-                obrigarCNPJ: false,
-                maxOperadores: "",
-                maxCoordenadores: "",
-                permitirAutoAtribuicao: true,
-                notificarNovosStaff: true,
-                maxVagas: "",
-                maxRadios: "",
-                permitirReservaRecursos: true,
-                tempoReserva: "24",
-                senhaEvento: "",
-                mostrarSenha: false,
-                permitirAcessoExterno: false,
-                logTodasAcoes: true,
-                backupAutomatico: true,
-                notificarCheckin: true,
-                notificarCheckout: true,
-                notificarEmpresas: true,
-                notificarRelatorios: true,
-                emailNotificacoes: "",
-                gerarRelatoriosAutomaticos: false,
-                incluirDadosEmpresas: true,
-                incluirDadosStaff: true,
-                formatoRelatorio: "pdf",
-                frequenciaRelatorio: "diario",
-                timezone: "America/Sao_Paulo",
-                idioma: "pt-BR",
-                tema: "claro",
-                modoDebug: false,
-                cacheAtivo: true
-            })
-            toast.success("Configurações redefinidas!")
+        if (confirm("Tem certeza que deseja redefinir todas as configurações para os valores originais?")) {
+            if (evento) {
+                setConfiguracoes({
+                    name: evento.name || "",
+                    description: evento.description || "",
+                    startDate: evento.startDate ? new Date(evento.startDate).toISOString().split('T')[0] : "",
+                    endDate: evento.endDate ? new Date(evento.endDate).toISOString().split('T')[0] : "",
+                    venue: evento.venue || "",
+                    address: evento.address || "",
+                        status: evento.status || "draft",
+                    visibility: evento.visibility || "private",
+                    type: evento.type || "",
+                    categories: evento.categories || [],
+                    registrationLink: evento.registrationLink || "",
+                    bannerUrl: evento.bannerUrl || "",
+                    isActive: evento.isActive ?? true
+                })
+                toast.success("Configurações redefinidas para os valores originais!")
+            }
         }
     }
 
@@ -279,121 +258,133 @@ export default function EventoConfiguracoesPage() {
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Nome do Evento</label>
+                                    <label className="block text-sm font-medium mb-2">Nome do Evento *</label>
                                     <Input
-                                        value={configuracoes.nome}
-                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, nome: e.target.value }))}
+                                        value={configuracoes.name}
+                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, name: e.target.value }))}
                                         placeholder="Nome do evento"
+                                        required
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Status</label>
-                                    <Select value={configuracoes.status} onValueChange={(value) => setConfiguracoes(prev => ({ ...prev, status: value }))}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="ativo">Ativo</SelectItem>
-                                            <SelectItem value="inativo">Inativo</SelectItem>
-                                            <SelectItem value="rascunho">Rascunho</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <label className="block text-sm font-medium mb-2">Tipo do Evento</label>
+                                    <Input
+                                        value={configuracoes.type}
+                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, type: e.target.value }))}
+                                        placeholder="Ex: Conferência, Show, Workshop"
+                                    />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Data de Início</label>
+                                    <label className="block text-sm font-medium mb-2">Data de Início *</label>
                                     <Input
                                         type="date"
-                                        value={configuracoes.dataInicio}
-                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, dataInicio: e.target.value }))}
+                                        value={configuracoes.startDate}
+                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, startDate: e.target.value }))}
+                                        required
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Data de Fim</label>
+                                    <label className="block text-sm font-medium mb-2">Data de Fim *</label>
                                     <Input
                                         type="date"
-                                        value={configuracoes.dataFim}
-                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, dataFim: e.target.value }))}
+                                        value={configuracoes.endDate}
+                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, endDate: e.target.value }))}
+                                        required
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Local</label>
+                                    <label className="block text-sm font-medium mb-2">Local do Evento *</label>
                                     <Input
-                                        value={configuracoes.local}
-                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, local: e.target.value }))}
+                                        value={configuracoes.venue}
+                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, venue: e.target.value }))}
                                         placeholder="Local do evento"
+                                        required
                                     />
                                 </div>
                             </div>
                             <div>
+                                <label className="block text-sm font-medium mb-2">Endereço Completo</label>
+                                <Input
+                                    value={configuracoes.address}
+                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, address: e.target.value }))}
+                                    placeholder="Endereço completo do local"
+                                />
+                            </div>
+                            <div>
                                 <label className="block text-sm font-medium mb-2">Descrição</label>
                                 <Textarea
-                                    value={configuracoes.descricao}
-                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, descricao: e.target.value }))}
+                                    value={configuracoes.description}
+                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, description: e.target.value }))}
                                     placeholder="Descrição detalhada do evento"
                                     rows={3}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Link de Inscrição</label>
+                                <Input
+                                    type="url"
+                                    value={configuracoes.registrationLink}
+                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, registrationLink: e.target.value }))}
+                                    placeholder="https://exemplo.com/inscricao"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">URL do Banner</label>
+                                <Input
+                                    type="url"
+                                    value={configuracoes.bannerUrl}
+                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, bannerUrl: e.target.value }))}
+                                    placeholder="https://exemplo.com/banner.jpg"
                                 />
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* Configurações de Segurança */}
+                    {/* Configurações do Status */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Shield className="h-5 w-5" />
-                                Configurações de Segurança
+                                Configurações de Status e Visibilidade
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Senha do Evento</label>
-                                    <div className="relative">
-                                        <Input
-                                            type={configuracoes.mostrarSenha ? "text" : "password"}
-                                            value={configuracoes.senhaEvento}
-                                            onChange={(e) => setConfiguracoes(prev => ({ ...prev, senhaEvento: e.target.value }))}
-                                            placeholder="Senha para acesso ao evento"
-                                        />
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            className="absolute right-0 top-0 h-full px-3"
-                                            onClick={() => setConfiguracoes(prev => ({ ...prev, mostrarSenha: !prev.mostrarSenha }))}
-                                        >
-                                            {configuracoes.mostrarSenha ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                        </Button>
-                                    </div>
+                                    <label className="block text-sm font-medium mb-2">Status do Evento</label>
+                                    <Select value={configuracoes.status} onValueChange={(value: "active" | "closed" | "canceled" | "draft") => setConfiguracoes(prev => ({ ...prev, status: value }))}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="active">Ativo</SelectItem>
+                                            <SelectItem value="draft">Rascunho</SelectItem>
+                                            <SelectItem value="closed">Encerrado</SelectItem>
+                                            <SelectItem value="canceled">Cancelado</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Visibilidade</label>
+                                    <Select value={configuracoes.visibility} onValueChange={(value: "public" | "private" | "restricted") => setConfiguracoes(prev => ({ ...prev, visibility: value }))}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="private">Privado</SelectItem>
+                                            <SelectItem value="public">Público</SelectItem>
+                                            <SelectItem value="restricted">Restrito</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <label className="block text-sm font-medium mb-2">Acesso Externo</label>
-                                        <p className="text-xs text-gray-500">Permitir acesso sem autenticação</p>
+                                        <label className="block text-sm font-medium mb-2">Evento Ativo</label>
+                                        <p className="text-xs text-gray-500">Habilitar o evento no sistema</p>
                                     </div>
                                     <Switch
-                                        checked={configuracoes.permitirAcessoExterno}
-                                        onCheckedChange={(checked) => setConfiguracoes(prev => ({ ...prev, permitirAcessoExterno: checked }))}
-                                    />
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Log de Ações</label>
-                                        <p className="text-xs text-gray-500">Registrar todas as ações realizadas</p>
-                                    </div>
-                                    <Switch
-                                        checked={configuracoes.logTodasAcoes}
-                                        onCheckedChange={(checked) => setConfiguracoes(prev => ({ ...prev, logTodasAcoes: checked }))}
-                                    />
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Backup Automático</label>
-                                        <p className="text-xs text-gray-500">Fazer backup automático dos dados</p>
-                                    </div>
-                                    <Switch
-                                        checked={configuracoes.backupAutomatico}
-                                        onCheckedChange={(checked) => setConfiguracoes(prev => ({ ...prev, backupAutomatico: checked }))}
+                                        checked={configuracoes.isActive}
+                                        onCheckedChange={(checked) => setConfiguracoes(prev => ({ ...prev, isActive: checked }))}
                                     />
                                 </div>
                             </div>
@@ -422,10 +413,10 @@ export default function EventoConfiguracoesPage() {
                         </Button>
                         <Button
                             onClick={handleSave}
-                            disabled={isLoading}
+                            disabled={isLoading || updateEventoMutation.isPending}
                             className="flex items-center gap-2"
                         >
-                            {isLoading ? (
+                            {(isLoading || updateEventoMutation.isPending) ? (
                                 <>
                                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                                     Salvando...
