@@ -6,10 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink, Sun, Moon, Clock } from "lucide-react"
+import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink, Sun, Moon, Clock, Package } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas"
@@ -19,6 +19,7 @@ import type { CreateEmpresaRequest, Empresa, Event } from "@/features/eventos/ty
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useParams } from "next/navigation"
 import { formatEventDate } from "@/lib/utils"
+import { Textarea } from "@/components/ui/textarea"
 
 export default function EmpresasPage() {
     const [searchTerm, setSearchTerm] = useState("")
@@ -30,6 +31,9 @@ export default function EmpresasPage() {
         id_evento: "",
         days: []
     })
+    const [isQuickInsertModalOpen, setIsQuickInsertModalOpen] = useState(false)
+    const [quickInsertText, setQuickInsertText] = useState('')
+    const [isProcessingQuickInsert, setIsProcessingQuickInsert] = useState(false)
 
     // Hooks
     const eventId = useParams().id as string
@@ -38,6 +42,7 @@ export default function EmpresasPage() {
     const { data: rawEmpresas = [], isLoading, error } = useEmpresasByEvent(eventId)
 
     const { data: eventos = [] } = useEventos()
+    const createEmpresaMutation = useCreateEmpresa()
     const updateEmpresaMutation = useUpdateEmpresa()
     const deleteEmpresaMutation = useDeleteEmpresa()
 
@@ -496,6 +501,97 @@ export default function EmpresasPage() {
         }
     }, [availableDates, selectedDay])
 
+    // Função para processar inserção rápida de empresas
+    const handleQuickInsert = async () => {
+        if (!quickInsertText.trim()) {
+            toast.error('Digite pelo menos uma entrada');
+            return;
+        }
+
+        if (!selectedDay) {
+            toast.error('Selecione um turno');
+            return;
+        }
+
+        setIsProcessingQuickInsert(true);
+
+        try {
+            // Processar texto: cada linha é uma entrada, separada por vírgula para nome,email,telefone,responsavel
+            const lines = quickInsertText
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+
+            if (lines.length === 0) {
+                toast.error('Nenhuma entrada válida encontrada');
+                return;
+            }
+
+            // Extrair informações do shift
+            const shiftInfo = parseShiftId(selectedDay);
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const line of lines) {
+                // Separar por vírgula: nome,email,telefone,responsavel
+                const parts = line.split(',').map(part => part.trim());
+                const nome = parts[0] || '';
+                const email = parts[1] || '';
+                const telefone = parts[2] || '';
+                const responsavel = parts[3] || '';
+
+                if (!nome) {
+                    errorCount++;
+                    continue;
+                }
+
+                const empresaData = {
+                    nome,
+                    email: email || undefined,
+                    telefone: telefone || undefined,
+                    responsavel: responsavel || undefined,
+                    id_evento: eventId,
+                    days: [selectedDay],
+                    shiftId: selectedDay,
+                    workDate: shiftInfo.workDate || new Date().toISOString().split('T')[0],
+                    workStage: shiftInfo.workStage || 'evento',
+                    workPeriod: shiftInfo.workPeriod || 'diurno',
+                };
+
+                try {
+                    console.log('📤 Criando empresa (inserção rápida):', empresaData);
+                    await createEmpresaMutation.mutateAsync(empresaData);
+                    successCount++;
+                } catch (error) {
+                    errorCount++;
+                    console.error('❌ Erro ao criar empresa (inserção rápida):', {
+                        error,
+                        empresaData,
+                        errorMessage: (error as any)?.message,
+                        errorResponse: (error as any)?.response?.data,
+                        errorStatus: (error as any)?.response?.status
+                    });
+                }
+            }
+
+            if (successCount > 0) {
+                toast.success(`${successCount} empresa(s) criada(s) com sucesso!`);
+            }
+            if (errorCount > 0) {
+                toast.error(`${errorCount} entrada(s) falharam`);
+            }
+
+            // Limpar estados
+            setQuickInsertText('');
+            setIsQuickInsertModalOpen(false);
+        } catch (error) {
+            toast.error('Erro durante a inserção rápida');
+        } finally {
+            setIsProcessingQuickInsert(false);
+        }
+    };
+
     // Função para obter cor da tab baseada no tipo
     const getTabColor = useCallback((type: string, isActive: boolean) => {
         if (isActive) {
@@ -632,6 +728,16 @@ export default function EmpresasPage() {
                                     Nova Empresa
                                 </Button>
                             </Link>
+                            
+                            <Button
+                                onClick={() => setIsQuickInsertModalOpen(true)}
+                                disabled={!selectedDay}
+                                variant="outline"
+                                className="border-purple-500 text-purple-600 hover:bg-purple-50"
+                            >
+                                <Package className="w-4 h-4 mr-2" />
+                                Inserção Rápida
+                            </Button>
 
                             <Input
                                 type="text"
@@ -942,6 +1048,135 @@ export default function EmpresasPage() {
                                 </Button>
                             </div>
                         </form>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Modal para inserção rápida */}
+                <Dialog open={isQuickInsertModalOpen} onOpenChange={setIsQuickInsertModalOpen}>
+                    <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Inserção Rápida de Empresas</DialogTitle>
+                            <DialogDescription>
+                                Adicione múltiplas empresas rapidamente. Uma linha por empresa, separando dados por vírgula.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-6">
+                            {/* Instruções */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <h3 className="font-medium text-blue-900 mb-2">🏢 Como usar:</h3>
+                                <div className="text-sm text-blue-700 space-y-1">
+                                    <p>• <strong>Uma linha por empresa</strong></p>
+                                    <p>• <strong>Formato:</strong> Nome da Empresa, E-mail, Telefone, Responsável</p>
+                                    <p>• <strong>Obrigatório:</strong> apenas o nome da empresa</p>
+                                    <p>• <strong>Opcional:</strong> e-mail, telefone, responsável (podem ficar vazios)</p>
+                                </div>
+                            </div>
+
+                            {/* Exemplos */}
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                <h3 className="font-medium text-gray-900 mb-2">✨ Exemplos:</h3>
+                                <div className="text-sm text-gray-700 font-mono space-y-1">
+                                    <p>Empresa ABC Ltda, contato@abc.com.br, (11) 99999-9999, João Silva</p>
+                                    <p>Construtora XYZ, , (21) 88888-8888, Maria Santos</p>
+                                    <p>Logística 123, logistica@123.com, , </p>
+                                    <p>Fornecedora DEF</p>
+                                </div>
+                            </div>
+
+                            {/* Área de texto para entrada */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700">
+                                    Digite as empresas (uma por linha):
+                                </label>
+                                <Textarea
+                                    value={quickInsertText}
+                                    onChange={(e) => setQuickInsertText(e.target.value)}
+                                    placeholder="Empresa ABC Ltda, contato@abc.com.br, (11) 99999-9999, João Silva\nConstrutora XYZ, , (21) 88888-8888, Maria Santos\nLogística 123, logistica@123.com, , \nFornecedora DEF"
+                                    className="min-h-[200px] font-mono text-sm"
+                                    disabled={isProcessingQuickInsert}
+                                />
+                            </div>
+
+                            {/* Preview */}
+                            {quickInsertText.trim() && (
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                    <h3 className="font-medium text-green-900 mb-2">
+                                        🔍 Preview ({quickInsertText.split('\n').filter(line => line.trim()).length} empresa(s)):
+                                    </h3>
+                                    <div className="text-sm text-green-700 space-y-1 max-h-32 overflow-y-auto">
+                                        {quickInsertText
+                                            .split('\n')
+                                            .filter(line => line.trim())
+                                            .slice(0, 5)
+                                            .map((line, index) => {
+                                                const parts = line.split(',').map(p => p.trim());
+                                                const nome = parts[0] || '';
+                                                const email = parts[1] || '';
+                                                const telefone = parts[2] || '';
+                                                const responsavel = parts[3] || '';
+                                                return (
+                                                    <div key={index} className="font-mono text-xs">
+                                                        <span className="font-semibold">{nome}</span>
+                                                        {email && <span className="text-blue-600 ml-2">{email}</span>}
+                                                        {telefone && <span className="text-purple-600 ml-2">{telefone}</span>}
+                                                        {responsavel && <span className="text-orange-600 ml-2">{responsavel}</span>}
+                                                    </div>
+                                                );
+                                            })}
+                                        {quickInsertText.split('\n').filter(line => line.trim()).length > 5 && (
+                                            <div className="text-xs text-gray-500 italic">
+                                                ... e mais {quickInsertText.split('\n').filter(line => line.trim()).length - 5} empresa(s)
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Info sobre o turno selecionado */}
+                            {selectedDay && (
+                                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                    <div className="text-sm text-purple-700">
+                                        <strong>Turno selecionado:</strong> {availableDays.find(d => d.id === selectedDay)?.label}
+                                    </div>
+                                    <div className="text-xs text-purple-600 mt-1">
+                                        Todas as empresas serão associadas a este turno.
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Ações do modal */}
+                        <div className="flex gap-2 pt-4">
+                            <Button
+                                onClick={() => {
+                                    setIsQuickInsertModalOpen(false);
+                                    setQuickInsertText('');
+                                }}
+                                variant="outline"
+                                disabled={isProcessingQuickInsert}
+                                className="flex-1"
+                            >
+                                Cancelar
+                            </Button>
+                            <Button
+                                onClick={handleQuickInsert}
+                                disabled={!quickInsertText.trim() || !selectedDay || isProcessingQuickInsert}
+                                className="flex-1"
+                            >
+                                {isProcessingQuickInsert ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                                        Processando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Package className="w-4 h-4 mr-2" />
+                                        Criar {quickInsertText.split('\n').filter(line => line.trim()).length} Empresa(s)
+                                    </>
+                                )}
+                            </Button>
+                        </div>
                     </DialogContent>
                 </Dialog>
             </div>
