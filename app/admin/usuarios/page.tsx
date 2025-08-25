@@ -38,9 +38,11 @@ import { useAllCoordenadores } from "@/features/eventos/api/query/use-coordenado
 import { Coordenador } from "@/features/eventos/types"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
+import ModalAdicionarUsuario from "@/components/admin/modal-adicionar-usuario"
 
 const AdminUsuariosPage = () => {
   const [search, setSearch] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
   const queryClient = useQueryClient()
 
   // Usar hook de coordenadores (que são os usuários)
@@ -111,6 +113,11 @@ const AdminUsuariosPage = () => {
     }
   }
 
+  const handleUserCreated = async () => {
+    // Atualizar lista automaticamente após criação
+    await handleRefresh()
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -135,7 +142,7 @@ const AdminUsuariosPage = () => {
                 )}
                 Atualizar
               </Button>
-              <Button>
+              <Button onClick={() => setModalOpen(true)}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Novo Usuário
               </Button>
@@ -371,6 +378,13 @@ const AdminUsuariosPage = () => {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Modal para adicionar usuário */}
+      <ModalAdicionarUsuario 
+        open={modalOpen} 
+        onOpenChange={setModalOpen}
+        onUserCreated={handleUserCreated}
+      />
     </div>
   )
 }

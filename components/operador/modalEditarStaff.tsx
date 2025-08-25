@@ -50,6 +50,7 @@ export default function ModalEditarStaff({
   const [staffData, setStaffData] = useState({
     name: "",
     cpf: "",
+    rg: "",
     funcao: "",
     empresa: "",
     tipo_credencial: "",
@@ -338,11 +339,24 @@ export default function ModalEditarStaff({
       return;
     }
 
-    const { name, cpf, funcao, empresa, tipo_credencial } = staffData;
+    const { name, cpf, rg, funcao, empresa, tipo_credencial } = staffData;
 
-    if (!name.trim() || !cpf.trim() || !funcao.trim() || !empresa.trim() || !tipo_credencial) {
+    if (!name.trim() || !funcao.trim() || !empresa.trim() || !tipo_credencial) {
       toast.error("Todos os campos obrigatórios devem ser preenchidos!");
       return;
+    }
+
+    // Validation: at least one document (CPF or RG) is recommended but not required
+    const hasCpf = !!cpf && cpf.trim() !== "";
+    const hasRg = !!rg && rg.trim() !== "";
+
+    if (!hasCpf && !hasRg) {
+      const confirmWithoutDoc = window.confirm(
+        "Nenhum documento (CPF ou RG) foi informado. Deseja continuar mesmo assim?"
+      );
+      if (!confirmWithoutDoc) {
+        return;
+      }
     }
 
     if (activeCredentials.length === 0) {
@@ -357,7 +371,9 @@ export default function ModalEditarStaff({
         eventId,
         credentialId: tipo_credencial,
         name: name.toUpperCase(),
-        cpf,
+        cpf: hasCpf ? cpf : undefined,
+        rg: hasRg ? rg : undefined,
+        hasDocument: hasCpf || hasRg, // Set hasDocument based on document presence
         role: funcao.toUpperCase(),
         company: empresa.toUpperCase(),
         validatedBy: "Sistema",
@@ -378,6 +394,7 @@ export default function ModalEditarStaff({
     setStaffData({
       name: "",
       cpf: "",
+      rg: "",
       funcao: "",
       empresa: "",
       tipo_credencial: "",
@@ -411,6 +428,7 @@ export default function ModalEditarStaff({
       setStaffData({
         name: participant.name || "",
         cpf: participant.cpf || "",
+        rg: (participant as any).rg || "",
         funcao: participant.role || "",
         empresa: participant.company || "",
         tipo_credencial: participant.credentialId || participant.wristbandId || "",
@@ -447,11 +465,21 @@ export default function ModalEditarStaff({
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">CPF *</label>
+              <label className="block text-sm font-medium mb-2">CPF (opcional)</label>
               <Input
                 value={staffData.cpf}
                 onChange={(e) => setStaffData({ ...staffData, cpf: formatCPF(e.target.value) })}
                 placeholder="000.000.000-00"
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">RG (opcional)</label>
+              <Input
+                value={staffData.rg}
+                onChange={(e) => setStaffData({ ...staffData, rg: e.target.value })}
+                placeholder="Digite o RG"
                 disabled={loading}
               />
             </div>
@@ -505,9 +533,8 @@ export default function ModalEditarStaff({
                               className="hover:bg-gray-100 hover:cursor-pointer"
                             >
                               <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  staffData.empresa === empresa.nome.toUpperCase() ? 'opacity-100' : 'opacity-0'
-                                }`}
+                                className={`mr-2 h-4 w-4 ${staffData.empresa === empresa.nome.toUpperCase() ? 'opacity-100' : 'opacity-0'
+                                  }`}
                               />
                               <span style={{ textTransform: 'uppercase' }}>{empresa.nome.toUpperCase()}</span>
                             </CommandItem>
@@ -572,9 +599,8 @@ export default function ModalEditarStaff({
                           className="hover:bg-gray-100 hover:cursor-pointer"
                         >
                           <Check
-                            className={`mr-2 h-4 w-4 ${
-                              !staffData.tipo_credencial ? 'opacity-100' : 'opacity-0'
-                            }`}
+                            className={`mr-2 h-4 w-4 ${!staffData.tipo_credencial ? 'opacity-100' : 'opacity-0'
+                              }`}
                           />
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full border-2 border-gray-400 bg-gray-200" />
@@ -592,9 +618,8 @@ export default function ModalEditarStaff({
                             className="hover:bg-gray-100 hover:cursor-pointer"
                           >
                             <Check
-                              className={`mr-2 h-4 w-4 ${
-                                staffData.tipo_credencial === credential.id ? 'opacity-100' : 'opacity-0'
-                              }`}
+                              className={`mr-2 h-4 w-4 ${staffData.tipo_credencial === credential.id ? 'opacity-100' : 'opacity-0'
+                                }`}
                             />
                             <div className="flex items-center gap-2">
                               <div

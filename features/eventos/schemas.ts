@@ -121,7 +121,9 @@ export const eventParticipantSchema = z.object({
   wristbandId: z.string().optional(), // Mantido para compatibilidade
   staffId: z.string().optional(),
   name: z.string().min(1, "Nome obrigatório"),
-  cpf: z.string().min(11, "CPF obrigatório"),
+  cpf: z.string().optional(), // CPF agora é opcional
+  rg: z.string().optional(), // Novo campo RG opcional
+  hasDocument: z.boolean().optional(), // Indica se possui algum documento
   email: z
     .union([z.string().email("E-mail inválido"), z.literal(""), z.undefined()])
     .optional(),

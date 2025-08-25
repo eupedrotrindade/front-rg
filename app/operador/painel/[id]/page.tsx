@@ -1443,7 +1443,7 @@ export default function Painel() {
             {/* Informações adicionais em mobile */}
             {isMobileTable && (
               <div className="text-xs text-gray-500 mt-1 truncate">
-                {formatCPF(colab.cpf?.trim() || '')} • {colab.role}
+                {formatCPF(colab.cpf?.trim() || '') || colab.rg || '-'} • {colab.role}
               </div>
             )}
           </div>
@@ -1455,7 +1455,7 @@ export default function Painel() {
               style={{ width: '15%' }}
             >
               <p className="text-sm text-gray-900 font-mono">
-                {formatCPF(colab.cpf?.trim() || '')}
+                {formatCPF(colab.cpf?.trim() || '') || colab.rg || '-'}
               </p>
             </div>
           )}
@@ -3048,7 +3048,7 @@ export default function Painel() {
                         {/* Nome - sempre visível */}
                         <TableHead className={`text-left text-xs font-semibold uppercase tracking-wider ${isMobileTable ? 'px-2 py-2' : 'px-6 py-4'}`} style={{ width: isMobileTable ? '40%' : '25%' }}>
                           <div className="flex items-center justify-between">
-                            <span>{isMobileTable ? 'Nome / CPF / Função' : 'Nome'}</span>
+                            <span>{isMobileTable ? 'Nome / CPF/RG / Função' : 'Nome'}</span>
                           </div>
                         </TableHead>
 
@@ -3056,7 +3056,7 @@ export default function Painel() {
                         {!isMobileTable && (
                           <TableHead className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ width: '15%' }}>
                             <div className="flex items-center justify-between">
-                              <span>CPF</span>
+                              <span>CPF/RG</span>
                             </div>
                           </TableHead>
                         )}
@@ -3247,10 +3247,10 @@ export default function Painel() {
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div className="p-3 bg-white rounded-lg border border-gray-200">
                           <p className="text-xs font-medium text-gray-500 uppercase">
-                            CPF
+                            CPF/RG
                           </p>
                           <p className="font-mono text-gray-900">
-                            {formatCPF(selectedParticipant.cpf?.trim() || '')}
+                            {formatCPF(selectedParticipant.cpf?.trim() || '') || selectedParticipant.rg || '-'}
                           </p>
                         </div>
                         <div className="p-3 bg-white rounded-lg border border-gray-200">
@@ -3439,7 +3439,7 @@ export default function Painel() {
                         {participantAction.name}
                       </p>
                       <p className="text-sm text-gray-600 mt-1">
-                        {formatCPF(participantAction.cpf?.trim() || '')}
+                        {formatCPF(participantAction.cpf?.trim() || '') || participantAction.rg || '-'}
                       </p>
                       <p className="text-sm text-gray-600 mt-1">
                         {participantAction.role}
@@ -3545,7 +3545,7 @@ export default function Painel() {
                         {participantAction.name}
                       </p>
                       <p className="text-sm text-gray-600 mt-1">
-                        {formatCPF(participantAction.cpf?.trim() || '')}
+                        {formatCPF(participantAction.cpf?.trim() || '') || participantAction.rg || '-'}
                       </p>
                       <p className="text-sm text-gray-600 mt-1">
                         {participantAction.role}
@@ -3710,7 +3710,7 @@ export default function Painel() {
                                     {participant.role} • {participant.company}
                                   </p>
                                   <p className="text-xs text-gray-500">
-                                    {formatCPF(participant.cpf?.trim() || '')}
+                                    {formatCPF(participant.cpf?.trim() || '') || participant.rg || '-'}
                                   </p>
                                 </div>
                                 <div className="flex flex-col items-end">
@@ -3773,8 +3773,8 @@ export default function Painel() {
 
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
-                                <span className="text-gray-500">CPF:</span>
-                                <p className="font-mono text-gray-900">{formatCPF(selectedParticipant.cpf?.trim() || '')}</p>
+                                <span className="text-gray-500">CPF/RG:</span>
+                                <p className="font-mono text-gray-900">{formatCPF(selectedParticipant.cpf?.trim() || '') || selectedParticipant.rg || '-'}</p>
                               </div>
                               <div>
                                 <span className="text-gray-500">Empresa:</span>
@@ -3909,7 +3909,7 @@ export default function Painel() {
               onClose={() => setPopupNovoStaff(false)}
               evento={evento}
               operadorInfo={operadorInfo}
-              existingParticipants={participantsData}
+              existingParticipants={participantsData.map(p => ({ id: p.id, name: p.name, cpf: p.cpf ?? '', role: p.role, company: p.company }))}
               onSuccess={async () => {
                 // Recarregar dados se necessário
                 await refetchParticipants();

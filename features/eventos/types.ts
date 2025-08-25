@@ -184,7 +184,9 @@ export type EventParticipant = {
   wristbandId?: string; // Mantido para compatibilidade
   staffId?: string;
   name: string;
-  cpf: string;
+  cpf?: string; // CPF agora é opcional
+  rg?: string; // Novo campo RG opcional
+  hasDocument?: boolean; // Indica se possui algum documento
   email?: string;
   phone?: string;
   role?: string;
@@ -346,7 +348,9 @@ export type CreateEventParticipantRequest = {
   wristbandId?: string; // Mantido para compatibilidade
   staffId?: string;
   name: string;
-  cpf: string;
+  cpf?: string; // CPF agora é opcional
+  rg?: string; // Novo campo RG opcional
+  hasDocument?: boolean; // Indica se possui algum documento
   email?: string;
   phone?: string;
   role?: string;
@@ -466,7 +470,8 @@ export interface EventAttendance {
   participant?: {
     id: string;
     name: string;
-    cpf: string;
+    cpf?: string; // CPF agora é opcional
+    rg?: string; // Novo campo RG opcional
     role: string;
     company: string;
   };
@@ -509,6 +514,7 @@ export interface ImportRequest {
   notes?: string;
   data: Array<{
     cpf: string;
+    rg: string;
     nome: string;
     funcao: string;
     empresa: string;
@@ -538,6 +544,7 @@ export interface CreateImportRequestRequest {
   duplicateRows: number;
   data: Array<{
     cpf: string;
+    rg: string;
     nome: string;
     funcao: string;
     empresa: string;

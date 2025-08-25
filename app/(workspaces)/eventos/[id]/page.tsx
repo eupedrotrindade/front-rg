@@ -28,13 +28,6 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
 import { changeCredentialCode } from '@/features/eventos/actions/movement-credentials'
 import { updateParticipantCredential } from '@/features/eventos/actions/update-participant-credential'
 import {
@@ -436,8 +429,8 @@ export default function EventoDetalhesPage() {
                     try {
                         const dateStr = formatEventDate(day.date)
                         // ✅ CORREÇÃO: Extrair dateISO diretamente da string para evitar problemas de fuso horário
-                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/) 
-                            ? day.date.split('T')[0] 
+                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/)
+                            ? day.date.split('T')[0]
                             : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
                         const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
@@ -495,8 +488,8 @@ export default function EventoDetalhesPage() {
                     try {
                         const dateStr = formatEventDate(day.date)
                         // ✅ CORREÇÃO: Extrair dateISO diretamente da string para evitar problemas de fuso horário
-                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/) 
-                            ? day.date.split('T')[0] 
+                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/)
+                            ? day.date.split('T')[0]
                             : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
                         const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
@@ -555,8 +548,8 @@ export default function EventoDetalhesPage() {
                     try {
                         const dateStr = formatEventDate(day.date)
                         // ✅ CORREÇÃO: Extrair dateISO diretamente da string para evitar problemas de fuso horário
-                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/) 
-                            ? day.date.split('T')[0] 
+                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/)
+                            ? day.date.split('T')[0]
                             : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
                         const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
@@ -2763,9 +2756,8 @@ export default function EventoDetalhesPage() {
                                                     className="hover:bg-gray-100 hover:cursor-pointer"
                                                 >
                                                     <Check
-                                                        className={`mr-2 h-4 w-4 ${
-                                                            bulkEditData.credentialId === 'no-change' ? 'opacity-100' : 'opacity-0'
-                                                        }`}
+                                                        className={`mr-2 h-4 w-4 ${bulkEditData.credentialId === 'no-change' ? 'opacity-100' : 'opacity-0'
+                                                            }`}
                                                     />
                                                     <span className="text-gray-600">Não alterar</span>
                                                 </CommandItem>
@@ -2778,9 +2770,8 @@ export default function EventoDetalhesPage() {
                                                     className="hover:bg-gray-100 hover:cursor-pointer"
                                                 >
                                                     <Check
-                                                        className={`mr-2 h-4 w-4 ${
-                                                            bulkEditData.credentialId === '' ? 'opacity-100' : 'opacity-0'
-                                                        }`}
+                                                        className={`mr-2 h-4 w-4 ${bulkEditData.credentialId === '' ? 'opacity-100' : 'opacity-0'
+                                                            }`}
                                                     />
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-3 h-3 rounded-full border-2 border-gray-400 bg-gray-200" />
@@ -2800,9 +2791,8 @@ export default function EventoDetalhesPage() {
                                                             className="hover:bg-gray-100 hover:cursor-pointer"
                                                         >
                                                             <Check
-                                                                className={`mr-2 h-4 w-4 ${
-                                                                    bulkEditData.credentialId === credential.id ? 'opacity-100' : 'opacity-0'
-                                                                }`}
+                                                                className={`mr-2 h-4 w-4 ${bulkEditData.credentialId === credential.id ? 'opacity-100' : 'opacity-0'
+                                                                    }`}
                                                             />
                                                             <div className="flex items-center gap-2">
                                                                 <div
@@ -2875,9 +2865,8 @@ export default function EventoDetalhesPage() {
                                                     className="hover:bg-gray-100 hover:cursor-pointer"
                                                 >
                                                     <Check
-                                                        className={`mr-2 h-4 w-4 ${
-                                                            bulkEditData.company === 'no-change' ? 'opacity-100' : 'opacity-0'
-                                                        }`}
+                                                        className={`mr-2 h-4 w-4 ${bulkEditData.company === 'no-change' ? 'opacity-100' : 'opacity-0'
+                                                            }`}
                                                     />
                                                     <span className="text-gray-600" style={{ textTransform: 'uppercase' }}>NÃO ALTERAR</span>
                                                 </CommandItem>
@@ -2892,9 +2881,8 @@ export default function EventoDetalhesPage() {
                                                         className="hover:bg-gray-100 hover:cursor-pointer"
                                                     >
                                                         <Check
-                                                            className={`mr-2 h-4 w-4 ${
-                                                                bulkEditData.company === empresa.nome ? 'opacity-100' : 'opacity-0'
-                                                            }`}
+                                                            className={`mr-2 h-4 w-4 ${bulkEditData.company === empresa.nome ? 'opacity-100' : 'opacity-0'
+                                                                }`}
                                                         />
                                                         <span style={{ textTransform: 'uppercase' }}>{empresa.nome.toUpperCase()}</span>
                                                     </CommandItem>

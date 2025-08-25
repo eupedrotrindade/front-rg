@@ -48,6 +48,7 @@ interface ModalAdicionarStaffProps {
 const initialStaff = {
   name: "",
   cpf: "",
+  rg: "",
   funcao: "",
   empresa: "",
   tipo_credencial: "",
@@ -123,7 +124,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   }, [formatEventDate]);
 
   const activeCredentials = credentials.filter((credential: Credential) => credential.isActive !== false);
-  
+
   const empresasArray = useMemo(() => {
     return Array.isArray(empresas) ? empresas : [];
   }, [empresas]);
@@ -370,7 +371,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
     }
 
     console.log('🔍 Operador shifts (modal):', operadorInfo.id_events);
-    
+
     // Dividir os shifts do operador por vírgula e processar cada shift
     const operatorShifts = operadorInfo.id_events
       .split(',')
@@ -383,9 +384,9 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
         }
         return shift;
       });
-    
+
     console.log('🔍 Shifts do operador para este evento (modal):', operatorShifts);
-    
+
     // Filtrar apenas os dias em que o operador trabalha
     const diasDisponiveis = days.filter(day => {
       const dayIncluded = operatorShifts.includes(day.id);
@@ -424,11 +425,24 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   }, []);
 
   const handleSubmit = async () => {
-    const { name, cpf, funcao, empresa, tipo_credencial } = novoStaff;
+    const { name, cpf, rg, funcao, empresa, tipo_credencial } = novoStaff;
 
-    if (!name.trim() || !cpf.trim() || !funcao.trim() || !empresa.trim() || !tipo_credencial) {
+    if (!name.trim() || !funcao.trim() || !empresa.trim() || !tipo_credencial) {
       toast.error("Todos os campos obrigatórios devem ser preenchidos!");
       return;
+    }
+
+    // Validation: at least one document (CPF or RG) is recommended but not required
+    const hasCpf = !!cpf && cpf.trim() !== "";
+    const hasRg = !!rg && rg.trim() !== "";
+
+    if (!hasCpf && !hasRg) {
+      const confirmWithoutDoc = window.confirm(
+        "Nenhum documento (CPF ou RG) foi informado. Deseja continuar mesmo assim?"
+      );
+      if (!confirmWithoutDoc) {
+        return;
+      }
     }
 
     if (activeCredentials.length === 0) {
@@ -436,14 +450,28 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       return;
     }
 
-    // Validação de CPF duplicado
-    const cpfLimpo = cpf.trim().replace(/\D/g, '');
-    const cpfExistente = existingParticipants.some(
-      participant => participant.cpf && participant.cpf.trim().replace(/\D/g, '') === cpfLimpo
-    );
+    // Validação de documento duplicado (CPF ou RG)
+    let documentoExistente = false;
+    let tipoDocumento = "";
 
-    if (cpfExistente) {
-      toast.error("Já existe um staff cadastrado com este CPF!");
+    if (hasCpf) {
+      const cpfLimpo = cpf.trim().replace(/\D/g, '');
+      documentoExistente = existingParticipants.some(
+        participant => participant.cpf && participant.cpf.trim().replace(/\D/g, '') === cpfLimpo
+      );
+      tipoDocumento = "CPF";
+    }
+
+    if (!documentoExistente && hasRg) {
+      const rgLimpo = rg.trim().replace(/\D/g, '');
+      documentoExistente = existingParticipants.some(
+        participant => (participant as any).rg && (participant as any).rg.trim().replace(/\D/g, '') === rgLimpo
+      );
+      tipoDocumento = "RG";
+    }
+
+    if (documentoExistente) {
+      toast.error(`Já existe um staff cadastrado com este ${tipoDocumento}!`);
       return;
     }
 
@@ -453,7 +481,9 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
         eventId,
         credentialId: tipo_credencial,
         name: name.toUpperCase(),
-        cpf,
+        cpf: hasCpf ? cpf : undefined,
+        rg: hasRg ? rg : undefined,
+        hasDocument: hasCpf || hasRg, // Set hasDocument based on document presence
         role: funcao.toUpperCase(),
         company: empresa.toUpperCase(),
         validatedBy: "Sistema",
@@ -544,11 +574,21 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">CPF *</label>
+              <label className="block text-sm font-medium mb-2">CPF (opcional)</label>
               <Input
                 value={novoStaff.cpf}
                 onChange={(e) => setNovoStaff({ ...novoStaff, cpf: formatCPF(e.target.value) })}
                 placeholder="000.000.000-00"
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">RG (opcional)</label>
+              <Input
+                value={novoStaff.rg}
+                onChange={(e) => setNovoStaff({ ...novoStaff, rg: e.target.value })}
+                placeholder="Digite o RG"
                 disabled={loading}
               />
             </div>
@@ -602,9 +642,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                               className="hover:bg-gray-100 hover:cursor-pointer"
                             >
                               <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  novoStaff.empresa === empresa.nome.toUpperCase() ? 'opacity-100' : 'opacity-0'
-                                }`}
+                                className={`mr-2 h-4 w-4 ${novoStaff.empresa === empresa.nome.toUpperCase() ? 'opacity-100' : 'opacity-0'
+                                  }`}
                               />
                               <span style={{ textTransform: 'uppercase' }}>{empresa.nome.toUpperCase()}</span>
                             </CommandItem>
@@ -670,9 +709,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                             className="hover:bg-gray-100 hover:cursor-pointer"
                           >
                             <Check
-                              className={`mr-2 h-4 w-4 ${
-                                novoStaff.tipo_credencial === credential.id ? 'opacity-100' : 'opacity-0'
-                              }`}
+                              className={`mr-2 h-4 w-4 ${novoStaff.tipo_credencial === credential.id ? 'opacity-100' : 'opacity-0'
+                                }`}
                             />
                             <div className="flex items-center gap-2">
                               <div

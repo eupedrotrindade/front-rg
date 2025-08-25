@@ -277,7 +277,7 @@ const ParticipantRow = React.memo<{
         {/* CPF */}
         <div className="col-span-1">
           <p className="text-gray-600 text-sm font-mono uppercase">
-            {participant.cpf}
+            {participant.cpf || participant.rg || '-'}
           </p>
         </div>
 
@@ -521,7 +521,7 @@ const VirtualizedParticipantsTable: React.FC<
               Validado Por
             </div>
             <div className="text-xs font-semibold uppercase tracking-wider">
-              CPF
+              CPF/RG
             </div>
             <div className="text-xs font-semibold uppercase tracking-wider">
               Ações
