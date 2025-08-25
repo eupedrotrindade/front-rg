@@ -173,7 +173,7 @@ export default function RHSyncPage() {
   }
 
   return (
-    <EventLayout>
+    <EventLayout eventId={evento?.id} eventName={evento?.name}>
       <div className="p-6">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
