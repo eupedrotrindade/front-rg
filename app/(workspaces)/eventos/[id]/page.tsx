@@ -198,7 +198,7 @@ export default function EventoDetalhesPage() {
     // Estados para reset de check-in em massa
     const [showBulkResetModal, setShowBulkResetModal] = useState(false)
     const [bulkResetLoading, setBulkResetLoading] = useState(false)
-    
+
     // Estado para controle de refresh da tabela
     const [isRefreshingTable, setIsRefreshingTable] = useState(false)
 
@@ -1888,53 +1888,85 @@ export default function EventoDetalhesPage() {
             toast.error('Selecione um turno primeiro')
             return
         }
-        
+
         setIsRefreshingTable(true)
         try {
-            console.log('🔄 Iniciando atualização da tabela...', {
+            console.log('🔄 Iniciando atualização completa da tabela...', {
                 eventId: params.id,
                 currentSelectedDay,
                 viewMode
             })
-            
-            // Invalidar queries principais de participantes
-            await queryClient.invalidateQueries({
+
+            // Invalidar TODAS as queries de participantes para forçar nova requisição
+            console.log('🔄 Invalidando queries de participantes...')
+            await Promise.all([
+                // Query principal de participantes por evento
+                queryClient.invalidateQueries({
+                    queryKey: ['event-participants-by-event', String(params.id)]
+                }),
+
+                // Query de participantes agrupados
+                queryClient.invalidateQueries({
+                    queryKey: ['event-participants-grouped', String(params.id)]
+                }),
+
+                // Query de participantes por turno específico
+                queryClient.invalidateQueries({
+                    queryKey: ['event-participants-by-shift', String(params.id), currentSelectedDay]
+                }),
+
+                // Invalidar dados de attendance para a data atual
+                queryClient.invalidateQueries({
+                    queryKey: [
+                        'event-attendance-by-event-date',
+                        String(params.id),
+                        formatDateForAPI(currentSelectedDay),
+                    ]
+                }),
+
+                // Invalidar credenciais
+                queryClient.invalidateQueries({
+                    queryKey: ['credentials', String(params.id)]
+                }),
+
+                // Invalidar empresas
+                queryClient.invalidateQueries({
+                    queryKey: ['empresas-by-event', String(params.id)]
+                }),
+
+                // Invalidar coordenadores
+                queryClient.invalidateQueries({
+                    queryKey: ['coordenadores-by-event', String(params.id)]
+                }),
+
+                // Invalidar veículos
+                queryClient.invalidateQueries({
+                    queryKey: ['event-vehicles', String(params.id)]
+                })
+            ])
+
+            // Remover todas as queries do cache e refetch
+            console.log('🔄 Removendo cache e forçando refetch...')
+            queryClient.removeQueries({
                 queryKey: ['event-participants-by-event', String(params.id)]
             })
-            
+
             if (viewMode === 'grouped') {
-                console.log('🔄 Atualizando dados agrupados...')
-                await queryClient.invalidateQueries({
+                queryClient.removeQueries({
                     queryKey: ['event-participants-grouped', String(params.id)]
                 })
             } else {
-                console.log('🔄 Atualizando dados por turno...', currentSelectedDay)
-                await queryClient.invalidateQueries({
+                queryClient.removeQueries({
                     queryKey: ['event-participants-by-shift', String(params.id), currentSelectedDay]
                 })
             }
-            
-            // Invalidar dados de attendance
-            console.log('🔄 Atualizando dados de attendance...')
-            await queryClient.invalidateQueries({
-                queryKey: [
-                    'event-attendance-by-event-date',
-                    String(params.id),
-                    formatDateForAPI(currentSelectedDay),
-                ]
-            })
-            
-            // Invalidar outras queries relacionadas
-            await queryClient.invalidateQueries({
-                queryKey: ['credentials', String(params.id)]
-            })
-            
-            // Aguardar um pouco para dar tempo das queries atualizarem
-            await new Promise(resolve => setTimeout(resolve, 500))
-            
-            console.log('✅ Tabela atualizada com sucesso')
-            toast.success('Dados da tabela atualizados!')
-            
+
+            // Aguardar para dar tempo das novas requisições
+            await new Promise(resolve => setTimeout(resolve, 800))
+
+            console.log('✅ Tabela atualizada com sucesso - todas as queries invalidadas e refetchadas')
+            toast.success('Dados da tabela atualizados com sucesso!')
+
         } catch (error) {
             console.error('❌ Erro ao atualizar tabela:', error)
             toast.error('Erro ao atualizar a tabela. Tente novamente.')
@@ -2038,21 +2070,7 @@ export default function EventoDetalhesPage() {
                                 </button>
                             </div>
 
-                            {/* Botão para atualizar apenas a tabela */}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={refreshTable}
-                                disabled={isRefreshingTable || isTableLoading}
-                                className="text-purple-600 border-purple-200 hover:bg-purple-50 hover:border-purple-300 bg-white shadow-sm transition-all duration-200"
-                            >
-                                {isRefreshingTable ? (
-                                    <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mr-2" />
-                                ) : (
-                                    <RotateCcw className="w-4 h-4 mr-2" />
-                                )}
-                                {isRefreshingTable ? 'Atualizando...' : 'Atualizar Tabela'}
-                            </Button>
+
 
                             <Button
                                 onClick={() => setShowAdicionarStaffModal(true)}
