@@ -198,6 +198,9 @@ export default function EventoDetalhesPage() {
     // Estados para reset de check-in em massa
     const [showBulkResetModal, setShowBulkResetModal] = useState(false)
     const [bulkResetLoading, setBulkResetLoading] = useState(false)
+    
+    // Estado para controle de refresh da tabela
+    const [isRefreshingTable, setIsRefreshingTable] = useState(false)
 
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
@@ -267,7 +270,7 @@ export default function EventoDetalhesPage() {
         )
 
     // Buscar apenas dados necessários do evento (TODO: criar hook específico)
-    const { data: eventos } = useEventos() // Temporário - precisa ser otimizado
+    const { data: eventos, isLoading: eventosLoading } = useEventos() // Temporário - precisa ser otimizado
     const evento = useMemo(() => {
         const foundEvent = Array.isArray(eventos)
             ? eventos.find(e => String(e.id) === String(params.id))
@@ -1848,6 +1851,7 @@ export default function EventoDetalhesPage() {
     // Estados calculados memoizados
     const isLoading = useMemo(
         () =>
+            eventosLoading ||
             participantsLoading ||
             (viewMode === 'grouped' ? groupedParticipantsLoading : shiftParticipantsLoading) ||
             coordenadoresLoading ||
@@ -1855,6 +1859,7 @@ export default function EventoDetalhesPage() {
             empresasLoading ||
             attendanceLoading,
         [
+            eventosLoading,
             participantsLoading,
             groupedParticipantsLoading,
             shiftParticipantsLoading,
@@ -1866,20 +1871,116 @@ export default function EventoDetalhesPage() {
         ],
     )
 
-    // Early return se evento não existir
-    if (!evento) {
+    // Estados separados para loading da página inicial e da tabela
+    const isInitialLoading = useMemo(() => {
+        return eventosLoading || (!evento && !eventosLoading)
+    }, [eventosLoading, evento])
+
+    const isTableLoading = useMemo(() => {
+        return participantsLoading ||
+            (viewMode === 'grouped' ? groupedParticipantsLoading : shiftParticipantsLoading) ||
+            attendanceLoading
+    }, [participantsLoading, groupedParticipantsLoading, shiftParticipantsLoading, viewMode, attendanceLoading])
+
+    // Função para atualizar apenas a tabela
+    const refreshTable = useCallback(async () => {
+        if (!currentSelectedDay) {
+            toast.error('Selecione um turno primeiro')
+            return
+        }
+        
+        setIsRefreshingTable(true)
+        try {
+            console.log('🔄 Iniciando atualização da tabela...', {
+                eventId: params.id,
+                currentSelectedDay,
+                viewMode
+            })
+            
+            // Invalidar queries principais de participantes
+            await queryClient.invalidateQueries({
+                queryKey: ['event-participants-by-event', String(params.id)]
+            })
+            
+            if (viewMode === 'grouped') {
+                console.log('🔄 Atualizando dados agrupados...')
+                await queryClient.invalidateQueries({
+                    queryKey: ['event-participants-grouped', String(params.id)]
+                })
+            } else {
+                console.log('🔄 Atualizando dados por turno...', currentSelectedDay)
+                await queryClient.invalidateQueries({
+                    queryKey: ['event-participants-by-shift', String(params.id), currentSelectedDay]
+                })
+            }
+            
+            // Invalidar dados de attendance
+            console.log('🔄 Atualizando dados de attendance...')
+            await queryClient.invalidateQueries({
+                queryKey: [
+                    'event-attendance-by-event-date',
+                    String(params.id),
+                    formatDateForAPI(currentSelectedDay),
+                ]
+            })
+            
+            // Invalidar outras queries relacionadas
+            await queryClient.invalidateQueries({
+                queryKey: ['credentials', String(params.id)]
+            })
+            
+            // Aguardar um pouco para dar tempo das queries atualizarem
+            await new Promise(resolve => setTimeout(resolve, 500))
+            
+            console.log('✅ Tabela atualizada com sucesso')
+            toast.success('Dados da tabela atualizados!')
+            
+        } catch (error) {
+            console.error('❌ Erro ao atualizar tabela:', error)
+            toast.error('Erro ao atualizar a tabela. Tente novamente.')
+        } finally {
+            setIsRefreshingTable(false)
+        }
+    }, [queryClient, params.id, viewMode, currentSelectedDay, formatDateForAPI])
+
+    // Loading inicial da página
+    if (isInitialLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-50">
+                <div className="text-center p-8">
+                    <div className="mb-6">
+                        <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto"></div>
+                    </div>
+                    <h2 className="text-xl font-semibold text-gray-700 mb-2">Carregando evento...</h2>
+                    <p className="text-gray-500 text-sm">Aguarde enquanto carregamos os dados</p>
+                </div>
+            </div>
+        )
+    }
+
+    // Early return se evento não existir após carregamento
+    if (!evento && !eventosLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
-                    <h2 className="text-2xl font-bold mb-4">Evento não encontrado</h2>
-                    <Button onClick={() => router.back()}>Voltar</Button>
+                    <div className="mb-6">
+                        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <X className="w-8 h-8 text-red-500" />
+                        </div>
+                    </div>
+                    <h2 className="text-2xl font-bold mb-4 text-gray-800">Evento não encontrado</h2>
+                    <p className="text-gray-600 mb-6">O evento solicitado não existe ou foi removido.</p>
+                    <Button onClick={() => router.back()} variant="outline">
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Voltar
+                    </Button>
                 </div>
             </div>
         )
     }
 
     return (
-        <EventLayout eventId={String(params.id)} eventName={evento.name}>
+        <EventLayout eventId={String(params.id)} eventName={evento?.name}>
             <div className="p-8">
                 {/* Action Bar */}
                 <div className="mb-8">
@@ -1937,9 +2038,26 @@ export default function EventoDetalhesPage() {
                                 </button>
                             </div>
 
+                            {/* Botão para atualizar apenas a tabela */}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={refreshTable}
+                                disabled={isRefreshingTable || isTableLoading}
+                                className="text-purple-600 border-purple-200 hover:bg-purple-50 hover:border-purple-300 bg-white shadow-sm transition-all duration-200"
+                            >
+                                {isRefreshingTable ? (
+                                    <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mr-2" />
+                                ) : (
+                                    <RotateCcw className="w-4 h-4 mr-2" />
+                                )}
+                                {isRefreshingTable ? 'Atualizando...' : 'Atualizar Tabela'}
+                            </Button>
+
                             <Button
                                 onClick={() => setShowAdicionarStaffModal(true)}
-                                className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                                disabled={isTableLoading}
+                                className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Plus className="w-4 h-4 mr-2" />
                                 Adicionar Staff
@@ -2174,36 +2292,69 @@ export default function EventoDetalhesPage() {
                     </div>
                 )}
 
-                {/* Tabela Virtualizada - Renderizar apenas quando necessário */}
-                {!isLoading && currentSelectedDay && (
-                    <VirtualizedParticipantsTable
-                        participants={filteredParticipants}
-                        selectedParticipants={selectedParticipants}
-                        currentSelectedDay={currentSelectedDay}
-                        hasCheckIn={hasCheckIn}
-                        hasCheckOut={hasCheckOut}
-                        onToggleParticipant={toggleParticipantSelection}
-                        onSelectAll={selectAllParticipants}
-                        onCheckIn={abrirCheckin}
-                        onCheckOut={abrirCheckout}
-                        onReset={abrirResetCheckin}
-                        onDelete={handleDeleteParticipant}
-                        onEdit={handleEditParticipant}
-                        credentials={Array.isArray(credentials) ? credentials : []}
-                        isLoading={isLoading}
-                        loading={loading}
-                    />
-                )}
+                {/* Tabela Virtualizada - Com loading overlay */}
+                <div className="relative">
+                    {currentSelectedDay && (
+                        <VirtualizedParticipantsTable
+                            participants={filteredParticipants}
+                            selectedParticipants={selectedParticipants}
+                            currentSelectedDay={currentSelectedDay}
+                            hasCheckIn={hasCheckIn}
+                            hasCheckOut={hasCheckOut}
+                            onToggleParticipant={toggleParticipantSelection}
+                            onSelectAll={selectAllParticipants}
+                            onCheckIn={abrirCheckin}
+                            onCheckOut={abrirCheckout}
+                            onReset={abrirResetCheckin}
+                            onDelete={handleDeleteParticipant}
+                            onEdit={handleEditParticipant}
+                            credentials={Array.isArray(credentials) ? credentials : []}
+                            isLoading={isTableLoading}
+                            loading={loading}
+                        />
+                    )}
 
-                {/* Loader quando carregando */}
-                {isLoading && (
-                    <div className="flex items-center justify-center py-8">
-                        <div className="text-center">
-                            <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-4"></div>
-                            <p className="text-gray-500">Carregando participantes...</p>
+                    {/* Loading overlay para tabela */}
+                    {isTableLoading && (
+                        <div className="absolute inset-0 bg-white bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+                            <div className="text-center p-6">
+                                <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-3"></div>
+                                <p className="text-purple-600 font-medium text-sm">Atualizando dados...</p>
+                                <p className="text-gray-500 text-xs mt-1">Carregando participantes</p>
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
+
+                    {/* Mensagem quando não há dados para mostrar */}
+                    {!isTableLoading && currentSelectedDay && filteredParticipants.length === 0 && (
+                        <div className="flex items-center justify-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                            <div className="text-center">
+                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <User className="w-8 h-8 text-gray-400" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                                    {hasActiveFilters ? 'Nenhum resultado encontrado' : 'Nenhum participante neste turno'}
+                                </h3>
+                                <p className="text-gray-500 text-sm max-w-md">
+                                    {hasActiveFilters
+                                        ? 'Tente ajustar os filtros de busca para encontrar participantes.'
+                                        : 'Não há participantes cadastrados para este turno. Adicione participantes ou selecione outro turno.'}
+                                </p>
+                                {hasActiveFilters && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={clearFilters}
+                                        className="mt-4"
+                                    >
+                                        <X className="w-4 h-4 mr-2" />
+                                        Limpar Filtros
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Dialog de Confirmação de Exclusão de Participante */}
