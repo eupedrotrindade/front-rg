@@ -35,10 +35,6 @@ interface SyncData {
     desmontagem: SimpleEventDay[]
   }
   participants: any[]
-  attendance: any[]
-  staff: any[]
-  vehicles: any[]
-  workTime: any[]
 }
 
 export default function RHSyncPage() {
@@ -81,10 +77,15 @@ export default function RHSyncPage() {
 
   // Preparar dados para sincronização
   const prepareSyncData = (): SyncData => {
-    const workTime = calculateWorkTime()
+    // Criar um mapa de attendance por participantId para facilitar a busca
+    const attendanceMap = new Map()
+    if (Array.isArray(attendance)) {
+      attendance.forEach((record: any) => {
+        attendanceMap.set(record.participantId, record)
+      })
+    }
 
     return {
-
       event: {
         id: evento?.id ?? '',
         name: evento?.name ?? '',
@@ -98,60 +99,37 @@ export default function RHSyncPage() {
         evento: evento?.evento ?? [],
         desmontagem: evento?.desmontagem ?? []
       },
-      participants: participants.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        cpf: p.cpf,
-        email: p.email,
-        phone: p.phone,
-        role: p.role,
-        company: p.company,
-        checkIn: p.checkIn,
-        checkOut: p.checkOut,
-        presenceConfirmed: p.presenceConfirmed,
-        shiftId: p.shiftId,
-        workDate: p.workDate,
-        workStage: p.workStage,
-        workPeriod: p.workPeriod,
-        shirtSize: p.shirtSize,
-        notes: p.notes,
-        photo: p.photo,
-        documentPhoto: p.documentPhoto,
-        validatedBy: p.validatedBy,
-        participantHash: p.participantHash
-      })),
-      attendance: Array.isArray(attendance) ? attendance : [],
-      staff: staff.map((s: any) => ({
-        id: s.id,
-        eventId: s.eventId,
-        name: s.name,
-        cpf: s.cpf,
-        email: s.email,
-        phone: s.phone,
-        profilePicture: s.profilePicture,
-        permissions: s.permissions,
-        supervisorName: s.supervisorName,
-        supervisorCpf: s.supervisorCpf,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt
-      })),
-      vehicles: vehicles.map((v: any) => ({
-        id: v.id,
-        event_id: v.event_id,
-        empresa: v.empresa,
-        modelo: v.modelo,
-        placa: v.placa,
-        tipo_de_credencial: v.tipo_de_credencial,
-        retirada: v.retirada,
-        dia: v.dia,
-        shiftId: v.shiftId,
-        workDate: v.workDate,
-        workStage: v.workStage,
-        workPeriod: v.workPeriod,
-        created_at: v.created_at,
-        updated_at: v.updated_at
-      })),
-      workTime
+      participants: participants.map((p: any) => {
+        // Buscar dados de attendance correspondente a este participante
+        const attendanceRecord = attendanceMap.get(p.id)
+
+        return {
+          id: p.id,
+          name: p.name,
+          cpf: p.cpf,
+          email: p.email,
+          phone: p.phone,
+          role: p.role,
+          company: p.company,
+          // Substituir checkIn e checkOut pelos dados do attendance se disponível
+          checkIn: attendanceRecord?.checkIn || p.checkIn,
+          checkOut: attendanceRecord?.checkOut || p.checkOut,
+          presenceConfirmed: p.presenceConfirmed,
+          shiftId: p.shiftId,
+          workDate: p.workDate,
+          workStage: p.workStage,
+          workPeriod: p.workPeriod,
+          shirtSize: p.shirtSize,
+          notes: p.notes,
+          photo: p.photo,
+          documentPhoto: p.documentPhoto,
+          validatedBy: p.validatedBy,
+          participantHash: p.participantHash,
+          // Adicionar informações adicionais do attendance se disponível
+          attendanceDate: attendanceRecord?.date,
+          attendanceStatus: attendanceRecord?.status
+        }
+      })
     }
   }
   // Função para sincronizar com sistema RH
@@ -163,7 +141,7 @@ export default function RHSyncPage() {
       const syncData = prepareSyncData()
 
       // Aqui você implementaria a chamada para sua API/webhook do sistema RH
-      const response = await fetch(`https://rg-new-backend.rkwxxj.easypanel.host/colaborador/import/sync`, {
+      const response = await fetch(`http://localhost:3334/colaborador/import/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -287,14 +265,15 @@ export default function RHSyncPage() {
                 <div className="text-sm text-muted-foreground">
                   <p>Os seguintes dados serão enviados para o sistema RH:</p>
                   <ul className="mt-2 space-y-1 ml-4">
-                    <li>• Dados do evento (nome, datas, local)</li>
-                    <li>• Fases do evento (montagem, evento, desmontagem)</li>
-                    <li>• Participantes ({stats.totalParticipants} registros)</li>
-                    <li>• Check-ins e Check-outs ({stats.totalAttendance} registros)</li>
-                    <li>• Operadores ({stats.totalStaff} registros)</li>
-                    <li>• Veículos ({stats.totalVehicles} registros)</li>
-                    <li>• Cálculo de tempo de trabalho ({Math.round(stats.workHoursTotal)} horas)</li>
+                    <li>• Dados do evento (nome, datas, local, fases)</li>
+                    <li>• Participantes com check-ins/outs integrados ({stats.totalParticipants} registros)</li>
                   </ul>
+                  <p className="mt-3 text-xs text-blue-600">
+                    ℹ️ Os dados de check-in e check-out foram integrados diretamente aos participantes correspondentes.
+                  </p>
+                  <p className="mt-2 text-xs text-gray-600">
+                    Inclui informações completas do evento e fases (montagem, evento, desmontagem) com todos os participantes.
+                  </p>
                 </div>
 
                 {syncStatus === 'success' && (

@@ -124,8 +124,8 @@ const EventSidebar = ({
             icon: Settings,
             description: 'Configurações gerais'
         }
-        // ,
-        // { name: "RG sincronização", href: `/eventos/${eventId}/rg-sync`, icon: RefreshCcw, description: 'Sincronização de dados CRED - RH' }
+        ,
+        { name: "RG sincronização", href: `/eventos/${eventId}/rg-sync`, icon: RefreshCcw, description: 'Sincronização de dados CRED - RH' }
         // {
         //     name: 'Configurações',
         //     href: `/eventos/${eventId}/configuracoes`,
