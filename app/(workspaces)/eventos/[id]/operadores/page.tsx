@@ -1118,6 +1118,13 @@ export default function OperadoresPage() {
         return null
     }
 
+    // Função para obter ações do operador apenas para este evento
+    const getOperatorEventActions = (operator: Operator) => {
+        if (!operator.acoes || !Array.isArray(operator.acoes)) return []
+        
+        return operator.acoes.filter((action: any) => action.eventId === eventId)
+    }
+
     // Função para coletar apenas as ações deste evento específico
     const collectAllActions = useMemo(() => {
         if (!operadores || operadores.length === 0) return []
@@ -1478,7 +1485,7 @@ export default function OperadoresPage() {
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm text-gray-600">Ações Realizadas:</span>
                                                 <Badge variant="outline" className="text-gray-600 border-gray-200">
-                                                    {operador.acoes?.length || 0} ações
+                                                    {getOperatorEventActions(operador).length} ações
                                                 </Badge>
                                             </div>
                                         </div>
@@ -1740,27 +1747,33 @@ export default function OperadoresPage() {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Ações Realizadas</label>
+                                    <label className="block text-sm font-medium text-gray-700">Ações Realizadas (neste evento)</label>
                                     <div className="mt-2 max-h-60 overflow-y-auto">
-                                        {selectedOperator.acoes?.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {selectedOperator.acoes.map((acao: any, index: number) => (
-                                                    <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                                                        <div className="flex justify-between items-start">
-                                                            <div>
-                                                                <p className="font-medium">{acao.type}</p>
-                                                                <p className="text-sm text-gray-600">{acao.timestamp}</p>
+                                        {(() => {
+                                            const eventActions = getOperatorEventActions(selectedOperator);
+                                            return eventActions.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    {eventActions.map((acao: any, index: number) => (
+                                                        <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    <p className="font-medium">{acao.type}</p>
+                                                                    <p className="text-sm text-gray-600">{acao.timestamp}</p>
+                                                                    {acao.staffName && (
+                                                                        <p className="text-sm text-blue-600">Para: {acao.staffName}</p>
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                                                    {acao.tabela || 'Ação'}
+                                                                </span>
                                                             </div>
-                                                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                                                {acao.tabela}
-                                                            </span>
                                                         </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-gray-500">Nenhuma ação registrada</p>
-                                        )}
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-gray-500">Nenhuma ação registrada neste evento</p>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             </div>
