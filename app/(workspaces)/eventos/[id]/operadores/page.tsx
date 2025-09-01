@@ -754,7 +754,8 @@ export default function OperadoresPage() {
 
 
 
-    const formatCPF = (cpf: string): string => {
+    const formatCPF = (cpf: string | undefined | null): string => {
+        if (!cpf) return "-"
         return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
     }
 
