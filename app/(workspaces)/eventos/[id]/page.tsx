@@ -40,6 +40,8 @@ import { useDeleteEventParticipant } from '@/features/eventos/api/mutation/use-d
 import { useDeleteParticipantFromShift } from '@/features/eventos/api/mutation/use-delete-participant-from-shift'
 import { useDeleteParticipantAllShifts } from '@/features/eventos/api/mutation/use-delete-participant-all-shifts'
 import { useUpdateEventParticipant } from '@/features/eventos/api/mutation/use-update-event-participant'
+import { useUpdateEmpresa } from '@/features/eventos/api/mutation/use-update-empresa'
+import { useCreateCredential, useUpdateCredential } from '@/features/eventos/api/mutation/use-credential-mutations'
 import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coordenadores-by-event'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/use-event-attendance'
@@ -83,6 +85,7 @@ import { useCredentials } from '@/features/eventos/api/query'
 import { useOptimizedFilters } from '@/hooks/use-optimized-filters'
 import '@/styles/virtualized-table.css'
 import { formatEventDate } from '@/lib/utils'
+import { apiClient } from '@/lib/api-client'
 
 export default function EventoDetalhesPage() {
     const params = useParams()
@@ -130,6 +133,9 @@ export default function EventoDetalhesPage() {
     const { data: empresas = [], isLoading: empresasLoading } =
         useEmpresasByEvent(String(params.id))
     const { mutate: updateParticipant } = useUpdateEventParticipant()
+    const { mutate: updateEmpresa } = useUpdateEmpresa()
+    const { mutate: createCredential } = useCreateCredential()
+    const { mutate: updateCredential } = useUpdateCredential()
     const checkInMutation = useCheckIn()
     const checkOutMutation = useCheckOut()
     const deleteAttendanceMutation = useDeleteEventAttendance()
@@ -201,6 +207,11 @@ export default function EventoDetalhesPage() {
 
     // Estado para controle de refresh da tabela
     const [isRefreshingTable, setIsRefreshingTable] = useState(false)
+
+    // Estados para gerenciamento de duplicatas do turno atual
+    const [showDuplicatesManagerModal, setShowDuplicatesManagerModal] = useState(false)
+    const [duplicatesManagerLoading, setDuplicatesManagerLoading] = useState(false)
+    const [selectedDuplicatesForRemoval, setSelectedDuplicatesForRemoval] = useState<Set<string>>(new Set())
 
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
@@ -948,7 +959,7 @@ export default function EventoDetalhesPage() {
         return duplicates
     }, [participantsArray])
 
-    // Memoizar duplicados para evitar recálculo custoso
+    // Memoizar duplicados para evitar recálculo custoso (todos os participantes)
     const duplicates = useMemo(() => {
         const dups: Array<{
             cpf: string
@@ -981,6 +992,212 @@ export default function EventoDetalhesPage() {
 
         return dups
     }, [participantsArray])
+
+    // Função para normalizar CPF para comparação (remove formatação)
+    const normalizeCpf = useCallback((cpf: string): string => {
+        if (!cpf) return ''
+        return cpf.replace(/\D/g, '') // Remove tudo que não for dígito
+    }, [])
+
+    // Função para normalizar nome para comparação (minúscula, sem acentos, sem espaços extras)
+    const normalizeName = useCallback((name: string): string => {
+        if (!name) return ''
+        return name
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+            .replace(/\s+/g, ' ') // Remove espaços extras
+            .trim()
+    }, [])
+
+    // 🆕 Detectar duplicatas especificamente no turno atual
+    const currentShiftDuplicates = useMemo(() => {
+        const dups: Array<{
+            cpf?: string
+            name?: string
+            participants: EventParticipant[]
+            reason: string
+        }> = []
+
+        if (!participantesDoDia || participantesDoDia.length === 0) {
+            return dups
+        }
+
+        // Agrupar por CPF normalizado
+        const participantsByCpf = new Map<string, EventParticipant[]>()
+        // Agrupar por nome normalizado (para casos sem CPF)
+        const participantsByName = new Map<string, EventParticipant[]>()
+
+        participantesDoDia.forEach(participant => {
+            // Verificar duplicatas por CPF
+            if (participant.cpf && participant.cpf.trim()) {
+                const normalizedCpf = normalizeCpf(participant.cpf)
+                if (normalizedCpf) {
+                    if (!participantsByCpf.has(normalizedCpf)) {
+                        participantsByCpf.set(normalizedCpf, [])
+                    }
+                    participantsByCpf.get(normalizedCpf)!.push(participant)
+                }
+            }
+
+            // Verificar duplicatas por nome (para casos sem CPF)
+            if (participant.name && participant.name.trim()) {
+                const normalizedName = normalizeName(participant.name)
+                if (normalizedName) {
+                    if (!participantsByName.has(normalizedName)) {
+                        participantsByName.set(normalizedName, [])
+                    }
+                    participantsByName.get(normalizedName)!.push(participant)
+                }
+            }
+        })
+
+        // Encontrar duplicados por CPF
+        participantsByCpf.forEach((participants, cpf) => {
+            if (participants.length > 1) {
+                dups.push({
+                    cpf: participants[0].cpf,
+                    participants,
+                    reason: 'CPF duplicado no turno atual',
+                })
+            }
+        })
+
+        // Encontrar duplicados por nome (apenas para participantes sem CPF ou CPF inválido)
+        participantsByName.forEach((participants, name) => {
+            if (participants.length > 1) {
+                // Verificar se não são duplicatas já capturadas por CPF
+                const hasValidCpfDuplicates = participants.some(p => 
+                    p.cpf && p.cpf.trim() && normalizeCpf(p.cpf)
+                )
+                
+                if (!hasValidCpfDuplicates) {
+                    dups.push({
+                        name: participants[0].name,
+                        participants,
+                        reason: 'Nome duplicado no turno atual (sem CPF válido)',
+                    })
+                }
+            }
+        })
+
+        return dups
+    }, [participantesDoDia, normalizeCpf, normalizeName])
+
+    // 🆕 Funções para gerenciar duplicatas do turno atual
+    const handleToggleDuplicateSelection = useCallback((participantId: string) => {
+        setSelectedDuplicatesForRemoval(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(participantId)) {
+                newSet.delete(participantId)
+            } else {
+                newSet.add(participantId)
+            }
+            return newSet
+        })
+    }, [])
+
+    const handleSelectAllDuplicatesInGroup = useCallback((participants: EventParticipant[], keepFirst: boolean = true) => {
+        setSelectedDuplicatesForRemoval(prev => {
+            const newSet = new Set(prev)
+            const participantsToSelect = keepFirst ? participants.slice(1) : participants
+            
+            participantsToSelect.forEach(p => {
+                newSet.add(p.id)
+            })
+            return newSet
+        })
+    }, [])
+
+    const handleClearDuplicateSelection = useCallback(() => {
+        setSelectedDuplicatesForRemoval(new Set())
+    }, [])
+
+    const handleRemoveSelectedDuplicates = useCallback(async () => {
+        if (selectedDuplicatesForRemoval.size === 0) {
+            toast.error('Nenhum participante selecionado para remoção')
+            return
+        }
+
+        setDuplicatesManagerLoading(true)
+        let successCount = 0
+        let errorCount = 0
+
+        try {
+            for (const participantId of Array.from(selectedDuplicatesForRemoval)) {
+                try {
+                    // Encontrar o participante para determinar o método de remoção
+                    const participant = participantesDoDia.find(p => p.id === participantId)
+                    if (!participant) {
+                        errorCount++
+                        continue
+                    }
+
+                    const hash = participant.participantHash || `${participant.cpf}_${params.id}`
+
+                    await new Promise<void>((resolve, reject) => {
+                        // Remover apenas do turno atual
+                        deleteFromShift(
+                            {
+                                eventId: String(params.id),
+                                participantHash: hash,
+                                shiftId: currentSelectedDay,
+                                performedBy: 'remocao-duplicatas',
+                            },
+                            {
+                                onSuccess: () => {
+                                    successCount++
+                                    resolve()
+                                },
+                                onError: (error) => {
+                                    console.error(`Erro ao remover duplicata ${participant.name}:`, error)
+                                    errorCount++
+                                    reject(error)
+                                }
+                            }
+                        )
+                    })
+
+                    // Delay para evitar sobrecarga
+                    await new Promise(resolve => setTimeout(resolve, 100))
+                } catch (error) {
+                    console.error(`Erro ao processar remoção de duplicata:`, error)
+                    errorCount++
+                }
+            }
+
+            if (successCount > 0) {
+                const { dateFormatted, stage, period } = parseShiftId(currentSelectedDay)
+                const stageLabel = stage === 'montagem' ? 'Montagem' : 
+                    stage === 'evento' ? 'Evento' : 
+                    stage === 'desmontagem' ? 'Desmontagem' : stage
+                const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno'
+
+                toast.success(
+                    `✅ ${successCount} duplicata(s) removida(s) do turno ${dateFormatted} (${stageLabel} - ${periodLabel})!`
+                )
+            }
+
+            if (errorCount > 0) {
+                toast.error(`❌ ${errorCount} erro(s) durante a remoção de duplicatas`)
+            }
+
+            setShowDuplicatesManagerModal(false)
+            setSelectedDuplicatesForRemoval(new Set())
+        } catch (error) {
+            console.error('Erro geral na remoção de duplicatas:', error)
+            toast.error('Erro ao remover duplicatas')
+        }
+
+        setDuplicatesManagerLoading(false)
+    }, [
+        selectedDuplicatesForRemoval, 
+        participantesDoDia, 
+        params.id, 
+        currentSelectedDay, 
+        deleteFromShift, 
+        parseShiftId
+    ])
 
     // Handlers memoizados
     const handleDeleteParticipant = useCallback(
@@ -1636,7 +1853,200 @@ export default function EventoDetalhesPage() {
         setShowReplicateDialog(true)
     }
 
-    // Função para replicar staff rapidamente - versão melhorada com suporte a turnos
+    // Função para verificar se participante já existe no turno de destino
+    const participantExistsInTarget = useCallback((participant: EventParticipant, targetParticipants: EventParticipant[]): boolean => {
+        const sourceCpf = normalizeCpf(participant.cpf || '')
+        const sourceName = normalizeName(participant.name || '')
+
+        return targetParticipants.some(target => {
+            const targetCpf = normalizeCpf(target.cpf || '')
+            const targetName = normalizeName(target.name || '')
+
+            // Verifica por CPF primeiro (mais confiável)
+            if (sourceCpf && targetCpf && sourceCpf === targetCpf) {
+                return true
+            }
+
+            // Se não tem CPF ou não bateu, verifica por nome
+            if (sourceName && targetName && sourceName === targetName) {
+                return true
+            }
+
+            return false
+        })
+    }, [normalizeCpf, normalizeName])
+
+    // Função para replicar empresas no turno destino
+    const replicateCompaniesForShift = useCallback(async (participantsToReplicate: EventParticipant[], targetShiftId: string, targetDateISO: string) => {
+        const uniqueCompanies = new Set<string>()
+        const companiesNeedingReplication: { name: string; empresa: any }[] = []
+
+        // Extrair empresas únicas dos participantes que serão replicados
+        participantsToReplicate.forEach(participant => {
+            if (participant.company && participant.company.trim()) {
+                uniqueCompanies.add(participant.company.trim())
+            }
+        })
+
+        if (uniqueCompanies.size === 0) {
+            console.log('📋 Nenhuma empresa para replicar')
+            return { replicatedCount: 0, skippedCount: 0 }
+        }
+
+        console.log(`🏢 Analisando ${uniqueCompanies.size} empresas únicas para replicação`)
+
+        // Para cada empresa única, verificar se já existe no turno destino
+        for (const companyName of uniqueCompanies) {
+            // Encontrar a empresa completa no array de empresas
+            const empresa = empresasArray.find(emp => emp.nome === companyName)
+
+            if (empresa) {
+                // Verificar se já trabalha no turno destino
+                const alreadyWorksInTargetShift = Array.isArray(empresa.days) && empresa.days.includes(targetDateISO)
+
+                if (!alreadyWorksInTargetShift) {
+                    companiesNeedingReplication.push({ name: companyName, empresa })
+                    console.log(`➕ Empresa "${companyName}" precisa ser adicionada ao turno de destino`)
+                } else {
+                    console.log(`✅ Empresa "${companyName}" já trabalha no turno de destino`)
+                }
+            } else {
+                console.log(`⚠️ Empresa "${companyName}" não encontrada no sistema`)
+            }
+        }
+
+        // Replicar empresas que precisam
+        let replicatedCompaniesCount = 0
+        const skippedCompaniesCount = uniqueCompanies.size - companiesNeedingReplication.length
+
+        for (const { name, empresa } of companiesNeedingReplication) {
+            try {
+                console.log(`🔄 Adicionando "${name}" ao turno de destino`)
+
+                // Criar nova lista de dias incluindo o turno destino
+                const updatedDays = Array.isArray(empresa.days) ? [...empresa.days, targetDateISO] : [targetDateISO]
+
+                await new Promise<void>((resolve, reject) => {
+                    updateEmpresa(
+                        {
+                            id: empresa.id,
+                            data: {
+                                days: updatedDays
+                            }
+                        },
+                        {
+                            onSuccess: () => {
+                                console.log(`✅ Empresa "${name}" adicionada ao turno de destino`)
+                                replicatedCompaniesCount++
+                                resolve()
+                            },
+                            onError: (error) => {
+                                console.error(`❌ Erro ao replicar empresa "${name}":`, error)
+                                reject(error)
+                            }
+                        }
+                    )
+                })
+
+                // Delay para evitar sobrecarga
+                await new Promise(resolve => setTimeout(resolve, 200))
+            } catch (error) {
+                console.error(`💥 Erro ao replicar empresa "${name}":`, error)
+            }
+        }
+
+        return {
+            replicatedCount: replicatedCompaniesCount,
+            skippedCount: skippedCompaniesCount
+        }
+    }, [empresasArray, updateEmpresa])
+
+    // Função para replicar credenciais no turno destino
+    const replicateCredentialsForShift = useCallback(async (participantsToReplicate: EventParticipant[], targetShiftId: string, targetDateISO: string, targetStage: string, targetPeriod: string) => {
+        const uniqueCredentials = new Set<string>()
+        const credentialsNeedingReplication: { id: string; credential: any }[] = []
+
+        // Extrair credenciais únicas dos participantes que serão replicados
+        participantsToReplicate.forEach(participant => {
+            if (participant.credentialId) {
+                uniqueCredentials.add(participant.credentialId)
+            }
+        })
+
+        if (uniqueCredentials.size === 0) {
+            console.log('🎫 Nenhuma credencial para replicar')
+            return { replicatedCount: 0, skippedCount: 0 }
+        }
+
+        console.log(`🎫 Analisando ${uniqueCredentials.size} credenciais únicas para replicação`)
+
+        // Para cada credencial única, verificar se já existe no turno destino
+        for (const credentialId of uniqueCredentials) {
+            // Encontrar a credencial completa no array de credenciais
+            const credential = credentialsArray.find(cred => cred.id === credentialId)
+
+            if (credential) {
+                // Verificar se já trabalha no turno destino
+                const alreadyWorksInTargetShift = Array.isArray(credential.days_works) && credential.days_works.includes(targetShiftId)
+
+                if (!alreadyWorksInTargetShift) {
+                    credentialsNeedingReplication.push({ id: credentialId, credential })
+                    console.log(`➕ Credencial "${credential.nome}" precisa ser adicionada ao turno de destino`)
+                } else {
+                    console.log(`✅ Credencial "${credential.nome}" já trabalha no turno de destino`)
+                }
+            } else {
+                console.log(`⚠️ Credencial ID "${credentialId}" não encontrada no sistema`)
+            }
+        }
+
+        // Replicar credenciais que precisam
+        let replicatedCredentialsCount = 0
+        const skippedCredentialsCount = uniqueCredentials.size - credentialsNeedingReplication.length
+
+        for (const { id, credential } of credentialsNeedingReplication) {
+            try {
+                console.log(`🔄 Adicionando credencial "${credential.nome}" ao turno de destino`)
+
+                // Criar nova lista de dias incluindo o turno destino
+                const updatedDaysWorks = Array.isArray(credential.days_works) ? [...credential.days_works, targetShiftId] : [targetShiftId]
+
+                await new Promise<void>((resolve, reject) => {
+                    updateCredential(
+                        {
+                            id: credential.id,
+                            data: {
+                                days_works: updatedDaysWorks
+                            }
+                        },
+                        {
+                            onSuccess: () => {
+                                console.log(`✅ Credencial "${credential.nome}" adicionada ao turno de destino`)
+                                replicatedCredentialsCount++
+                                resolve()
+                            },
+                            onError: (error) => {
+                                console.error(`❌ Erro ao replicar credencial "${credential.nome}":`, error)
+                                reject(error)
+                            }
+                        }
+                    )
+                })
+
+                // Delay para evitar sobrecarga
+                await new Promise(resolve => setTimeout(resolve, 200))
+            } catch (error) {
+                console.error(`💥 Erro ao replicar credencial "${credential.nome}":`, error)
+            }
+        }
+
+        return {
+            replicatedCount: replicatedCredentialsCount,
+            skippedCount: skippedCredentialsCount
+        }
+    }, [credentialsArray, updateCredential])
+
+    // Função para replicar staff rapidamente - versão corrigida com verificação de duplicatas
     const handleReplicateStaff = async () => {
         if (!replicateSourceDay || !selectedDay) return
 
@@ -1686,9 +2096,127 @@ export default function EventoDetalhesPage() {
                 return
             }
 
+            // 🆕 BUSCAR PARTICIPANTES JÁ EXISTENTES NO TURNO DE DESTINO (BUSCA ATIVA)
+            console.log('🔍 Fazendo busca ATIVA de participantes já existentes no turno de destino...')
+
+            // Fazer busca ativa via API para garantir dados atualizados
+            const targetShiftParticipants = await queryClient.fetchQuery<EventParticipant[]>({
+                queryKey: [
+                    "event-participants-by-shift",
+                    { eventId: String(params.id), shiftId: replicateSourceDay, search: undefined, sortBy: "name", sortOrder: "asc" }
+                ],
+                queryFn: async () => {
+                    try {
+                        console.log('📡 Fazendo requisição API para turno de destino:', replicateSourceDay)
+
+                        const { data } = await apiClient.get<{
+                            data: EventParticipant[];
+                            total: number;
+                        }>(
+                            `/event-participants/event/${String(params.id)}/shift/${encodeURIComponent(replicateSourceDay)}`
+                        );
+
+                        console.log(`✅ Resposta API recebida para turno destino:`, {
+                            shiftId: replicateSourceDay,
+                            participantesEncontrados: data?.data?.length || 0,
+                            estruturaData: !!data?.data,
+                            tipoResposta: typeof data
+                        });
+
+                        // Verificar se a resposta tem a estrutura esperada
+                        if (data && typeof data === "object" && "data" in data) {
+                            return Array.isArray(data.data) ? data.data : [];
+                        }
+
+                        // Fallback para resposta direta (compatibilidade)
+                        if (Array.isArray(data)) {
+                            return data;
+                        }
+
+                        return [];
+                    } catch (error: any) {
+                        if (error?.status === 404) {
+                            console.log(`📋 Nenhum participante encontrado para o turno ${replicateSourceDay} (turno vazio)`);
+                            return [];
+                        }
+                        console.error("❌ Erro ao buscar participantes do turno de destino:", error);
+                        throw new Error("Erro ao buscar participantes do turno de destino");
+                    }
+                },
+                staleTime: 0 // Forçar busca ativa, ignorar cache
+            })
+
+            console.log('📊 Participantes encontrados no turno de destino:', {
+                turnoDestino: replicateSourceDay,
+                totalParticipantes: targetShiftParticipants.length,
+                todosParticipantes: targetShiftParticipants.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    cpf: p.cpf,
+                    company: p.company
+                }))
+            })
+
+            console.log('📊 Análise de duplicatas:', {
+                participantesOrigem: participantsFromCurrentShift.length,
+                participantesDestino: targetShiftParticipants.length
+            })
+
+            // Filtrar participantes que NÃO existem no destino
+            const participantsToReplicate = participantsFromCurrentShift.filter(participant => {
+                const exists = participantExistsInTarget(participant, targetShiftParticipants)
+                if (exists) {
+                    console.log(`⏭️ PULANDO ${participant.name} (CPF: ${participant.cpf}) - já existe no turno de destino`)
+                }
+                return !exists
+            })
+
+            const skippedCount = participantsFromCurrentShift.length - participantsToReplicate.length
+
+            console.log('📈 Resultado da análise:', {
+                totalOrigem: participantsFromCurrentShift.length,
+                jaExistem: skippedCount,
+                paraReplicar: participantsToReplicate.length
+            })
+
+            if (participantsToReplicate.length === 0) {
+                toast.info('Todos os participantes já existem no turno de destino. Nada para replicar.')
+                setReplicatingStaff(null)
+                return
+            }
+
+            // 🆕 REPLICAR EMPRESAS E CREDENCIAIS PRIMEIRO
+            console.log('🏢 Iniciando replicação de empresas e credenciais...')
+
+            let companiesResult = { replicatedCount: 0, skippedCount: 0 }
+            let credentialsResult = { replicatedCount: 0, skippedCount: 0 }
+
+            try {
+                // Replicar empresas
+                companiesResult = await replicateCompaniesForShift(
+                    participantsToReplicate,
+                    replicateSourceDay,
+                    targetShiftInfo.dateISO
+                )
+                console.log('🏢 Resultado empresas:', companiesResult)
+
+                // Replicar credenciais  
+                credentialsResult = await replicateCredentialsForShift(
+                    participantsToReplicate,
+                    replicateSourceDay,
+                    targetShiftInfo.dateISO,
+                    targetShiftInfo.stage,
+                    targetShiftInfo.period
+                )
+                console.log('🎫 Resultado credenciais:', credentialsResult)
+            } catch (error) {
+                console.error('❌ Erro ao replicar empresas/credenciais:', error)
+                toast.error('Erro ao replicar empresas ou credenciais. Continuando com participantes...')
+            }
+
             // Inicializar dados de progresso
             setProgressData({
-                total: participantsFromCurrentShift.length,
+                total: participantsToReplicate.length,
                 current: 0,
                 processed: 0,
                 currentParticipant: '',
@@ -1699,9 +2227,9 @@ export default function EventoDetalhesPage() {
             let successCount = 0
 
 
-            // Para cada participante do turno atual, replicar para o turno de destino
-            for (let i = 0; i < participantsFromCurrentShift.length; i++) {
-                const participant = participantsFromCurrentShift[i]
+            // Para cada participante que NÃO existe no destino, replicar
+            for (let i = 0; i < participantsToReplicate.length; i++) {
+                const participant = participantsToReplicate[i]
                 const currentParticipantName = participant.name || 'Participante sem nome'
 
                 // Atualizar progresso visual
@@ -1711,13 +2239,10 @@ export default function EventoDetalhesPage() {
                     currentParticipant: currentParticipantName,
                 }))
 
-                // Verificar se o participante já existe no turno de destino
-                // Para isso, precisamos verificar se já existe uma cópia deste participante (mesmo CPF) no turno de destino
-                console.log(`🔍 Verificando se ${participant.name} (CPF: ${participant.cpf}) já existe no turno de destino`)
+                console.log(`➕ Replicando ${participant.name} (CPF: ${participant.cpf}) para o turno de destino`)
 
-                // Vamos sempre criar uma nova cópia para o turno de destino
                 try {
-                    console.log(`➕ Criando cópia de ${participant.name} para o turno de destino:`, {
+                    console.log(`🔄 Criando cópia de ${participant.name} para o turno de destino:`, {
                         origem: selectedDay,
                         destino: replicateSourceDay,
                         cpf: participant.cpf,
@@ -1811,13 +2336,52 @@ export default function EventoDetalhesPage() {
                 const sourceDescription = `${sourceShiftInfo.dateFormatted} (${sourceShiftInfo.stage.toUpperCase()} - ${sourceShiftInfo.period === 'diurno' ? 'Diurno' : 'Noturno'})`
                 const targetDescription = `${targetShiftInfo.dateFormatted} (${targetShiftInfo.stage.toUpperCase()} - ${targetShiftInfo.period === 'diurno' ? 'Diurno' : 'Noturno'})`
 
-                if (successCount > 0) {
-                    toast.success(
-                        `🎉 Replicação concluída!\n` +
-                        `📊 ${successCount} cópias de participantes criadas\n` +
-                        `📅 De: ${sourceDescription}\n` +
-                        `🎯 Para: ${targetDescription}`
-                    )
+                // Construir mensagem com detalhes completos sobre replicação
+                let message = `🎉 Replicação concluída!\n`
+                message += `📊 Participantes:\n`
+                message += `✅ ${successCount} criados\n`
+
+                if (skippedCount > 0) {
+                    message += `⏭️ ${skippedCount} pulados (já existiam)\n`
+                }
+
+                // Adicionar informações sobre empresas
+                if (companiesResult.replicatedCount > 0 || companiesResult.skippedCount > 0) {
+                    message += `🏢 Empresas:\n`
+                    if (companiesResult.replicatedCount > 0) {
+                        message += `✅ ${companiesResult.replicatedCount} adicionadas ao turno\n`
+                    }
+                    if (companiesResult.skippedCount > 0) {
+                        message += `⏭️ ${companiesResult.skippedCount} já trabalhavam no turno\n`
+                    }
+                }
+
+                // Adicionar informações sobre credenciais
+                if (credentialsResult.replicatedCount > 0 || credentialsResult.skippedCount > 0) {
+                    message += `🎫 Credenciais:\n`
+                    if (credentialsResult.replicatedCount > 0) {
+                        message += `✅ ${credentialsResult.replicatedCount} adicionadas ao turno\n`
+                    }
+                    if (credentialsResult.skippedCount > 0) {
+                        message += `⏭️ ${credentialsResult.skippedCount} já trabalhavam no turno\n`
+                    }
+                }
+
+                message += `📈 Total processado: ${participantsFromCurrentShift.length} participantes\n`
+                message += `📅 De: ${sourceDescription}\n`
+                message += `🎯 Para: ${targetDescription}`
+
+                if (successCount > 0 || skippedCount > 0) {
+                    if (successCount > 0) {
+                        toast.success(message)
+                    } else {
+                        toast.info(
+                            `ℹ️ Replicação concluída!\n` +
+                            `⏭️ Todos os ${skippedCount} participantes já existiam no turno de destino.\n` +
+                            `📅 De: ${sourceDescription}\n` +
+                            `🎯 Para: ${targetDescription}`
+                        )
+                    }
                 } else {
                     toast.warning('Nenhuma cópia de participante foi criada. Verifique os dados.')
                 }
@@ -1834,6 +2398,14 @@ export default function EventoDetalhesPage() {
                 })
                 queryClient.invalidateQueries({
                     queryKey: ['event-participants-by-shift', String(params.id), selectedDay]
+                })
+
+                // Invalidar queries de empresas e credenciais
+                queryClient.invalidateQueries({
+                    queryKey: ['empresas-by-event', String(params.id)]
+                })
+                queryClient.invalidateQueries({
+                    queryKey: ['credentials', String(params.id)]
                 })
 
             }, 800)
@@ -2040,18 +2612,19 @@ export default function EventoDetalhesPage() {
                                 Análises
                             </Button>
 
-                            {/* {duplicates.length > 0 && (
+                            {/* 🆕 Botão de duplicatas do turno atual */}
+                            {currentShiftDuplicates.length > 0 && (
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 bg-white shadow-sm transition-all duration-200"
-                                    onClick={() => setShowDuplicatesModal(true)}
+                                    onClick={() => setShowDuplicatesManagerModal(true)}
                                     disabled={isLoading}
                                 >
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                    Remover Duplicados ({duplicates.length})
+                                    <Users className="w-4 h-4 mr-2" />
+                                    Duplicatas no Turno ({currentShiftDuplicates.length})
                                 </Button>
-                            )} */}
+                            )}
                         </div>
 
                         <div className="flex items-center gap-3">
@@ -3359,6 +3932,191 @@ export default function EventoDetalhesPage() {
                                         0,
                                     )}{' '}
                                     Duplicados
+                                </>
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* 🆕 Modal de Gerenciamento de Duplicatas do Turno Atual */}
+            <AlertDialog open={showDuplicatesManagerModal} onOpenChange={setShowDuplicatesManagerModal}>
+                <AlertDialogContent className="bg-white text-black max-w-5xl max-h-[85vh] overflow-y-auto">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <Users className="h-5 w-5 text-red-600" />
+                            Gerenciar Duplicatas do Turno
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Foram encontradas {currentShiftDuplicates.length} duplicatas no turno atual. 
+                            Selecione quais participantes deseja remover.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="space-y-6 py-4">
+                        {/* Estatísticas */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Users className="h-4 w-4 text-blue-600" />
+                                        <span className="text-sm font-medium text-blue-800">
+                                            Turno Atual: {currentSelectedDay}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-blue-700">
+                                        {currentShiftDuplicates.length} grupo(s) de duplicatas • {selectedDuplicatesForRemoval.size} selecionado(s) para remoção
+                                    </div>
+                                </div>
+                                
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            // Manter apenas o primeiro participante de cada grupo
+                                            const toRemove = new Set<string>()
+                                            currentShiftDuplicates.forEach(duplicate => {
+                                                // Selecionar todos exceto o primeiro (índice 0)
+                                                duplicate.participants.slice(1).forEach(participant => {
+                                                    toRemove.add(participant.id)
+                                                })
+                                            })
+                                            setSelectedDuplicatesForRemoval(toRemove)
+                                        }}
+                                        disabled={duplicatesManagerLoading || currentShiftDuplicates.length === 0}
+                                        className="bg-yellow-50 text-yellow-700 border-yellow-300 hover:bg-yellow-100"
+                                    >
+                                        Manter 1º para Todos
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleClearDuplicateSelection}
+                                        disabled={duplicatesManagerLoading}
+                                    >
+                                        Limpar Seleção
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Lista de duplicatas */}
+                        {currentShiftDuplicates.map((duplicate, index) => (
+                            <div key={index} className="border border-red-200 rounded-lg p-4 bg-red-50">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Users className="h-4 w-4 text-red-600" />
+                                        <span className="text-sm font-medium text-red-800">
+                                            {duplicate.cpf ? `CPF: ${duplicate.cpf}` : `Nome: ${duplicate.name}`}
+                                        </span>
+                                        <span className="text-xs bg-red-200 text-red-700 px-2 py-1 rounded">
+                                            {duplicate.reason}
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSelectAllDuplicatesInGroup(duplicate.participants, true)}
+                                            disabled={duplicatesManagerLoading}
+                                        >
+                                            Manter 1º
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSelectAllDuplicatesInGroup(duplicate.participants, false)}
+                                            disabled={duplicatesManagerLoading}
+                                        >
+                                            Selecionar Todos
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {duplicate.participants.map((participant, participantIndex) => {
+                                        const isSelected = selectedDuplicatesForRemoval.has(participant.id)
+                                        const isFirst = participantIndex === 0
+                                        
+                                        return (
+                                            <div
+                                                key={participant.id}
+                                                className={`p-3 rounded border cursor-pointer transition-all ${
+                                                    isSelected 
+                                                        ? 'bg-red-100 border-red-400 ring-2 ring-red-200' 
+                                                        : isFirst
+                                                            ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                                                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                                                }`}
+                                                onClick={() => handleToggleDuplicateSelection(participant.id)}
+                                            >
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-sm font-medium truncate">
+                                                        {participant.name}
+                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        {isFirst && (
+                                                            <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded">
+                                                                PRIMEIRO
+                                                            </span>
+                                                        )}
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => handleToggleDuplicateSelection(participant.id)}
+                                                            className="w-4 h-4"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="text-xs text-gray-600 space-y-1">
+                                                    {participant.cpf && <div>CPF: {participant.cpf}</div>}
+                                                    <div>Função: {participant.role || 'N/A'}</div>
+                                                    <div>Empresa: {participant.company || 'N/A'}</div>
+                                                    <div>ID: {participant.id}</div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+
+                        {/* Aviso */}
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <User className="h-4 w-4 text-yellow-600" />
+                                <span className="text-sm font-medium text-yellow-800">
+                                    ⚠️ Atenção - Remoção do Turno
+                                </span>
+                            </div>
+                            <div className="text-xs text-yellow-700 space-y-1">
+                                <div>• Os participantes selecionados serão removidos APENAS deste turno</div>
+                                <div>• Se o participante trabalha em outros turnos, ele será mantido neles</div>
+                                <div>• Dados de check-in/check-out deste turno serão perdidos</div>
+                                <div>• Esta ação ficará registrada no histórico do sistema</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={duplicatesManagerLoading}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleRemoveSelectedDuplicates}
+                            disabled={duplicatesManagerLoading || selectedDuplicatesForRemoval.size === 0}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            {duplicatesManagerLoading ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Removendo...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Remover {selectedDuplicatesForRemoval.size} Selecionado(s)
                                 </>
                             )}
                         </AlertDialogAction>
