@@ -4,7 +4,7 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useCredentials } from "@/features/eventos/api/query/use-credentials";
-import { useDeleteCredential, useSetCredentialActive, useUpdateCredential } from "@/features/eventos/api/mutation/use-credential-mutations";
+import { useDeleteCredential, useSetCredentialActive, useUpdateCredential, useCreateCredential } from "@/features/eventos/api/mutation/use-credential-mutations";
 import { useEventos } from "@/features/eventos/api/query/use-eventos";
 import { Credential, UpdateCredentialRequest, Event } from "@/features/eventos/types";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Edit, Trash2, Search, Calendar, Clock, Wrench, Truck, Sun, Moon, Check, X, Building, MoreHorizontal } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Edit, Trash2, Search, Calendar, Clock, Wrench, Truck, Sun, Moon, Check, X, Building, MoreHorizontal, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { formatEventDate } from "@/lib/utils";
 import Link from "next/link";
@@ -112,6 +113,12 @@ export const CredentialsDashboard = () => {
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string>("");
+
+  // Estado para replicação de credenciais
+  const [isReplicateModalOpen, setIsReplicateModalOpen] = useState(false);
+  const [sourceShiftId, setSourceShiftId] = useState<string>("");
+  const [targetShiftIds, setTargetShiftIds] = useState<string[]>([]);
+  const [isProcessingReplicate, setIsProcessingReplicate] = useState(false);
 
   const { data: credentials = [], isLoading, error } = useCredentials({
     eventId,
@@ -226,6 +233,7 @@ export const CredentialsDashboard = () => {
   const deleteCredential = useDeleteCredential();
   const setCredentialActive = useSetCredentialActive();
   const updateCredential = useUpdateCredential();
+  const createCredential = useCreateCredential();
 
   const handleDelete = async (credential: Credential) => {
     if (confirm(`Tem certeza que deseja deletar a credencial "${credential.nome}"? Esta ação não pode ser desfeita.`)) {
@@ -278,6 +286,103 @@ export const CredentialsDashboard = () => {
     } catch (error) {
       console.error("Erro ao atualizar credencial:", error);
       toast.error("Erro ao atualizar credencial");
+    }
+  };
+
+  // Função para replicar credenciais entre turnos
+  const handleReplicateCredentials = async () => {
+    if (!sourceShiftId) {
+      toast.error("Selecione o turno de origem");
+      return;
+    }
+
+    if (targetShiftIds.length === 0) {
+      toast.error("Selecione pelo menos um turno de destino");
+      return;
+    }
+
+    setIsProcessingReplicate(true);
+
+    try {
+      // Buscar credenciais do turno de origem
+      const sourceCredentials = processedCredentials.filter(credential => {
+        return credential.shiftId === sourceShiftId ||
+          (credential.days_works && credential.days_works.includes(sourceShiftId));
+      });
+
+      if (sourceCredentials.length === 0) {
+        toast.error("Nenhuma credencial encontrada no turno de origem");
+        setIsProcessingReplicate(false);
+        return;
+      }
+
+      let createdCount = 0;
+      let skippedCount = 0;
+      let errorCount = 0;
+
+      for (const targetShiftId of targetShiftIds) {
+        const { workDate, workStage, workPeriod } = parseShiftId(targetShiftId);
+
+        for (const sourceCredential of sourceCredentials) {
+          // Verificar se já existe credencial com mesmo nome no turno de destino
+          const existingCredential = processedCredentials.find(credential => 
+            credential.nome === sourceCredential.nome &&
+            (credential.shiftId === targetShiftId ||
+             (credential.days_works && credential.days_works.includes(targetShiftId)))
+          );
+
+          if (existingCredential) {
+            skippedCount++;
+            continue;
+          }
+
+          try {
+            // Criar nova credencial no turno de destino
+            await createCredential.mutateAsync({
+              nome: sourceCredential.nome,
+              cor: sourceCredential.cor,
+              id_events: eventId,
+              days_works: [targetShiftId],
+              shiftId: targetShiftId,
+              workDate: workDate,
+              workStage: workStage,
+              workPeriod: workPeriod,
+              isActive: sourceCredential.isActive,
+              isDistributed: false, // Nova credencial não distribuída
+            });
+
+            createdCount++;
+          } catch (error) {
+            console.error("Erro ao criar credencial:", error);
+            errorCount++;
+          }
+        }
+      }
+
+      // Mostrar resultado da replicação
+      const messages = [];
+      if (createdCount > 0) messages.push(`${createdCount} credenciais criadas`);
+      if (skippedCount > 0) messages.push(`${skippedCount} já existiam`);
+      if (errorCount > 0) messages.push(`${errorCount} erros`);
+
+      if (createdCount > 0) {
+        toast.success(`Replicação concluída: ${messages.join(', ')}`);
+      } else if (skippedCount > 0) {
+        toast.warning(`Todas as credenciais já existem nos turnos de destino`);
+      } else {
+        toast.error("Erro na replicação das credenciais");
+      }
+
+      // Limpar formulário e fechar modal
+      setSourceShiftId("");
+      setTargetShiftIds([]);
+      setIsReplicateModalOpen(false);
+
+    } catch (error) {
+      console.error("Erro na replicação de credenciais:", error);
+      toast.error("Erro na replicação de credenciais");
+    } finally {
+      setIsProcessingReplicate(false);
     }
   };
 
@@ -582,6 +687,14 @@ export const CredentialsDashboard = () => {
             </Button>
           </Link>
 
+          <Button 
+            onClick={() => setIsReplicateModalOpen(true)}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            <Copy className="w-4 h-4 mr-2" />
+            Replicar Credenciais
+          </Button>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
@@ -829,6 +942,124 @@ export const CredentialsDashboard = () => {
               isLoading={updateCredential.isPending}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Replicação de Credenciais */}
+      <Dialog open={isReplicateModalOpen} onOpenChange={setIsReplicateModalOpen}>
+        <DialogContent className="max-w-2xl bg-white text-gray-800">
+          <DialogHeader>
+            <DialogTitle>Replicar Credenciais</DialogTitle>
+            <DialogDescription>
+              Copie credenciais de um turno para outros turnos do evento
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Seleção do turno de origem */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Turno de Origem
+              </label>
+              <Select value={sourceShiftId} onValueChange={setSourceShiftId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione o turno de origem" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                  {eventDays.map((day) => {
+                    const credentialsInShift = processedCredentials.filter(credential =>
+                      credential.shiftId === day.id ||
+                      (credential.days_works && credential.days_works.includes(day.id))
+                    ).length;
+                    
+                    return (
+                      <SelectItem key={day.id} value={day.id}>
+                        <div className="flex items-center justify-between w-full">
+                          <span>{day.label}</span>
+                          <Badge variant="secondary" className="ml-2">
+                            {credentialsInShift} credenciais
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Seleção de turnos de destino */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Turnos de Destino
+              </label>
+              <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2">
+                {eventDays
+                  .filter(day => day.id !== sourceShiftId)
+                  .map((day) => {
+                    const credentialsInShift = processedCredentials.filter(credential =>
+                      credential.shiftId === day.id ||
+                      (credential.days_works && credential.days_works.includes(day.id))
+                    ).length;
+                    
+                    return (
+                      <Button
+                        key={day.id}
+                        variant={targetShiftIds.includes(day.id) ? "default" : "outline"}
+                        className="h-auto p-3 justify-start text-left"
+                        onClick={() => {
+                          if (targetShiftIds.includes(day.id)) {
+                            setTargetShiftIds(targetShiftIds.filter(id => id !== day.id));
+                          } else {
+                            setTargetShiftIds([...targetShiftIds, day.id]);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-sm">{day.label}</span>
+                          <Badge variant="secondary">
+                            {credentialsInShift} credenciais
+                          </Badge>
+                        </div>
+                      </Button>
+                    );
+                  })}
+              </div>
+              <p className="text-xs text-gray-500">
+                Clique nos turnos para selecionar/desselecionar como destinos
+              </p>
+            </div>
+
+            {/* Botões de ação */}
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSourceShiftId("");
+                  setTargetShiftIds([]);
+                  setIsReplicateModalOpen(false);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleReplicateCredentials}
+                disabled={!sourceShiftId || targetShiftIds.length === 0 || isProcessingReplicate}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isProcessingReplicate ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Replicando...
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Replicar ({targetShiftIds.length} turnos)
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

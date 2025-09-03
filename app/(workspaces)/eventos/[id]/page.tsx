@@ -15,6 +15,14 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
+import {
     Command,
     CommandEmpty,
     CommandGroup,
@@ -41,6 +49,7 @@ import { useDeleteParticipantFromShift } from '@/features/eventos/api/mutation/u
 import { useDeleteParticipantAllShifts } from '@/features/eventos/api/mutation/use-delete-participant-all-shifts'
 import { useUpdateEventParticipant } from '@/features/eventos/api/mutation/use-update-event-participant'
 import { useUpdateEmpresa } from '@/features/eventos/api/mutation/use-update-empresa'
+import { useCreateEmpresa } from '@/features/eventos/api/mutation/use-create-empresa'
 import { useCreateCredential, useUpdateCredential } from '@/features/eventos/api/mutation/use-credential-mutations'
 import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coordenadores-by-event'
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
@@ -63,6 +72,7 @@ import {
     Plus,
     RotateCcw,
     Search,
+    Settings,
     Trash2,
     TrendingUp,
     User,
@@ -134,6 +144,7 @@ export default function EventoDetalhesPage() {
         useEmpresasByEvent(String(params.id))
     const { mutate: updateParticipant } = useUpdateEventParticipant()
     const { mutate: updateEmpresa } = useUpdateEmpresa()
+    const { mutate: createEmpresa } = useCreateEmpresa()
     const { mutate: createCredential } = useCreateCredential()
     const { mutate: updateCredential } = useUpdateCredential()
     const checkInMutation = useCheckIn()
@@ -161,6 +172,54 @@ export default function EventoDetalhesPage() {
         processed: 0,
         currentParticipant: '',
     })
+
+    // Estados para o sistema de replicação em etapas
+    const [showStepReplicationModal, setShowStepReplicationModal] = useState(false)
+    const [currentReplicationStep, setCurrentReplicationStep] = useState(1)
+    const [replicationData, setReplicationData] = useState<{
+        sourceDay: string
+        targetDay: string
+        sourceParticipants: EventParticipant[]
+        targetParticipants: EventParticipant[]
+        participantsToReplicate: EventParticipant[]
+        companiesAnalysis: {
+            existing: string[]
+            missing: string[]
+            needingCreation: string[]
+        }
+        credentialsAnalysis: {
+            existing: string[]
+            missing: string[]
+            needingCreation: string[]
+        }
+        processingSummary: {
+            companiesProcessed: number
+            credentialsProcessed: number
+            participantsProcessed: number
+        }
+    }>({
+        sourceDay: '',
+        targetDay: '',
+        sourceParticipants: [],
+        targetParticipants: [],
+        participantsToReplicate: [],
+        companiesAnalysis: {
+            existing: [],
+            missing: [],
+            needingCreation: []
+        },
+        credentialsAnalysis: {
+            existing: [],
+            missing: [],
+            needingCreation: []
+        },
+        processingSummary: {
+            companiesProcessed: 0,
+            credentialsProcessed: 0,
+            participantsProcessed: 0
+        }
+    })
+    const [isProcessingStep, setIsProcessingStep] = useState(false)
 
     // Estado para modal de adicionar staff
     const [showAdicionarStaffModal, setShowAdicionarStaffModal] = useState(false)
@@ -793,7 +852,7 @@ export default function EventoDetalhesPage() {
     // Evita re-renderização desnecessária ao trocar de dia
     const participantsCountCache = useMemo(() => {
         const cache = new Map<string, number>();
-        
+
         // Calcular uma vez para todos os turnos
         eventDays.forEach(day => {
             let count = 0;
@@ -803,7 +862,7 @@ export default function EventoDetalhesPage() {
             })
             cache.set(day.id, count);
         });
-        
+
         return cache;
     }, [groupedParticipantsData, eventDays]);
 
@@ -1065,10 +1124,10 @@ export default function EventoDetalhesPage() {
         participantsByName.forEach((participants, name) => {
             if (participants.length > 1) {
                 // Verificar se não são duplicatas já capturadas por CPF
-                const hasValidCpfDuplicates = participants.some(p => 
+                const hasValidCpfDuplicates = participants.some(p =>
                     p.cpf && p.cpf.trim() && normalizeCpf(p.cpf)
                 )
-                
+
                 if (!hasValidCpfDuplicates) {
                     dups.push({
                         name: participants[0].name,
@@ -1099,7 +1158,7 @@ export default function EventoDetalhesPage() {
         setSelectedDuplicatesForRemoval(prev => {
             const newSet = new Set(prev)
             const participantsToSelect = keepFirst ? participants.slice(1) : participants
-            
+
             participantsToSelect.forEach(p => {
                 newSet.add(p.id)
             })
@@ -1166,9 +1225,9 @@ export default function EventoDetalhesPage() {
 
             if (successCount > 0) {
                 const { dateFormatted, stage, period } = parseShiftId(currentSelectedDay)
-                const stageLabel = stage === 'montagem' ? 'Montagem' : 
-                    stage === 'evento' ? 'Evento' : 
-                    stage === 'desmontagem' ? 'Desmontagem' : stage
+                const stageLabel = stage === 'montagem' ? 'Montagem' :
+                    stage === 'evento' ? 'Evento' :
+                        stage === 'desmontagem' ? 'Desmontagem' : stage
                 const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno'
 
                 toast.success(
@@ -1189,11 +1248,11 @@ export default function EventoDetalhesPage() {
 
         setDuplicatesManagerLoading(false)
     }, [
-        selectedDuplicatesForRemoval, 
-        participantesDoDia, 
-        params.id, 
-        currentSelectedDay, 
-        deleteFromShift, 
+        selectedDuplicatesForRemoval,
+        participantesDoDia,
+        params.id,
+        currentSelectedDay,
+        deleteFromShift,
         parseShiftId
     ])
 
@@ -1851,6 +1910,577 @@ export default function EventoDetalhesPage() {
         setShowReplicateDialog(true)
     }
 
+    // Função para abrir replicação em etapas
+    const handleOpenStepReplication = (sourceDay: string) => {
+        // Resetar dados e inicializar Etapa 1
+        setReplicationData({
+            sourceDay: sourceDay,
+            targetDay: '',
+            sourceParticipants: [],
+            targetParticipants: [],
+            participantsToReplicate: [],
+            companiesAnalysis: {
+                existing: [],
+                missing: [],
+                needingCreation: []
+            },
+            credentialsAnalysis: {
+                existing: [],
+                missing: [],
+                needingCreation: []
+            },
+            processingSummary: {
+                companiesProcessed: 0,
+                credentialsProcessed: 0,
+                participantsProcessed: 0
+            }
+        })
+        setCurrentReplicationStep(1)
+        setIsProcessingStep(false)
+        setShowStepReplicationModal(true)
+    }
+
+    // ETAPA 1: Seleção de dias origem e destino
+    const handleStep1Selection = async (targetDay: string) => {
+        if (!targetDay || targetDay === replicationData.sourceDay) {
+            toast.error('Selecione um turno de destino válido')
+            return
+        }
+
+        setIsProcessingStep(true)
+
+        try {
+            console.log('📋 ETAPA 1: Analisando participantes dos turnos...')
+
+            // Buscar participantes do turno de origem
+            const sourceParticipants = participantesDoDia
+
+            // Buscar participantes do turno de destino
+            const targetParticipants = await queryClient.fetchQuery<EventParticipant[]>({
+                queryKey: [
+                    "event-participants-by-shift",
+                    { eventId: String(params.id), shiftId: targetDay, search: undefined, sortBy: "name", sortOrder: "asc" }
+                ],
+                queryFn: async () => {
+                    const { data } = await apiClient.get<{
+                        data: EventParticipant[];
+                        total: number;
+                    }>(`/event-participants/event/${String(params.id)}/shift/${encodeURIComponent(targetDay)}`);
+
+                    if (data && typeof data === "object" && "data" in data) {
+                        return Array.isArray(data.data) ? data.data : [];
+                    }
+                    return Array.isArray(data) ? data : [];
+                },
+                staleTime: 0
+            })
+
+            // Filtrar participantes que não existem no destino
+            const participantsToReplicate = sourceParticipants.filter(participant => {
+                return !participantExistsInTarget(participant, targetParticipants)
+            })
+
+            // Atualizar dados da replicação
+            setReplicationData(prev => ({
+                ...prev,
+                targetDay,
+                sourceParticipants,
+                targetParticipants,
+                participantsToReplicate
+            }))
+
+            console.log(`✅ ETAPA 1 CONCLUÍDA:`, {
+                origem: sourceParticipants.length,
+                destino: targetParticipants.length,
+                paraReplicar: participantsToReplicate.length
+            })
+
+            // Avançar para Etapa 2
+            setCurrentReplicationStep(2)
+
+        } catch (error) {
+            console.error('❌ Erro na Etapa 1:', error)
+            toast.error('Erro ao analisar participantes dos turnos')
+        } finally {
+            setIsProcessingStep(false)
+        }
+    }
+
+    // ETAPA 2: Verificação de empresas por data/estágio/período específico
+    const handleStep2CompaniesAnalysis = async () => {
+        setIsProcessingStep(true)
+
+        try {
+            console.log('🏢 ETAPA 2: Analisando empresas por data/estágio/período específico...')
+
+            const { participantsToReplicate, targetDay } = replicationData
+            const targetShiftInfo = parseShiftId(targetDay)
+
+            console.log(`🎯 Verificando empresas para TURNO DE DESTINO:`, {
+                targetDay,
+                date: targetShiftInfo.dateISO,
+                stage: targetShiftInfo.stage,
+                period: targetShiftInfo.period
+            })
+
+            // Primeiro: buscar todas as empresas que JÁ TRABALHAM no turno de destino
+            // USANDO APENAS os campos workDate, workStage, workPeriod (ignorando array days)
+            const empresasJaNoTurnoDestino = empresasArray.filter(emp => {
+                const worksInTargetShift = (
+                    emp.workDate === targetShiftInfo.dateISO &&
+                    emp.workStage === targetShiftInfo.stage &&
+                    emp.workPeriod === targetShiftInfo.period
+                )
+
+                console.log(`  🔍 Empresa "${emp.nome}":`, {
+                    workDate: emp.workDate,
+                    workStage: emp.workStage,
+                    workPeriod: emp.workPeriod,
+                    target: targetShiftInfo,
+                    match: worksInTargetShift
+                })
+
+                return worksInTargetShift
+            })
+
+            console.log(`📋 Empresas que JÁ TRABALHAM no turno de destino ${targetDay}:`,
+                empresasJaNoTurnoDestino.map(emp => emp.nome))
+
+            // Segundo: extrair empresas únicas dos participantes que queremos replicar
+            const uniqueCompanies = new Set<string>()
+            participantsToReplicate.forEach(participant => {
+                if (participant.company && participant.company.trim()) {
+                    uniqueCompanies.add(participant.company.trim())
+                }
+            })
+
+            console.log(`📋 Empresas necessárias pelos participantes:`, Array.from(uniqueCompanies))
+
+            const existingCompanies: string[] = []
+            const needingCreationCompanies: string[] = []
+
+            // Terceiro: verificar quais empresas dos participantes já existem no turno de destino
+            for (const companyName of uniqueCompanies) {
+                console.log(`\n🔍 Empresa "${companyName}": verificando se JÁ TRABALHA no turno destino...`)
+
+                // Buscar se esta empresa já trabalha no turno de destino
+                const empresaJaTrabalhaNoDestino = empresasJaNoTurnoDestino.find(emp => emp.nome === companyName)
+
+                if (empresaJaTrabalhaNoDestino) {
+                    console.log(`✅ Empresa "${companyName}" JÁ TRABALHA no turno destino - NÃO precisa criar`)
+                    existingCompanies.push(companyName)
+                } else {
+                    console.log(`❌ Empresa "${companyName}" NÃO TRABALHA no turno destino - PRECISA CRIAR`)
+                    needingCreationCompanies.push(companyName)
+                }
+            }
+
+            // Atualizar análise (removendo o campo missing que estava causando confusão)
+            setReplicationData(prev => ({
+                ...prev,
+                companiesAnalysis: {
+                    existing: existingCompanies,
+                    missing: [], // Array vazio para manter compatibilidade
+                    needingCreation: needingCreationCompanies
+                }
+            }))
+
+            console.log(`✅ ETAPA 2 CONCLUÍDA:`, {
+                existentes: existingCompanies.length,
+                paracriar: needingCreationCompanies.length
+            })
+
+            console.log(`📊 RESUMO EMPRESAS:`, {
+                existentes: existingCompanies,
+                paracriar: needingCreationCompanies
+            })
+
+            // Avançar para Etapa 3
+            setCurrentReplicationStep(3)
+
+        } catch (error) {
+            console.error('❌ Erro na Etapa 2:', error)
+            toast.error('Erro ao analisar empresas')
+        } finally {
+            setIsProcessingStep(false)
+        }
+    }
+
+    // ETAPA 3: Criação de empresas para o dia específico
+    const handleStep3ProcessCompanies = async () => {
+        setIsProcessingStep(true)
+
+        try {
+            console.log('⚙️ ETAPA 3: Criando empresas para o dia específico...')
+
+            const { companiesAnalysis, targetDay } = replicationData
+            const { needingCreation } = companiesAnalysis
+            const targetShiftInfo = parseShiftId(targetDay)
+
+            let processedCount = 0
+
+            // Criar apenas as empresas que precisam ser criadas para este dia específico
+            for (const companyName of needingCreation) {
+                try {
+                    console.log(`🔧 Criando empresa: ${companyName} para o dia ${targetDay}`)
+
+                    await new Promise<void>((resolve, reject) => {
+                        createEmpresa(
+                            {
+                                nome: companyName,
+                                id_evento: String(params.id),
+                                days: [targetDay],
+                                shiftId: targetDay,
+                                workDate: targetShiftInfo.dateISO,
+                                workStage: targetShiftInfo.stage as "evento" | "montagem" | "desmontagem" | undefined,
+                                workPeriod: targetShiftInfo.period as "diurno" | "noturno" | "dia_inteiro" | undefined,
+                            },
+                            {
+                                onSuccess: () => {
+                                    console.log(`✅ Empresa ${companyName} criada com sucesso`)
+                                    processedCount++
+                                    resolve()
+                                },
+                                onError: (error) => {
+                                    console.error(`❌ Erro ao criar empresa ${companyName}:`, error)
+                                    reject(error)
+                                }
+                            }
+                        )
+                    })
+                } catch (error) {
+                    console.error(`❌ Erro ao criar empresa ${companyName}:`, error)
+                    toast.error(`Erro ao criar empresa ${companyName}`)
+                }
+                // Pequeno delay entre criações
+                await new Promise(resolve => setTimeout(resolve, 300))
+            }
+
+            // Atualizar resumo
+            setReplicationData(prev => ({
+                ...prev,
+                processingSummary: {
+                    ...prev.processingSummary,
+                    companiesProcessed: processedCount
+                }
+            }))
+
+            console.log(`✅ ETAPA 3 CONCLUÍDA: ${processedCount} empresas criadas para o dia específico`)
+            toast.success(`${processedCount} empresa(s) criada(s) para o turno`)
+
+            // Avançar para Etapa 4
+            setCurrentReplicationStep(4)
+
+        } catch (error) {
+            console.error('❌ Erro na Etapa 3:', error)
+            toast.error('Erro ao processar empresas')
+        } finally {
+            setIsProcessingStep(false)
+        }
+    }
+
+    // ETAPA 4: Verificação de credenciais por data/estágio/período específico
+    const handleStep4CredentialsAnalysis = async () => {
+        setIsProcessingStep(true)
+
+        try {
+            console.log('🎫 ETAPA 4: Analisando credenciais por data/estágio/período específico...')
+
+            const { participantsToReplicate, targetDay } = replicationData
+            const targetShiftInfo = parseShiftId(targetDay)
+
+            console.log(`🎯 Verificando credenciais para TURNO DE DESTINO:`, {
+                targetDay,
+                date: targetShiftInfo.dateISO,
+                stage: targetShiftInfo.stage,
+                period: targetShiftInfo.period
+            })
+
+            // Primeiro: buscar todas as credenciais que JÁ TRABALHAM no turno de destino
+            // USANDO APENAS os campos workDate, workStage, workPeriod (ignorando array days_works)
+            const credenciaisJaNoTurnoDestino = credentialsArray.filter(cred => {
+                const worksInTargetShift = (
+                    cred.workDate === targetShiftInfo.dateISO &&
+                    cred.workStage === targetShiftInfo.stage &&
+                    cred.workPeriod === targetShiftInfo.period
+                )
+
+                console.log(`  🔍 Credencial "${cred.nome}":`, {
+                    workDate: cred.workDate,
+                    workStage: cred.workStage,
+                    workPeriod: cred.workPeriod,
+                    target: targetShiftInfo,
+                    match: worksInTargetShift
+                })
+
+                return worksInTargetShift
+            })
+
+            console.log(`📋 Credenciais que JÁ TRABALHAM no turno de destino ${targetDay}:`,
+                credenciaisJaNoTurnoDestino.map(cred => cred.nome))
+
+            // Segundo: extrair credenciais únicas dos participantes que queremos replicar
+            const uniqueCredentials = new Set<string>()
+            participantsToReplicate.forEach(participant => {
+                // Usar o credentialId do participante para buscar o nome da credencial
+                if (participant.credentialId) {
+                    // Buscar a credencial pelo ID para obter o nome correto
+                    const credencial = credentialsArray.find(cred => cred.id === participant.credentialId)
+                    if (credencial) {
+                        uniqueCredentials.add(credencial.nome)
+                    } else {
+                        console.warn(`⚠️ Credencial não encontrada para ID: ${participant.credentialId}`)
+                    }
+                } else {
+                    console.warn(`⚠️ Participante sem credentialId: ${participant.name}`)
+                }
+            })
+
+            console.log(`📋 Credenciais necessárias pelos participantes:`, Array.from(uniqueCredentials))
+
+            const existingCredentials: string[] = []
+            const needingCreationCredentials: string[] = []
+
+            // Terceiro: verificar quais credenciais dos participantes já existem no turno de destino
+            for (const credentialName of uniqueCredentials) {
+                console.log(`\n🔍 Credencial "${credentialName}": verificando se JÁ TRABALHA no turno destino...`)
+
+                // Buscar se esta credencial já trabalha no turno de destino
+                const credencialJaTrabalhaNoDestino = credenciaisJaNoTurnoDestino.find(cred =>
+                    cred.nome === credentialName || cred.id === credentialName)
+
+                if (credencialJaTrabalhaNoDestino) {
+                    console.log(`✅ Credencial "${credentialName}" JÁ TRABALHA no turno destino - NÃO precisa criar`)
+                    existingCredentials.push(credentialName)
+                } else {
+                    console.log(`❌ Credencial "${credentialName}" NÃO TRABALHA no turno destino - PRECISA CRIAR`)
+                    needingCreationCredentials.push(credentialName)
+                }
+            }
+
+            // Atualizar análise (removendo o campo missing que estava causando confusão)
+            setReplicationData(prev => ({
+                ...prev,
+                credentialsAnalysis: {
+                    existing: existingCredentials,
+                    missing: [], // Array vazio para manter compatibilidade
+                    needingCreation: needingCreationCredentials
+                }
+            }))
+
+            console.log(`✅ ETAPA 4 CONCLUÍDA:`, {
+                existentes: existingCredentials.length,
+                paracriar: needingCreationCredentials.length
+            })
+
+            console.log(`📊 RESUMO CREDENCIAIS:`, {
+                existentes: existingCredentials,
+                paracriar: needingCreationCredentials
+            })
+
+            // Avançar para Etapa 5
+            setCurrentReplicationStep(5)
+
+        } catch (error) {
+            console.error('❌ Erro na Etapa 4:', error)
+            toast.error('Erro ao analisar credenciais')
+        } finally {
+            setIsProcessingStep(false)
+        }
+    }
+
+    // ETAPA 5: Criação de credenciais para o dia específico
+    const handleStep5ProcessCredentials = async () => {
+        setIsProcessingStep(true)
+
+        try {
+            console.log('⚙️ ETAPA 5: Criando credenciais para o dia específico...')
+
+            const { credentialsAnalysis, targetDay, participantsToReplicate } = replicationData
+            const { needingCreation } = credentialsAnalysis
+            const targetShiftInfo = parseShiftId(targetDay)
+
+            let processedCount = 0
+
+            // Criar apenas as credenciais que precisam ser criadas para este dia específico
+            // Identificar credenciais únicas dos participantes que precisam ser criadas
+            const uniqueCredentials = [...new Set(needingCreation)]
+
+            for (const credentialName of uniqueCredentials) {
+                try {
+                    console.log(`🔧 Criando credencial: ${credentialName} para o dia ${targetDay}`)
+
+                    // Encontrar um participante que use esta credencial para definir cor/propriedades
+                    const sampleParticipant = participantsToReplicate.find(p => p.role === credentialName ||
+                        (p.credentialId && needingCreation.includes(p.credentialId)))
+
+                    // Gerar cor baseada no nome da credencial para consistência
+                    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316']
+                    const colorIndex = credentialName.length % colors.length
+                    const credentialColor = colors[colorIndex]
+
+                    await new Promise<void>((resolve, reject) => {
+                        createCredential(
+                            {
+                                nome: credentialName,
+                                cor: credentialColor,
+                                id_events: String(params.id),
+                                days_works: [targetDay],
+                                shiftId: targetDay,
+                                workDate: targetShiftInfo.dateISO,
+                                workStage: targetShiftInfo.stage as "evento" | "montagem" | "desmontagem",
+                                workPeriod: targetShiftInfo.period as "diurno" | "noturno" | "dia_inteiro",
+                                isActive: true,
+                                isDistributed: false,
+                            },
+                            {
+                                onSuccess: () => {
+                                    console.log(`✅ Credencial ${credentialName} criada com sucesso`)
+                                    processedCount++
+                                    resolve()
+                                },
+                                onError: (error) => {
+                                    console.error(`❌ Erro ao criar credencial ${credentialName}:`, error)
+                                    reject(error)
+                                }
+                            }
+                        )
+                    })
+                } catch (error) {
+                    console.error(`❌ Erro ao criar credencial ${credentialName}:`, error)
+                    toast.error(`Erro ao criar credencial ${credentialName}`)
+                }
+                // Pequeno delay entre criações
+                await new Promise(resolve => setTimeout(resolve, 300))
+            }
+
+            // Atualizar resumo
+            setReplicationData(prev => ({
+                ...prev,
+                processingSummary: {
+                    ...prev.processingSummary,
+                    credentialsProcessed: processedCount
+                }
+            }))
+
+            console.log(`✅ ETAPA 5 CONCLUÍDA: ${processedCount} credenciais criadas para o dia específico`)
+            toast.success(`${processedCount} credencial(is) criada(s) para o turno`)
+
+            // Avançar para Etapa 6
+            setCurrentReplicationStep(6)
+
+        } catch (error) {
+            console.error('❌ Erro na Etapa 5:', error)
+            toast.error('Erro ao processar credenciais')
+        } finally {
+            setIsProcessingStep(false)
+        }
+    }
+
+    // ETAPA 6: Replicação final dos participantes
+    const handleStep6FinalReplication = async () => {
+        setIsProcessingStep(true)
+
+        try {
+            console.log('🚀 ETAPA 6: Replicando participantes...')
+
+            const { participantsToReplicate, targetDay } = replicationData
+            const targetShiftInfo = parseShiftId(targetDay)
+
+            let processedCount = 0
+            let successCount = 0
+
+            // Replicar cada participante
+            for (let i = 0; i < participantsToReplicate.length; i++) {
+                const participant = participantsToReplicate[i]
+
+                try {
+                    const newParticipantData = {
+                        eventId: participant.eventId || String(params.id),
+                        name: participant.name || '',
+                        cpf: participant.cpf || '',
+                        role: participant.role || '',
+                        company: participant.company || '',
+                        email: participant.email || undefined,
+                        phone: participant.phone || undefined,
+                        credentialId: participant.credentialId || undefined,
+                        shirtSize: participant.shirtSize || undefined,
+                        notes: participant.notes || undefined,
+                        daysWork: [targetDay],
+                        shiftId: targetDay,
+                        workDate: targetShiftInfo.dateISO,
+                        workStage: targetShiftInfo.stage,
+                        workPeriod: targetShiftInfo.period,
+                        performedBy: 'replicacao-staff-etapas'
+                    }
+
+                    // Criar novo participante
+                    await new Promise((resolve, reject) => {
+                        createParticipant(newParticipantData, {
+                            onSuccess: () => {
+                                successCount++
+                                processedCount++
+                                resolve(true)
+                            },
+                            onError: (error) => {
+                                console.error(`❌ Erro ao replicar ${participant.name}:`, error)
+                                processedCount++
+                                reject(error)
+                            }
+                        })
+                    })
+
+                    await new Promise(resolve => setTimeout(resolve, 250))
+                } catch (error) {
+                    console.error(`❌ Erro ao processar ${participant.name}:`, error)
+                    processedCount++
+                }
+            }
+
+            // Atualizar resumo final
+            setReplicationData(prev => ({
+                ...prev,
+                processingSummary: {
+                    ...prev.processingSummary,
+                    participantsProcessed: successCount
+                }
+            }))
+
+            console.log(`✅ ETAPA 6 CONCLUÍDA: ${successCount}/${participantsToReplicate.length} participantes replicados`)
+
+            // Invalidar queries para atualizar dados
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['event-participants-by-event', String(params.id)] }),
+                queryClient.invalidateQueries({ queryKey: ['event-participants-grouped', String(params.id)] }),
+                queryClient.invalidateQueries({ queryKey: ['event-participants-by-shift', String(params.id), targetDay] }),
+                queryClient.invalidateQueries({ queryKey: ['empresas-by-event', String(params.id)] }),
+                queryClient.invalidateQueries({ queryKey: ['credentials', String(params.id)] })
+            ])
+
+            // Mostrar resultado final
+            const { companiesProcessed, credentialsProcessed } = replicationData.processingSummary
+
+            toast.success(
+                `🎉 Replicação concluída com sucesso!\n` +
+                `✅ ${successCount} participantes replicados\n` +
+                `🏢 ${companiesProcessed} empresas processadas\n` +
+                `🎫 ${credentialsProcessed} credenciais processadas`
+            )
+
+            // Fechar modal após pequeno delay
+            setTimeout(() => {
+                setShowStepReplicationModal(false)
+                setCurrentReplicationStep(1)
+            }, 2000)
+
+        } catch (error) {
+            console.error('❌ Erro na Etapa 6:', error)
+            toast.error('Erro na replicação final dos participantes')
+        } finally {
+            setIsProcessingStep(false)
+        }
+    }
+
     // Função para verificar se participante já existe no turno de destino
     const participantExistsInTarget = useCallback((participant: EventParticipant, targetParticipants: EventParticipant[]): boolean => {
         const sourceCpf = normalizeCpf(participant.cpf || '')
@@ -1875,9 +2505,9 @@ export default function EventoDetalhesPage() {
     }, [normalizeCpf, normalizeName])
 
     // Função para replicar empresas no turno destino
-    const replicateCompaniesForShift = useCallback(async (participantsToReplicate: EventParticipant[], targetShiftId: string, targetDateISO: string) => {
+    const replicateCompaniesForShift = useCallback(async (participantsToReplicate: EventParticipant[], targetShiftId: string, targetDateISO: string, targetStage: string, targetPeriod: string) => {
         const uniqueCompanies = new Set<string>()
-        const companiesNeedingReplication: { name: string; empresa: any }[] = []
+        const companiesNeedingReplication: { name: string; empresa?: any; needsCreation?: boolean }[] = []
 
         // Extrair empresas únicas dos participantes que serão replicados
         participantsToReplicate.forEach(participant => {
@@ -1888,7 +2518,7 @@ export default function EventoDetalhesPage() {
 
         if (uniqueCompanies.size === 0) {
             console.log('📋 Nenhuma empresa para replicar')
-            return { replicatedCount: 0, skippedCount: 0 }
+            return { replicatedCount: 0, skippedCount: 0, createdCount: 0 }
         }
 
         console.log(`🏢 Analisando ${uniqueCompanies.size} empresas únicas para replicação`)
@@ -1899,65 +2529,101 @@ export default function EventoDetalhesPage() {
             const empresa = empresasArray.find(emp => emp.nome === companyName)
 
             if (empresa) {
-                // Verificar se já trabalha no turno destino
-                const alreadyWorksInTargetShift = Array.isArray(empresa.days) && empresa.days.includes(targetDateISO)
+                // Verificar se já trabalha no turno destino (usar shiftId completo)
+                const alreadyWorksInTargetShift = Array.isArray(empresa.days) && empresa.days.includes(targetShiftId)
 
                 if (!alreadyWorksInTargetShift) {
-                    companiesNeedingReplication.push({ name: companyName, empresa })
+                    companiesNeedingReplication.push({ name: companyName, empresa, needsCreation: false })
                     console.log(`➕ Empresa "${companyName}" precisa ser adicionada ao turno de destino`)
                 } else {
                     console.log(`✅ Empresa "${companyName}" já trabalha no turno de destino`)
                 }
             } else {
-                console.log(`⚠️ Empresa "${companyName}" não encontrada no sistema`)
+                // Empresa não existe no sistema - precisa ser criada
+                companiesNeedingReplication.push({ name: companyName, needsCreation: true })
+                console.log(`🆕 Empresa "${companyName}" não encontrada - será criada`)
             }
         }
 
-        // Replicar empresas que precisam
+        // Processar empresas que precisam de ação
         let replicatedCompaniesCount = 0
+        let createdCompaniesCount = 0
         const skippedCompaniesCount = uniqueCompanies.size - companiesNeedingReplication.length
 
-        for (const { name, empresa } of companiesNeedingReplication) {
+        for (const { name, empresa, needsCreation } of companiesNeedingReplication) {
             try {
-                console.log(`🔄 Adicionando "${name}" ao turno de destino`)
+                if (needsCreation) {
+                    // Criar nova empresa
+                    console.log(`🆕 Criando empresa "${name}" no sistema`)
 
-                // Criar nova lista de dias incluindo o turno destino
-                const updatedDays = Array.isArray(empresa.days) ? [...empresa.days, targetDateISO] : [targetDateISO]
+                    await new Promise<void>((resolve, reject) => {
+                        createEmpresa(
+                            {
+                                nome: name,
+                                id_evento: String(params.id),
+                                days: [targetShiftId],  // ✅ ShiftId completo 
+                                shiftId: targetShiftId, // ✅ Campo necessário para exibição
+                                workDate: targetDateISO, // ✅ Data ISO
+                                workStage: targetStage as "evento" | "montagem" | "desmontagem" | undefined,  // ✅ Stage
+                                workPeriod: targetPeriod as "diurno" | "noturno" | "dia_inteiro" | undefined, // ✅ Período
 
-                await new Promise<void>((resolve, reject) => {
-                    updateEmpresa(
-                        {
-                            id: empresa.id,
-                            data: {
-                                days: updatedDays
-                            }
-                        },
-                        {
-                            onSuccess: () => {
-                                console.log(`✅ Empresa "${name}" adicionada ao turno de destino`)
-                                replicatedCompaniesCount++
-                                resolve()
                             },
-                            onError: (error) => {
-                                console.error(`❌ Erro ao replicar empresa "${name}":`, error)
-                                reject(error)
+                            {
+                                onSuccess: () => {
+                                    console.log(`✅ Empresa "${name}" criada com sucesso`)
+                                    createdCompaniesCount++
+                                    resolve()
+                                },
+                                onError: (error) => {
+                                    console.error(`❌ Erro ao criar empresa "${name}":`, error)
+                                    reject(error)
+                                }
                             }
-                        }
-                    )
-                })
+                        )
+                    })
+                } else if (empresa) {
+                    // Adicionar ao turno destino
+                    console.log(`🔄 Adicionando "${name}" ao turno de destino`)
+
+                    // Criar nova lista de dias incluindo o turno destino (usar shiftId completo)
+                    const updatedDays = Array.isArray(empresa.days) ? [...empresa.days, targetShiftId] : [targetShiftId]
+
+                    await new Promise<void>((resolve, reject) => {
+                        updateEmpresa(
+                            {
+                                id: empresa.id,
+                                data: {
+                                    days: updatedDays
+                                }
+                            },
+                            {
+                                onSuccess: () => {
+                                    console.log(`✅ Empresa "${name}" adicionada ao turno de destino`)
+                                    replicatedCompaniesCount++
+                                    resolve()
+                                },
+                                onError: (error) => {
+                                    console.error(`❌ Erro ao replicar empresa "${name}":`, error)
+                                    reject(error)
+                                }
+                            }
+                        )
+                    })
+                }
 
                 // Delay para evitar sobrecarga
-                await new Promise(resolve => setTimeout(resolve, 200))
+                await new Promise(resolve => setTimeout(resolve, 300))
             } catch (error) {
-                console.error(`💥 Erro ao replicar empresa "${name}":`, error)
+                console.error(`💥 Erro ao processar empresa "${name}":`, error)
             }
         }
 
         return {
             replicatedCount: replicatedCompaniesCount,
-            skippedCount: skippedCompaniesCount
+            skippedCount: skippedCompaniesCount,
+            createdCount: createdCompaniesCount
         }
-    }, [empresasArray, updateEmpresa])
+    }, [empresasArray, updateEmpresa, createEmpresa, params.id])
 
     // Função para replicar credenciais no turno destino
     const replicateCredentialsForShift = useCallback(async (participantsToReplicate: EventParticipant[], targetShiftId: string, targetDateISO: string, targetStage: string, targetPeriod: string) => {
@@ -2186,7 +2852,7 @@ export default function EventoDetalhesPage() {
             // 🆕 REPLICAR EMPRESAS E CREDENCIAIS PRIMEIRO
             console.log('🏢 Iniciando replicação de empresas e credenciais...')
 
-            let companiesResult = { replicatedCount: 0, skippedCount: 0 }
+            let companiesResult = { replicatedCount: 0, skippedCount: 0, createdCount: 0 }
             let credentialsResult = { replicatedCount: 0, skippedCount: 0 }
 
             try {
@@ -2194,7 +2860,9 @@ export default function EventoDetalhesPage() {
                 companiesResult = await replicateCompaniesForShift(
                     participantsToReplicate,
                     replicateSourceDay,
-                    targetShiftInfo.dateISO
+                    targetShiftInfo.dateISO,
+                    targetShiftInfo.stage,
+                    targetShiftInfo.period
                 )
                 console.log('🏢 Resultado empresas:', companiesResult)
 
@@ -2344,8 +3012,11 @@ export default function EventoDetalhesPage() {
                 }
 
                 // Adicionar informações sobre empresas
-                if (companiesResult.replicatedCount > 0 || companiesResult.skippedCount > 0) {
+                if (companiesResult.replicatedCount > 0 || companiesResult.skippedCount > 0 || companiesResult.createdCount > 0) {
                     message += `🏢 Empresas:\n`
+                    if (companiesResult.createdCount > 0) {
+                        message += `🆕 ${companiesResult.createdCount} criadas no sistema\n`
+                    }
                     if (companiesResult.replicatedCount > 0) {
                         message += `✅ ${companiesResult.replicatedCount} adicionadas ao turno\n`
                     }
@@ -2803,25 +3474,28 @@ export default function EventoDetalhesPage() {
                                                 </div>
                                             </button>
                                             {isActive && (
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() => handleOpenReplicateDialog(day.id)}
-                                                    disabled={replicatingStaff === day.id}
-                                                    className="text-xs h-6 px-2 bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-                                                >
-                                                    {replicatingStaff === day.id ? (
-                                                        <>
-                                                            <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1"></div>
-                                                            Replicando...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Users className="w-3 h-3 mr-1" />
-                                                            Replicar Participantes
-                                                        </>
-                                                    )}
-                                                </Button>
+                                                <div className="flex gap-1">
+
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleOpenStepReplication(day.id)}
+                                                        disabled={replicatingStaff === day.id}
+                                                        className="text-xs h-6 px-2 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                                                    >
+                                                        {replicatingStaff === day.id ? (
+                                                            <>
+                                                                <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1"></div>
+                                                                Replicando...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Users className="w-3 h-3 mr-1" />
+                                                                Replicar Participantes
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                </div>
                                             )}
                                         </div>
                                     )
@@ -3946,7 +4620,7 @@ export default function EventoDetalhesPage() {
                             Gerenciar Duplicatas do Turno
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Foram encontradas {currentShiftDuplicates.length} duplicatas no turno atual. 
+                            Foram encontradas {currentShiftDuplicates.length} duplicatas no turno atual.
                             Selecione quais participantes deseja remover.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -3966,7 +4640,7 @@ export default function EventoDetalhesPage() {
                                         {currentShiftDuplicates.length} grupo(s) de duplicatas • {selectedDuplicatesForRemoval.size} selecionado(s) para remoção
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex gap-2">
                                     <Button
                                         variant="outline"
@@ -4012,7 +4686,7 @@ export default function EventoDetalhesPage() {
                                             {duplicate.reason}
                                         </span>
                                     </div>
-                                    
+
                                     <div className="flex gap-2">
                                         <Button
                                             variant="outline"
@@ -4037,17 +4711,16 @@ export default function EventoDetalhesPage() {
                                     {duplicate.participants.map((participant, participantIndex) => {
                                         const isSelected = selectedDuplicatesForRemoval.has(participant.id)
                                         const isFirst = participantIndex === 0
-                                        
+
                                         return (
                                             <div
                                                 key={participant.id}
-                                                className={`p-3 rounded border cursor-pointer transition-all ${
-                                                    isSelected 
-                                                        ? 'bg-red-100 border-red-400 ring-2 ring-red-200' 
-                                                        : isFirst
-                                                            ? 'bg-green-50 border-green-200 hover:bg-green-100'
-                                                            : 'bg-white border-gray-200 hover:bg-gray-50'
-                                                }`}
+                                                className={`p-3 rounded border cursor-pointer transition-all ${isSelected
+                                                    ? 'bg-red-100 border-red-400 ring-2 ring-red-200'
+                                                    : isFirst
+                                                        ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                                                        : 'bg-white border-gray-200 hover:bg-gray-50'
+                                                    }`}
                                                 onClick={() => handleToggleDuplicateSelection(participant.id)}
                                             >
                                                 <div className="flex items-center justify-between mb-2">
@@ -4068,7 +4741,7 @@ export default function EventoDetalhesPage() {
                                                         />
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="text-xs text-gray-600 space-y-1">
                                                     {participant.cpf && <div>CPF: {participant.cpf}</div>}
                                                     <div>Função: {participant.role || 'N/A'}</div>
@@ -4121,6 +4794,474 @@ export default function EventoDetalhesPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Dialog de Replicação por Etapas */}
+            <Dialog open={showStepReplicationModal} onOpenChange={setShowStepReplicationModal}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Settings className="h-5 w-5" />
+                            Replicação por Etapas - Etapa {currentReplicationStep} de 6
+                        </DialogTitle>
+                        <DialogDescription>
+                            Processo guiado para replicação de staff com verificação de empresas e credenciais
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-6">
+                        {/* Progress Bar */}
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${(currentReplicationStep / 6) * 100}%` }}
+                            ></div>
+                        </div>
+
+                        {/* Step 1: Seleção de Dias */}
+                        {currentReplicationStep === 1 && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    📅 Etapa 1: Seleção de Dias de Origem e Destino
+                                </h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700">
+                                            Dia de Origem
+                                        </label>
+                                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                            {(() => {
+                                                const sourceInfo = parseShiftId(replicationData.sourceDay)
+                                                return (
+                                                    <div>
+                                                        <div className="text-sm font-medium">
+                                                            {sourceInfo.dateFormatted}
+                                                        </div>
+                                                        <div className="text-xs text-blue-600">
+                                                            {sourceInfo.stage.toUpperCase()} • {sourceInfo.period === 'diurno' ? 'Diurno' : 'Noturno'}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })()}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700">
+                                            Dia de Destino
+                                        </label>
+                                        <select
+                                            value={replicationData.targetDay}
+                                            onChange={(e) => setReplicationData(prev => ({
+                                                ...prev,
+                                                targetDay: e.target.value
+                                            }))}
+                                            className="w-full p-2 border border-gray-300 rounded-lg"
+                                        >
+                                            <option value="">Selecione o dia de destino</option>
+                                            {getEventDays()
+                                                .filter(day => day.id !== replicationData.sourceDay)
+                                                .map(day => {
+                                                    const dayInfo = parseShiftId(day.id)
+                                                    return (
+                                                        <option key={day.id} value={day.id}>
+                                                            {dayInfo.dateFormatted} • {dayInfo.stage.toUpperCase()} • {dayInfo.period === 'diurno' ? 'Diurno' : 'Noturno'}
+                                                        </option>
+                                                    )
+                                                })}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {replicationData.sourceParticipants.length > 0 && (
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-green-800 mb-2">
+                                            ✅ Participantes Analisados
+                                        </h4>
+                                        <div className="text-sm text-green-700">
+                                            <div>📊 Total no dia origem: {replicationData.sourceParticipants.length}</div>
+                                            <div>📊 Já existem no destino: {replicationData.targetParticipants.length}</div>
+                                            <div className="font-medium">🎯 Serão replicados: {replicationData.participantsToReplicate.length}</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Step 2: Análise de Empresas */}
+                        {currentReplicationStep === 2 && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    🏢 Etapa 2: Verificação de Empresas
+                                </h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-green-800 mb-2">
+                                            ✅ Empresas Existentes
+                                        </h4>
+                                        <div className="text-lg font-bold text-green-600">
+                                            {replicationData.companiesAnalysis.existing.length}
+                                        </div>
+                                        {replicationData.companiesAnalysis.existing.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                                {replicationData.companiesAnalysis.existing.map(company => (
+                                                    <div key={company} className="text-xs text-green-700 truncate">
+                                                        • {company}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-yellow-800 mb-2">
+                                            ⚠️ Empresas Ausentes
+                                        </h4>
+                                        <div className="text-lg font-bold text-yellow-600">
+                                            {replicationData.companiesAnalysis.missing.length}
+                                        </div>
+                                        {replicationData.companiesAnalysis.missing.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                                {replicationData.companiesAnalysis.missing.map(company => (
+                                                    <div key={company} className="text-xs text-yellow-700 truncate">
+                                                        • {company}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-blue-800 mb-2">
+                                            🔧 Precisam ser Criadas
+                                        </h4>
+                                        <div className="text-lg font-bold text-blue-600">
+                                            {replicationData.companiesAnalysis.needingCreation.length}
+                                        </div>
+                                        {replicationData.companiesAnalysis.needingCreation.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                                {replicationData.companiesAnalysis.needingCreation.map(company => (
+                                                    <div key={company} className="text-xs text-blue-700 truncate">
+                                                        • {company}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 3: Processamento de Empresas */}
+                        {currentReplicationStep === 3 && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    🔧 Etapa 3: Criação de Empresas
+                                </h3>
+
+                                {replicationData.companiesAnalysis.needingCreation.length === 0 ? (
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                                <span className="text-white text-xs">✓</span>
+                                            </div>
+                                            <span className="text-green-800 font-medium">
+                                                Todas as empresas já existem no sistema!
+                                            </span>
+                                        </div>
+                                        <p className="text-green-700 text-sm mt-2">
+                                            Não é necessário criar novas empresas. Você pode prosseguir para a próxima etapa.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                            <h4 className="font-medium text-blue-800 mb-2">
+                                                Empresas que serão criadas:
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {replicationData.companiesAnalysis.needingCreation.map(company => (
+                                                    <div key={company} className="flex items-center gap-2 text-sm">
+                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                        <span>{company}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {replicationData.processingSummary.companiesProcessed > 0 && (
+                                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                                        <span className="text-white text-xs">✓</span>
+                                                    </div>
+                                                    <span className="text-green-800 font-medium">
+                                                        {replicationData.processingSummary.companiesProcessed} empresa(s) criada(s) com sucesso!
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Step 4: Análise de Credenciais */}
+                        {currentReplicationStep === 4 && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    🎫 Etapa 4: Verificação de Credenciais
+                                </h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-green-800 mb-2">
+                                            ✅ Credenciais Existentes
+                                        </h4>
+                                        <div className="text-lg font-bold text-green-600">
+                                            {replicationData.credentialsAnalysis.existing.length}
+                                        </div>
+                                        {replicationData.credentialsAnalysis.existing.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                                {replicationData.credentialsAnalysis.existing.map(credential => (
+                                                    <div key={credential} className="text-xs text-green-700 truncate">
+                                                        • {credential}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-yellow-800 mb-2">
+                                            ⚠️ Credenciais Ausentes
+                                        </h4>
+                                        <div className="text-lg font-bold text-yellow-600">
+                                            {replicationData.credentialsAnalysis.missing.length}
+                                        </div>
+                                        {replicationData.credentialsAnalysis.missing.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                                {replicationData.credentialsAnalysis.missing.map(credential => (
+                                                    <div key={credential} className="text-xs text-yellow-700 truncate">
+                                                        • {credential}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-blue-800 mb-2">
+                                            🔧 Precisam ser Criadas
+                                        </h4>
+                                        <div className="text-lg font-bold text-blue-600">
+                                            {replicationData.credentialsAnalysis.needingCreation.length}
+                                        </div>
+                                        {replicationData.credentialsAnalysis.needingCreation.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                                {replicationData.credentialsAnalysis.needingCreation.map(credential => (
+                                                    <div key={credential} className="text-xs text-blue-700 truncate">
+                                                        • {credential}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 5: Processamento de Credenciais */}
+                        {currentReplicationStep === 5 && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    🔧 Etapa 5: Criação de Credenciais
+                                </h3>
+
+                                {replicationData.credentialsAnalysis.needingCreation.length === 0 ? (
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                                <span className="text-white text-xs">✓</span>
+                                            </div>
+                                            <span className="text-green-800 font-medium">
+                                                Todas as credenciais já existem no sistema!
+                                            </span>
+                                        </div>
+                                        <p className="text-green-700 text-sm mt-2">
+                                            Não é necessário criar novas credenciais. Você pode prosseguir para a replicação final.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                            <h4 className="font-medium text-blue-800 mb-2">
+                                                Credenciais que serão criadas:
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {replicationData.credentialsAnalysis.needingCreation.map(credential => (
+                                                    <div key={credential} className="flex items-center gap-2 text-sm">
+                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                        <span>{credential}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {replicationData.processingSummary.credentialsProcessed > 0 && (
+                                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                                        <span className="text-white text-xs">✓</span>
+                                                    </div>
+                                                    <span className="text-green-800 font-medium">
+                                                        {replicationData.processingSummary.credentialsProcessed} credencial(is) criada(s) com sucesso!
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Step 6: Replicação Final */}
+                        {currentReplicationStep === 6 && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    🎯 Etapa 6: Replicação Final do Staff
+                                </h3>
+
+                                <div className="space-y-4">
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-blue-800 mb-3">Resumo da Replicação:</h4>
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex justify-between">
+                                                <span>👥 Participantes a replicar:</span>
+                                                <span className="font-medium">{replicationData.participantsToReplicate.length}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>🏢 Empresas processadas:</span>
+                                                <span className="font-medium">{replicationData.processingSummary.companiesProcessed}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>🎫 Credenciais processadas:</span>
+                                                <span className="font-medium">{replicationData.processingSummary.credentialsProcessed}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {replicationData.processingSummary.participantsProcessed > 0 && (
+                                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                                    <span className="text-white text-xs">✓</span>
+                                                </div>
+                                                <span className="text-green-800 font-medium">
+                                                    ✅ Replicação Concluída com Sucesso!
+                                                </span>
+                                            </div>
+                                            <div className="mt-2 text-sm text-green-700">
+                                                {replicationData.processingSummary.participantsProcessed} participante(s) replicado(s) com sucesso para o turno de destino.
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="flex justify-between">
+                        <div className="flex gap-2">
+                            {currentReplicationStep > 1 && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setCurrentReplicationStep(prev => Math.max(1, prev - 1))}
+                                    disabled={isProcessingStep}
+                                >
+                                    ← Etapa Anterior
+                                </Button>
+                            )}
+                        </div>
+
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowStepReplicationModal(false)}
+                                disabled={isProcessingStep}
+                            >
+                                Cancelar
+                            </Button>
+
+                            {currentReplicationStep < 6 && (
+                                <Button
+                                    onClick={async () => {
+                                        switch (currentReplicationStep) {
+                                            case 1:
+                                                await handleStep1Selection(replicationData.targetDay)
+                                                break
+                                            case 2:
+                                                await handleStep2CompaniesAnalysis()
+                                                break
+                                            case 3:
+                                                await handleStep3ProcessCompanies()
+                                                break
+                                            case 4:
+                                                await handleStep4CredentialsAnalysis()
+                                                break
+                                            case 5:
+                                                await handleStep5ProcessCredentials()
+                                                break
+                                        }
+                                    }}
+                                    disabled={isProcessingStep || (currentReplicationStep === 1 && !replicationData.targetDay)}
+                                    className="bg-blue-600 hover:bg-blue-700"
+                                >
+                                    {isProcessingStep ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                                            Processando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            Próxima Etapa →
+                                        </>
+                                    )}
+                                </Button>
+                            )}
+
+                            {currentReplicationStep === 6 && replicationData.processingSummary.participantsProcessed === 0 && (
+                                <Button
+                                    onClick={() => handleStep6FinalReplication()}
+                                    disabled={isProcessingStep}
+                                    className="bg-green-600 hover:bg-green-700"
+                                >
+                                    {isProcessingStep ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                                            Replicando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            🎯 Executar Replicação Final
+                                        </>
+                                    )}
+                                </Button>
+                            )}
+
+                            {currentReplicationStep === 6 && replicationData.processingSummary.participantsProcessed > 0 && (
+                                <Button
+                                    onClick={() => setShowStepReplicationModal(false)}
+                                    className="bg-green-600 hover:bg-green-700"
+                                >
+                                    ✅ Finalizar
+                                </Button>
+                            )}
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </EventLayout>
     )
 }

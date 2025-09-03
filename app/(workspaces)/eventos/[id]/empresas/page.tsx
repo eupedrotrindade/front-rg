@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink, Sun, Moon, Clock, Package } from "lucide-react"
+import { Plus, Search, Edit, Trash2, Building, Calendar, Check, X, MoreHorizontal, ExternalLink, Sun, Moon, Clock, Package, Copy } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas"
@@ -34,6 +34,10 @@ export default function EmpresasPage() {
     const [isQuickInsertModalOpen, setIsQuickInsertModalOpen] = useState(false)
     const [quickInsertText, setQuickInsertText] = useState('')
     const [isProcessingQuickInsert, setIsProcessingQuickInsert] = useState(false)
+    const [isReplicateModalOpen, setIsReplicateModalOpen] = useState(false)
+    const [sourceShiftId, setSourceShiftId] = useState<string>('')
+    const [targetShiftIds, setTargetShiftIds] = useState<string[]>([])
+    const [isProcessingReplicate, setIsProcessingReplicate] = useState(false)
 
     // Hooks
     const eventId = useParams().id as string
@@ -501,6 +505,99 @@ export default function EmpresasPage() {
         }
     }, [availableDates, selectedDay])
 
+    // Função para replicar empresas entre turnos
+    const handleReplicateEmpresas = async () => {
+        if (!sourceShiftId || targetShiftIds.length === 0) {
+            toast.error('Selecione um turno de origem e pelo menos um turno de destino')
+            return
+        }
+
+        setIsProcessingReplicate(true)
+
+        try {
+            // Buscar empresas do turno de origem
+            const sourceEmpresas = allEmpresas.filter(empresa => empresa.shiftId === sourceShiftId)
+
+            if (sourceEmpresas.length === 0) {
+                toast.error('Nenhuma empresa encontrada no turno de origem')
+                return
+            }
+
+            let totalCreated = 0
+            let totalSkipped = 0
+            let totalErrors = 0
+
+            // Para cada turno de destino
+            for (const targetShiftId of targetShiftIds) {
+                const targetShiftInfo = parseShiftId(targetShiftId)
+
+                // Verificar quais empresas já existem no turno de destino
+                const existingEmpresas = allEmpresas.filter(empresa =>
+                    empresa.shiftId === targetShiftId
+                ).map(e => e.nome.toLowerCase())
+
+                // Para cada empresa do turno de origem
+                for (const empresa of sourceEmpresas) {
+                    // Verificar se a empresa já existe no turno de destino
+                    if (existingEmpresas.includes(empresa.nome.toLowerCase())) {
+                        totalSkipped++
+                        continue
+                    }
+
+                    try {
+                        // Criar nova empresa no turno de destino
+                        const novaEmpresaData = {
+                            nome: empresa.nome,
+                            id_evento: empresa.id_evento,
+                            email: empresa.email,
+                            telefone: empresa.telefone,
+                            endereco: empresa.endereco,
+                            cidade: empresa.cidade,
+                            estado: empresa.estado,
+                            cep: empresa.cep,
+                            responsavel: empresa.responsavel,
+                            observacoes: empresa.observacoes,
+                            days: [targetShiftId],
+                            shiftId: targetShiftId,
+                            workDate: targetShiftInfo.workDate,
+                            workStage: targetShiftInfo.workStage,
+                            workPeriod: targetShiftInfo.workPeriod
+                        }
+
+                        await createEmpresaMutation.mutateAsync(novaEmpresaData)
+                        totalCreated++
+                    } catch (error) {
+                        console.error('Erro ao replicar empresa:', error)
+                        totalErrors++
+                    }
+                }
+            }
+
+            // Feedback para o usuário
+            const messages = []
+            if (totalCreated > 0) messages.push(`${totalCreated} empresa(s) replicada(s)`)
+            if (totalSkipped > 0) messages.push(`${totalSkipped} empresa(s) já existiam`)
+            if (totalErrors > 0) messages.push(`${totalErrors} erro(s)`)
+
+            if (totalCreated > 0) {
+                toast.success(messages.join(', '))
+            } else {
+                toast.info(messages.join(', ') || 'Nenhuma empresa foi replicada')
+            }
+
+            // Limpar estados
+            setIsReplicateModalOpen(false)
+            setSourceShiftId('')
+            setTargetShiftIds([])
+
+        } catch (error) {
+            console.error('Erro durante replicação:', error)
+            toast.error('Erro durante a replicação de empresas')
+        } finally {
+            setIsProcessingReplicate(false)
+        }
+    }
+
     // Função para processar inserção rápida de empresas
     const handleQuickInsert = async () => {
         if (!quickInsertText.trim()) {
@@ -728,7 +825,7 @@ export default function EmpresasPage() {
                                     Nova Empresa
                                 </Button>
                             </Link>
-                            
+
                             <Button
                                 onClick={() => setIsQuickInsertModalOpen(true)}
                                 disabled={!selectedDay}
@@ -737,6 +834,15 @@ export default function EmpresasPage() {
                             >
                                 <Package className="w-4 h-4 mr-2" />
                                 Inserção Rápida
+                            </Button>
+
+                            <Button
+                                onClick={() => setIsReplicateModalOpen(true)}
+                                variant="outline"
+                                className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                            >
+                                <Copy className="w-4 h-4 mr-2" />
+                                Replicar Empresas
                             </Button>
 
                             <Input
@@ -1173,6 +1279,163 @@ export default function EmpresasPage() {
                                     <>
                                         <Package className="w-4 h-4 mr-2" />
                                         Criar {quickInsertText.split('\n').filter(line => line.trim()).length} Empresa(s)
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Modal para replicação de empresas */}
+                <Dialog open={isReplicateModalOpen} onOpenChange={setIsReplicateModalOpen}>
+                    <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Replicar Empresas Entre Turnos</DialogTitle>
+                            <DialogDescription>
+                                Copie empresas de um turno para outros turnos do evento.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-6">
+                            {/* Instruções */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <h3 className="font-medium text-blue-900 mb-2">📋 Como funciona:</h3>
+                                <div className="text-sm text-blue-700 space-y-1">
+                                    <p>• Selecione um <strong>turno de origem</strong> (onde estão as empresas)</p>
+                                    <p>• Selecione um ou mais <strong>turnos de destino</strong> (para onde copiar)</p>
+                                    <p>• Empresas que já existem nos turnos de destino serão ignoradas</p>
+                                </div>
+                            </div>
+
+                            {/* Turno de origem */}
+                            <div className="space-y-3">
+                                <label className="text-sm font-medium text-gray-700">
+                                    Turno de Origem:
+                                </label>
+                                <Select value={sourceShiftId} onValueChange={setSourceShiftId}>
+                                    <SelectTrigger className="border-gray-300">
+                                        <SelectValue placeholder="Selecione o turno de origem" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60 bg-white border border-gray-400 shadow-none
+">
+                                        {availableDays.map((day) => {
+                                            const empresasCount = allEmpresas.filter(e => e.shiftId === day.id).length
+                                            return (
+                                                <SelectItem key={day.id} value={day.id}>
+                                                    <div className="flex items-center justify-between w-full">
+                                                        <span>{day.label}</span>
+                                                        <span className="text-xs text-gray-500 ml-2">
+                                                            ({empresasCount} empresa{empresasCount !== 1 ? 's' : ''})
+                                                        </span>
+                                                    </div>
+                                                </SelectItem>
+                                            )
+                                        })}
+                                    </SelectContent>
+                                </Select>
+
+                                {sourceShiftId && (
+                                    <div className="text-sm text-gray-600">
+                                        {allEmpresas.filter(e => e.shiftId === sourceShiftId).length} empresa(s) disponível(is) para replicação
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Turnos de destino */}
+                            <div className="space-y-3 ">
+                                <label className="text-sm font-medium text-gray-700">
+                                    Turnos de Destino:
+                                </label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                                    {availableDays
+                                        .filter(day => day.id !== sourceShiftId) // Excluir turno de origem
+                                        .map((day) => {
+                                            const isSelected = targetShiftIds.includes(day.id)
+                                            const empresasCount = allEmpresas.filter(e => e.shiftId === day.id).length
+
+                                            return (
+                                                <Button
+                                                    key={day.id}
+                                                    type="button"
+                                                    variant={isSelected ? "default" : "outline"}
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        if (isSelected) {
+                                                            setTargetShiftIds(prev => prev.filter(id => id !== day.id))
+                                                        } else {
+                                                            setTargetShiftIds(prev => [...prev, day.id])
+                                                        }
+                                                    }}
+                                                    className="text-xs h-auto py-2 px-3 justify-start"
+                                                >
+                                                    <div className="flex flex-col items-start w-full">
+                                                        <span className="font-medium">{day.label.split(' (')[0]}</span>
+                                                        <span className="text-xs opacity-75">
+                                                            {day.label.split(' (')[1]?.replace(')', '')} - {empresasCount} empresa{empresasCount !== 1 ? 's' : ''}
+                                                        </span>
+                                                    </div>
+                                                </Button>
+                                            )
+                                        })}
+                                </div>
+
+                                {targetShiftIds.length > 0 && (
+                                    <div className="text-sm text-gray-600">
+                                        {targetShiftIds.length} turno(s) de destino selecionado(s)
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Preview da replicação */}
+                            {sourceShiftId && targetShiftIds.length > 0 && (
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                    <h3 className="font-medium text-green-900 mb-2">
+                                        🔍 Preview da Replicação:
+                                    </h3>
+                                    <div className="text-sm text-green-700">
+                                        <p className="mb-2">
+                                            <strong>Origem:</strong> {availableDays.find(d => d.id === sourceShiftId)?.label}
+                                            ({allEmpresas.filter(e => e.shiftId === sourceShiftId).length} empresa{allEmpresas.filter(e => e.shiftId === sourceShiftId).length !== 1 ? 's' : ''})
+                                        </p>
+                                        <p className="mb-2">
+                                            <strong>Destino(s):</strong> {targetShiftIds.length} turno(s)
+                                        </p>
+                                        <p>
+                                            <strong>Total de operações:</strong> até {allEmpresas.filter(e => e.shiftId === sourceShiftId).length * targetShiftIds.length} empresa(s)
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Ações do modal */}
+                        <div className="flex gap-2 pt-4">
+                            <Button
+                                onClick={() => {
+                                    setIsReplicateModalOpen(false)
+                                    setSourceShiftId('')
+                                    setTargetShiftIds([])
+                                }}
+                                variant="outline"
+                                disabled={isProcessingReplicate}
+                                className="flex-1"
+                            >
+                                Cancelar
+                            </Button>
+                            <Button
+                                onClick={handleReplicateEmpresas}
+                                disabled={!sourceShiftId || targetShiftIds.length === 0 || isProcessingReplicate}
+                                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                            >
+                                {isProcessingReplicate ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                                        Replicando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Copy className="w-4 h-4 mr-2" />
+                                        Replicar Empresas
                                     </>
                                 )}
                             </Button>
