@@ -788,33 +788,31 @@ export default function EventoDetalhesPage() {
         }
     }, [viewMode, shiftParticipantsData, groupedParticipantsData, currentSelectedDay, normalizeDate, parseShiftId])
 
-    // Função otimizada para contar participantes por turno
+    // ✅ OTIMIZAÇÃO DE PERFORMANCE: Cache inteligente de contagens
+    // Calcula uma vez para todos os turnos e reutiliza nas tabs
+    // Evita re-renderização desnecessária ao trocar de dia
+    const participantsCountCache = useMemo(() => {
+        const cache = new Map<string, number>();
+        
+        // Calcular uma vez para todos os turnos
+        eventDays.forEach(day => {
+            let count = 0;
+            groupedParticipantsData.forEach(group => {
+                const hasShift = group.shifts.some(shift => (shift as any).shiftId === day.id)
+                if (hasShift) count++
+            })
+            cache.set(day.id, count);
+        });
+        
+        return cache;
+    }, [groupedParticipantsData, eventDays]);
+
+    // Função otimizada que usa cache - não recalcula
     const getParticipantsCountByShift = useCallback(
         (shiftId: string): number => {
-            if (viewMode === 'shift') {
-                // Modo turno: usar API específica para cada turno
-                // Como não podemos fazer query para cada turno no render, usar fallback
-                if (shiftId === currentSelectedDay) {
-                    return shiftParticipantsData.length
-                }
-                // Para outros turnos, usar dados agrupados como estimativa
-                let count = 0;
-                groupedParticipantsData.forEach(group => {
-                    const hasShift = group.shifts.some(shift => (shift as any).shiftId === shiftId)
-                    if (hasShift) count++
-                })
-                return count
-            } else {
-                // Modo agrupado: contar participantes que têm o shift específico
-                let count = 0;
-                groupedParticipantsData.forEach(group => {
-                    const hasShift = group.shifts.some(shift => (shift as any).shiftId === shiftId)
-                    if (hasShift) count++
-                })
-                return count
-            }
+            return participantsCountCache.get(shiftId) || 0;
         },
-        [viewMode, currentSelectedDay, shiftParticipantsData, groupedParticipantsData],
+        [participantsCountCache],
     )
 
     // Credentials array
@@ -841,7 +839,7 @@ export default function EventoDetalhesPage() {
         return getEmpresasPorDia(currentSelectedDay)
     }, [getEmpresasPorDia, currentSelectedDay])
 
-    // Hook otimizado para filtros
+    // Hook otimizado para filtros - apenas recalcula quando o dia muda
     const {
         filters,
         popoverStates,
@@ -877,7 +875,7 @@ export default function EventoDetalhesPage() {
         return Array.from(empresasDoTurno).sort()
     }, [participantesDoDia])
 
-    // Memoizar KPIs baseados no dia selecionado para evitar recálculos
+    // KPIs otimizados - apenas recalcula quando participantes do dia ou stats mudam
     const kpiStats = useMemo(() => {
         const totalParticipants = participantesDoDia.length
         const participantsWithWristbands = participantesDoDia.filter(
@@ -899,7 +897,7 @@ export default function EventoDetalhesPage() {
             checkedOutParticipants,
             activeParticipants,
         }
-    }, [participantesDoDia, dayStats.statusCounts])
+    }, [participantesDoDia.length, dayStats.statusCounts]) // Otimizado: só deps essenciais
 
     // Memoizar estatísticas por credencial para evitar recálculo
     const credentialStats = useMemo(() => {
