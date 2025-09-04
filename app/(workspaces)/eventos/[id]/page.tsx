@@ -166,11 +166,21 @@ export default function EventoDetalhesPage() {
         current: number
         processed: number
         currentParticipant: string
+        estimatedTimeRemaining: number
+        startTime: number
+        currentBatch: number
+        totalBatches: number
+        operationsPerMinute: number
     }>({
         total: 0,
         current: 0,
         processed: 0,
         currentParticipant: '',
+        estimatedTimeRemaining: 0,
+        startTime: 0,
+        currentBatch: 0,
+        totalBatches: 0,
+        operationsPerMinute: 0
     })
 
     // Estados para o sistema de replicação em etapas
@@ -197,6 +207,11 @@ export default function EventoDetalhesPage() {
             credentialsProcessed: number
             participantsProcessed: number
         }
+        rateLimiting: {
+            operationsCount: number
+            windowStart: number
+            estimatedTime: number
+        }
     }>({
         sourceDay: '',
         targetDay: '',
@@ -217,9 +232,132 @@ export default function EventoDetalhesPage() {
             companiesProcessed: 0,
             credentialsProcessed: 0,
             participantsProcessed: 0
+        },
+        rateLimiting: {
+            operationsCount: 0,
+            windowStart: Date.now(),
+            estimatedTime: 0
         }
     })
+
+    // Rate limiting para Supabase (100 ops/min)
+    const [rateLimitState, setRateLimitState] = useState({
+        operationsCount: 0,
+        windowStart: Date.now(),
+        isThrottled: false
+    })
     const [isProcessingStep, setIsProcessingStep] = useState(false)
+
+    // Rate limiting utilities para Supabase (100 operações por minuto)
+    const SUPABASE_RATE_LIMIT = 100 // ops por minuto
+    const RATE_LIMIT_WINDOW = 60000 // 1 minuto em ms
+    const SAFE_MARGIN = 0.8 // 80% do limite para segurança
+    const MAX_SAFE_OPS_PER_MINUTE = Math.floor(SUPABASE_RATE_LIMIT * SAFE_MARGIN)
+
+    // Função para calcular delay dinâmico baseado no rate limiting
+    const calculateDynamicDelay = useCallback((operationsRemaining: number): number => {
+        const now = Date.now()
+        const timeInWindow = now - rateLimitState.windowStart
+        const windowRemaining = RATE_LIMIT_WINDOW - timeInWindow
+
+        // Se passou mais de 1 minuto, resetar contador
+        if (timeInWindow >= RATE_LIMIT_WINDOW) {
+            setRateLimitState({
+                operationsCount: 1,
+                windowStart: now,
+                isThrottled: false
+            })
+            return 100 // delay mínimo
+        }
+
+        // Se estamos próximos do limite, calcular delay necessário
+        if (rateLimitState.operationsCount >= MAX_SAFE_OPS_PER_MINUTE) {
+            setRateLimitState(prev => ({ ...prev, isThrottled: true }))
+            return windowRemaining + 1000 // Esperar até o final da janela + buffer
+        }
+
+        // Calcular delay ótimo para distribuir operações uniformemente
+        const optimalDelay = Math.max(
+            100, // delay mínimo
+            Math.floor(windowRemaining / operationsRemaining)
+        )
+
+        return Math.min(optimalDelay, 2000) // delay máximo de 2s
+    }, [rateLimitState])
+
+    // Função para aguardar respeitando rate limit
+    const waitForRateLimit = useCallback(async (operationsRemaining: number = 1) => {
+        const delay = calculateDynamicDelay(operationsRemaining)
+
+        // Incrementar contador de operações
+        setRateLimitState(prev => ({
+            ...prev,
+            operationsCount: prev.operationsCount + 1
+        }))
+
+        if (delay > 2000) {
+            console.log(`⏸️ Rate limit atingido, aguardando ${Math.round(delay / 1000)}s...`)
+        }
+
+        await new Promise(resolve => setTimeout(resolve, delay))
+    }, [calculateDynamicDelay])
+
+    // Sistema de batching inteligente
+    const BATCH_SIZE = 10
+
+    // Função para processar operações em lotes
+    const processBatch = useCallback(
+        async <T extends { name?: string }>(
+            items: T[],
+            processor: (item: T, index: number) => Promise<boolean>,
+            onProgress?: (processed: number, total: number, current: string) => void
+        ): Promise<{ success: number; errors: number }> => {
+            let successCount = 0
+            let errorCount = 0
+
+            for (let i = 0; i < items.length; i++) {
+                try {
+                    const success = await processor(items[i], i)
+                    if (success) successCount++
+                    else errorCount++
+
+                    if (onProgress && typeof items[i] === 'object' && items[i] && 'name' in (items[i] as any)) {
+                        onProgress(i + 1, items.length, String((items[i] as any).name))
+                    }
+
+                    await waitForRateLimit(items.length - i - 1)
+                } catch (error) {
+                    errorCount++
+                }
+            }
+
+            return { success: successCount, errors: errorCount }
+        }, [waitForRateLimit])
+
+    // Função para estimar tempo total de operação
+    const estimateOperationTime = useCallback((totalOperations: number): number => {
+        const opsPerMinute = MAX_SAFE_OPS_PER_MINUTE
+        const minutes = Math.ceil(totalOperations / opsPerMinute)
+        return minutes * 60000 // retorna em ms
+    }, [])
+
+    // Função para calcular tempo restante dinamicamente
+    const calculateTimeRemaining = useCallback((processed: number, total: number, startTime: number): number => {
+        if (processed === 0) return 0
+
+        const elapsed = Date.now() - startTime
+        const rate = processed / elapsed // items per ms
+        const remaining = total - processed
+
+        return remaining / rate // ms restantes
+    }, [])
+
+    // Função para formatar tempo em formato legível
+    const formatTime = useCallback((ms: number): string => {
+        if (ms < 60000) return `${Math.round(ms / 1000)}s`
+        if (ms < 3600000) return `${Math.round(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`
+        return `${Math.round(ms / 3600000)}h ${Math.round((ms % 3600000) / 60000)}m`
+    }, [])
 
     // Estado para modal de adicionar staff
     const [showAdicionarStaffModal, setShowAdicionarStaffModal] = useState(false)
@@ -271,6 +409,31 @@ export default function EventoDetalhesPage() {
     const [showDuplicatesManagerModal, setShowDuplicatesManagerModal] = useState(false)
     const [duplicatesManagerLoading, setDuplicatesManagerLoading] = useState(false)
     const [selectedDuplicatesForRemoval, setSelectedDuplicatesForRemoval] = useState<Set<string>>(new Set())
+
+    // Estados para progresso de criação de empresas e credenciais
+    const [companyCreationProgress, setCompanyCreationProgress] = useState<{
+        current: number
+        total: number
+        currentItem: string
+        completed: boolean
+    }>({
+        current: 0,
+        total: 0,
+        currentItem: '',
+        completed: false
+    })
+    
+    const [credentialCreationProgress, setCredentialCreationProgress] = useState<{
+        current: number
+        total: number
+        currentItem: string
+        completed: boolean
+    }>({
+        current: 0,
+        total: 0,
+        currentItem: '',
+        completed: false
+    })
 
     // Função para converter data para formato da API (dd-mm-yyyy)
     const formatDateForAPI = useCallback((dateStr: string): string => {
@@ -1933,7 +2096,27 @@ export default function EventoDetalhesPage() {
                 companiesProcessed: 0,
                 credentialsProcessed: 0,
                 participantsProcessed: 0
+            },
+            rateLimiting: {
+                estimatedTime: 0,
+                operationsCount: 0,
+                windowStart: 0
             }
+        })
+        
+        // Resetar estados de progresso
+        setCompanyCreationProgress({
+            current: 0,
+            total: 0,
+            currentItem: '',
+            completed: false
+        })
+        
+        setCredentialCreationProgress({
+            current: 0,
+            total: 0,
+            currentItem: '',
+            completed: false
         })
         setCurrentReplicationStep(1)
         setIsProcessingStep(false)
@@ -2118,6 +2301,14 @@ export default function EventoDetalhesPage() {
             const targetShiftInfo = parseShiftId(targetDay)
 
             let processedCount = 0
+            
+            // Inicializar progresso de criação de empresas
+            setCompanyCreationProgress({
+                current: 0,
+                total: needingCreation.length,
+                currentItem: needingCreation[0] || '',
+                completed: false
+            })
 
             // Criar apenas as empresas que precisam ser criadas para este dia específico
             for (const companyName of needingCreation) {
@@ -2139,6 +2330,14 @@ export default function EventoDetalhesPage() {
                                 onSuccess: () => {
                                     console.log(`✅ Empresa ${companyName} criada com sucesso`)
                                     processedCount++
+                                    
+                                    // Atualizar progresso
+                                    setCompanyCreationProgress(prev => ({
+                                        ...prev,
+                                        current: processedCount,
+                                        currentItem: processedCount < needingCreation.length ? needingCreation[processedCount] : 'Finalizando...'
+                                    }))
+                                    
                                     resolve()
                                 },
                                 onError: (error) => {
@@ -2150,10 +2349,10 @@ export default function EventoDetalhesPage() {
                     })
                 } catch (error) {
                     console.error(`❌ Erro ao criar empresa ${companyName}:`, error)
-                    toast.error(`Erro ao criar empresa ${companyName}`)
+                    // Não usar toast aqui, o erro será mostrado no progresso visual
                 }
-                // Pequeno delay entre criações
-                await new Promise(resolve => setTimeout(resolve, 300))
+                // Rate limiting inteligente para empresas
+                await waitForRateLimit(needingCreation.length - processedCount)
             }
 
             // Atualizar resumo
@@ -2166,14 +2365,26 @@ export default function EventoDetalhesPage() {
             }))
 
             console.log(`✅ ETAPA 3 CONCLUÍDA: ${processedCount} empresas criadas para o dia específico`)
-            toast.success(`${processedCount} empresa(s) criada(s) para o turno`)
+            
+            // Marcar progresso como concluído
+            setCompanyCreationProgress(prev => ({
+                ...prev,
+                completed: true,
+                current: processedCount,
+                currentItem: 'Concluído'
+            }))
 
             // Avançar para Etapa 4
             setCurrentReplicationStep(4)
 
         } catch (error) {
             console.error('❌ Erro na Etapa 3:', error)
-            toast.error('Erro ao processar empresas')
+            // Marcar progresso como com erro
+            setCompanyCreationProgress(prev => ({
+                ...prev,
+                completed: true,
+                currentItem: 'Erro durante o processo'
+            }))
         } finally {
             setIsProcessingStep(false)
         }
@@ -2301,10 +2512,18 @@ export default function EventoDetalhesPage() {
             const targetShiftInfo = parseShiftId(targetDay)
 
             let processedCount = 0
-
+            
             // Criar apenas as credenciais que precisam ser criadas para este dia específico
             // Identificar credenciais únicas dos participantes que precisam ser criadas
             const uniqueCredentials = [...new Set(needingCreation)]
+            
+            // Inicializar progresso de criação de credenciais
+            setCredentialCreationProgress({
+                current: 0,
+                total: uniqueCredentials.length,
+                currentItem: uniqueCredentials[0] || '',
+                completed: false
+            })
 
             for (const credentialName of uniqueCredentials) {
                 try {
@@ -2337,6 +2556,14 @@ export default function EventoDetalhesPage() {
                                 onSuccess: () => {
                                     console.log(`✅ Credencial ${credentialName} criada com sucesso`)
                                     processedCount++
+                                    
+                                    // Atualizar progresso
+                                    setCredentialCreationProgress(prev => ({
+                                        ...prev,
+                                        current: processedCount,
+                                        currentItem: processedCount < uniqueCredentials.length ? uniqueCredentials[processedCount] : 'Finalizando...'
+                                    }))
+                                    
                                     resolve()
                                 },
                                 onError: (error) => {
@@ -2348,10 +2575,10 @@ export default function EventoDetalhesPage() {
                     })
                 } catch (error) {
                     console.error(`❌ Erro ao criar credencial ${credentialName}:`, error)
-                    toast.error(`Erro ao criar credencial ${credentialName}`)
+                    // Não usar toast aqui, o erro será mostrado no progresso visual
                 }
-                // Pequeno delay entre criações
-                await new Promise(resolve => setTimeout(resolve, 300))
+                // Rate limiting inteligente para credenciais
+                await waitForRateLimit(uniqueCredentials.length - processedCount)
             }
 
             // Atualizar resumo
@@ -2364,14 +2591,26 @@ export default function EventoDetalhesPage() {
             }))
 
             console.log(`✅ ETAPA 5 CONCLUÍDA: ${processedCount} credenciais criadas para o dia específico`)
-            toast.success(`${processedCount} credencial(is) criada(s) para o turno`)
+            
+            // Marcar progresso como concluído
+            setCredentialCreationProgress(prev => ({
+                ...prev,
+                completed: true,
+                current: processedCount,
+                currentItem: 'Concluído'
+            }))
 
             // Avançar para Etapa 6
             setCurrentReplicationStep(6)
 
         } catch (error) {
             console.error('❌ Erro na Etapa 5:', error)
-            toast.error('Erro ao processar credenciais')
+            // Marcar progresso como com erro
+            setCredentialCreationProgress(prev => ({
+                ...prev,
+                completed: true,
+                currentItem: 'Erro durante o processo'
+            }))
         } finally {
             setIsProcessingStep(false)
         }
@@ -2611,8 +2850,8 @@ export default function EventoDetalhesPage() {
                     })
                 }
 
-                // Delay para evitar sobrecarga
-                await new Promise(resolve => setTimeout(resolve, 300))
+                // Rate limiting inteligente para empresas
+                await waitForRateLimit(companiesNeedingReplication.length - replicatedCompaniesCount - createdCompaniesCount)
             } catch (error) {
                 console.error(`💥 Erro ao processar empresa "${name}":`, error)
             }
@@ -2697,8 +2936,8 @@ export default function EventoDetalhesPage() {
                     )
                 })
 
-                // Delay para evitar sobrecarga
-                await new Promise(resolve => setTimeout(resolve, 200))
+                // Rate limiting inteligente para credenciais
+                await waitForRateLimit(credentialsNeedingReplication.length - replicatedCredentialsCount)
             } catch (error) {
                 console.error(`💥 Erro ao replicar credencial "${credential.nome}":`, error)
             }
@@ -2880,40 +3119,40 @@ export default function EventoDetalhesPage() {
                 toast.error('Erro ao replicar empresas ou credenciais. Continuando com participantes...')
             }
 
-            // Inicializar dados de progresso
+            // Calcular tempo estimado
+            const totalOperations = participantsToReplicate.length + companiesResult.replicatedCount + companiesResult.createdCount + credentialsResult.replicatedCount
+            const estimatedTime = estimateOperationTime(totalOperations)
+
+            const totalBatches = Math.ceil(participantsToReplicate.length / BATCH_SIZE)
+            console.log(`⏱️ Estimativa de tempo: ${Math.ceil(estimatedTime / 60000)} minutos para ${totalOperations} operações`)
+            console.log(`📦 Processamento em ${totalBatches} lotes de ${BATCH_SIZE} itens`)
+            toast.info(`Processamento otimizado: ${totalBatches} lotes, ~${Math.ceil(estimatedTime / 60000)} min`)
+
+            // Inicializar dados de progresso com mais detalhes
+            const startTime = Date.now()
             setProgressData({
                 total: participantsToReplicate.length,
                 current: 0,
                 processed: 0,
                 currentParticipant: '',
+                estimatedTimeRemaining: estimatedTime,
+                startTime,
+                currentBatch: 0,
+                totalBatches,
+                operationsPerMinute: MAX_SAFE_OPS_PER_MINUTE
             })
             setShowProgressDialog(true)
 
-            let processedCount = 0
-            let successCount = 0
+            // Processar participantes usando batching inteligente
+            const { success: successCount, errors: errorCount } = await processBatch(
+                participantsToReplicate,
+                async (participant: any, index: any) => {
+                    const currentParticipantName = participant.name || 'Participante sem nome'
 
+                    // Esta lógica foi movida para o callback de progresso
 
-            // Para cada participante que NÃO existe no destino, replicar
-            for (let i = 0; i < participantsToReplicate.length; i++) {
-                const participant = participantsToReplicate[i]
-                const currentParticipantName = participant.name || 'Participante sem nome'
+                    console.log(`➕ Replicando ${participant.name} (CPF: ${participant.cpf}) para o turno de destino`)
 
-                // Atualizar progresso visual
-                setProgressData(prev => ({
-                    ...prev,
-                    current: i + 1,
-                    currentParticipant: currentParticipantName,
-                }))
-
-                console.log(`➕ Replicando ${participant.name} (CPF: ${participant.cpf}) para o turno de destino`)
-
-                try {
-                    console.log(`🔄 Criando cópia de ${participant.name} para o turno de destino:`, {
-                        origem: selectedDay,
-                        destino: replicateSourceDay,
-                        cpf: participant.cpf,
-                        participanteOriginal: participant.id
-                    })
 
                     // Criar dados para novo participante (cópia) no turno de destino
                     const newParticipantData = {
@@ -2927,71 +3166,51 @@ export default function EventoDetalhesPage() {
                         credentialId: participant.credentialId || undefined,
                         shirtSize: participant.shirtSize || undefined,
                         notes: participant.notes || undefined,
-                        // Criar apenas para o turno de destino
                         daysWork: [replicateSourceDay],
-                        // Campos adicionais para compatibilidade
                         shiftId: replicateSourceDay,
                         workDate: targetShiftInfo.dateISO,
                         workStage: targetShiftInfo.stage,
                         workPeriod: targetShiftInfo.period,
-                        performedBy: 'replicacao-staff'
+                        performedBy: 'replicacao-staff-batch'
                     }
 
-                    // LOG: Dados sendo enviados para o backend
-                    console.log('🔄 CRIANDO NOVO PARTICIPANTE NO BACKEND:', {
-                        participante: participant.name,
-                        cpfOriginal: participant.cpf,
-                        eventoId: newParticipantData.eventId,
-                        turnoOrigem: selectedDay,
-                        turnoDestino: replicateSourceDay,
-                        daysWorkNovo: newParticipantData.daysWork,
-                        dadosCompletos: newParticipantData
-                    });
-
-                    // Criar novo participante via API
-                    await new Promise((resolve, reject) => {
-                        console.log('📤 Chamando createParticipant para:', participant.name);
+                    // Criar novo participante via API com rate limiting automático
+                    return new Promise<boolean>((resolve) => {
                         createParticipant(newParticipantData, {
-                            onSuccess: (response) => {
-                                console.log(`✅ NOVO PARTICIPANTE CRIADO COM SUCESSO para ${participant.name}:`, response);
-                                console.log(`✅ ${participant.name} copiado com sucesso para ${targetShiftInfo.dateFormatted} (${targetShiftInfo.stage} - ${targetShiftInfo.period})`)
-                                successCount++
-                                processedCount++
-                                setProgressData(prev => ({
-                                    ...prev,
-                                    processed: processedCount,
-                                }))
+                            onSuccess: () => {
+                                console.log(`✅ ${participant.name} replicado com sucesso`)
                                 resolve(true)
                             },
-                            onError: error => {
-                                console.error(`❌ ERRO AO CRIAR NOVO PARTICIPANTE para ${participant.name}:`, error);
-                                console.error(`❌ Detalhes completos do erro:`, {
-                                    participante: participant.name,
-                                    cpfOriginal: participant.cpf,
-                                    dadosEnviados: newParticipantData,
-                                    erro: error
-                                });
-                                processedCount++
-                                setProgressData(prev => ({
-                                    ...prev,
-                                    processed: processedCount,
-                                }))
-                                reject(error)
+                            onError: (error) => {
+                                console.error(`❌ Erro ao replicar ${participant.name}:`, error)
+                                resolve(false)
                             },
                         })
                     })
+                },
+                (processed, total, current) => {
+                    // Calcular progresso e tempo restante dinamicamente
+                    const timeRemaining = calculateTimeRemaining(processed, total, startTime)
+                    const currentBatch = Math.floor((processed - 1) / BATCH_SIZE) + 1
+                    const opsPerMinute = processed > 0 ? Math.round((processed / (Date.now() - startTime)) * 60000) : 0
 
-                    // Delay controlado para não sobrecarregar a API
-                    await new Promise(resolve => setTimeout(resolve, 250))
-                } catch (error) {
-                    console.error(`💥 Erro ao criar cópia de ${participant.name}:`, error)
-                    processedCount++
+                    // Atualizar progresso em tempo real com estimativas precisas
                     setProgressData(prev => ({
                         ...prev,
-                        processed: processedCount,
+                        current: processed,
+                        processed,
+                        currentParticipant: current,
+                        estimatedTimeRemaining: timeRemaining,
+                        currentBatch: Math.min(currentBatch, totalBatches),
+                        operationsPerMinute: opsPerMinute
                     }))
+
+                    // Log de progresso a cada 5 itens para não poluir console
+                    if (processed % 5 === 0) {
+                        console.log(`📊 Progresso: ${processed}/${total} (${Math.round(processed / total * 100)}%) - Lote ${currentBatch}/${totalBatches} - Restam ~${formatTime(timeRemaining)} - ${opsPerMinute} ops/min`)
+                    }
                 }
-            }
+            )
 
             // Finalizar processo com relatório detalhado
             setTimeout(() => {
@@ -4990,16 +5209,43 @@ export default function EventoDetalhesPage() {
                                             </div>
                                         </div>
 
-                                        {replicationData.processingSummary.companiesProcessed > 0 && (
-                                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                                                        <span className="text-white text-xs">✓</span>
+                                        {/* Progresso de criação de empresas */}
+                                        {(companyCreationProgress.total > 0 || replicationData.processingSummary.companiesProcessed > 0) && (
+                                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                                                        {companyCreationProgress.completed ? (
+                                                            <span className="text-white text-xs">✓</span>
+                                                        ) : (
+                                                            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                                                        )}
                                                     </div>
-                                                    <span className="text-green-800 font-medium">
-                                                        {replicationData.processingSummary.companiesProcessed} empresa(s) criada(s) com sucesso!
+                                                    <span className="text-blue-800 font-medium">
+                                                        {companyCreationProgress.completed ? 'Empresas criadas com sucesso!' : 'Criando empresas...'}
                                                     </span>
                                                 </div>
+                                                
+                                                {companyCreationProgress.total > 0 && (
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between text-sm text-blue-700">
+                                                            <span>Progresso: {companyCreationProgress.current}/{companyCreationProgress.total}</span>
+                                                            <span>{Math.round((companyCreationProgress.current / companyCreationProgress.total) * 100)}%</span>
+                                                        </div>
+                                                        
+                                                        <div className="w-full bg-blue-200 rounded-full h-2">
+                                                            <div 
+                                                                className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                                                                style={{ width: `${(companyCreationProgress.current / companyCreationProgress.total) * 100}%` }}
+                                                            ></div>
+                                                        </div>
+                                                        
+                                                        {!companyCreationProgress.completed && companyCreationProgress.currentItem && (
+                                                            <div className="text-sm text-blue-600">
+                                                                Criando: <span className="font-medium">{companyCreationProgress.currentItem}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -5109,16 +5355,43 @@ export default function EventoDetalhesPage() {
                                             </div>
                                         </div>
 
-                                        {replicationData.processingSummary.credentialsProcessed > 0 && (
-                                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                                                        <span className="text-white text-xs">✓</span>
+                                        {/* Progresso de criação de credenciais */}
+                                        {(credentialCreationProgress.total > 0 || replicationData.processingSummary.credentialsProcessed > 0) && (
+                                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
+                                                        {credentialCreationProgress.completed ? (
+                                                            <span className="text-white text-xs">✓</span>
+                                                        ) : (
+                                                            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                                                        )}
                                                     </div>
-                                                    <span className="text-green-800 font-medium">
-                                                        {replicationData.processingSummary.credentialsProcessed} credencial(is) criada(s) com sucesso!
+                                                    <span className="text-purple-800 font-medium">
+                                                        {credentialCreationProgress.completed ? 'Credenciais criadas com sucesso!' : 'Criando credenciais...'}
                                                     </span>
                                                 </div>
+                                                
+                                                {credentialCreationProgress.total > 0 && (
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between text-sm text-purple-700">
+                                                            <span>Progresso: {credentialCreationProgress.current}/{credentialCreationProgress.total}</span>
+                                                            <span>{Math.round((credentialCreationProgress.current / credentialCreationProgress.total) * 100)}%</span>
+                                                        </div>
+                                                        
+                                                        <div className="w-full bg-purple-200 rounded-full h-2">
+                                                            <div 
+                                                                className="bg-purple-600 h-2 rounded-full transition-all duration-300 ease-out"
+                                                                style={{ width: `${(credentialCreationProgress.current / credentialCreationProgress.total) * 100}%` }}
+                                                            ></div>
+                                                        </div>
+                                                        
+                                                        {!credentialCreationProgress.completed && credentialCreationProgress.currentItem && (
+                                                            <div className="text-sm text-purple-600">
+                                                                Criando: <span className="font-medium">{credentialCreationProgress.currentItem}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>

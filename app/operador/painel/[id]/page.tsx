@@ -77,9 +77,6 @@ import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { FixedSizeList as List } from 'react-window'
-
-
 import ExcelColumnFilter from '@/components/ui/excel-column-filter'
 import { preloadModal, useLazyModal } from '@/components/ui/lazy-modal'
 
@@ -104,6 +101,26 @@ export default function Painel() {
     funcao: '',
     credencial: '',
   })
+
+  // 🚀 Estados de paginação
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(50) // 50 itens por página para melhor performance
+
+  // ⚡ Debounce para pesquisa otimizada
+  const [debouncedFiltro, setDebouncedFiltro] = useState(filtro)
+  const [isSearching, setIsSearching] = useState(false)
+
+  useEffect(() => {
+    // Se há diferença entre filtro atual e debouncedFiltro, está pesquisando
+    setIsSearching(JSON.stringify(filtro) !== JSON.stringify(debouncedFiltro))
+
+    const timer = setTimeout(() => {
+      setDebouncedFiltro(filtro)
+      setIsSearching(false)
+    }, 300) // 300ms de debounce
+
+    return () => clearTimeout(timer)
+  }, [filtro, debouncedFiltro])
 
   const [selectedParticipant, setSelectedParticipant] =
     useState<EventParticipant | null>(null)
@@ -188,7 +205,6 @@ export default function Painel() {
   // Estados para virtualização e performance
   const [isVirtualMode, setIsVirtualMode] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [isSearching, setIsSearching] = useState(false)
   const [isMobileTable, setIsMobileTable] = useState(false)
 
 
@@ -1187,14 +1203,19 @@ export default function Painel() {
     setPopupCheckout(true)
   }
 
-  // TODOS OS useMemo DEPOIS DOS useCallback - OTIMIZADO
+  // TODOS OS useMemo DEPOIS DOS useCallback - OTIMIZADO COM DEBOUNCE
   const filtrarColaboradores = useMemo(() => {
 
     let filtrados: EventParticipant[] = getColaboradoresPorDia(selectedDay)
 
+    // 🚀 Early return se não há dados
+    if (!filtrados.length) {
+      return { data: [], total: 0 }
+    }
+
     filtrados = filtrados.filter((colab: EventParticipant) => {
-      // ⚡ BUSCA OTIMIZADA - SEM TRAVAMENTO
-      const searchTerm = filtro.nome?.toLowerCase()?.trim() || ''
+      // ⚡ BUSCA OTIMIZADA COM DEBOUNCE - SEM TRAVAMENTO
+      const searchTerm = debouncedFiltro.nome?.toLowerCase()?.trim() || ''
 
       // Busca rápida e eficiente (sem loops complexos)
       const quickMatch = (text: string, search: string): boolean => {
@@ -1248,13 +1269,13 @@ export default function Painel() {
       const wristbandCode = participantWristbands.get(colab.id) || ''
       const wristbandMatch = wristbandCode.toLowerCase().includes(searchTerm)
 
-      // Filtros específicos dos dropdowns
-      const empresaFilter = filtro.empresa ? colab.company === filtro.empresa : true
-      const funcaoFilter = filtro.funcao ? colab.role === filtro.funcao : true
-      const credencialFilter = filtro.credencial ? getCredencial(colab) === filtro.credencial : true
+      // 🚀 Filtros específicos dos dropdowns (otimizado)
+      const empresaFilter = debouncedFiltro.empresa ? colab.company === debouncedFiltro.empresa : true
+      const funcaoFilter = debouncedFiltro.funcao ? colab.role === debouncedFiltro.funcao : true
+      const credencialFilter = debouncedFiltro.credencial ? getCredencial(colab) === debouncedFiltro.credencial : true
 
-      // Match geral para busca de texto (MELHORADO - inclui pulseira)
-      const searchMatch = !filtro.nome.trim() ||
+      // ⚡ Match geral para busca de texto (OTIMIZADO - inclui pulseira)
+      const searchMatch = !debouncedFiltro.nome.trim() ||
         nomeMatch || cpfMatch || empresaMatch_search || funcaoMatch_search ||
         credencialMatch_search || wristbandMatch
 
@@ -1378,14 +1399,14 @@ export default function Painel() {
 
     return { data: filtrados, total: filtrados.length }
   }, [
-    filtro.nome,
-    filtro.empresa,
-    filtro.funcao,
-    filtro.credencial,
+    debouncedFiltro.nome,
+    debouncedFiltro.empresa,
+    debouncedFiltro.funcao,
+    debouncedFiltro.credencial,
     selectedDay,
     columnFilters,
     participantsData.length // APENAS length, não array completo
-  ]) // ⚡ FIXED: Incluindo filtro.credencial e columnFilters nas dependências
+  ]) // ⚡ OTIMIZADO: Usando debouncedFiltro para reduzir re-renders
 
   // Detectar se é mobile para tabela regular
   useEffect(() => {
@@ -1406,32 +1427,95 @@ export default function Painel() {
     filtrarColaboradores
   ]) // SIMPLIFIED: uma só dependência
 
-  // 🚀 DADOS FINAIS VIRTUALIZADOS - SEM PAGINAÇÃO
+  // 🚀 DADOS FINAIS COM PAGINAÇÃO REAL
   const finalData = useMemo(() => {
-    // Sempre retorna todos os dados filtrados para virtualização
-    return unifiedData
-  }, [unifiedData])
+    const filteredData = unifiedData
+    const totalItems = filteredData.total
+    const totalPages = Math.ceil(totalItems / itemsPerPage)
+
+    // Calcular índices da página atual
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+
+    // Retornar apenas os itens da página atual
+    const currentPageData = filteredData.data.slice(startIndex, endIndex)
+
+    return {
+      data: currentPageData,
+      total: totalItems,
+      totalPages,
+      currentPage,
+      hasNextPage: currentPage < totalPages,
+      hasPreviousPage: currentPage > 1
+    }
+  }, [unifiedData, currentPage, itemsPerPage])
 
   // Para compatibilidade com componentes que usam paginatedData
   const paginatedData = finalData
 
-  // 🚀 CONFIGURAÇÃO VIRTUALIZAÇÃO REACT-WINDOW
-  const itemHeight = isMobileTable ? 72 : 84 // Altura das linhas
+  // 🔄 Reset página quando filtros mudam (otimizado)
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedFiltro.nome, debouncedFiltro.empresa, debouncedFiltro.funcao, debouncedFiltro.credencial, selectedDay])
 
-  // Componente para renderizar cada linha da tabela virtualizada
-  const VirtualizedTableRow = useCallback(({ index, style }: { index: number; style: any }) => {
-    const colab = finalData.data[index]
-    if (!colab) return null
+  // 🔢 Componentes de paginação
+  const PaginationControls = () => (
+    <div className="flex items-center justify-between px-6 py-3 bg-gray-50 border-t border-gray-200">
+      <div className="text-sm text-gray-700">
+        <span className="font-medium">{finalData.total.toLocaleString()}</span> {finalData.total === 1 ? 'colaborador' : 'colaboradores'} total
+        {finalData.totalPages > 1 && (
+          <span className="ml-2">• Página {finalData.currentPage} de {finalData.totalPages}</span>
+        )}
+      </div>
 
+      {finalData.totalPages > 1 && (
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setCurrentPage(1)}
+            disabled={!finalData.hasPreviousPage}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Primeira
+          </button>
+          <button
+            onClick={() => setCurrentPage(currentPage - 1)}
+            disabled={!finalData.hasPreviousPage}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Anterior
+          </button>
+          <span className="text-sm text-gray-600">
+            {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, finalData.total)} de {finalData.total}
+          </span>
+          <button
+            onClick={() => setCurrentPage(currentPage + 1)}
+            disabled={!finalData.hasNextPage}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Próxima
+          </button>
+          <button
+            onClick={() => setCurrentPage(finalData.totalPages)}
+            disabled={!finalData.hasNextPage}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Última
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
+  // 📋 Componente para renderizar cada linha da tabela
+  const ParticipantRow = ({ colab }: { colab: EventParticipant }) => {
     const botaoTipo = getBotaoAcao(colab)
 
     return (
       <div
-        style={style}
         className="border-b border-gray-300 hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 cursor-pointer transition-all duration-200 bg-white shadow-sm"
         onClick={() => abrirPopup(colab)}
       >
-        <div className="flex items-center min-h-full">
+        <div className="flex items-center">
           {/* Nome - sempre visível */}
           <div
             className={`text-gray-600 ${isMobileTable ? 'px-2 py-3' : 'px-6 py-4'}`}
@@ -1540,7 +1624,7 @@ export default function Painel() {
         </div>
       </div>
     )
-  }, [finalData.data, formatCPF, getBotaoAcao, getCredencialCor, getContrastingTextColor, needsBorder, getCredencial, loading, abrirCheckin, abrirCheckout, abrirPopup, isMobileTable])
+  }
 
   const isHighVolume = unifiedData.total > 1000
   const showPerformanceIndicator = isHighVolume && !participantsLoading
@@ -3171,43 +3255,26 @@ export default function Painel() {
                       </div>
                     )}
 
-                    {/* Lista virtualizada usando react-window */}
+                    {/* 📋 Lista com paginação real */}
                     <div style={{ minWidth: isMobileTable ? '100%' : '1000px' }}>
-                      <List
-                        key={`${selectedDay}-${filtro.nome}-${finalData.data.length}`}
-                        height={Math.min(finalData.data.length * itemHeight, isMobileTable ? 500 : 600)}
-                        width="100%"
-                        itemCount={finalData.data.length}
-                        itemSize={itemHeight}
-                        className="scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-                      >
-                        {VirtualizedTableRow}
-                      </List>
+                      <div className="divide-y divide-gray-200">
+                        {finalData.data.map((colab, index) => (
+                          <ParticipantRow key={`${colab.id}-${index}`} colab={colab} />
+                        ))}
+                      </div>
+
+                      {finalData.data.length === 0 && (
+                        <div className="text-center py-12 text-gray-500">
+                          <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                          <p>Nenhum colaborador encontrado para os filtros aplicados.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* 📊 INFORMAÇÕES DA LISTA VIRTUALIZADA */}
-                {finalData.data.length > 0 && (
-                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                    <div className="text-sm text-gray-700">
-                      <span className="font-medium">{finalData.data.length.toLocaleString()}</span> {finalData.data.length === 1 ? 'colaborador' : 'colaboradores'}
-                      {filtro.nome.trim() && (
-                        <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
-                          🔍 Filtrado
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-3 text-xs text-gray-500">
-                      <span>🚀 Virtualizado para máxima performance</span>
-                      {finalData.data.length > 500 && (
-                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
-                          ⚡ Modo rápido
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
+                {/* 📊 CONTROLES DE PAGINAÇÃO */}
+                {finalData.total > 0 && <PaginationControls />}
               </div>
             </div>
 
