@@ -1573,22 +1573,22 @@ export default function Painel() {
   // ⚡ VALORES ÚNICOS CORRIGIDOS - FUNCIONANDO
   // 🧠 CACHE PARA VALORES ÚNICOS - EVITA REPROCESSAMENTO
   const columnUniqueValues = useMemo(() => {
-    const cacheKey = { dataLength: participantsData?.length || 0, credentialLength: credential.length }
+    const cacheKey = { selectedDay, dataLength: participantsData?.length || 0, credentialLength: credential.length }
     const cached = participantCache.get(cacheKey)
     if (cached?.uniqueValues) return cached.uniqueValues
 
-    // Usar todos os dados disponíveis para os filtros select, não apenas do dia selecionado
-    const allData = participantsData || []
-    if (!allData?.length) {
+    // Usar dados do dia/estágio/período selecionado para os filtros select
+    const currentData = getColaboradoresPorDia(selectedDay)
+    if (!currentData?.length) {
       return { nome: [], cpf: [], funcao: [], empresa: [], credencial: [] }
     }
 
     const uniqueValues = {
-      nome: [...new Set(allData.map(c => c.name).filter(Boolean))].sort(),
-      cpf: [...new Set(allData.map(c => formatCPF(c.cpf?.trim() || '')).filter(Boolean))].sort(),
-      funcao: [...new Set(allData.map(c => c.role).filter(Boolean))].sort(),
-      empresa: [...new Set(allData.map(c => c.company).filter(Boolean))].sort(),
-      credencial: [...new Set(allData.map(c => {
+      nome: [...new Set(currentData.map(c => c.name).filter(Boolean))].sort(),
+      cpf: [...new Set(currentData.map(c => formatCPF(c.cpf?.trim() || '')).filter(Boolean))].sort(),
+      funcao: [...new Set(currentData.map(c => c.role).filter(Boolean))].sort(),
+      empresa: [...new Set(currentData.map(c => c.company).filter(Boolean))].sort(),
+      credencial: [...new Set(currentData.map(c => {
         const cred = credential.find(w => w.id === c.credentialId)
         return cred?.nome || 'SEM CREDENCIAL'
       }).filter(Boolean))].sort()
@@ -1604,7 +1604,7 @@ export default function Painel() {
 
     participantCache.set(cacheKey, { uniqueValues: uniqueValuesFixed })
     return uniqueValuesFixed
-  }, [participantsData, credential, participantCache])
+  }, [selectedDay, participantsData, credential, getColaboradoresPorDia, participantCache])
 
 
   // Função para obter todos os dias disponíveis nas tabs (navegação sequencial)
