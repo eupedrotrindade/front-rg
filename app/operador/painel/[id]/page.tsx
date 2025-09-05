@@ -88,8 +88,13 @@ import {
   useCancellableRequest,
   useDebouncedCancellableRequest,
 } from '@/hooks/useCancellableRequest'
-import { useIndexedSearch } from '@/hooks/useOptimizedSearch'
+import { useOptimizedSearch } from '@/lib/hooks/useOptimizedSearch'
+import { useWebWorkerFilter } from '@/lib/hooks/useWebWorkerFilter'
+import { useParticipantCache } from '@/lib/hooks/useSmartCache'
+import { useVirtualPagination } from '@/lib/hooks/useVirtualPagination'
+import { FixedSizeList as List } from 'react-window'
 import ModalAdicionarStaff from '@/components/operador/modalAdicionarStaff'
+import VirtualizedTable from '@/components/ui/virtualized-table'
 
 export default function Painel() {
   // TODOS OS useState PRIMEIRO
@@ -373,16 +378,30 @@ export default function Painel() {
   const { createCancellableRequest, cancelAllRequests } =
     useCancellableRequest()
 
+  // 🚀 HOOKS DE OTIMIZAÇÃO PARA MILHÕES DE REGISTROS
+  const participantCache = useParticipantCache()
 
-  // Hook de busca otimizada com índices APENAS para datasets muito grandes (>1000)
-  const [searchResult, performOptimizedSearchFn, clearSearch] =
-    useIndexedSearch({
-      data: participantsData,
-      searchFields: ['name', 'cpf', 'role', 'company'],
-      enableIndexing: participantsData.length > 1000, // Aumentado threshold
-      debounceMs: 0, // Sem debounce no hook (controlamos na função)
-      minSearchLength: 2,
-    })
+  const optimizedSearch = useOptimizedSearch({
+    data: participantsData || [],
+    searchFields: ['name', 'cpf', 'role', 'company'],
+    fieldWeights: { name: 2, cpf: 3, role: 1, company: 1 },
+    minSearchLength: 2,
+    maxResults: 2000,
+    debounceMs: 200
+  })
+
+  const webWorkerFilter = useWebWorkerFilter({
+    data: participantsData || [],
+    selectedDay,
+    sorting: ordenacao
+  })
+
+  const virtualPagination = useVirtualPagination<EventParticipant>({
+    totalItems: webWorkerFilter.total,
+    itemsPerPage: 100, // Aumentado para melhor performance
+    bufferPages: 3,
+    preloadPages: 2
+  })
 
   // Versão debounced da função de carregamento de presença
   const debouncedLoadAttendanceStatus = useDebouncedCancellableRequest(
@@ -419,7 +438,7 @@ export default function Painel() {
 
     // Para datasets grandes, usar busca indexada
     if (participantsData.length > 500) {
-      performOptimizedSearchFn(term)
+      optimizedSearch.search(term)
     } else {
       debouncedSearch(term)
     }
@@ -738,45 +757,34 @@ export default function Painel() {
       return dateA.getTime() - dateB.getTime()
     })
 
-    console.log('🎯 Dias gerados pelo getEventDays:', sortedDays)
+    // Dias gerados silently para performance
     return sortedDays
   }, [evento])
 
+  // 🚀 CACHE PARA getColaboradoresPorDia - EVITA REPROCESSAMENTO
   const getColaboradoresPorDia = useCallback(
     (dia: string): EventParticipant[] => {
       if (dia === 'all' || !dia) {
-        return participantsData || [] // Fallback seguro
+        return participantsData || []
       }
 
-      console.log('🔧 getColaboradoresPorDia chamada com dia:', dia)
-      console.log('🔍 Participantes disponíveis:', participantsData?.length || 0)
+      // Cache key para evitar reprocessamento
+      const cacheKey = { dia, dataLength: participantsData?.length || 0 }
+      const cached = participantCache.get(cacheKey)
+      if (cached?.dayParticipants) {
+        return cached.dayParticipants
+      }
 
-      // Usar apenas shiftId para filtrar participantes
+      // Filtrar apenas por shiftId exato - SEM LOGS para evitar re-renders
       const filtered = (participantsData || []).filter((colab: EventParticipant) => {
-        console.log('🔍 Analisando participante:', colab.name, {
-          shiftId: colab.shiftId
-        })
-
-        // Verificar se tem shiftId
-        if (!colab.shiftId) {
-          console.log('❌ Participante sem shiftId:', colab.name)
-          return false
-        }
-
-        // Verificação por shiftId exato
-        if (colab.shiftId === dia) {
-          console.log('✅ Match por shiftId:', colab.name, colab.shiftId)
-          return true
-        }
-
-        console.log('❌ Participante não trabalha neste turno:', colab.name)
-        return false
+        return colab.shiftId === dia
       })
 
-      console.log(`🎯 Filtrados ${filtered.length} participantes para o turno:`, dia)
+      // Cache o resultado
+      participantCache.set(cacheKey, { dayParticipants: filtered })
       return filtered
     },
-    [participantsData],
+    [participantsData, participantCache],
   )
 
   // Função para contar participantes por turno - baseada no eventos/[id]/page.tsx
@@ -1203,210 +1211,101 @@ export default function Painel() {
     setPopupCheckout(true)
   }
 
-  // TODOS OS useMemo DEPOIS DOS useCallback - OTIMIZADO COM DEBOUNCE
-  const filtrarColaboradores = useMemo(() => {
-
-    let filtrados: EventParticipant[] = getColaboradoresPorDia(selectedDay)
-
-    // 🚀 Early return se não há dados
-    if (!filtrados.length) {
-      return { data: [], total: 0 }
+  // 🚀 FILTROS OTIMIZADOS COM WEB WORKER E CACHE
+  const filteredDataOptimized = useMemo(() => {
+    const cacheKey = {
+      selectedDay,
+      searchTerm: filtro.nome,
+      empresa: filtro.empresa,
+      funcao: filtro.funcao,
+      credencial: filtro.credencial,
+      columnFilters: JSON.stringify(columnFilters),
+      sorting: JSON.stringify(ordenacao)
     }
 
-    filtrados = filtrados.filter((colab: EventParticipant) => {
-      // ⚡ BUSCA OTIMIZADA COM DEBOUNCE - SEM TRAVAMENTO
-      const searchTerm = debouncedFiltro.nome?.toLowerCase()?.trim() || ''
+    // Tentar obter do cache primeiro
+    const cachedResult = participantCache.get(cacheKey)
+    if (cachedResult) {
+      console.log('🎯 Cache hit - usando dados em cache')
+      return cachedResult
+    }
 
-      // Busca rápida e eficiente (sem loops complexos)
-      const quickMatch = (text: string, search: string): boolean => {
-        if (!search || !text) return !search
+    // Se não há filtros, usar busca otimizada
+    if (filtro.nome.trim().length >= 2) {
+      const searchResults = optimizedSearch.results
+      const filtered = searchResults.filter(participant => {
+        // Aplicar outros filtros
+        const empresaMatch = !filtro.empresa || participant.company === filtro.empresa
+        const funcaoMatch = !filtro.funcao || participant.role === filtro.funcao
+        const credencialMatch = !filtro.credencial || getCredencial(participant) === filtro.credencial
+        const dayMatch = !selectedDay || selectedDay === 'all' || participant.shiftId === selectedDay
 
-        const textLower = text.toLowerCase()
-        const searchLower = search.toLowerCase()
-
-        // 1. Busca direta (mais rápida)
-        if (textLower.includes(searchLower)) return true
-
-        // 2. Busca sem acentos (eficiente)
-        const textNorm = textLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        const searchNorm = searchLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        if (textNorm.includes(searchNorm)) return true
-
-        // 3. Só busca avançada se termo > 2 chars (evita loops desnecessários)
-        if (searchNorm.length <= 2) return false
-
-        // 4. Busca por iniciais (otimizada)
-        if (searchNorm.length === 2) {
-          const words = textLower.split(/[\s]+/)
-          if (words.length >= 2) {
-            const initials = words[0][0] + (words[1]?.[0] || '')
-            if (initials === searchNorm) return true
-          }
-        }
-
-        return false
-      }
-
-      // ⚡ BUSCA RÁPIDA - SEM LOOPS PESADOS
-      const nomeMatch = quickMatch(colab.name || '', searchTerm)
-
-      // CPF (otimizado)
-      const cpfLimpo = (colab.cpf || '').replace(/\D/g, '')
-      const buscaCpfLimpa = searchTerm.replace(/\D/g, '')
-      const cpfMatch = buscaCpfLimpa ? cpfLimpo.includes(buscaCpfLimpa) : false
-
-      // Empresa (rápida)
-      const empresaMatch_search = quickMatch(colab.company || '', searchTerm)
-
-      // Função (rápida)
-      const funcaoMatch_search = quickMatch(colab.role || '', searchTerm)
-
-      // Credencial (eficiente)
-      const credencialNome = getCredencial(colab)
-      const credencialMatch_search = quickMatch(credencialNome || '', searchTerm)
-
-      // Pulseira (simples)
-      const wristbandCode = participantWristbands.get(colab.id) || ''
-      const wristbandMatch = wristbandCode.toLowerCase().includes(searchTerm)
-
-      // 🚀 Filtros específicos dos dropdowns (otimizado)
-      const empresaFilter = debouncedFiltro.empresa ? colab.company === debouncedFiltro.empresa : true
-      const funcaoFilter = debouncedFiltro.funcao ? colab.role === debouncedFiltro.funcao : true
-      const credencialFilter = debouncedFiltro.credencial ? getCredencial(colab) === debouncedFiltro.credencial : true
-
-      // ⚡ Match geral para busca de texto (OTIMIZADO - inclui pulseira)
-      const searchMatch = !debouncedFiltro.nome.trim() ||
-        nomeMatch || cpfMatch || empresaMatch_search || funcaoMatch_search ||
-        credencialMatch_search || wristbandMatch
-
-      let match = searchMatch && empresaFilter && funcaoFilter && credencialFilter
-
-
-      // Aplicar filtros das colunas
-      if (match && hasActiveColumnFilters) {
-        const credentialSelected = credential.find(
-          w => w.id === colab.credentialId,
-        )
-        const credentialName = credentialSelected?.nome || 'SEM CREDENCIAL'
-
-        // Filtro de nome
-        if (
-          columnFilters.nome.length > 0 &&
-          !columnFilters.nome.includes(colab.name || '')
-        ) {
-          match = false
-        }
-
-        // Filtro de CPF
-        if (columnFilters.cpf.length > 0) {
-          const formattedCpf = formatCPF(colab.cpf?.trim() || '')
-          if (!columnFilters.cpf.includes(formattedCpf)) {
-            match = false
-          }
-        }
-
-        // Filtro de função
-        if (
-          columnFilters.funcao.length > 0 &&
-          !columnFilters.funcao.includes(colab.role || '')
-        ) {
-          match = false
-        }
-
-        // Filtro de empresa
-        if (
-          columnFilters.empresa.length > 0 &&
-          !columnFilters.empresa.includes(colab.company || '')
-        ) {
-          match = false
-        }
-
-        // Filtro de credencial
-        if (
-          columnFilters.credencial.length > 0 &&
-          !columnFilters.credencial.includes(credentialName)
-        ) {
-          match = false
-        }
-      }
-
-      return match
-    })
-
-    if (ordenacao.campo) {
-      filtrados = filtrados.sort((a: EventParticipant, b: EventParticipant) => {
-        let aVal: any
-        let bVal: any
-
-        // Mapear campos para valores corretos
-        switch (ordenacao.campo) {
-          case 'name':
-            aVal = a.name ?? ''
-            bVal = b.name ?? ''
-            break
-          case 'cpf':
-            aVal = formatCPF(a.cpf?.trim() || '')
-            bVal = formatCPF(b.cpf?.trim() || '')
-            break
-          case 'role':
-            aVal = a.role ?? ''
-            bVal = b.role ?? ''
-            break
-          case 'company':
-            aVal = a.company ?? ''
-            bVal = b.company ?? ''
-            // Normalizar para comparação de empresa
-            aVal =
-              typeof aVal === 'string'
-                ? aVal
-                  .normalize('NFD')
-                  .replace(/\p{Diacritic}/gu, '')
-                  .toLowerCase()
-                  .trim()
-                : ''
-            bVal =
-              typeof bVal === 'string'
-                ? bVal
-                  .normalize('NFD')
-                  .replace(/\p{Diacritic}/gu, '')
-                  .toLowerCase()
-                  .trim()
-                : ''
-            break
-          case 'credentialId':
-            // Ordenar por nome da credencial, não pelo ID
-            const credentialA = credential.find(w => w.id === a.credentialId)
-            const credentialB = credential.find(w => w.id === b.credentialId)
-            aVal = credentialA?.nome || 'SEM CREDENCIAL'
-            bVal = credentialB?.nome || 'SEM CREDENCIAL'
-            break
-          default:
-            // Fallback para outros campos
-            type EventParticipantKey = keyof EventParticipant
-            const campoOrdenacao = ordenacao.campo as EventParticipantKey
-            aVal = a[campoOrdenacao] ?? ''
-            bVal = b[campoOrdenacao] ?? ''
-        }
-
-        // Comparar valores
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          if (ordenacao.direcao === 'asc') return aVal.localeCompare(bVal)
-          else return bVal.localeCompare(aVal)
-        }
-        return 0
+        return empresaMatch && funcaoMatch && credencialMatch && dayMatch
       })
+
+      const result = { filtered, total: filtered.length, processingTime: optimizedSearch.searchTime }
+      participantCache.set(cacheKey, result)
+      return result
     }
 
-    return { data: filtrados, total: filtrados.length }
+    // Para outros casos, usar dados do Web Worker
+    const result = {
+      filtered: webWorkerFilter.filteredData || [],
+      total: webWorkerFilter.total || 0,
+      processingTime: webWorkerFilter.processingTime
+    }
+
+    // Salvar no cache se processamento foi bem sucedido
+    if (!webWorkerFilter.isLoading && result.filtered.length > 0) {
+      participantCache.set(cacheKey, result)
+    }
+
+    return result
   }, [
-    debouncedFiltro.nome,
-    debouncedFiltro.empresa,
-    debouncedFiltro.funcao,
-    debouncedFiltro.credencial,
     selectedDay,
+    filtro.nome,
+    filtro.empresa,
+    filtro.funcao,
+    filtro.credencial,
     columnFilters,
-    participantsData.length // APENAS length, não array completo
-  ]) // ⚡ OTIMIZADO: Usando debouncedFiltro para reduzir re-renders
+    ordenacao,
+    optimizedSearch.results,
+    optimizedSearch.searchTime,
+    webWorkerFilter.filteredData,
+    webWorkerFilter.total,
+    webWorkerFilter.isLoading,
+    participantCache,
+    getCredencial
+  ])
+
+  // Função para aplicar filtros no Web Worker
+  useEffect(() => {
+    const filters = {
+      searchTerm: filtro.nome,
+      empresa: filtro.empresa,
+      funcao: filtro.funcao,
+      credencial: filtro.credencial,
+      columnFilters: hasActiveColumnFilters ? columnFilters : {}
+    }
+
+    webWorkerFilter.applyFilter(filters)
+  }, [
+    filtro.nome,
+    filtro.empresa,
+    filtro.funcao,
+    filtro.credencial,
+    columnFilters,
+    hasActiveColumnFilters,
+    webWorkerFilter.applyFilter
+  ])
+
+  // LEGACY: Manter para compatibilidade (será removido gradualmente)
+  const filtrarColaboradores = useMemo(() => {
+    return {
+      data: filteredDataOptimized.filtered,
+      total: filteredDataOptimized.total
+    }
+  }, [filteredDataOptimized])
 
   // Detectar se é mobile para tabela regular
   useEffect(() => {
@@ -1418,29 +1317,34 @@ export default function Painel() {
     window.addEventListener('resize', checkIsMobileTable)
 
     return () => window.removeEventListener('resize', checkIsMobileTable)
-  }, [])
+  }, [setIsMobileTable])
 
-  // ⚡ DADOS UNIFICADOS - SEM TRAVAMENTO
+  // 🚀 DADOS UNIFICADOS COM CACHE DE RENDER
   const unifiedData = useMemo(() => {
-    return filtrarColaboradores // Sempre usar filtro tradicional otimizado
-  }, [
-    filtrarColaboradores
-  ]) // SIMPLIFIED: uma só dependência
+    return filtrarColaboradores
+  }, [filtrarColaboradores])
 
   // 🚀 DADOS FINAIS COM PAGINAÇÃO REAL
+  // 🧠 CACHE PARA PAGINAÇÃO - EVITA RECALCULAR SLICES
   const finalData = useMemo(() => {
-    const filteredData = unifiedData
-    const totalItems = filteredData.total
-    const totalPages = Math.ceil(totalItems / itemsPerPage)
+    const paginationKey = {
+      total: unifiedData.total,
+      currentPage,
+      itemsPerPage,
+      dataHash: JSON.stringify(unifiedData.data?.map(d => d.id)).slice(0, 100)
+    }
 
-    // Calcular índices da página atual
+    const cached = participantCache.get(paginationKey)
+    if (cached?.paginatedData) return cached.paginatedData
+
+    const filteredData = unifiedData
+    const totalItems = filteredData.total || 0
+    const totalPages = Math.ceil(totalItems / itemsPerPage)
     const startIndex = (currentPage - 1) * itemsPerPage
     const endIndex = startIndex + itemsPerPage
+    const currentPageData = (filteredData.data || []).slice(startIndex, endIndex)
 
-    // Retornar apenas os itens da página atual
-    const currentPageData = filteredData.data.slice(startIndex, endIndex)
-
-    return {
+    const result = {
       data: currentPageData,
       total: totalItems,
       totalPages,
@@ -1448,15 +1352,22 @@ export default function Painel() {
       hasNextPage: currentPage < totalPages,
       hasPreviousPage: currentPage > 1
     }
-  }, [unifiedData, currentPage, itemsPerPage])
+
+    // Cache apenas se não estiver em high volume (evita overhead)
+    if (totalItems < 50000) {
+      participantCache.set(paginationKey, { paginatedData: result })
+    }
+
+    return result
+  }, [unifiedData, currentPage, itemsPerPage, participantCache])
 
   // Para compatibilidade com componentes que usam paginatedData
   const paginatedData = finalData
 
   // 🔄 Reset página quando filtros mudam (otimizado)
   useEffect(() => {
-    setCurrentPage(1)
-  }, [debouncedFiltro.nome, debouncedFiltro.empresa, debouncedFiltro.funcao, debouncedFiltro.credencial, selectedDay])
+    if (setCurrentPage) setCurrentPage(1)
+  }, [filtro.nome, filtro.empresa, filtro.funcao, filtro.credencial, selectedDay])
 
   // 🔢 Componentes de paginação
   const PaginationControls = () => (
@@ -1626,24 +1537,66 @@ export default function Painel() {
     )
   }
 
-  const isHighVolume = unifiedData.total > 1000
+  // 🚀 OTIMIZAÇÕES DE PERFORMANCE PARA MILHARES/MILHÕES DE REGISTROS
+  const isHighVolume = (unifiedData?.total ?? 0) > 1000
+  const isVeryHighVolume = (unifiedData?.total ?? 0) > 10000
   const showPerformanceIndicator = isHighVolume && !participantsLoading
 
-  // ⚡ VALORES ÚNICOS CORRIGIDOS - FUNCIONANDO
-  const columnUniqueValues = useMemo(() => {
-    const currentData = getColaboradoresPorDia(selectedDay)
+  // Usar virtualização para datasets grandes
+  const shouldUseVirtualization = isHighVolume
+  const virtualTableHeight = isMobileTable ? 400 : 600
+  const virtualRowHeight = isMobileTable ? 60 : 80
 
-    if (!currentData || currentData.length === 0) {
-      return {
-        nome: [],
-        cpf: [],
-        funcao: [],
-        empresa: [],
-        credencial: []
-      }
+  // 🚀 INDICADOR DE PERFORMANCE
+  const PerformanceIndicator = () => {
+    if (!showPerformanceIndicator) return null
+
+    return (
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-3 mb-4">
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center space-x-4">
+            <span className="text-purple-700 font-medium">
+              🚀 Modo High Performance
+            </span>
+            <span className="text-gray-600">
+              {(unifiedData?.total ?? 0).toLocaleString()} registros
+            </span>
+            {filteredDataOptimized?.processingTime && (
+              <span className="text-green-600">
+                Processado em {filteredDataOptimized.processingTime}ms
+              </span>
+            )}
+          </div>
+          <div className="flex items-center space-x-2">
+            {shouldUseVirtualization && (
+              <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
+                Virtualização Ativa
+              </span>
+            )}
+            {webWorkerFilter.isLoading && (
+              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+                Web Worker Processando
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ⚡ VALORES ÚNICOS CORRIGIDOS - FUNCIONANDO
+  // 🧠 CACHE PARA VALORES ÚNICOS - EVITA REPROCESSAMENTO
+  const columnUniqueValues = useMemo(() => {
+    const cacheKey = { selectedDay, dataLength: participantsData.length, credentialLength: credential.length }
+    const cached = participantCache.get(cacheKey)
+    if (cached?.uniqueValues) return cached.uniqueValues
+
+    const currentData = getColaboradoresPorDia(selectedDay)
+    if (!currentData?.length) {
+      return { nome: [], cpf: [], funcao: [], empresa: [], credencial: [] }
     }
 
-    return {
+    const uniqueValues = {
       nome: [...new Set(currentData.map(c => c.name).filter(Boolean))].sort(),
       cpf: [...new Set(currentData.map(c => formatCPF(c.cpf?.trim() || '')).filter(Boolean))].sort(),
       funcao: [...new Set(currentData.map(c => c.role).filter(Boolean))].sort(),
@@ -1653,7 +1606,18 @@ export default function Painel() {
         return cred?.nome || 'SEM CREDENCIAL'
       }).filter(Boolean))].sort()
     }
-  }, [selectedDay, participantsData, credential]) // Dependências necessárias
+
+    const uniqueValuesFixed = {
+      nome: uniqueValues.nome as string[],
+      cpf: uniqueValues.cpf as string[],
+      funcao: uniqueValues.funcao.filter((v): v is string => typeof v === 'string'),
+      empresa: uniqueValues.empresa as string[],
+      credencial: uniqueValues.credencial as string[]
+    }
+
+    participantCache.set(cacheKey, { uniqueValues: uniqueValuesFixed })
+    return uniqueValuesFixed
+  }, [selectedDay, participantsData.length, credential.length, getColaboradoresPorDia, formatCPF, participantCache])
 
 
   // Função para obter todos os dias disponíveis nas tabs (navegação sequencial)
@@ -1826,20 +1790,40 @@ export default function Painel() {
   }, [selectedDay, getDiasDisponiveisParaOperador])
 
   // Variáveis computadas
-  const empresasUnicas = [
-    ...new Set(participantsData.map((c: EventParticipant) => c.company)),
-  ]
-  const funcoesUnicas = [
-    ...new Set(participantsData.map((c: EventParticipant) => c.role)),
-  ]
+  // ⚡ OTIMIZADO: Usar valores já calculados para o dia selecionado + limite para performance
+  const MAX_DROPDOWN_ITEMS = 100 // Limite para evitar travamento
 
-  const empresasUnicasFiltradas = Array.from(new Set(empresasUnicas)).filter(
-    (e): e is string => typeof e === 'string' && !!e && e.trim() !== '',
-  )
-  const funcoesUnicasFiltradas = Array.from(new Set(funcoesUnicas)).filter(
-    (f): f is string => typeof f === 'string' && !!f && f.trim() !== '',
-  )
-  const tiposCredencialUnicosFiltrados = credential.map(c => c.nome)
+  // Estados para busca nos dropdowns
+  const [empresaSearch, setEmpresaSearch] = useState('')
+  const [funcaoSearch, setFuncaoSearch] = useState('')
+  const [credencialSearch, setCredencialSearch] = useState('')
+
+  const empresasUnicasFiltradas = useMemo(() => {
+    const filtered = empresaSearch
+      ? columnUniqueValues.empresa.filter(e =>
+        e.toLowerCase().includes(empresaSearch.toLowerCase())
+      )
+      : columnUniqueValues.empresa
+    return filtered.slice(0, MAX_DROPDOWN_ITEMS)
+  }, [columnUniqueValues.empresa, empresaSearch])
+
+  const funcoesUnicasFiltradas = useMemo(() => {
+    const filtered = funcaoSearch
+      ? columnUniqueValues.funcao.filter(f =>
+        typeof f === 'string' && f.toLowerCase().includes(funcaoSearch.toLowerCase())
+      )
+      : columnUniqueValues.funcao
+    return filtered.slice(0, MAX_DROPDOWN_ITEMS)
+  }, [columnUniqueValues.funcao, funcaoSearch])
+
+  const tiposCredencialUnicosFiltrados = useMemo(() => {
+    const filtered = credencialSearch
+      ? columnUniqueValues.credencial.filter(c =>
+        c.toLowerCase().includes(credencialSearch.toLowerCase())
+      )
+      : columnUniqueValues.credencial
+    return filtered.slice(0, MAX_DROPDOWN_ITEMS)
+  }, [columnUniqueValues.credencial, credencialSearch])
 
   // Normalizar dias dos participantes após carregar os dados
   useEffect(() => {
@@ -1885,35 +1869,21 @@ export default function Painel() {
   }
 
   // 🚀 BUSCA COM ZERO LAG - Debounce real otimizado
+  // 🚀 BUSCA SUPER OTIMIZADA COM ÍNDICES E WEB WORKER
   const handleBuscaOtimizada = (valor: string) => {
     // 1. ATUALIZAÇÃO IMEDIATA DO VALOR VISUAL (zero lag)
     setFiltro(prev => ({ ...prev, nome: valor }))
 
-    // 2. LIMPAR TIMEOUT ANTERIOR
-    if (searchDebounce) {
-      clearTimeout(searchDebounce)
-    }
-
-    // 3. BUSCA VAZIA - execução imediata
+    // 2. BUSCA VAZIA - limpeza imediata
     if (!valor.trim()) {
-      setSearchTerm('')
+      optimizedSearch.clearSearch()
       setIsSearching(false)
-      // Virtualização não precisa de reset de página
-      setSearchDebounce(null)
       return
     }
 
-    // 4. INDICAR QUE ESTÁ BUSCANDO
+    // 3. USAR BUSCA INDEXADA PARA PERFORMANCE MÁXIMA
     setIsSearching(true)
-
-    // 5. DEBOUNCE REAL - só executa filtro após parar de digitar
-    const timeout = setTimeout(() => {
-      setSearchTerm(valor)
-      // Virtualização não precisa de reset de página
-      setIsSearching(false)
-    }, 300) // 300ms após parar de digitar
-
-    setSearchDebounce(timeout)
+    optimizedSearch.search(valor)
   }
 
   // Funções de paginação removidas - usando virtualização completa
@@ -2717,7 +2687,7 @@ export default function Painel() {
                         ⏳ Processando busca inteligente...
                       </span>
                     )}
-                    {unifiedData.total > 1000 && (
+                    {unifiedData.total !== undefined && unifiedData.total > 1000 && (
                       <span className="text-xs text-green-600 ml-2">
                         ⚡ Otimizado
                       </span>
@@ -2867,7 +2837,7 @@ export default function Painel() {
                         }
 
                         // Limpar busca indexada se ativa
-                        clearSearch()
+                        optimizedSearch.clearSearch()
                       }}
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors"
                       title="Limpar busca"
@@ -2880,7 +2850,10 @@ export default function Painel() {
                 {/* Filter Selects */}
                 <div className="flex flex-wrap gap-3">
                   {/* Empresa Filter */}
-                  <Popover open={empresaSelectOpen} onOpenChange={setEmpresaSelectOpen}>
+                  <Popover open={empresaSelectOpen} onOpenChange={(open) => {
+                    setEmpresaSelectOpen(open)
+                    if (!open) setEmpresaSearch('') // Limpar busca ao fechar
+                  }}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
@@ -2894,8 +2867,18 @@ export default function Painel() {
                     </PopoverTrigger>
                     <PopoverContent className="w-[180px] p-0  bg-white border-gray-200">
                       <Command>
-                        <CommandInput className='bg-white' placeholder="Buscar empresa..." />
+                        <CommandInput
+                          className='bg-white'
+                          placeholder="Buscar empresa..."
+                          value={empresaSearch}
+                          onValueChange={setEmpresaSearch}
+                        />
                         <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
+                        {empresasUnicasFiltradas.length > MAX_DROPDOWN_ITEMS && (
+                          <div className="px-2 py-1 text-xs text-orange-600 bg-orange-50 border-b">
+                            ⚡ Mostrando {MAX_DROPDOWN_ITEMS} de {columnUniqueValues.empresa.length} empresas. Use a busca para filtrar.
+                          </div>
+                        )}
                         <CommandGroup className="max-h-60 overflow-y-auto bg-white">
                           <CommandItem
                             value="__all__"
@@ -2932,7 +2915,10 @@ export default function Painel() {
                   </Popover>
 
                   {/* Função Filter */}
-                  <Popover open={funcaoSelectOpen} onOpenChange={setFuncaoSelectOpen}>
+                  <Popover open={funcaoSelectOpen} onOpenChange={(open) => {
+                    setFuncaoSelectOpen(open)
+                    if (!open) setFuncaoSearch('') // Limpar busca ao fechar
+                  }}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
@@ -2946,8 +2932,18 @@ export default function Painel() {
                     </PopoverTrigger>
                     <PopoverContent className="w-[160px] p-0 bg-white border-gray-200">
                       <Command>
-                        <CommandInput className='bg-white' placeholder="Buscar função..." />
+                        <CommandInput
+                          className='bg-white'
+                          placeholder="Buscar função..."
+                          value={funcaoSearch}
+                          onValueChange={setFuncaoSearch}
+                        />
                         <CommandEmpty>Nenhuma função encontrada.</CommandEmpty>
+                        {funcoesUnicasFiltradas.length > MAX_DROPDOWN_ITEMS && (
+                          <div className="px-2 py-1 text-xs text-orange-600 bg-orange-50 border-b">
+                            ⚡ Mostrando {MAX_DROPDOWN_ITEMS} de {columnUniqueValues.funcao.length} funções. Use a busca para filtrar.
+                          </div>
+                        )}
                         <CommandGroup className="max-h-60 overflow-y-auto bg-white">
                           <CommandItem
                             value="__all__"
@@ -2984,7 +2980,10 @@ export default function Painel() {
                   </Popover>
 
                   {/* Credencial Filter */}
-                  <Popover open={credencialSelectOpen} onOpenChange={setCredencialSelectOpen}>
+                  <Popover open={credencialSelectOpen} onOpenChange={(open) => {
+                    setCredencialSelectOpen(open)
+                    if (!open) setCredencialSearch('') // Limpar busca ao fechar
+                  }}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
@@ -2998,8 +2997,18 @@ export default function Painel() {
                     </PopoverTrigger>
                     <PopoverContent className="w-[170px] p-0 bg-white border-gray-200">
                       <Command>
-                        <CommandInput className='bg-white' placeholder="Buscar credencial..." />
+                        <CommandInput
+                          className='bg-white'
+                          placeholder="Buscar credencial..."
+                          value={credencialSearch}
+                          onValueChange={setCredencialSearch}
+                        />
                         <CommandEmpty>Nenhuma credencial encontrada.</CommandEmpty>
+                        {tiposCredencialUnicosFiltrados.length > MAX_DROPDOWN_ITEMS && (
+                          <div className="px-2 py-1 text-xs text-orange-600 bg-orange-50 border-b">
+                            ⚡ Mostrando {MAX_DROPDOWN_ITEMS} de {columnUniqueValues.credencial.length} credenciais. Use a busca para filtrar.
+                          </div>
+                        )}
                         <CommandGroup className="max-h-60 overflow-y-auto bg-white">
                           <CommandItem
                             value="__all__"

@@ -39,6 +39,7 @@ import { Coordenador } from "@/features/eventos/types"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
 import ModalAdicionarUsuario from "@/components/admin/modal-adicionar-usuario"
+import Image from 'next/image'
 
 const AdminUsuariosPage = () => {
   const [search, setSearch] = useState("")
@@ -316,9 +317,11 @@ const AdminUsuariosPage = () => {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         {usuario.imageUrl ? (
-                          <img
+                          <Image
                             src={usuario.imageUrl}
                             alt={formatName(usuario)}
+                            width={50}
+                            height={50}
                             className="h-8 w-8 rounded-full object-cover"
                           />
                         ) : (
@@ -380,8 +383,8 @@ const AdminUsuariosPage = () => {
       </Card>
 
       {/* Modal para adicionar usuário */}
-      <ModalAdicionarUsuario 
-        open={modalOpen} 
+      <ModalAdicionarUsuario
+        open={modalOpen}
         onOpenChange={setModalOpen}
         onUserCreated={handleUserCreated}
       />
