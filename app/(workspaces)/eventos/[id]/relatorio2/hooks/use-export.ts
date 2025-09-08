@@ -614,6 +614,7 @@ export function useExport({
         {
           titulo,
           subtitulo: customSubtitle,
+          total_registros: total_registro,
           tipo: (selectedReportType === "empresa"
             ? "filtroEmpresa"
             : selectedReportType === "credencial"
@@ -730,6 +731,7 @@ export function useExport({
         {
           titulo,
           subtitulo: customSubtitle,
+          total_registros: companyParticipants.length,
           tipo: "filtroEmpresa",
           dados: exportData,
           columnConfig: config,
