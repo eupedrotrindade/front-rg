@@ -1074,7 +1074,7 @@ export default function Painel() {
   const getCredencial = (colab: EventParticipant): string => {
     const credentialSelected = credential.find(w => w.id === colab.credentialId)
     if (credentialSelected) {
-      return credentialSelected.nome
+      return (credentialSelected.nome || '').trim()
     } else {
       return 'SEM CREDENCIAL'
     }
@@ -1212,25 +1212,31 @@ export default function Painel() {
       })
     }
 
-    // 3. Aplicar filtro de empresa
+    // 3. Aplicar filtro de empresa (corrigido para usar mesma lógica dos filtros por coluna)
     if (filtro.empresa) {
-      data = data.filter(participant =>
-        participant.company === filtro.empresa
-      )
+      data = data.filter(participant => {
+        const participantEmpresa = (participant.company || '').trim()
+        const filtroEmpresa = filtro.empresa.trim()
+        return participantEmpresa === filtroEmpresa
+      })
     }
 
-    // 4. Aplicar filtro de função
+    // 4. Aplicar filtro de função (corrigido para usar mesma lógica dos filtros por coluna)
     if (filtro.funcao) {
-      data = data.filter(participant =>
-        participant.role === filtro.funcao
-      )
+      data = data.filter(participant => {
+        const participantFuncao = (participant.role || '').trim()
+        const filtroFuncao = filtro.funcao.trim()
+        return participantFuncao === filtroFuncao
+      })
     }
 
-    // 5. Aplicar filtro de credencial
+    // 5. Aplicar filtro de credencial (corrigido para usar mesma lógica dos filtros por coluna)
     if (filtro.credencial) {
-      data = data.filter(participant =>
-        getCredencial(participant) === filtro.credencial
-      )
+      data = data.filter(participant => {
+        const participantCredencial = getCredencial(participant).trim()
+        const filtroCredencial = filtro.credencial.trim()
+        return participantCredencial === filtroCredencial
+      })
     }
 
     // 6. Aplicar filtros das colunas (se existirem)
@@ -1584,13 +1590,13 @@ export default function Painel() {
     }
 
     const uniqueValues = {
-      nome: [...new Set(currentData.map(c => c.name).filter(Boolean))].sort(),
+      nome: [...new Set(currentData.map(c => (c.name || '').trim()).filter(Boolean))].sort(),
       cpf: [...new Set(currentData.map(c => formatCPF(c.cpf?.trim() || '')).filter(Boolean))].sort(),
-      funcao: [...new Set(currentData.map(c => c.role).filter(Boolean))].sort(),
-      empresa: [...new Set(currentData.map(c => c.company).filter(Boolean))].sort(),
+      funcao: [...new Set(currentData.map(c => (c.role || '').trim()).filter(Boolean))].sort(),
+      empresa: [...new Set(currentData.map(c => (c.company || '').trim()).filter(Boolean))].sort(),
       credencial: [...new Set(currentData.map(c => {
         const cred = credential.find(w => w.id === c.credentialId)
-        return cred?.nome || 'SEM CREDENCIAL'
+        return (cred?.nome || 'SEM CREDENCIAL').trim()
       }).filter(Boolean))].sort()
     }
 
