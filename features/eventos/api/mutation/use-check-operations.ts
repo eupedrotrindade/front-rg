@@ -265,3 +265,70 @@ export const useAllEventAttendance = (eventId: string, date?: string) => {
     staleTime: 60000, // 1 minuto
   });
 };
+
+// Hook para editar attendance record (data, horários, notas)
+export const useEditAttendance = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      attendanceId,
+      date,
+      checkIn,
+      checkOut,
+      notes,
+      performedBy,
+      validatedBy,
+      workPeriod,
+      workStage,
+    }: {
+      attendanceId: string;
+      date?: string;
+      checkIn?: string | null;
+      checkOut?: string | null;
+      notes?: string;
+      performedBy?: string;
+      validatedBy?: string;
+      workPeriod?: string | null;
+      workStage?: string | null;
+    }) => {
+      const { data } = await apiClient.put(
+        `/event-attendance/${attendanceId}`,
+        {
+          date,
+          checkIn,
+          checkOut,
+          notes,
+          performedBy,
+          validatedBy,
+          workPeriod,
+          workStage,
+        }
+      );
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      // Invalidar queries relacionadas
+      queryClient.invalidateQueries({
+        queryKey: ["event-attendance"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["event-attendance-status"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [
+          "event-attendance-by-event-date",
+        ],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["event-attendance-by-participant"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["attendance-status"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["all-event-attendance"],
+      });
+    },
+  });
+};

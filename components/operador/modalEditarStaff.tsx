@@ -23,6 +23,9 @@ import { useCredentials } from "@/features/eventos/api/query";
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas";
 import { useCredentialsByShift } from "@/features/eventos/api/query/use-credentials-by-shift";
 import { useEmpresasByShift } from "@/features/eventos/api/query/use-empresas-by-shift";
+import { useEventAttendanceByEventAndDate } from "@/features/eventos/api/query/use-event-attendance";
+import { getMovementCredentialByParticipant, changeCredentialCode } from "@/features/eventos/actions/movement-credentials";
+import { useEditAttendance } from "@/features/eventos/api/mutation/use-check-operations";
 import { Credential, EventParticipant } from "@/features/eventos/types";
 
 interface ModalEditarStaffProps {
@@ -47,8 +50,10 @@ export default function ModalEditarStaff({
   const [loading, setLoading] = useState(false);
   const [isEmpresaPopoverOpen, setIsEmpresaPopoverOpen] = useState(false);
   const [isCredentialPopoverOpen, setIsCredentialPopoverOpen] = useState(false);
+  const [attendanceData, setAttendanceData] = useState<any>(null);
+  const [wristbandCode, setWristbandCode] = useState("");
 
-  // Estado do formulário baseado no participante
+  // Estado do formulário baseado no participante (tabela event_participants)
   const [staffData, setStaffData] = useState({
     name: "",
     cpf: "",
@@ -57,6 +62,14 @@ export default function ModalEditarStaff({
     empresa: "",
     tipo_credencial: "",
     daysWork: [] as string[]
+  });
+
+  // Estado separado para dados de attendance (tabela event_attendance)
+  const [attendanceEditData, setAttendanceEditData] = useState({
+    checkinDate: "",
+    checkinTime: "",
+    checkoutDate: "",
+    checkoutTime: ""
   });
 
   // Parse selectedDay to extract shift information
@@ -74,11 +87,11 @@ export default function ModalEditarStaff({
   }, []);
 
   const currentShiftInfo = parseSelectedDay(selectedDay || '');
-  
+
   // Use filtered hooks when we have shift info, fallback to all items
   const { data: allCredentials = [] } = useCredentials({ eventId });
   const { data: allEmpresas = [] } = useEmpresasByEvent(eventId);
-  
+
   const { data: shiftCredentials = [] } = useCredentialsByShift({
     eventId,
     shiftId: selectedDay,
@@ -87,7 +100,7 @@ export default function ModalEditarStaff({
     workPeriod: currentShiftInfo?.period,
     enabled: !!currentShiftInfo
   });
-  
+
   const { data: shiftEmpresas = [] } = useEmpresasByShift({
     eventId,
     shiftId: selectedDay,
@@ -96,11 +109,12 @@ export default function ModalEditarStaff({
     workPeriod: currentShiftInfo?.period,
     enabled: !!currentShiftInfo
   });
-  
+
   // Use filtered data when available, otherwise fall back to all data
   const credentials = currentShiftInfo && shiftCredentials.length > 0 ? shiftCredentials : allCredentials;
   const empresas = currentShiftInfo && shiftEmpresas.length > 0 ? shiftEmpresas : allEmpresas;
   const updateParticipant = useUpdateEventParticipant();
+  const editAttendanceMutation = useEditAttendance();
 
   const formatCPF = (cpf: string): string => {
     const digits = cpf.replace(/\D/g, "");
@@ -120,13 +134,13 @@ export default function ModalEditarStaff({
       const [year, month, day] = datePart.split('-');
       return `${day}/${month}/${year}`;
     }
-    
+
     // If it's already in YYYY-MM-DD format
     if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
       const [year, month, day] = dateStr.split('-');
       return `${day}/${month}/${year}`;
     }
-    
+
     // Fallback to original method for other formats
     const date = new Date(dateStr + 'T12:00:00');
     return date.toLocaleDateString('pt-BR', {
@@ -393,7 +407,7 @@ export default function ModalEditarStaff({
         console.warn('⚠️ Não é possível desmarcar o turno atual quando em modo de edição filtrada');
         return prev;
       }
-      
+
       return {
         ...prev,
         daysWork: prev.daysWork.includes(shiftId)
@@ -436,6 +450,7 @@ export default function ModalEditarStaff({
 
     setLoading(true);
     try {
+      // 1. Atualizar dados do participante (tabela event_participants)
       await updateParticipant.mutateAsync({
         id: participant.id,
         eventId,
@@ -443,12 +458,58 @@ export default function ModalEditarStaff({
         name: name.toUpperCase(),
         cpf: hasCpf ? cpf : undefined,
         rg: hasRg ? rg : undefined,
-        hasDocument: hasCpf || hasRg, // Set hasDocument based on document presence
+        hasDocument: hasCpf || hasRg,
         role: funcao.toUpperCase(),
         company: empresa.toUpperCase(),
         validatedBy: "Sistema",
-        daysWork: staffData.daysWork,
+        daysWork: staffData.daysWork
       });
+
+      // 2. Atualizar código da pulseira se fornecido
+      if (wristbandCode.trim()) {
+        try {
+          await changeCredentialCode(eventId, participant.id, wristbandCode.trim());
+        } catch (error) {
+          console.error("⚠️ Erro ao salvar código da pulseira:", error);
+          toast.warning("Participante atualizado, mas houve erro ao salvar a pulseira.");
+        }
+      }
+
+      // 3. Atualizar dados de attendance se existir e tiver alterações (tabela event_attendance)
+      if (attendanceData && attendanceData.id && (attendanceEditData.checkinDate || attendanceEditData.checkinTime || attendanceEditData.checkoutDate || attendanceEditData.checkoutTime)) {
+        try {
+          let checkInDateTime = null;
+          let checkOutDateTime = null;
+
+          // Processar check-in se ambos os campos estiverem preenchidos
+          if (attendanceEditData.checkinDate && attendanceEditData.checkinTime) {
+            checkInDateTime = new Date(`${attendanceEditData.checkinDate}T${attendanceEditData.checkinTime}:00`).toISOString();
+          } else if (attendanceData.checkIn) {
+            // Manter o valor original se não foi alterado
+            checkInDateTime = attendanceData.checkIn;
+          }
+
+          // Processar check-out se ambos os campos estiverem preenchidos
+          if (attendanceEditData.checkoutDate && attendanceEditData.checkoutTime) {
+            checkOutDateTime = new Date(`${attendanceEditData.checkoutDate}T${attendanceEditData.checkoutTime}:00`).toISOString();
+          } else if (attendanceData.checkOut) {
+            // Manter o valor original se não foi alterado
+            checkOutDateTime = attendanceData.checkOut;
+          }
+
+          await editAttendanceMutation.mutateAsync({
+            attendanceId: attendanceData.id,
+            checkIn: checkInDateTime,
+            checkOut: checkOutDateTime,
+            notes: `Editado via modal de staff${wristbandCode.trim() ? ` - Pulseira: ${wristbandCode.trim()}` : ''}`,
+            performedBy: 'Sistema-Edição-Staff',
+            validatedBy: 'Sistema',
+          });
+        } catch (error) {
+          console.error("⚠️ Erro ao atualizar dados de attendance:", error);
+          toast.warning("Participante atualizado, mas houve erro ao salvar os dados de presença.");
+        }
+      }
 
       toast.success("Staff editado com sucesso!");
       handleClose();
@@ -470,6 +531,14 @@ export default function ModalEditarStaff({
       tipo_credencial: "",
       daysWork: []
     });
+    setAttendanceEditData({
+      checkinDate: "",
+      checkinTime: "",
+      checkoutDate: "",
+      checkoutTime: ""
+    });
+    setAttendanceData(null);
+    setWristbandCode("");
     setIsEmpresaPopoverOpen(false);
     setIsCredentialPopoverOpen(false);
     onClose();
@@ -485,6 +554,78 @@ export default function ModalEditarStaff({
     return null;
   }, []);
 
+  // Função para formatar data para API
+  const formatDateForAPI = useCallback((dateStr: string): string => {
+    if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) {
+      return dateStr;
+    }
+    if (/^\d{4}-\d{2}-\d{2}-.+-.+$/.test(dateStr)) {
+      const parts = dateStr.split('-');
+      if (parts.length >= 3) {
+        const year = parts[0];
+        const month = parts[1];
+        const day = parts[2];
+        return `${day}-${month}-${year}`;
+      }
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-');
+      return `${day}-${month}-${year}`;
+    }
+    return dateStr;
+  }, []);
+
+  // Hook para buscar dados de attendance
+  const { data: attendanceList = [] } = useEventAttendanceByEventAndDate(
+    eventId,
+    selectedDay ? formatDateForAPI(selectedDay) : ""
+  );
+
+  // Função para buscar dados de attendance e pulseira do participante
+  const fetchParticipantData = useCallback(async (participant: EventParticipant) => {
+    if (!participant || !selectedDay) return;
+
+    try {
+      // Buscar dados de attendance
+      const attendance = attendanceList.find(att => att.participantId === participant.id);
+      setAttendanceData(attendance);
+
+      // Buscar código da pulseira
+      const movementCredential = await getMovementCredentialByParticipant(eventId, participant.id);
+      if (movementCredential?.data?.code) {
+        setWristbandCode(movementCredential.data.code);
+      } else {
+        setWristbandCode("");
+      }
+
+      // Atualizar campos de data/hora se existe attendance (tabela separada)
+      if (attendance) {
+        const newAttendanceData = {
+          checkinDate: "",
+          checkinTime: "",
+          checkoutDate: "",
+          checkoutTime: ""
+        };
+
+        if (attendance.checkIn) {
+          const checkinDate = new Date(attendance.checkIn);
+          newAttendanceData.checkinDate = checkinDate.toISOString().split('T')[0];
+          newAttendanceData.checkinTime = checkinDate.toTimeString().split(' ')[0].slice(0, 5);
+        }
+        
+        if (attendance.checkOut) {
+          const checkoutDate = new Date(attendance.checkOut);
+          newAttendanceData.checkoutDate = checkoutDate.toISOString().split('T')[0];
+          newAttendanceData.checkoutTime = checkoutDate.toTimeString().split(' ')[0].slice(0, 5);
+        }
+
+        setAttendanceEditData(newAttendanceData);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar dados do participante:", error);
+    }
+  }, [eventId, selectedDay, attendanceList]);
+
   // Inicializar o formulário com os dados do participante quando o modal abrir
   useEffect(() => {
     if (isOpen && participant) {
@@ -494,14 +635,14 @@ export default function ModalEditarStaff({
 
       // Preencher dados do formulário
       let participantDaysWork = participant.daysWork || [];
-      
+
       // If we have a selectedDay and it's not in the participant's days, add it
       // This ensures the current context shift is always selected
       if (selectedDay && !participantDaysWork.includes(selectedDay)) {
         participantDaysWork = [selectedDay, ...participantDaysWork];
         console.log('📅 Adicionado dia atual aos dias de trabalho:', selectedDay);
       }
-      
+
       console.log('📅 Dias que serão pré-selecionados:', participantDaysWork);
 
       setStaffData({
@@ -513,8 +654,11 @@ export default function ModalEditarStaff({
         tipo_credencial: participant.credentialId || participant.wristbandId || "",
         daysWork: participantDaysWork
       });
+
+      // Buscar dados de attendance e pulseira
+      fetchParticipantData(participant);
     }
-  }, [isOpen, participant, selectedDay]);
+  }, [isOpen, participant, selectedDay, fetchParticipantData]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -737,13 +881,84 @@ export default function ModalEditarStaff({
             )}
           </div>
 
+          {/* Check-in e Check-out - só aparecem se já tiver feito check-in */}
+          {attendanceData && attendanceData.checkIn && (
+            <div className="space-y-4">
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                <p className="text-sm text-green-800 font-medium mb-2">
+                  📍 Dados de Presença - Turno Atual
+                </p>
+                <p className="text-xs text-green-600">
+                  Este participante já fez check-in. Você pode editar os horários e pulseira abaixo.
+                </p>
+              </div>
+
+              {/* Check-in */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Data Check-in</label>
+                  <Input
+                    type="date"
+                    value={attendanceEditData.checkinDate}
+                    onChange={(e) => setAttendanceEditData({ ...attendanceEditData, checkinDate: e.target.value })}
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Hora Check-in</label>
+                  <Input
+                    type="time"
+                    value={attendanceEditData.checkinTime}
+                    onChange={(e) => setAttendanceEditData({ ...attendanceEditData, checkinTime: e.target.value })}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              {/* Check-out - só aparece se já tiver feito check-out */}
+              {attendanceData.checkOut && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Data Check-out</label>
+                    <Input
+                      type="date"
+                      value={attendanceEditData.checkoutDate}
+                      onChange={(e) => setAttendanceEditData({ ...attendanceEditData, checkoutDate: e.target.value })}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Hora Check-out</label>
+                    <Input
+                      type="time"
+                      value={attendanceEditData.checkoutTime}
+                      onChange={(e) => setAttendanceEditData({ ...attendanceEditData, checkoutTime: e.target.value })}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Pulseira - só aparece se já tiver feito check-in */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Código da Pulseira</label>
+                <Input
+                  value={wristbandCode}
+                  onChange={(e) => setWristbandCode(e.target.value)}
+                  placeholder="Digite o código da pulseira"
+                  disabled={loading}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Dias de Trabalho */}
           <div>
             <label className="block text-sm font-medium mb-2">
               <Calendar className="w-4 h-4 inline mr-1" />
               Dias de Trabalho
             </label>
-            
+
             {selectedDay && currentShiftInfo && (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                 <p className="text-sm text-blue-800 font-medium mb-1">
@@ -752,10 +967,10 @@ export default function ModalEditarStaff({
                 <div className="flex items-center gap-2">
                   {getPeriodIcon(currentShiftInfo.period)}
                   <span className="text-sm text-blue-700">
-                    {formatEventDate(currentShiftInfo.date)} - 
-                    {currentShiftInfo.stage.toUpperCase()} - 
-                    {currentShiftInfo.period === 'diurno' ? 'DIURNO' : 
-                     currentShiftInfo.period === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO'}
+                    {formatEventDate(currentShiftInfo.date)} -
+                    {currentShiftInfo.stage.toUpperCase()} -
+                    {currentShiftInfo.period === 'diurno' ? 'DIURNO' :
+                      currentShiftInfo.period === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO'}
                   </span>
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
@@ -779,16 +994,15 @@ export default function ModalEditarStaff({
                   const stageLabel = stage === 'montagem' ? 'Montagem' :
                     stage === 'evento' ? 'Evento' :
                       stage === 'desmontagem' ? 'Desmontagem' : 'Finalização';
-                      
-                  const isCurrentStage = selectedDay && currentShiftInfo && 
+
+                  const isCurrentStage = selectedDay && currentShiftInfo &&
                     stage === currentShiftInfo.stage;
 
                   return (
-                    <div key={stage} className={`border rounded-lg p-3 ${
-                      isCurrentStage 
-                        ? 'border-blue-300 bg-blue-50' 
-                        : 'border-gray-200 bg-white'
-                    }`}>
+                    <div key={stage} className={`border rounded-lg p-3 ${isCurrentStage
+                      ? 'border-blue-300 bg-blue-50'
+                      : 'border-gray-200 bg-white'
+                      }`}>
                       <h4 className="text-sm font-semibold mb-3 text-gray-700">{stageLabel}</h4>
                       {Object.entries(dateGroups).map(([date, shifts]) => {
                         return (
@@ -802,14 +1016,13 @@ export default function ModalEditarStaff({
                                   variant={staffData.daysWork.includes(shift.id) ? "default" : "outline"}
                                   size="sm"
                                   onClick={() => toggleShift(shift.id)}
-                                  disabled={loading || (selectedDay && shift.id !== selectedDay)}
-                                  className={`flex items-center gap-1 text-xs h-8 ${
-                                    selectedDay && shift.id === selectedDay 
-                                      ? 'ring-2 ring-blue-500 bg-blue-50' 
-                                      : selectedDay && shift.id !== selectedDay 
-                                        ? 'opacity-50 cursor-not-allowed' 
-                                        : ''
-                                  }`}
+                                  disabled={!!loading || (!!selectedDay && shift.id !== selectedDay)}
+                                  className={`flex items-center gap-1 text-xs h-8 ${selectedDay && shift.id === selectedDay
+                                    ? 'ring-2 ring-blue-500 bg-blue-50'
+                                    : selectedDay && shift.id !== selectedDay
+                                      ? 'opacity-50 cursor-not-allowed'
+                                      : ''
+                                    }`}
                                 >
                                   {getPeriodIcon(shift.period)}
                                   <span>

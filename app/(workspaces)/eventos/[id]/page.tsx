@@ -36,11 +36,12 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover'
-import { changeCredentialCode } from '@/features/eventos/actions/movement-credentials'
+import { changeCredentialCode, getMovementCredentialByParticipant } from '@/features/eventos/actions/movement-credentials'
 import { updateParticipantCredential } from '@/features/eventos/actions/update-participant-credential'
 import {
     useCheckIn,
     useCheckOut,
+    useEditAttendance,
 } from '@/features/eventos/api/mutation/use-check-operations'
 import { useDeleteEventAttendance } from '@/features/eventos/api/mutation/use-delete-event-attendance'
 import { useCreateEventParticipant } from '@/features/eventos/api/mutation/use-create-event-participant'
@@ -55,7 +56,7 @@ import { useCoordenadoresByEvent } from '@/features/eventos/api/query/use-coorde
 import { useEmpresasByEvent } from '@/features/eventos/api/query/use-empresas'
 import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/use-event-attendance'
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
-import { useEventParticipantsGrouped, GroupedParticipant } from '@/features/eventos/api/query/use-event-participants-grouped'
+import { useEventParticipantsGrouped } from '@/features/eventos/api/query/use-event-participants-grouped'
 import { useEventParticipantsByShift } from '@/features/eventos/api/query/use-event-participants-by-shift'
 import { useEventVehiclesByEvent } from '@/features/eventos/api/query/use-event-vehicles-by-event'
 // TODO: Substituir por useEventById para melhor performance
@@ -150,6 +151,7 @@ export default function EventoDetalhesPage() {
     const checkInMutation = useCheckIn()
     const checkOutMutation = useCheckOut()
     const deleteAttendanceMutation = useDeleteEventAttendance()
+    const editAttendanceMutation = useEditAttendance()
 
     const [deletingParticipant, setDeletingParticipant] =
         useState<EventParticipant | null>(null)
@@ -375,6 +377,14 @@ export default function EventoDetalhesPage() {
     const [popupCheckout, setPopupCheckout] = useState(false)
     const [popupResetCheckin, setPopupResetCheckin] = useState(false)
     const [loading, setLoading] = useState(false)
+
+    // Estados para edição de attendance
+    const [isEditingAttendance, setIsEditingAttendance] = useState(false)
+    const [currentAttendanceId, setCurrentAttendanceId] = useState<string>('')
+    const [editCheckinDate, setEditCheckinDate] = useState<string>('')
+    const [editCheckinTime, setEditCheckinTime] = useState<string>('')
+    const [editCheckoutDate, setEditCheckoutDate] = useState<string>('')
+    const [editCheckoutTime, setEditCheckoutTime] = useState<string>('')
 
     // Estados para seleção múltipla e edição em massa
     const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(
@@ -945,6 +955,23 @@ export default function EventoDetalhesPage() {
                 return (
                     attendance.participantId === participantId &&
                     attendance.checkOut !== null &&
+                    normalizedAttendanceDate === normalizedDate
+                )
+            })
+        },
+        [attendanceData, normalizeDate],
+    )
+
+    // Função para obter registro de attendance de um participante em uma data específica
+    const getAttendanceRecord = useCallback(
+        (participantId: string, date: string) => {
+            if (!attendanceData || attendanceData.length === 0) return null
+
+            const normalizedDate = normalizeDate(date)
+            return attendanceData.find(attendance => {
+                const normalizedAttendanceDate = normalizeDate(attendance.date)
+                return (
+                    attendance.participantId === participantId &&
                     normalizedAttendanceDate === normalizedDate
                 )
             })
@@ -1530,29 +1557,62 @@ export default function EventoDetalhesPage() {
 
     // Função para abrir popup de check-in (memoizada)
     const abrirCheckin = useCallback(
-        (participant: EventParticipant) => {
-            // Verificar se já fez check-in no dia selecionado
-            if (hasCheckIn(participant.id, selectedDay)) {
-                toast.error('Este participante já fez check-in neste dia!')
-                return
+        async (participant: EventParticipant) => {
+            const attendanceRecord = getAttendanceRecord(participant.id, selectedDay)
+            
+            if (attendanceRecord && attendanceRecord.checkIn) {
+                // Se já fez check-in, abrir em modo de edição
+                setIsEditingAttendance(true)
+                setCurrentAttendanceId(attendanceRecord.id)
+                
+                // Pré-preencher os campos com os dados existentes
+                const checkinDateTime = new Date(attendanceRecord.checkIn)
+                setEditCheckinDate(checkinDateTime.toISOString().split('T')[0])
+                setEditCheckinTime(checkinDateTime.toTimeString().split(' ')[0].slice(0, 5))
+                
+                if (attendanceRecord.checkOut) {
+                    const checkoutDateTime = new Date(attendanceRecord.checkOut)
+                    setEditCheckoutDate(checkoutDateTime.toISOString().split('T')[0])
+                    setEditCheckoutTime(checkoutDateTime.toTimeString().split(' ')[0].slice(0, 5))
+                } else {
+                    setEditCheckoutDate('')
+                    setEditCheckoutTime('')
+                }
+
+                // Buscar código da pulseira atual
+                try {
+                    const movementCredential = await getMovementCredentialByParticipant(String(params.id), participant.id)
+                    if (movementCredential?.data?.code) {
+                        setCodigoPulseira(movementCredential.data.code)
+                    } else {
+                        setCodigoPulseira('')
+                    }
+                } catch (error) {
+                    console.error('Erro ao buscar código da pulseira:', error)
+                    setCodigoPulseira('')
+                }
+            } else {
+                // Novo check-in
+                setIsEditingAttendance(false)
+                setCurrentAttendanceId('')
+                setEditCheckinDate('')
+                setEditCheckinTime('')
+                setEditCheckoutDate('')
+                setEditCheckoutTime('')
+                setCodigoPulseira('')
             }
 
             setParticipantAction(participant)
-            setCodigoPulseira('')
             setSelectedDateForAction(selectedDay)
             setPopupCheckin(true)
         },
-        [hasCheckIn, selectedDay],
+        [hasCheckIn, selectedDay, getAttendanceRecord, params.id],
     )
 
     // Função para abrir popup de check-out (memoizada)
     const abrirCheckout = useCallback(
-        (participant: EventParticipant) => {
-            // Verificar se já fez check-out no dia selecionado
-            if (hasCheckOut(participant.id, selectedDay)) {
-                toast.error('Este participante já fez check-out neste dia!')
-                return
-            }
+        async (participant: EventParticipant) => {
+            const attendanceRecord = getAttendanceRecord(participant.id, selectedDay)
 
             // Verificar se fez check-in antes de fazer check-out
             if (!hasCheckIn(participant.id, selectedDay)) {
@@ -1562,11 +1622,44 @@ export default function EventoDetalhesPage() {
                 return
             }
 
+            if (attendanceRecord && attendanceRecord.checkOut) {
+                // Se já fez check-out, abrir em modo de edição usando o mesmo modal
+                setIsEditingAttendance(true)
+                setCurrentAttendanceId(attendanceRecord.id)
+                
+                // Pré-preencher os campos com os dados existentes
+                const checkinDateTime = new Date(attendanceRecord.checkIn!)
+                setEditCheckinDate(checkinDateTime.toISOString().split('T')[0])
+                setEditCheckinTime(checkinDateTime.toTimeString().split(' ')[0].slice(0, 5))
+                
+                const checkoutDateTime = new Date(attendanceRecord.checkOut)
+                setEditCheckoutDate(checkoutDateTime.toISOString().split('T')[0])
+                setEditCheckoutTime(checkoutDateTime.toTimeString().split(' ')[0].slice(0, 5))
+
+                // Buscar código da pulseira atual
+                try {
+                    const movementCredential = await getMovementCredentialByParticipant(String(params.id), participant.id)
+                    if (movementCredential?.data?.code) {
+                        setCodigoPulseira(movementCredential.data.code)
+                    } else {
+                        setCodigoPulseira('')
+                    }
+                } catch (error) {
+                    console.error('Erro ao buscar código da pulseira:', error)
+                    setCodigoPulseira('')
+                }
+
+                setParticipantAction(participant)
+                setSelectedDateForAction(selectedDay)
+                setPopupCheckin(true) // Usar o mesmo modal para edição
+                return
+            }
+
             setParticipantAction(participant)
             setSelectedDateForAction(selectedDay)
             setPopupCheckout(true)
         },
-        [hasCheckIn, hasCheckOut, selectedDay],
+        [hasCheckIn, hasCheckOut, selectedDay, getAttendanceRecord, params.id],
     )
 
     // Função para abrir popup de reset check-in (memoizada)
@@ -1575,63 +1668,91 @@ export default function EventoDetalhesPage() {
         setPopupResetCheckin(true)
     }, [])
 
-    // Função para confirmar check-in
+    // Função para confirmar check-in (novo ou edição)
     const confirmarCheckin = async () => {
         if (!participantAction) {
             toast.error('Participante não selecionado')
             return
         }
 
-        // Verificar se já fez check-in no dia selecionado
-        const dateToCheck = selectedDateForAction || selectedDay
-        if (hasCheckIn(participantAction.id, dateToCheck)) {
-            toast.error('Este participante já fez check-in neste dia!')
-            setPopupCheckin(false)
-            setParticipantAction(null)
-            setCodigoPulseira('')
-            setSelectedDateForAction('')
-            return
-        }
-
         setLoading(true)
         try {
-            const today = new Date()
-            const day = String(today.getDate()).padStart(2, '0')
-            const month = String(today.getMonth() + 1).padStart(2, '0')
-            const year = today.getFullYear()
-            const todayFormatted = `${day}-${month}-${year}`
+            if (isEditingAttendance && currentAttendanceId) {
+                // Editar attendance existente
+                let checkInDateTime = null
+                let checkOutDateTime = null
 
-            const dateToUse = selectedDateForAction
-                ? formatDateForAPI(selectedDateForAction)
-                : todayFormatted
-
-            // Extrair informações do shift selecionado
-            const { stage, period } = parseShiftId(selectedDateForAction || selectedDay)
-
-            await checkInMutation.mutateAsync({
-                participantId: participantAction.id,
-                date: dateToUse,
-                validatedBy: 'Sistema',
-                performedBy: 'Sistema',
-                notes: `Check-in realizado via painel de eventos${codigoPulseira.trim() ? ` - Pulseira: ${codigoPulseira.trim()}` : ''}`,
-                workPeriod: period,
-                workStage: stage,
-            })
-
-            // Salvar pulseira no sistema de movement_credentials (apenas se foi informada)
-            if (codigoPulseira.trim()) {
-                try {
-                    await changeCredentialCode(
-                        String(params.id),
-                        participantAction.id,
-                        codigoPulseira.trim(),
-                    )
-                } catch (error) {
-                    console.error('⚠️ Erro ao salvar pulseira no sistema:', error)
+                if (editCheckinDate && editCheckinTime) {
+                    checkInDateTime = new Date(`${editCheckinDate}T${editCheckinTime}:00`).toISOString()
                 }
-            }
 
-            toast.success('Check-in realizado com sucesso!')
+                if (editCheckoutDate && editCheckoutTime) {
+                    checkOutDateTime = new Date(`${editCheckoutDate}T${editCheckoutTime}:00`).toISOString()
+                }
+
+                await editAttendanceMutation.mutateAsync({
+                    attendanceId: currentAttendanceId,
+                    checkIn: checkInDateTime,
+                    checkOut: checkOutDateTime,
+                    notes: `Editado via painel de eventos${codigoPulseira.trim() ? ` - Pulseira: ${codigoPulseira.trim()}` : ''}`,
+                    performedBy: 'Sistema-Edição',
+                    validatedBy: 'Sistema',
+                })
+
+                // Salvar pulseira no sistema de movement_credentials (apenas se foi informada)
+                if (codigoPulseira.trim()) {
+                    try {
+                        await changeCredentialCode(
+                            String(params.id),
+                            participantAction.id,
+                            codigoPulseira.trim(),
+                        )
+                    } catch (error) {
+                        console.error('⚠️ Erro ao salvar pulseira no sistema:', error)
+                    }
+                }
+
+                toast.success('Dados de presença editados com sucesso!')
+            } else {
+                // Novo check-in
+                const today = new Date()
+                const day = String(today.getDate()).padStart(2, '0')
+                const month = String(today.getMonth() + 1).padStart(2, '0')
+                const year = today.getFullYear()
+                const todayFormatted = `${day}-${month}-${year}`
+
+                const dateToUse = selectedDateForAction
+                    ? formatDateForAPI(selectedDateForAction)
+                    : todayFormatted
+
+                // Extrair informações do shift selecionado
+                const { stage, period } = parseShiftId(selectedDateForAction || selectedDay)
+
+                await checkInMutation.mutateAsync({
+                    participantId: participantAction.id,
+                    date: dateToUse,
+                    validatedBy: 'Sistema',
+                    performedBy: 'Sistema',
+                    notes: `Check-in realizado via painel de eventos${codigoPulseira.trim() ? ` - Pulseira: ${codigoPulseira.trim()}` : ''}`,
+                    workPeriod: period,
+                    workStage: stage,
+                })
+
+                // Salvar pulseira no sistema de movement_credentials (apenas se foi informada)
+                if (codigoPulseira.trim()) {
+                    try {
+                        await changeCredentialCode(
+                            String(params.id),
+                            participantAction.id,
+                            codigoPulseira.trim(),
+                        )
+                    } catch (error) {
+                        console.error('⚠️ Erro ao salvar pulseira no sistema:', error)
+                    }
+                }
+
+                toast.success('Check-in realizado com sucesso!')
+            }
 
             // Forçar atualização dos dados de attendance
             await queryClient.invalidateQueries({
@@ -1646,11 +1767,17 @@ export default function EventoDetalhesPage() {
             setParticipantAction(null)
             setCodigoPulseira('')
             setSelectedDateForAction('')
+            setIsEditingAttendance(false)
+            setCurrentAttendanceId('')
+            setEditCheckinDate('')
+            setEditCheckinTime('')
+            setEditCheckoutDate('')
+            setEditCheckoutTime('')
         } catch (error) {
-            console.error('❌ Erro ao realizar check-in:', error)
+            console.error('❌ Erro ao processar check-in:', error)
             const errorMessage =
                 error instanceof Error ? error.message : 'Erro desconhecido'
-            toast.error(`Erro ao realizar check-in: ${errorMessage}`)
+            toast.error(`Erro ao processar: ${errorMessage}`)
         }
         setLoading(false)
     }
@@ -4148,18 +4275,82 @@ export default function EventoDetalhesPage() {
 
             {/* Dialog de Check-in */}
             <AlertDialog open={popupCheckin} onOpenChange={setPopupCheckin}>
-                <AlertDialogContent className="bg-white text-black max-w-md max-h-[80vh] overflow-y-auto">
+                <AlertDialogContent className="bg-white text-black max-w-lg max-h-[80vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Check className="h-5 w-5 text-green-600" />
-                            Realizar Check-in
+                            {isEditingAttendance ? 'Editar Presença' : 'Realizar Check-in'}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Realize o check-in do participante. O código da pulseira é opcional.
+                            {isEditingAttendance 
+                                ? 'Edite os dados de presença do participante. Você pode alterar datas, horários e código da pulseira.'
+                                : 'Realize o check-in do participante. O código da pulseira é opcional.'
+                            }
                         </AlertDialogDescription>
                     </AlertDialogHeader>
 
                     <div className="space-y-4 py-4">
+                        {/* Debug: mostrar valor de isEditingAttendance */}
+                        {process.env.NODE_ENV === 'development' && (
+                            <div className="text-xs text-gray-500 mb-2">
+                                Debug: isEditingAttendance = {String(isEditingAttendance)}
+                            </div>
+                        )}
+                        {isEditingAttendance ? (
+                            <>
+                                {/* Campos para edição */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Data Check-in
+                                        </label>
+                                        <Input
+                                            type="date"
+                                            value={editCheckinDate}
+                                            onChange={e => setEditCheckinDate(e.target.value)}
+                                            className="w-full"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Hora Check-in
+                                        </label>
+                                        <Input
+                                            type="time"
+                                            value={editCheckinTime}
+                                            onChange={e => setEditCheckinTime(e.target.value)}
+                                            className="w-full"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Data Check-out (opcional)
+                                        </label>
+                                        <Input
+                                            type="date"
+                                            value={editCheckoutDate}
+                                            onChange={e => setEditCheckoutDate(e.target.value)}
+                                            className="w-full"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Hora Check-out (opcional)
+                                        </label>
+                                        <Input
+                                            type="time"
+                                            value={editCheckoutTime}
+                                            onChange={e => setEditCheckoutTime(e.target.value)}
+                                            className="w-full"
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        ) : null}
+
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Código da Pulseira (opcional)
@@ -4189,6 +4380,11 @@ export default function EventoDetalhesPage() {
                                 <div className="text-xs text-blue-700 mt-1">
                                     CPF: {participantAction.cpf}
                                 </div>
+                                {isEditingAttendance && (
+                                    <div className="text-xs text-amber-700 mt-1 font-medium">
+                                        ⚠️ Modo de edição - Alterando dados existentes
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -4200,7 +4396,7 @@ export default function EventoDetalhesPage() {
                             disabled={loading}
                             className="bg-green-600 hover:bg-green-700"
                         >
-                            {loading ? 'Processando...' : 'Confirmar Check-in'}
+                            {loading ? 'Processando...' : (isEditingAttendance ? 'Salvar Alterações' : 'Confirmar Check-in')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
