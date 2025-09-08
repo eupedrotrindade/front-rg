@@ -10,6 +10,7 @@ interface UseExportProps {
   eventName: string;
   participants: ParticipantRecord[];
   selectedDay?: string;
+  selectedDays?: string[];  // ✅ NOVO: Array de dias selecionados
   selectedReportType?: string;
   eventDays?: Array<{
     id: string;
@@ -18,12 +19,14 @@ interface UseExportProps {
     type: string;
     period?: "diurno" | "noturno" | "dia_inteiro";
   }>;
+  total_registro?: number;  // ✅ NOVO: Total de registros para usar no rodapé
 }
 
 export function useExport({
   eventName,
   participants,
   selectedDay,
+  selectedDays,
   selectedReportType,
   eventDays,
 }: UseExportProps) {
@@ -163,7 +166,8 @@ export function useExport({
       const stage = parts[3];
       const period = parts[4] as "diurno" | "noturno" | "dia_inteiro";
 
-      const date = new Date(`${year}-${month}-${day}`);
+      // ✅ CORRIGIDO: Criar data local explicitamente para evitar problemas de timezone
+      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
       const formattedDate = date.toLocaleDateString("pt-BR");
 
       const stageNames = {
@@ -212,7 +216,11 @@ export function useExport({
         period?: "diurno" | "noturno" | "dia_inteiro";
       }> = [];
 
-      if (selectedDay === "all") {
+      if (selectedDay === "multiple" && selectedDays && selectedDays.length > 0) {
+        // ✅ NOVO: Usar turnos selecionados específicos em modo multi-seleção
+        shiftsToProcess = eventDays?.filter(day => selectedDays.includes(day.id)) || [];
+        console.log(`🎯 Multi-day export: Processing ${shiftsToProcess.length} selected days`);
+      } else if (selectedDay === "all") {
         // Usar TODOS os turnos do evento
         shiftsToProcess = eventDays || [];
       } else if (selectedDay) {
@@ -310,6 +318,15 @@ export function useExport({
 
         // Filtrar participantes SEM EMPRESA
         let validParticipants = shiftParticipants.filter(p => p.empresa && p.empresa.trim() !== "" && p.empresa !== "SEM EMPRESA");
+
+        // ✅ DEBUG: Log antes dos filtros de tipo de relatório no PDF
+        console.log(`🎯 PDF DEBUG - Turno ${shift.id}:`, {
+          reportType,
+          totalParticipantsReceived: participants.length,
+          shiftParticipants: shiftParticipants.length,
+          validParticipantsAfterCompanyFilter: validParticipants.length,
+          comCheckIn: validParticipants.filter(p => p.checkIn !== "-").length
+        });
 
         // Aplicar filtros específicos do tipo de relatório ANTES de agrupar por empresa
         const participantsBeforeFilter = validParticipants.length;
@@ -466,12 +483,16 @@ export function useExport({
         });
       });
 
+      // ✅ CORRIGIDO: Contar apenas participantes no rodapé (não incluir linhas de empresa)
+      const actualStaffCount = formattedData.filter(item => item.isStaffRecord).length;
+      const actualCheckInsCount = formattedData.filter(item => item.isStaffRecord && item.checkIn !== "-").length;
+
       // Adicionar informações de resumo no final
       formattedData.push({
         isSummary: true,
-        totalParticipants,
-        totalCheckIns,
-        summaryText: `Total de registros: ${totalParticipants} | Check-ins realizados: ${totalCheckIns} de ${totalParticipants}`,
+        totalParticipants: actualStaffCount,
+        totalCheckIns: actualCheckInsCount,
+        summaryText: `Total de participantes: ${actualStaffCount} | Check-ins realizados: ${actualCheckInsCount} de ${actualStaffCount}`,
         isLastPage: true,
         isPageBreakBefore: false, // Controlado pela configuração lastPageSummary.forceNewPage
         summaryColor: "#610E5C", // Cor específica solicitada
@@ -562,6 +583,12 @@ export function useExport({
 
       // Usar título personalizado ou criar baseado no tipo de relatório e turno
       let titulo = customTitle || `Relatório de Presença - ${eventName}`;
+      
+      // ✅ NOVO: Indicar se é relatório multi-dias
+      if (selectedDay === "multiple" && selectedDays && selectedDays.length > 0) {
+        titulo += ` - ${selectedDays.length} Dias Unificados`;
+      }
+      
       if (selectedReportType && selectedReportType !== "geral") {
         const reportTypeNames: Record<string, string> = {
           empresa: "Filtro por Empresa",
@@ -578,6 +605,7 @@ export function useExport({
           reportTypeNames[selectedReportType] || selectedReportType
         }`;
       }
+
 
       exportPDFMutation.mutate(
         {
@@ -669,6 +697,12 @@ export function useExport({
 
       // Usar título personalizado ou criar baseado no tipo de relatório e empresa
       let titulo = customTitle || `Relatório de Presença - ${company}`;
+      
+      // ✅ NOVO: Indicar se é relatório multi-dias
+      if (selectedDay === "multiple" && selectedDays && selectedDays.length > 0) {
+        titulo += ` - ${selectedDays.length} Dias Unificados`;
+      }
+      
       if (selectedReportType && selectedReportType !== "geral") {
         const reportTypeNames: Record<string, string> = {
           empresa: "Filtro por Empresa",

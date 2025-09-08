@@ -41,7 +41,9 @@ export default function Relatorio2Page() {
 
     // === FILTER STATES ===
     const [selectedDay, setSelectedDay] = useState<string>("all")
+    const [selectedDays, setSelectedDays] = useState<string[]>([])
     const [selectedCompany, setSelectedCompany] = useState<string>("all")
+    const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
     const [selectedReportType, setSelectedReportType] = useState<string>("geral")
     const [selectedCredentialType, setSelectedCredentialType] = useState<string>("all")
     const [selectedFunction, setSelectedFunction] = useState<string>("all")
@@ -51,14 +53,31 @@ export default function Relatorio2Page() {
     const [pendingExportConfig, setPendingExportConfig] = useState<any>(null)
 
     // === TURNOS/DIAS FUNCTIONS ===
-    // Função para formatar data
+    // ✅ CORRIGIDO: Função para formatar data sem problemas de timezone
     const formatDate = useCallback((dateString: string) => {
-        const date = new Date(dateString)
+        // Se a string contém 'T00:00:00', remover para evitar timezone UTC
+        const cleanDateString = dateString.includes('T00:00:00')
+            ? dateString.split('T')[0]
+            : dateString;
+
+        // Dividir a data e criar objeto Date local
+        const parts = cleanDateString.split('-');
+        if (parts.length === 3) {
+            const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            return date.toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        }
+
+        // Fallback para o método original se não conseguir processar
+        const date = new Date(dateString);
         return date.toLocaleDateString('pt-BR', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric'
-        })
+        });
     }, [])
 
     // Função para extrair informações do shift ID
@@ -216,7 +235,7 @@ export default function Relatorio2Page() {
     }, [evento, formatDate]);
 
     // === DATA PROCESSING ===
-    const { participants, summary, companyStats, filterData } = useReportData({
+    const { participants, summary, companyStats, filterData, calculateSummary } = useReportData({
         participantes,
         attendanceRecords,
         movementCredentials,
@@ -226,11 +245,18 @@ export default function Relatorio2Page() {
     // === FILTERED DATA ===
     const filteredParticipants = filterData({
         empresa: selectedCompany,
-        day: selectedDay,
+        day: selectedDays.length > 0 ? "multiple" : selectedDay,  // Use "multiple" quando há múltiplos dias
+        days: selectedDays,  // Pass selected days array
         reportType: selectedReportType,
         credentialType: selectedCredentialType,
         function: selectedFunction
     })
+
+    // ✅ CORRIGIDO: Calcular estatísticas baseadas nos participantes filtrados
+    const filteredSummary = calculateSummary(filteredParticipants)
+    
+    // Calcular total de registros (apenas participantes, não empresas)
+    const total_registro = filteredParticipants.length
 
     // === EXPORT FUNCTIONALITY ===
     const {
@@ -246,9 +272,11 @@ export default function Relatorio2Page() {
     } = useExport({
         eventName: evento?.name || "Evento",
         participants: filteredParticipants,
-        selectedDay,
+        selectedDay: selectedDays.length > 0 ? "multiple" : selectedDay,
+        selectedDays,  // Pass selected days array
         selectedReportType,
-        eventDays: getEventDays()
+        eventDays: getEventDays(),
+        total_registro  // Pass total_registro
     })
 
     // === PREVIEW FUNCTIONS ===
@@ -314,16 +342,21 @@ export default function Relatorio2Page() {
                 ) : (
                     <>
                         {/* === SUMMARY CARDS === */}
-                        <ReportSummaryComponent summary={summary} />
+                        <ReportSummaryComponent summary={filteredSummary} />
 
                         {/* === FILTERS & EXPORT === */}
                         <ReportFilters
+
                             eventDays={getEventDays()}
                             selectedDay={selectedDay}
+                            selectedDays={selectedDays}
                             onDayChange={setSelectedDay}
+                            onDaysChange={setSelectedDays}
                             companies={companyStats}
                             selectedCompany={selectedCompany}
+                            selectedCompanies={selectedCompanies}
                             onCompanyChange={setSelectedCompany}
+                            onCompaniesChange={setSelectedCompanies}
                             selectedReportType={selectedReportType}
                             onReportTypeChange={setSelectedReportType}
                             selectedCredentialType={selectedCredentialType}

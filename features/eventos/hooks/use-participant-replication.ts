@@ -323,6 +323,122 @@ export function useParticipantReplication({
     [getParticipantsByShift, eventId, empresas, credentials]
   );
 
+  // ✅ NOVO: Função para analisar replicação com filtro de participantes
+  const analyzeReplicationWithFilter = useCallback(
+    (
+      sourceShiftId: string,
+      targetShiftId: string,
+      filteredSourceParticipants: EventParticipant[]
+    ): ReplicationAnalysis | null => {
+      if (!sourceShiftId || !targetShiftId) {
+        toast.error("Selecione os turnos de origem e destino");
+        return null;
+      }
+
+      if (sourceShiftId === targetShiftId) {
+        toast.error("O turno de origem deve ser diferente do turno de destino");
+        return null;
+      }
+
+      const targetParticipants = getParticipantsByShift(targetShiftId);
+
+      if (filteredSourceParticipants.length === 0) {
+        toast.error("Nenhum participante selecionado para replicação");
+        return null;
+      }
+
+      // Identificar participantes filtrados que não estão no turno de destino
+      const targetParticipantHashes = new Set(
+        targetParticipants.map(
+          (p) => p.participantHash || `${p.cpf}_${eventId}`
+        )
+      );
+
+      const participantsToReplicate = filteredSourceParticipants.filter(
+        (sourceParticipant) => {
+          const hash =
+            sourceParticipant.participantHash ||
+            `${sourceParticipant.cpf}_${eventId}`;
+          return !targetParticipantHashes.has(hash);
+        }
+      );
+
+      // Analisar empresas necessárias (baseado nos participantes filtrados)
+      const empresasArray = Array.isArray(empresas) ? empresas : [];
+      const existingCompanies = new Set(empresasArray.map((e) => e.name));
+      const requiredCompanies = new Set(
+        participantsToReplicate
+          .map((p) => p.company)
+          .filter(Boolean)
+          .filter((c) => c.trim())
+      );
+
+      const companiesAnalysis = {
+        existing: Array.from(requiredCompanies).filter((c) =>
+          existingCompanies.has(c)
+        ),
+        missing: Array.from(requiredCompanies).filter(
+          (c) => !existingCompanies.has(c)
+        ),
+        needingCreation: Array.from(requiredCompanies).filter(
+          (c) => !existingCompanies.has(c)
+        ),
+      };
+
+      // Analisar credenciais necessárias (baseado nos participantes filtrados)
+      const credentialsArray = Array.isArray(credentials) ? credentials : [];
+      const existingCredentials = new Set(credentialsArray.map((c) => c.name));
+      const requiredCredentials = new Set(
+        participantsToReplicate
+          .map((p: any) => p.credentialName)
+          .filter(Boolean)
+          .filter((c) => c.trim())
+      );
+
+      const credentialsAnalysis = {
+        existing: Array.from(requiredCredentials).filter((c) =>
+          existingCredentials.has(c)
+        ),
+        missing: Array.from(requiredCredentials).filter(
+          (c) => !existingCredentials.has(c)
+        ),
+        needingCreation: Array.from(requiredCredentials).filter(
+          (c) => !existingCredentials.has(c)
+        ),
+      };
+
+      // Estimar operações e tempo
+      const totalOperations =
+        companiesAnalysis.needingCreation.length +
+        credentialsAnalysis.needingCreation.length +
+        participantsToReplicate.length;
+
+      const estimatedTime =
+        Math.ceil(totalOperations / MAX_SAFE_OPS_PER_MINUTE) * 60000;
+
+      return {
+        sourceDay: sourceShiftId,
+        targetDay: targetShiftId,
+        sourceParticipants: filteredSourceParticipants, // Usar participantes filtrados
+        targetParticipants,
+        participantsToReplicate,
+        companiesAnalysis,
+        credentialsAnalysis,
+        processingSummary: {
+          companiesProcessed: 0,
+          credentialsProcessed: 0,
+          participantsProcessed: 0,
+        },
+        rateLimiting: {
+          operationsCount: 0,
+          windowStart: Date.now(),
+          estimatedTime,
+        },
+      };
+    },
+    [getParticipantsByShift, eventId, empresas, credentials]
+  );
+
   // Função para processar a replicação
   const processReplication = useCallback(
     async (
@@ -681,6 +797,7 @@ export function useParticipantReplication({
 
     // Functions
     analyzeReplication,
+    analyzeReplicationWithFilter, // ✅ NOVO: Função para análise com filtro
     processReplication,
     formatTime,
     formatDateForAPI,

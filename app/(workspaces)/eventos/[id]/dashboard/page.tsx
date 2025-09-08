@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { ArrowLeft, BarChart3, Building, Calendar, TrendingUp, Users, Clock, Activity, MapPin, CalendarDays, UserCheck, Sun, Moon, Search, X, RefreshCw, ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useMemo, useCallback, useEffect } from 'react'
@@ -20,6 +21,8 @@ import VirtualizedDashboardList from '@/components/virtualized-dashboard/Virtual
 import '@/styles/virtualized-dashboard.css'
 import { formatEventDate } from '@/lib/utils'
 import { toast } from 'sonner'
+import SimpleEventDaysManager from '@/components/event-days/SimpleEventDaysManager'
+import { useUpdateEvento } from '@/features/eventos/api/mutation/use-update-evento'
 
 export default function EventDashboardPage() {
     const params = useParams()
@@ -38,6 +41,8 @@ export default function EventDashboardPage() {
     const [credentialFilter, setCredentialFilter] = useState<string>('')
     const [companyFilter, setCompanyFilter] = useState<string>('')
     const [isRefreshing, setIsRefreshing] = useState<boolean>(false)
+    const [isExpirationDialogOpen, setIsExpirationDialogOpen] = useState<boolean>(false)
+    const [selectedExpiration, setSelectedExpiration] = useState<string>('7')
 
     const evento = Array.isArray(eventos)
         ? eventos.find((e) => String(e.id) === String(params.id))
@@ -355,21 +360,26 @@ export default function EventDashboardPage() {
         }
     }, [refetchEventos, refetchParticipants, refetchCredentials, refetchEmpresas, refetchAttendance]);
 
-    // 🔗 Função para gerar token de acesso público para dashboard
-    const generatePublicDashboardToken = () => {
-        const token = btoa(`${params.id}:${Date.now()}`)
+    // 🔗 Função para gerar token de acesso público para dashboard com expiração personalizada
+    const generatePublicDashboardToken = (expirationDays: number) => {
+        const expirationTime = Date.now() + (expirationDays * 24 * 60 * 60 * 1000) // dias em milissegundos
+        const token = btoa(`${params.id}:${expirationTime}`)
         const publicUrl = `${window.location.origin}/dashboard/${token}`
         return publicUrl
     }
 
-    // 🔗 Função para copiar URL pública do dashboard
+    // 🔗 Função para copiar URL pública do dashboard com expiração personalizada
     const copyPublicDashboardUrl = async () => {
         try {
-            const publicUrl = generatePublicDashboardToken()
+            const expirationDays = parseInt(selectedExpiration)
+            const publicUrl = generatePublicDashboardToken(expirationDays)
             await navigator.clipboard.writeText(publicUrl)
+
+            const expirationText = expirationDays === 1 ? '1 dia' : `${expirationDays} dias`
             toast.success('URL pública da dashboard copiada para a área de transferência!', {
-                description: 'Link válido por 7 dias. Compartilhe para acesso sem login.'
+                description: `Link válido por ${expirationText}. Compartilhe para acesso sem login.`
             })
+            setIsExpirationDialogOpen(false)
         } catch (error) {
             console.error('Erro ao copiar URL:', error)
             toast.error('Erro ao copiar URL pública')
@@ -479,7 +489,7 @@ export default function EventDashboardPage() {
         }
     }, [selectedDay, shiftInfo, participantesDoDia, allAttendanceData, hasCheckIn, empresasDoTurno, empresasArray]);
 
-    // ✅ Simplificado: calcular estatísticas das credenciais vinculando participantes → credenciais → attendance
+    // ✅ CORRIGIDO: calcular estatísticas das credenciais APENAS para participantes do dia selecionado
     const getCredentialStats = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; credentialName: string; color: string }> = {}
 
@@ -489,7 +499,7 @@ export default function EventDashboardPage() {
         console.log('📊 Participantes do dia:', participantesDoDia.length);
         console.log('📋 Credenciais disponíveis:', credentialsArray.length);
 
-        // Para cada credencial, buscar participantes que a possuem
+        // Para cada credencial, buscar participantes que a possuem NO DIA SELECIONADO
         credentialsArray.forEach((credential: any) => {
             const participantsWithCredential = participantesDoDia.filter((p: any) =>
                 p.credentialId === credential.id
@@ -501,19 +511,21 @@ export default function EventDashboardPage() {
 
             console.log(`🎫 Credencial "${credential.nome}": ${checkedInWithCredential.length}/${participantsWithCredential.length} presentes`);
 
-            // Sempre incluir credencial, mesmo sem participantes no turno
-            const total = Number(participantsWithCredential.length) || 0;
-            const checkedIn = Number(checkedInWithCredential.length) || 0;
+            // ✅ SÓ INCLUIR se houver participantes com essa credencial no dia
+            if (participantsWithCredential.length > 0) {
+                const total = Number(participantsWithCredential.length) || 0;
+                const checkedIn = Number(checkedInWithCredential.length) || 0;
 
-            stats[credential.id] = {
-                total,
-                checkedIn,
-                credentialName: credential.nome || 'Credencial',
-                color: credential.cor || '#3B82F6'
+                stats[credential.id] = {
+                    total,
+                    checkedIn,
+                    credentialName: credential.nome || 'Credencial',
+                    color: credential.cor || '#3B82F6'
+                }
             }
         })
 
-        // Participantes sem credencial
+        // Participantes sem credencial no dia selecionado
         const participantsWithoutCredential = participantesDoDia.filter((p: any) => !p.credentialId);
         const checkedInWithoutCredential = participantsWithoutCredential.filter((p: any) =>
             hasCheckIn(p.id, selectedDay)
@@ -538,7 +550,7 @@ export default function EventDashboardPage() {
         return participantesDoDia.filter(p => hasCheckIn(p.id, selectedDay)).length;
     }, [participantesDoDia, hasCheckIn, selectedDay]);
 
-    // ✅ CORRIGIDO: Calcular estatísticas por empresa baseado em empresas filtradas pelo turno específico
+    // ✅ CORRIGIDO: Simplificar cálculo de estatísticas por empresa - APENAS participantes do dia
     const getCompanySummary = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; companyName: string }> = {}
 
@@ -547,7 +559,7 @@ export default function EventDashboardPage() {
         console.log('🏢 Calculando stats das empresas para turno:', selectedDay);
         console.log('📊 Participantes do dia:', participantesDoDia.length);
 
-        // ✅ Simplificado: agrupar participantes por empresa diretamente
+        // ✅ SIMPLIFICADO: agrupar participantes por empresa diretamente
         const participantsByCompany: Record<string, any[]> = {};
 
         participantesDoDia.forEach((participant: any) => {
@@ -558,7 +570,7 @@ export default function EventDashboardPage() {
             participantsByCompany[companyName].push(participant);
         });
 
-        // Calcular estatísticas para cada empresa
+        // Calcular estatísticas para cada empresa com participantes
         Object.entries(participantsByCompany).forEach(([companyName, participants]) => {
             const checkedInParticipants = participants.filter((p: any) =>
                 hasCheckIn(p.id, selectedDay)
@@ -573,89 +585,9 @@ export default function EventDashboardPage() {
             };
         });
 
-        console.log('📊 Total de empresas com participantes:', Object.keys(stats).length);
-
-        // ✅ Para cada empresa do turno, buscar participantes e calcular estatísticas
-        empresasDoTurno.forEach((empresa: any) => {
-            // Buscar participantes desta empresa no turno específico
-            const participantesEmpresa = participantesDoDia.filter((participant: any) =>
-                participant.company === empresa.nome
-            );
-
-            // Contar presenças válidas
-            const checkedInParticipants = participantesEmpresa.filter((p: any) => {
-                return hasCheckIn(p.id, selectedDay);
-            });
-
-            // Debug para verificação
-            console.log(`🏢 Empresa "${empresa.nome}" no turno:`, {
-                turnoSelecionado: selectedDay,
-                totalParticipantes: participantesEmpresa.length,
-                participantesPresentes: checkedInParticipants.length,
-                workDate: empresa.workDate,
-                workStage: empresa.workStage,
-                workPeriod: empresa.workPeriod
-            });
-
-            // ✅ CORRIGIDO: Sempre adicionar empresa, mesmo sem participantes
-            const total = Number(participantesEmpresa.length) || 0;
-            const checkedIn = Number(checkedInParticipants.length) || 0;
-
-            stats[empresa.nome] = {
-                total,
-                checkedIn,
-                companyName: empresa.nome || 'Empresa'
-            };
-        });
-
-        // ✅ Também incluir participantes com empresas que não estão registradas no sistema de empresas
-        const empresasRegistradas = empresasDoTurno.map((e: any) => e.nome);
-        const participantesSemEmpresaRegistrada = participantesDoDia.filter((participant: any) => {
-            return participant.company &&
-                participant.company.trim() !== '' &&
-                !empresasRegistradas.includes(participant.company);
-        });
-
-        if (participantesSemEmpresaRegistrada.length > 0) {
-            console.log('👥 Participantes com empresas não registradas:', {
-                quantidade: participantesSemEmpresaRegistrada.length,
-                empresas: [...new Set(participantesSemEmpresaRegistrada.map((p: any) => p.company))]
-            });
-
-            // Agrupar por empresa não registrada
-            const participantsByUnregisteredCompany = participantesSemEmpresaRegistrada.reduce((acc: any, participant: any) => {
-                const companyName = participant.company;
-                if (!acc[companyName]) {
-                    acc[companyName] = [];
-                }
-                acc[companyName].push(participant);
-                return acc;
-            }, {});
-
-            // Calcular stats para empresas não registradas
-            Object.entries(participantsByUnregisteredCompany).forEach(([companyName, participants]: [string, any]) => {
-                const checkedInParticipants = participants.filter((p: any) => {
-                    return hasCheckIn(p.id, selectedDay);
-                });
-
-                const total = Number(participants.length) || 0;
-                const checkedIn = Number(checkedInParticipants.length) || 0;
-
-                stats[companyName] = {
-                    total,
-                    checkedIn,
-                    companyName: companyName || 'Empresa'
-                };
-            });
-        }
-
-        console.log('📊 Stats finais das empresas:', {
-            totalEmpresas: Object.keys(stats).length,
-            empresasNomes: Object.keys(stats),
-            empresasCompletas: stats
-        });
+        console.log('📊 Total de empresas com participantes no dia:', Object.keys(stats).length);
         return stats;
-    }, [participantesDoDia, hasCheckIn, selectedDay, shiftInfo, empresasDoTurno]);
+    }, [participantesDoDia, hasCheckIn, selectedDay]);
 
     // ✅ Auto-selecionar o dia atual (hoje) quando disponível
     useEffect(() => {
@@ -887,15 +819,71 @@ export default function EventDashboardPage() {
                             <span className="hidden sm:inline">{isRefreshing ? 'Atualizando...' : 'Atualizar Dados'}</span>
                             <span className="sm:hidden">{isRefreshing ? 'Atualizando...' : 'Atualizar'}</span>
                         </Button>
-                        <Button
-                            variant="outline"
-                            onClick={copyPublicDashboardUrl}
-                            className="flex items-center gap-2 text-sm"
-                        >
-                            <ExternalLink className="w-4 h-4" />
-                            <span className="hidden sm:inline">Link Público</span>
-                            <span className="sm:hidden">Link</span>
-                        </Button>
+                        <Dialog open={isExpirationDialogOpen} onOpenChange={setIsExpirationDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    className="flex items-center gap-2 text-sm"
+                                >
+                                    <ExternalLink className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Link Público</span>
+                                    <span className="sm:hidden">Link</span>
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle className="flex items-center gap-2">
+                                        <ExternalLink className="w-5 h-5" />
+                                        Gerar Link Público
+                                    </DialogTitle>
+                                </DialogHeader>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">
+                                            Tempo de expiração do link:
+                                        </label>
+                                        <Select value={selectedExpiration} onValueChange={setSelectedExpiration}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecione a expiração" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="1">1 dia</SelectItem>
+                                                <SelectItem value="3">3 dias</SelectItem>
+                                                <SelectItem value="7">7 dias (padrão)</SelectItem>
+                                                <SelectItem value="15">15 dias</SelectItem>
+                                                <SelectItem value="30">30 dias</SelectItem>
+                                                <SelectItem value="90">90 dias</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                                        <p className="text-sm text-blue-800">
+                                            ℹ️ O link público permitirá acesso ao dashboard sem necessidade de login.
+                                            Após a expiração, o link será automaticamente invalidado.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex gap-3">
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setIsExpirationDialogOpen(false)}
+                                            className="flex-1"
+                                        >
+                                            Cancelar
+                                        </Button>
+                                        <Button
+                                            onClick={copyPublicDashboardUrl}
+                                            className="flex-1"
+                                        >
+                                            <ExternalLink className="w-4 h-4 mr-2" />
+                                            Copiar Link
+                                        </Button>
+                                    </div>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
                         <div className="flex-1">
                             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 flex items-center gap-2">
                                 <Activity className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
@@ -907,6 +895,20 @@ export default function EventDashboardPage() {
                                 <span className="sm:hidden">Acompanhamento em tempo real • Auto-refresh 1min</span>
                             </p>
                         </div>
+                        <Button
+                            variant="outline"
+                            className="flex items-center gap-2 text-sm"
+                            onClick={async () => {
+                                try {
+                                    await navigator.clipboard.writeText(String(params.id))
+                                    toast.success('ID do evento copiado!')
+                                } catch (e) {
+                                    toast.error('Não foi possível copiar o ID')
+                                }
+                            }}
+                        >
+                            Copiar ID do Evento
+                        </Button>
                     </div>
 
                     {/* Seletor de Dia */}
@@ -954,25 +956,28 @@ export default function EventDashboardPage() {
                         {/* Informações do Evento */}
                         <div className="mb-8">
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                {/* Total de Participantes */}
+                                {/* ✅ CORRIGIDO: Total de Participantes DO DIA */}
                                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                                     <CardContent className="p-6">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-blue-600 text-sm font-medium">Total Participantes</p>
-                                                <p className="text-3xl font-bold text-blue-900">{participantsArray.length}</p>
+                                                <p className="text-blue-600 text-sm font-medium">Participantes do Dia</p>
+                                                <p className="text-3xl font-bold text-blue-900">{participantesDoDia.length}</p>
+                                                <p className="text-xs text-blue-600">
+                                                    de {participantsArray.length} total no evento
+                                                </p>
                                             </div>
                                             <Users className="w-8 h-8 text-blue-600" />
                                         </div>
                                     </CardContent>
                                 </Card>
 
-                                {/* Check-ins do Dia */}
+                                {/* ✅ CORRIGIDO: Check-ins do Dia Selecionado */}
                                 <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
                                     <CardContent className="p-6">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-green-600 text-sm font-medium">Check-ins Hoje</p>
+                                                <p className="text-green-600 text-sm font-medium">Check-ins do Dia</p>
                                                 <p className="text-3xl font-bold text-green-900">
                                                     {totalCheckedInToday}
                                                 </p>
@@ -985,29 +990,34 @@ export default function EventDashboardPage() {
                                     </CardContent>
                                 </Card>
 
-                                {/* Credenciais Ativas */}
+                                {/* ✅ CORRIGIDO: Credenciais com Participantes no Dia */}
                                 <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
                                     <CardContent className="p-6">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-purple-600 text-sm font-medium">Credenciais Ativas</p>
-                                                <p className="text-3xl font-bold text-purple-900">{credentialsArray.length}</p>
+                                                <p className="text-purple-600 text-sm font-medium">Credenciais do Dia</p>
+                                                <p className="text-3xl font-bold text-purple-900">{Object.keys(credentialStats).length}</p>
+                                                <p className="text-xs text-purple-600">
+                                                    de {credentialsArray.length} total no evento
+                                                </p>
                                             </div>
                                             <MapPin className="w-8 h-8 text-purple-600" />
                                         </div>
                                     </CardContent>
                                 </Card>
 
-                                {/* Empresas Participantes */}
+                                {/* ✅ CORRIGIDO: Empresas com Participantes no Dia */}
                                 <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
                                     <CardContent className="p-6">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-orange-600 text-sm font-medium">Empresas Únicas</p>
+                                                <p className="text-orange-600 text-sm font-medium">Empresas do Dia</p>
                                                 <p className="text-3xl font-bold text-orange-900">
-                                                    {empresasStats.uniqueEmpresas}
+                                                    {Object.keys(companySummary).length}
                                                 </p>
-
+                                                <p className="text-xs text-orange-600">
+                                                    de {empresasStats.uniqueEmpresas} total no evento
+                                                </p>
                                             </div>
                                             <Building className="w-8 h-8 text-orange-600" />
                                         </div>

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { BannerUpload } from "@/components/ui/banner-upload"
 
 import {
     Settings,
@@ -187,7 +188,7 @@ export default function EventoConfiguracoesPage() {
                     endDate: evento.endDate ? new Date(evento.endDate).toISOString().split('T')[0] : "",
                     venue: evento.venue || "",
                     address: evento.address || "",
-                        status: evento.status || "draft",
+                    status: evento.status || "draft",
                     visibility: evento.visibility || "private",
                     type: evento.type || "",
                     categories: evento.categories || [],
@@ -329,12 +330,12 @@ export default function EventoConfiguracoesPage() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-2">URL do Banner</label>
-                                <Input
-                                    type="url"
+                                <label className="block text-sm font-medium mb-2">Banner do Evento</label>
+                                <BannerUpload
                                     value={configuracoes.bannerUrl}
-                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, bannerUrl: e.target.value }))}
-                                    placeholder="https://exemplo.com/banner.jpg"
+                                    onChange={(url) => setConfiguracoes(prev => ({ ...prev, bannerUrl: url }))}
+                                    eventId={eventId}
+                                    maxSize={5}
                                 />
                             </div>
                         </CardContent>

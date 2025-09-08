@@ -23,10 +23,14 @@ interface EventDay {
 interface ReportFiltersProps {
     eventDays: EventDay[]
     selectedDay: string
+    selectedDays: string[]
     onDayChange: (day: string) => void
+    onDaysChange: (days: string[]) => void
     companies: CompanyStats[]
     selectedCompany: string
+    selectedCompanies: string[]
     onCompanyChange: (company: string) => void
+    onCompaniesChange: (companies: string[]) => void
     selectedReportType: string
     onReportTypeChange: (type: string) => void
     selectedCredentialType: string
@@ -50,10 +54,14 @@ interface ReportFiltersProps {
 export function ReportFilters({
     eventDays,
     selectedDay,
+    selectedDays,
     onDayChange,
+    onDaysChange,
     companies,
     selectedCompany,
+    selectedCompanies,
     onCompanyChange,
+    onCompaniesChange,
     selectedReportType,
     onReportTypeChange,
     selectedCredentialType,
@@ -81,6 +89,8 @@ export function ReportFilters({
     const [showTitleDialog, setShowTitleDialog] = useState(false)
     const [pendingExportType, setPendingExportType] = useState<'all' | 'company' | null>(null)
     const [pendingExportConfig, setPendingExportConfig] = useState<ExportConfig | null>(null)
+    const [multiDayMode, setMultiDayMode] = useState(false)
+    const [multiCompanyMode, setMultiCompanyMode] = useState(false)
 
     const selectedCompanyData = companies.find(c => c.empresa === selectedCompany)
     const displayValue = selectedCompany === "all" ? "Todas as Empresas" : selectedCompany
@@ -102,6 +112,48 @@ export function ReportFilters({
 
     // Obter tipos de credencial únicos
     const uniqueCredentialTypes = [...new Set(credenciais.map(c => c.nome).filter(Boolean))].sort()
+
+    // Funções para seleção múltipla de dias
+    const handleDayToggle = (dayId: string) => {
+        if (selectedDays.includes(dayId)) {
+            onDaysChange(selectedDays.filter(id => id !== dayId))
+        } else {
+            onDaysChange([...selectedDays, dayId])
+        }
+    }
+
+    const handleSelectAllDays = () => {
+        if (selectedDays.length === eventDays.length) {
+            onDaysChange([])
+        } else {
+            onDaysChange(eventDays.map(day => day.id))
+        }
+    }
+
+    const handleClearDaySelection = () => {
+        onDaysChange([])
+    }
+
+    // Funções para seleção múltipla de empresas
+    const handleCompanyToggle = (company: string) => {
+        if (selectedCompanies.includes(company)) {
+            onCompaniesChange(selectedCompanies.filter(c => c !== company))
+        } else {
+            onCompaniesChange([...selectedCompanies, company])
+        }
+    }
+
+    const handleSelectAllCompanies = () => {
+        if (selectedCompanies.length === companies.length) {
+            onCompaniesChange([])
+        } else {
+            onCompaniesChange(companies.map(company => company.empresa))
+        }
+    }
+
+    const handleClearCompanySelection = () => {
+        onCompaniesChange([])
+    }
 
     // Gerar título e subtítulo pré-configurados
     const getDefaultTitle = () => {
@@ -222,104 +274,234 @@ export function ReportFilters({
             <CardContent className="space-y-6">
                 {/* === DIAS/TURNOS === */}
                 <div>
-                    <label className="block text-sm font-medium mb-2 flex items-center gap-2">
-                        <Calendar className="h-4 w-4" />
-                        Turnos do Evento
-                    </label>
-                    <Popover open={dayOpen} onOpenChange={setDayOpen}>
-                        <PopoverTrigger asChild>
-                            <Button
-                                variant="outline"
-                                role="combobox"
-                                aria-expanded={dayOpen}
-                                className="w-full justify-between h-10"
-                            >
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    <Calendar className="h-4 w-4 shrink-0" />
-                                    <span className="truncate">
-                                        {selectedDay === "all" ? "Todos os Turnos" :
-                                            eventDays.find(d => d.id === selectedDay)?.label || selectedDay}
-                                    </span>
-                                    {selectedDay !== "all" && (() => {
-                                        const day = eventDays.find(d => d.id === selectedDay);
-                                        return day && getPeriodIcon(day.period);
-                                    })()}
-                                </div>
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[500px] bg-white p-0" align="start">
-                            <Command>
-                                <CommandInput
-                                    placeholder={`Buscar entre ${eventDays.length} turnos...`}
-                                    className="h-9"
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                            <Calendar className="h-4 w-4" />
+                            Turnos do Evento
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <label className="text-xs text-gray-600">
+                                <input
+                                    type="checkbox"
+                                    checked={multiDayMode}
+                                    onChange={(e) => {
+                                        setMultiDayMode(e.target.checked)
+                                        // Se mudar para modo simples, resetar seleção múltipla
+                                        if (!e.target.checked) {
+                                            onDaysChange([])
+                                            onDayChange("all")
+                                        }
+                                    }}
+                                    className="mr-1"
                                 />
-                                <CommandList className="max-h-[300px] overflow-auto">
-                                    <CommandEmpty>Nenhum turno encontrado.</CommandEmpty>
-                                    <CommandGroup>
-                                        <CommandItem
-                                            value="all"
-                                            onSelect={() => {
-                                                onDayChange("all")
-                                                setDayOpen(false)
-                                            }}
-                                        >
-                                            <Check
-                                                className={cn(
-                                                    "mr-2 h-4 w-4",
-                                                    selectedDay === "all" ? "opacity-100" : "opacity-0"
+                                Seleção múltipla
+                            </label>
+                        </div>
+                    </div>
+
+                    {multiDayMode ? (
+                        // MODO MULTI-SELEÇÃO
+                        <div>
+                            <Popover open={dayOpen} onOpenChange={setDayOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        aria-expanded={dayOpen}
+                                        className="w-full justify-between h-auto min-h-[40px] py-2"
+                                    >
+                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                            <Calendar className="h-4 w-4 shrink-0" />
+                                            <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+                                                {selectedDays.length === 0 ? (
+                                                    <span className="text-gray-500">Selecione dias para relatório unificado...</span>
+                                                ) : selectedDays.length <= 3 ? (
+                                                    selectedDays.map(dayId => {
+                                                        const day = eventDays.find(d => d.id === dayId)
+                                                        return day ? (
+                                                            <Badge key={dayId} variant="secondary" className="text-xs">
+                                                                {day.date}
+                                                            </Badge>
+                                                        ) : null
+                                                    })
+                                                ) : (
+                                                    <Badge variant="secondary" className="text-xs">
+                                                        {selectedDays.length} dias selecionados
+                                                    </Badge>
                                                 )}
-                                            />
-                                            <div className="flex items-center justify-between w-full">
-                                                <span>Todos os Turnos</span>
-                                                <Badge variant="outline" className="ml-2">
-                                                    {eventDays.length}
-                                                </Badge>
                                             </div>
-                                        </CommandItem>
-                                        <CommandSeparator />
-                                        {eventDays.map((day) => (
+                                        </div>
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[500px] bg-white p-0" align="start">
+                                    <Command>
+                                        <div className="flex items-center justify-between p-3 border-b">
+                                            <span className="text-sm font-medium">
+                                                {selectedDays.length} de {eventDays.length} selecionados
+                                            </span>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={handleSelectAllDays}
+                                                >
+                                                    {selectedDays.length === eventDays.length ? "Desmarcar todos" : "Selecionar todos"}
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={handleClearDaySelection}
+                                                    disabled={selectedDays.length === 0}
+                                                >
+                                                    Limpar
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <CommandInput
+                                            placeholder={`Buscar entre ${eventDays.length} turnos...`}
+                                            className="h-9"
+                                        />
+                                        <CommandList className="max-h-[300px] overflow-auto">
+                                            <CommandEmpty>Nenhum turno encontrado.</CommandEmpty>
+                                            <CommandGroup>
+                                                {eventDays.map((day) => (
+                                                    <CommandItem
+                                                        key={day.id}
+                                                        value={day.id}
+                                                        onSelect={() => handleDayToggle(day.id)}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4",
+                                                                selectedDays.includes(day.id) ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        <div className="flex items-center justify-between w-full">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="truncate">{day.date}</span>
+                                                                <Badge
+                                                                    variant="secondary"
+                                                                    className={cn(
+                                                                        "text-xs",
+                                                                        day.type === 'montagem' && "bg-orange-100 text-orange-800",
+                                                                        day.type === 'evento' && "bg-blue-100 text-blue-800",
+                                                                        day.type === 'desmontagem' && "bg-red-100 text-red-800"
+                                                                    )}
+                                                                >
+                                                                    {day.type.toUpperCase()}
+                                                                </Badge>
+                                                                {getPeriodIcon(day.period)}
+                                                                <span className="text-xs text-gray-600">
+                                                                    {day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                    ) : (
+                        // MODO SELEÇÃO SIMPLES (ORIGINAL)
+                        <Popover open={dayOpen} onOpenChange={setDayOpen}>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    aria-expanded={dayOpen}
+                                    className="w-full justify-between h-10"
+                                >
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <Calendar className="h-4 w-4 shrink-0" />
+                                        <span className="truncate">
+                                            {selectedDay === "all" ? "Todos os Turnos" :
+                                                eventDays.find(d => d.id === selectedDay)?.label || selectedDay}
+                                        </span>
+                                        {selectedDay !== "all" && (() => {
+                                            const day = eventDays.find(d => d.id === selectedDay);
+                                            return day && getPeriodIcon(day.period);
+                                        })()}
+                                    </div>
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[500px] bg-white p-0" align="start">
+                                <Command>
+                                    <CommandInput
+                                        placeholder={`Buscar entre ${eventDays.length} turnos...`}
+                                        className="h-9"
+                                    />
+                                    <CommandList className="max-h-[300px] overflow-auto">
+                                        <CommandEmpty>Nenhum turno encontrado.</CommandEmpty>
+                                        <CommandGroup>
                                             <CommandItem
-                                                key={day.id}
-                                                value={day.id}
+                                                value="all"
                                                 onSelect={() => {
-                                                    onDayChange(day.id)
+                                                    onDayChange("all")
                                                     setDayOpen(false)
                                                 }}
                                             >
                                                 <Check
                                                     className={cn(
                                                         "mr-2 h-4 w-4",
-                                                        selectedDay === day.id ? "opacity-100" : "opacity-0"
+                                                        selectedDay === "all" ? "opacity-100" : "opacity-0"
                                                     )}
                                                 />
                                                 <div className="flex items-center justify-between w-full">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="truncate">{day.date}</span>
-                                                        <Badge
-                                                            variant="secondary"
-                                                            className={cn(
-                                                                "text-xs",
-                                                                day.type === 'montagem' && "bg-orange-100 text-orange-800",
-                                                                day.type === 'evento' && "bg-blue-100 text-blue-800",
-                                                                day.type === 'desmontagem' && "bg-red-100 text-red-800"
-                                                            )}
-                                                        >
-                                                            {day.type.toUpperCase()}
-                                                        </Badge>
-                                                        {getPeriodIcon(day.period)}
-                                                        <span className="text-xs text-gray-600">
-                                                            {day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
-                                                        </span>
-                                                    </div>
+                                                    <span>Todos os Turnos</span>
+                                                    <Badge variant="outline" className="ml-2">
+                                                        {eventDays.length}
+                                                    </Badge>
                                                 </div>
                                             </CommandItem>
-                                        ))}
-                                    </CommandGroup>
-                                </CommandList>
-                            </Command>
-                        </PopoverContent>
-                    </Popover>
+                                            <CommandSeparator />
+                                            {eventDays.map((day) => (
+                                                <CommandItem
+                                                    key={day.id}
+                                                    value={day.id}
+                                                    onSelect={() => {
+                                                        onDayChange(day.id)
+                                                        setDayOpen(false)
+                                                    }}
+                                                >
+                                                    <Check
+                                                        className={cn(
+                                                            "mr-2 h-4 w-4",
+                                                            selectedDay === day.id ? "opacity-100" : "opacity-0"
+                                                        )}
+                                                    />
+                                                    <div className="flex items-center justify-between w-full">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="truncate">{day.date}</span>
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className={cn(
+                                                                    "text-xs",
+                                                                    day.type === 'montagem' && "bg-orange-100 text-orange-800",
+                                                                    day.type === 'evento' && "bg-blue-100 text-blue-800",
+                                                                    day.type === 'desmontagem' && "bg-red-100 text-red-800"
+                                                                )}
+                                                            >
+                                                                {day.type.toUpperCase()}
+                                                            </Badge>
+                                                            {getPeriodIcon(day.period)}
+                                                            <span className="text-xs text-gray-600">
+                                                                {day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </CommandItem>
+                                            ))}
+                                        </CommandGroup>
+                                    </CommandList>
+                                </Command>
+                            </PopoverContent>
+                        </Popover>
+                    )}
                 </div>
 
                 {/* === TIPO DE RELATÓRIO === */}

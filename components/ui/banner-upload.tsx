@@ -7,11 +7,11 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  Upload, 
-  Image as ImageIcon, 
-  X, 
-  Loader2, 
+import {
+  Upload,
+  Image as ImageIcon,
+  X,
+  Loader2,
   Check,
   AlertTriangle,
   Images
@@ -144,7 +144,7 @@ export function BannerUpload({
       }
 
       const result = await uploadEventBanner(file, eventId)
-      
+
       if (result) {
         onChange(result.url)
         onPathChange?.(result.path)
@@ -228,13 +228,12 @@ export function BannerUpload({
           {value && (
             <Card>
               <CardContent className="p-4">
-                <div className="relative">
+                <div className="relative w-32 h-32 mx-auto">
                   <Image
                     src={value}
                     alt="Banner do evento"
-                    width={600}
-                    height={200}
-                    className="w-full h-32 object-cover rounded-lg"
+                    fill
+                    className="object-contain rounded"
                   />
                   <Button
                     variant="destructive"
@@ -246,7 +245,7 @@ export function BannerUpload({
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
-                <p className="text-sm text-gray-600 mt-2">Banner atual</p>
+                <p className="text-sm text-gray-600 mt-2 text-center">Banner atual (miniatura)</p>
               </CardContent>
             </Card>
           )}
@@ -255,11 +254,10 @@ export function BannerUpload({
           <Card>
             <CardContent className="p-6">
               <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                  disabled 
-                    ? 'border-gray-200 bg-gray-50' 
-                    : 'border-purple-300 hover:border-purple-400 hover:bg-purple-50'
-                }`}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${disabled
+                  ? 'border-gray-200 bg-gray-50'
+                  : 'border-purple-300 hover:border-purple-400 hover:bg-purple-50'
+                  }`}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
               >
@@ -352,23 +350,21 @@ export function BannerUpload({
                 {availableBanners.map((banner) => (
                   <Card
                     key={banner.name}
-                    className={`cursor-pointer transition-all ${
-                      selectedFromGallery === banner.url
-                        ? 'ring-2 ring-purple-500 border-purple-500 shadow-lg'
-                        : 'hover:shadow-md hover:border-purple-200'
-                    }`}
+                    className={`cursor-pointer transition-all ${selectedFromGallery === banner.url
+                      ? 'ring-2 ring-purple-500 border-purple-500 shadow-lg'
+                      : 'hover:shadow-md hover:border-purple-200'
+                      }`}
                     onClick={() => setSelectedFromGallery(
                       selectedFromGallery === banner.url ? '' : banner.url
                     )}
                   >
                     <CardContent className="p-3">
-                      <div className="relative mb-2">
+                      <div className="relative mb-2 w-24 h-24 mx-auto">
                         <Image
                           src={banner.url}
                           alt={banner.name}
-                          width={300}
-                          height={120}
-                          className="w-full h-24 object-cover rounded"
+                          fill
+                          className="object-contain rounded"
                           onError={(e) => {
                             console.error('Erro ao carregar imagem:', banner.url)
                             e.currentTarget.style.display = 'none'
@@ -382,7 +378,7 @@ export function BannerUpload({
                           </div>
                         )}
                       </div>
-                      
+
                       {/* Informações do arquivo */}
                       <div className="space-y-1">
                         <p className="text-xs font-medium text-gray-800 truncate" title={banner.name}>
@@ -405,7 +401,7 @@ export function BannerUpload({
               {/* Botão de seleção */}
               {selectedFromGallery && (
                 <div className="flex justify-center pt-4">
-                  <Button 
+                  <Button
                     onClick={handleSelectFromGallery}
                     className="bg-purple-600 hover:bg-purple-700"
                   >

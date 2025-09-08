@@ -17,7 +17,7 @@ import { toast } from "sonner"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import HeaderWorkspace from "@/components/layout/header-work"
 import { SimpleEventDay } from "@/public/types/simple-event-days"
-import { formatEventDate } from "@/lib/utils"
+import { formatEventDate, sortSimpleEventDays } from "@/lib/utils"
 
 
 const EventosPage = () => {
@@ -157,6 +157,14 @@ const EventosPage = () => {
 
     const hasEventos = Array.isArray(eventos) && eventos.length > 0
 
+    const eventosOrdenados = hasEventos
+        ? [...(eventos as EventType[])].sort((a, b) => {
+            const aDate = new Date(a.createdAt ?? a.startDate ?? 0).getTime()
+            const bDate = new Date(b.createdAt ?? b.startDate ?? 0).getTime()
+            return bDate - aDate
+        })
+        : []
+
     return (
         <div className="min-h-screen">
             <HeaderWorkspace />
@@ -177,10 +185,10 @@ const EventosPage = () => {
                         Acessar Painel Geral
                     </Button></div>
                 {/* Grid de Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {/* Card de Criação */}
                     <Card className="cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 border-2 border-dashed border-purple-300 bg-purple-50 hover:bg-purple-100 group" onClick={() => { window.location.href = `${window.origin}/eventos/criar` }}>
-                        <CardContent className="flex flex-col items-center justify-center p-8 min-h-[500px] ">
+                        <CardContent className="flex flex-col items-center justify-center p-6 min-h-[360px] ">
                             <div className="rounded-full bg-purple-800 p-4 mb-6 group-hover:scale-110 transition-transform">
                                 <Plus className="h-8 w-8 text-white" />
                             </div>
@@ -193,7 +201,7 @@ const EventosPage = () => {
 
                     {/* Cards dos Eventos */}
                     {hasEventos &&
-                        eventos.map((evento) => {
+                        eventosOrdenados.map((evento) => {
                             const statusConfig = getStatusConfig(evento.status)
                             return (
                                 <div
@@ -226,7 +234,7 @@ const EventosPage = () => {
                                                         <Edit className="h-4 w-4 mr-2" />
                                                         Editar
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuItem
+                                                    {/* <DropdownMenuItem
                                                         className="cursor-pointer bg-red-500 text-white rounded-md"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -235,7 +243,7 @@ const EventosPage = () => {
                                                     >
                                                         <Trash2 className="h-4 w-4 mr-2" />
                                                         Excluir
-                                                    </DropdownMenuItem>
+                                                    </DropdownMenuItem> */}
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </div>
@@ -285,10 +293,10 @@ const EventosPage = () => {
                                                     // ✅ CORREÇÃO: Usar formatEventDate do utils para evitar problemas de fuso horário
                                                     const eventDays = getEventDaysDisplay(evento);
                                                     if (eventDays?.evento && eventDays.evento.length > 0) {
-                                                        // Formatação simples e segura das datas
-                                                        const firstDay = eventDays.evento[0];
-                                                        const lastDay = eventDays.evento[eventDays.evento.length - 1];
-                                                        
+                                                        const ordered = sortSimpleEventDays(eventDays.evento as SimpleEventDay[]);
+                                                        const firstDay = ordered[0];
+                                                        const lastDay = ordered[ordered.length - 1];
+
                                                         if (eventDays.evento.length === 1) {
                                                             // Uma só data
                                                             return formatEventDate(firstDay.date);

@@ -106,7 +106,7 @@ const initialEventData: EventData = {
 export function CreateEventWizard() {
   const router = useRouter();
   const createEventMutation = useCreateEvento();
-  
+
   const [currentStep, setCurrentStep] = useState(0);
   const [eventData, setEventData] = useState<EventData>(initialEventData);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
@@ -125,7 +125,7 @@ export function CreateEventWizard() {
   // Function to get date boundaries from event days
   const getDateBoundaries = (days: SimpleEventDay[]) => {
     if (days.length === 0) return { start: null, end: null };
-    
+
     const sortedDays = days.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     return {
       start: sortedDays[0].date,
@@ -159,28 +159,28 @@ export function CreateEventWizard() {
       description: eventData.basic.description || undefined,
       type: eventData.basic.type || undefined,
       bannerUrl: eventData.basic.bannerUrl || undefined,
-      
+
       // Main event dates
       startDate: eventBoundaries.start || new Date().toISOString().split('T')[0],
       endDate: eventBoundaries.end || new Date().toISOString().split('T')[0],
-      
+
       // Setup dates (montagem)
       setupStartDate: montagemBoundaries.start || undefined,
       setupEndDate: montagemBoundaries.end || undefined,
-      
+
       // Finalization dates (desmontagem)
       finalizationStartDate: desmontagemBoundaries.start || undefined,
       finalizationEndDate: desmontagemBoundaries.end || undefined,
-      
+
       // Event days structure
       montagem: eventData.datetime.montagem,
       evento: eventData.datetime.evento,
       desmontagem: eventData.datetime.desmontagem,
-      
+
       // Location
       venue: eventData.location.address || 'Local não especificado',
       address: fullAddress || undefined,
-      
+
       // Metadata
       totalDays: allEventDays.length,
       status: 'active' as const,
@@ -194,10 +194,9 @@ export function CreateEventWizard() {
     try {
       const transformedData = transformEventData();
       const result = await createEventMutation.mutateAsync(transformedData);
-      
+
       if (result) {
-        // Navigate to the newly created event
-        router.push(`/evento/${result.id}`);
+        router.push('/eventos');
       }
     } catch (error) {
       console.error('Error creating event:', error);

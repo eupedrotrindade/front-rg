@@ -164,14 +164,21 @@ const OperadorEventosPage = () => {
     console.log("🔍 currentOperator:", currentOperator);
 
     // Filtrar eventos do operador
-    const eventosOperador = eventosArray.filter((evento) => {
+    const eventosOperadorFiltrados = eventosArray.filter((evento) => {
         const eventoId = String(evento.id);
         const isIncluded = eventIds.includes(eventoId);
         console.log(`🔍 Evento ${evento.name} (${eventoId}) - Incluído: ${isIncluded}`);
         return isIncluded;
     });
 
-    console.log("🔍 eventosOperador filtrados:", eventosOperador);
+    console.log("🔍 eventosOperador filtrados:", eventosOperadorFiltrados);
+
+    // Ordenar do mais recente para o mais antigo
+    const eventosOperador = [...eventosOperadorFiltrados].sort((a, b) => {
+        const aDate = new Date((a as any).createdAt ?? a.startDate ?? 0).getTime();
+        const bDate = new Date((b as any).createdAt ?? b.startDate ?? 0).getTime();
+        return bDate - aDate;
+    });
 
     // Testar se o operador tem acesso ao evento específico
     const testEventId = "e6a4738a-b446-48d7-b5aa-d976613edf70";
@@ -313,7 +320,7 @@ const OperadorEventosPage = () => {
                     </div>
 
                     {operadorInfo && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                             {eventosLoading ? (
                                 <div className="col-span-full flex justify-center items-center py-12">
                                     <div className="text-center">
@@ -342,8 +349,8 @@ const OperadorEventosPage = () => {
                                         key={evento.id}
                                         className="bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl group"
                                     >
-                                        {/* Área da imagem com fundo rosa/pink */}
-                                        <div className="relative bg-transparent aspect-square p-8">
+                                        {/* Área da imagem */}
+                                        <div className="relative bg-transparent aspect-square p-6">
                                             <div className="w-full h-full flex items-center justify-center">
                                                 {evento.bannerUrl ? (
                                                     <Image

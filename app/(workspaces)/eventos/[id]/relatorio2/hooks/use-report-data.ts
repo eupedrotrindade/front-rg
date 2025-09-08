@@ -163,19 +163,21 @@ export function useReportData({
     );
   }, [syncedParticipants]);
 
-  // === SUMMARY STATS ===
-  const summary: ReportSummary = useMemo(
-    () => ({
-      totalParticipantes: syncedParticipants.length,
-      totalComCheckIn: syncedParticipants.filter((p) => p.checkIn !== "-")
-        .length,
-      totalComCheckOut: syncedParticipants.filter((p) => p.checkOut !== "-")
-        .length,
-      totalAtivos: syncedParticipants.filter((p) => p.status === "present")
-        .length,
+  // === SUMMARY STATS FUNCTION ===
+  const calculateSummary = useCallback((participants: ParticipantRecord[]): ReportSummary => {
+    return {
+      totalParticipantes: participants.length,
+      totalComCheckIn: participants.filter((p) => p.checkIn !== "-").length,
+      totalComCheckOut: participants.filter((p) => p.checkOut !== "-").length,
+      totalAtivos: participants.filter((p) => p.status === "present").length,
       empresas: companyStats,
-    }),
-    [syncedParticipants, companyStats]
+    };
+  }, [companyStats]);
+
+  // === SUMMARY STATS (for backwards compatibility) ===
+  const summary: ReportSummary = useMemo(
+    () => calculateSummary(syncedParticipants),
+    [syncedParticipants, calculateSummary]
   );
 
   // === FILTER DATA ===
@@ -183,6 +185,7 @@ export function useReportData({
     (filters: { 
       empresa?: string; 
       day?: string; 
+      days?: string[];  // ✅ NOVO: Array de dias selecionados para multi-seleção
       reportType?: string; 
       credentialType?: string; 
       function?: string 
@@ -203,6 +206,14 @@ export function useReportData({
       if (filters.function && filters.function !== "all") {
         filtered = filtered.filter((p) => p.funcao === filters.function);
       }
+
+      // ✅ DEBUG: Log antes dos filtros de tipo de relatório
+      console.log(`🔍 PAINEL DEBUG - Antes dos filtros de tipo:`, {
+        reportType: filters.reportType,
+        empresa: filters.empresa,
+        participantesCount: filtered.length,
+        comCheckIn: filtered.filter(p => p.checkIn !== "-").length
+      });
 
       // Apply report type specific filters (para visualização na tela e exportação)
       if (filters.reportType && filters.reportType !== "geral") {
@@ -248,31 +259,63 @@ export function useReportData({
 
       // Filter by day/shift when specified
       if (filters.day && filters.day !== "all") {
-        // Parse the selected day to get date, stage, and period
-        const dayParts = filters.day.split('-');
-        if (dayParts.length >= 5) {
-          const year = dayParts[0];
-          const month = dayParts[1];
-          const day = dayParts[2];
-          const stage = dayParts[3];
-          const period = dayParts[4];
+        if (filters.day === "multiple" && filters.days && filters.days.length > 0) {
+          // ✅ NOVO: Filtro para múltiplos dias selecionados
+          console.log(`🔍 Filtering by multiple days: ${filters.days.length} selected`);
           
-          const selectedDate = `${year}-${month}-${day}`;
+          const selectedDaysData = filters.days.map(dayId => {
+            const dayParts = dayId.split('-');
+            if (dayParts.length >= 5) {
+              return {
+                dayId,
+                date: `${dayParts[0]}-${dayParts[1]}-${dayParts[2]}`,
+                stage: dayParts[3],
+                period: dayParts[4]
+              };
+            }
+            return null;
+          }).filter(Boolean);
           
-          console.log(`🔍 Filtering by day: ${selectedDate}, stage: ${stage}, period: ${period}`);
-          
-          // Filter participants by shift information
           filtered = filtered.filter((participant) => {
-            // Check if participant has the matching shift information
-            // This assumes participants have shift_id, work_date, work_stage, work_period fields
-            return (
-              (participant as any).work_date === selectedDate &&
-              (participant as any).work_stage === stage &&
-              (participant as any).work_period === period
-            );
+            // Participant deve corresponder a qualquer um dos dias selecionados
+            return selectedDaysData.some(dayData => {
+              return (
+                (participant as any).work_date === dayData!.date &&
+                (participant as any).work_stage === dayData!.stage &&
+                (participant as any).work_period === dayData!.period
+              );
+            });
           });
           
-          console.log(`📊 Filtered results: ${filtered.length} participants for ${filters.day}`);
+          console.log(`📊 Multi-day filtered results: ${filtered.length} participants for ${filters.days.length} days`);
+          
+        } else {
+          // Filtro para um único dia (comportamento original)
+          const dayParts = filters.day.split('-');
+          if (dayParts.length >= 5) {
+            const year = dayParts[0];
+            const month = dayParts[1];
+            const day = dayParts[2];
+            const stage = dayParts[3];
+            const period = dayParts[4];
+            
+            const selectedDate = `${year}-${month}-${day}`;
+            
+            console.log(`🔍 Filtering by single day: ${selectedDate}, stage: ${stage}, period: ${period}`);
+            
+            // Filter participants by shift information
+            filtered = filtered.filter((participant) => {
+              // Check if participant has the matching shift information
+              // This assumes participants have shift_id, work_date, work_stage, work_period fields
+              return (
+                (participant as any).work_date === selectedDate &&
+                (participant as any).work_stage === stage &&
+                (participant as any).work_period === period
+              );
+            });
+            
+            console.log(`📊 Single-day filtered results: ${filtered.length} participants for ${filters.day}`);
+          }
         }
       }
 
@@ -286,5 +329,6 @@ export function useReportData({
     summary,
     companyStats,
     filterData,
+    calculateSummary,
   };
 }

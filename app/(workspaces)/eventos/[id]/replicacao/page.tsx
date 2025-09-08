@@ -57,6 +57,8 @@ import {
     Play,
     Pause,
     RotateCcw,
+    Filter,
+    X,
 } from 'lucide-react'
 
 import EventLayout from '@/components/dashboard/dashboard-layout'
@@ -98,6 +100,10 @@ export default function ParticipantReplicationPage() {
     const [showAnalysisDialog, setShowAnalysisDialog] = useState(false)
     const [showConfirmDialog, setShowConfirmDialog] = useState(false)
     const [showProgressDialog, setShowProgressDialog] = useState(false)
+    
+    // ✅ NOVO: Estados para filtro por empresa
+    const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
+    const [showCompanySelector, setShowCompanySelector] = useState(false)
 
     // Estado da análise de replicação
     const [replicationData, setReplicationData] = useState<any | null>(null)
@@ -139,6 +145,37 @@ export default function ParticipantReplicationPage() {
         return expandedParticipants
     }, [groupedParticipantsData, parseShiftId])
 
+    // ✅ NOVO: Obter empresas únicas dos participantes de um turno
+    const getCompaniesFromShift = useCallback((shiftId: string): string[] => {
+        if (!shiftId) return []
+        
+        const participants = getParticipantsByShift(shiftId)
+        const companies = participants
+            .map(p => p.company)
+            .filter(company => company && company.trim() !== '')
+            .filter((company, index, array) => array.indexOf(company) === index) // Remover duplicatas
+            .sort()
+        
+        return companies
+    }, [getParticipantsByShift])
+    
+    // ✅ NOVO: Função para obter participantes filtrados por empresa
+    const getFilteredParticipants = useCallback((shiftId: string): EventParticipant[] => {
+        if (!shiftId) return []
+        
+        const allParticipants = getParticipantsByShift(shiftId)
+        
+        // Se nenhuma empresa foi selecionada, retornar todos
+        if (selectedCompanies.length === 0) {
+            return allParticipants
+        }
+        
+        // Filtrar apenas participantes das empresas selecionadas
+        return allParticipants.filter(participant => 
+            participant.company && selectedCompanies.includes(participant.company)
+        )
+    }, [getParticipantsByShift, selectedCompanies])
+
     // Hook para replicação de participantes
     const replicationHook = useParticipantReplication({
         eventId: String(params.id),
@@ -147,15 +184,56 @@ export default function ParticipantReplicationPage() {
         credentials: credentials ?? [],
         parseShiftId
     })
+    
+    // ✅ NOVO: Memoizar lista de empresas do turno de origem
+    const sourceShiftCompanies = useMemo(() => {
+        return getCompaniesFromShift(selectedSourceDay)
+    }, [selectedSourceDay, getCompaniesFromShift])
 
-    // Função para analisar replicação
+    // ✅ MODIFICADO: Função para analisar replicação com filtro por empresa
     const analyzeReplication = useCallback(() => {
-        const analysis = replicationHook.analyzeReplication(selectedSourceDay, selectedTargetDay)
+        // Usar participantes filtrados por empresa
+        const filteredSourceParticipants = getFilteredParticipants(selectedSourceDay)
+        
+        // Criar uma análise customizada considerando apenas os participantes filtrados
+        const analysis = replicationHook.analyzeReplicationWithFilter(
+            selectedSourceDay, 
+            selectedTargetDay,
+            filteredSourceParticipants
+        )
+        
         if (analysis) {
             setReplicationData(analysis)
             setShowAnalysisDialog(true)
         }
-    }, [selectedSourceDay, selectedTargetDay, replicationHook])
+    }, [selectedSourceDay, selectedTargetDay, replicationHook, getFilteredParticipants])
+    
+    // ✅ NOVO: Funções para gerenciar seleção de empresas
+    const toggleCompanySelection = useCallback((company: string) => {
+        setSelectedCompanies(prev => {
+            if (prev.includes(company)) {
+                return prev.filter(c => c !== company)
+            } else {
+                return [...prev, company]
+            }
+        })
+    }, [])
+    
+    const selectAllCompanies = useCallback(() => {
+        if (!selectedSourceDay) return
+        const allCompanies = getCompaniesFromShift(selectedSourceDay)
+        setSelectedCompanies(allCompanies)
+    }, [selectedSourceDay, getCompaniesFromShift])
+    
+    const clearCompanySelection = useCallback(() => {
+        setSelectedCompanies([])
+    }, [])
+    
+    // ✅ NOVO: Limpar filtros quando mudar turno de origem
+    const handleSourceDayChange = useCallback((dayId: string) => {
+        setSelectedSourceDay(dayId)
+        setSelectedCompanies([]) // Limpar seleção de empresas
+    }, [])
 
 
     // Função para processar replicação
@@ -249,7 +327,7 @@ export default function ParticipantReplicationPage() {
                             <EventDaySelector
                                 eventDays={eventDays}
                                 selectedDay={selectedSourceDay}
-                                onSelectDay={setSelectedSourceDay}
+                                onSelectDay={handleSourceDayChange}
                                 label="Turno de Origem"
                                 placeholder="Selecionar turno de origem"
                                 participantCount={getParticipantsByShift(selectedSourceDay).length}
@@ -270,6 +348,123 @@ export default function ParticipantReplicationPage() {
                             />
                         </div>
 
+                        {/* ✅ NOVO: Filtro por Empresa */}
+                        {selectedSourceDay && sourceShiftCompanies.length > 0 && (
+                            <Card className="border-dashed">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2 text-sm">
+                                        <Filter className="h-4 w-4" />
+                                        Filtrar por Empresa
+                                        <Badge variant="secondary" className="ml-auto">
+                                            {selectedCompanies.length} de {sourceShiftCompanies.length} selecionadas
+                                        </Badge>
+                                    </CardTitle>
+                                    <CardDescription className="text-xs">
+                                        Selecione as empresas que deseja replicar para otimizar o processo
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    {/* Botões de ação */}
+                                    <div className="flex gap-2">
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm"
+                                            onClick={selectAllCompanies}
+                                            disabled={replicationHook.isProcessing}
+                                        >
+                                            <Check className="h-3 w-3 mr-1" />
+                                            Selecionar Todas
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm"
+                                            onClick={clearCompanySelection}
+                                            disabled={replicationHook.isProcessing}
+                                        >
+                                            <X className="h-3 w-3 mr-1" />
+                                            Limpar Seleção
+                                        </Button>
+                                    </div>
+                                    
+                                    {/* Lista de empresas */}
+                                    <div className="space-y-1 max-h-48 overflow-y-auto pr-2">
+                                        <div className="text-xs font-medium text-muted-foreground mb-2">
+                                            Empresas disponíveis no turno de origem:
+                                        </div>
+                                        {sourceShiftCompanies.map(company => {
+                                            const isSelected = selectedCompanies.includes(company)
+                                            const participantCount = getParticipantsByShift(selectedSourceDay)
+                                                .filter(p => p.company === company).length
+                                            
+                                            return (
+                                                <div 
+                                                    key={company}
+                                                    className={`group p-3 rounded-lg border cursor-pointer transition-all duration-200 ${
+                                                        isSelected 
+                                                            ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                                                            : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                                                    }`}
+                                                    onClick={() => toggleCompanySelection(company)}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                                                            isSelected 
+                                                                ? 'bg-blue-500 border-blue-500'
+                                                                : 'border-gray-300 group-hover:border-gray-400'
+                                                        }`}>
+                                                            {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="text-sm font-medium text-gray-900 truncate pr-2">
+                                                                    {company}
+                                                                </div>
+                                                                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                                                    isSelected 
+                                                                        ? 'bg-blue-100 text-blue-700'
+                                                                        : 'bg-gray-100 text-gray-600'
+                                                                }`}>
+                                                                    <Users className="h-3 w-3" />
+                                                                    {participantCount}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 mt-0.5">
+                                                                {participantCount} funcionário{participantCount !== 1 ? 's' : ''} no turno
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                    
+                                    {/* Resumo da seleção */}
+                                    {selectedCompanies.length > 0 && (
+                                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Users className="h-4 w-4 text-blue-600" />
+                                                <span className="text-sm font-medium text-blue-900">
+                                                    Participantes selecionados: {getFilteredParticipants(selectedSourceDay).length}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {selectedCompanies.slice(0, 5).map(company => (
+                                                    <Badge key={company} variant="secondary" className="text-xs">
+                                                        {company.length > 15 ? company.substring(0, 15) + '...' : company}
+                                                    </Badge>
+                                                ))}
+                                                {selectedCompanies.length > 5 && (
+                                                    <Badge variant="secondary" className="text-xs">
+                                                        +{selectedCompanies.length - 5} mais
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+                        
                         {/* Botão de Análise */}
                         <div className="flex justify-center">
                             <Button
@@ -284,6 +479,11 @@ export default function ParticipantReplicationPage() {
                                     <Copy className="h-4 w-4" />
                                 )}
                                 Analisar Replicação
+                                {selectedCompanies.length > 0 && (
+                                    <Badge variant="secondary" className="ml-2">
+                                        {getFilteredParticipants(selectedSourceDay).length} selecionados
+                                    </Badge>
+                                )}
                             </Button>
                         </div>
                     </CardContent>
@@ -303,9 +503,19 @@ export default function ParticipantReplicationPage() {
                                             {eventDays.find(d => d.id === selectedSourceDay)?.label}
                                         </div>
                                         <div className="text-2xl font-bold">
-                                            {getParticipantsByShift(selectedSourceDay).length}
+                                            {selectedCompanies.length > 0 
+                                                ? getFilteredParticipants(selectedSourceDay).length
+                                                : getParticipantsByShift(selectedSourceDay).length
+                                            }
                                         </div>
-                                        <div className="text-sm text-muted-foreground">participantes</div>
+                                        <div className="text-sm text-muted-foreground">
+                                            {selectedCompanies.length > 0 ? 'participantes filtrados' : 'participantes'}
+                                            {selectedCompanies.length > 0 && (
+                                                <div className="text-xs text-blue-600 mt-1">
+                                                    de {getParticipantsByShift(selectedSourceDay).length} total
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

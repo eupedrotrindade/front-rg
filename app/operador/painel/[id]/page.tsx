@@ -1173,14 +1173,14 @@ export default function Painel() {
     setParticipantAction(colaborador)
     setCodigoPulseira('')
     setSelectedDateForAction(selectedDay)
-    setPopupCheckin(true)
+    setTimeout(() => setPopupCheckin(true), 0)
   }
 
   // Função para abrir popup de check-out
   const abrirCheckout = (colaborador: EventParticipant) => {
     setParticipantAction(colaborador)
     setSelectedDateForAction(selectedDay)
-    setPopupCheckout(true)
+    setTimeout(() => setPopupCheckout(true), 0)
   }
 
   // 🚀 FILTROS SIMPLIFICADOS E CORRIGIDOS
@@ -2574,9 +2574,8 @@ export default function Painel() {
         const stage = parts[3]
         const period = parts[4]
 
-        // Formatar data
-        const date = new Date(`${year}-${month}-${day}`)
-        const dateStr = date.toLocaleDateString('pt-BR')
+        // Formatar data manualmente para evitar issues de timezone
+        const dateStr = `${day}/${month}/${year}`
 
         // Mapear estágios
         const stageMap: { [key: string]: string } = {
@@ -3503,6 +3502,16 @@ export default function Painel() {
                       <p className="text-sm text-gray-600 mt-1">
                         {formatCPF(participantAction.cpf?.trim() || '') || participantAction.rg || '-'}
                       </p>
+                      {participantAction.company && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          {participantAction.company}
+                        </p>
+                      )}
+                      {participantAction.company && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          {participantAction.company}
+                        </p>
+                      )}
                       <p className="text-sm text-gray-600 mt-1">
                         {participantAction.role}
                       </p>
@@ -3527,7 +3536,7 @@ export default function Painel() {
                               Data selecionada:
                             </p>
                             <p className="text-lg font-bold text-blue-900">
-                              {selectedDateForAction}
+                              {formatSelectedDay(selectedDateForAction)}
                             </p>
                           </div>
                         )}
@@ -3632,7 +3641,7 @@ export default function Painel() {
                               Data selecionada:
                             </p>
                             <p className="text-lg font-bold text-blue-900">
-                              {selectedDateForAction}
+                              {formatSelectedDay(selectedDateForAction)}
                             </p>
                           </div>
                         )}

@@ -37,7 +37,7 @@ export default function PublicDashboardPage() {
     const [credentialFilter, setCredentialFilter] = useState<string>('');
     const [companyFilter, setCompanyFilter] = useState<string>('');
 
-    // Token decoding function (keeping the existing token validation)
+    // Token decoding function with custom expiration validation
     const decodeToken = (token: string) => {
         try {
             if (!token) {
@@ -51,26 +51,25 @@ export default function PublicDashboardPage() {
 
             const parts = decoded.split(':');
             if (parts.length !== 2) {
-                console.error('Invalid token format. Expected "eventId:timestamp", got:', decoded);
+                console.error('Invalid token format. Expected "eventId:expirationTime", got:', decoded);
                 return null;
             }
 
-            const [eventId, timestampStr] = parts;
-            const timestamp = parseInt(timestampStr);
+            const [eventId, expirationTimeStr] = parts;
+            const expirationTime = parseInt(expirationTimeStr);
 
-            if (!eventId || isNaN(timestamp)) {
+            if (!eventId || isNaN(expirationTime)) {
                 console.error('Invalid token data');
                 return null;
             }
 
-            // Check if token is valid (7 days)
-            const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-            if (Date.now() - timestamp >= sevenDaysInMs) {
+            // Check if token has expired based on embedded expiration time
+            if (Date.now() >= expirationTime) {
                 console.error('Token expired');
                 return null;
             }
 
-            return { eventId, timestamp };
+            return { eventId, expirationTime };
         } catch (error) {
             console.error('Error decoding token:', error);
             return null;
@@ -489,7 +488,7 @@ export default function PublicDashboardPage() {
         }
     }, [selectedDay, shiftInfo, participantesDoDia, allAttendanceData, hasCheckIn, empresasDoTurno, empresasArray]);
 
-    // ✅ Simplificado: calcular estatísticas das credenciais vinculando participantes → credenciais → attendance - IDENTICAL TO INTERNAL
+    // ✅ CORRIGIDO: calcular estatísticas das credenciais APENAS para participantes do dia selecionado
     const getCredentialStats = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; credentialName: string; color: string }> = {}
 
@@ -497,39 +496,41 @@ export default function PublicDashboardPage() {
 
         console.log('🎫 Calculando stats das credenciais para turno:', selectedDay);
         console.log('📊 Participantes do dia:', participantesDoDia.length);
-        console.log('📋 Credenciais disponíveis:', credentialsArray.length);
 
-        // Para cada credencial, buscar participantes que a possuem
+        // ✅ IMPORTANTE: Apenas incluir credenciais que TÊM participantes no dia selecionado
+        // Para cada credencial, buscar participantes que a possuem NO DIA ESPECÍFICO
         credentialsArray.forEach((credential: any) => {
             const participantsWithCredential = participantesDoDia.filter((p: any) =>
                 p.credentialId === credential.id
             );
 
-            const checkedInWithCredential = participantsWithCredential.filter((p: any) =>
-                hasCheckIn(p.id, selectedDay)
-            );
+            // ✅ SÓ INCLUIR se houver participantes com essa credencial no dia
+            if (participantsWithCredential.length > 0) {
+                const checkedInWithCredential = participantsWithCredential.filter((p: any) =>
+                    hasCheckIn(p.id, selectedDay)
+                );
 
-            console.log(`🎫 Credencial "${credential.nome}": ${checkedInWithCredential.length}/${participantsWithCredential.length} presentes`);
+                console.log(`🎫 Credencial "${credential.nome}": ${checkedInWithCredential.length}/${participantsWithCredential.length} presentes`);
 
-            // Sempre incluir credencial, mesmo sem participantes no turno
-            const total = Number(participantsWithCredential.length) || 0;
-            const checkedIn = Number(checkedInWithCredential.length) || 0;
+                const total = Number(participantsWithCredential.length) || 0;
+                const checkedIn = Number(checkedInWithCredential.length) || 0;
 
-            stats[credential.id] = {
-                total,
-                checkedIn,
-                credentialName: credential.nome || 'Credencial',
-                color: credential.cor || '#3B82F6'
+                stats[credential.id] = {
+                    total,
+                    checkedIn,
+                    credentialName: credential.nome || 'Credencial',
+                    color: credential.cor || '#3B82F6'
+                }
             }
         })
 
-        // Participantes sem credencial
+        // Participantes sem credencial (apenas se existirem no dia)
         const participantsWithoutCredential = participantesDoDia.filter((p: any) => !p.credentialId);
-        const checkedInWithoutCredential = participantsWithoutCredential.filter((p: any) =>
-            hasCheckIn(p.id, selectedDay)
-        );
-
         if (participantsWithoutCredential.length > 0) {
+            const checkedInWithoutCredential = participantsWithoutCredential.filter((p: any) =>
+                hasCheckIn(p.id, selectedDay)
+            );
+
             console.log(`👤 Sem credencial: ${checkedInWithoutCredential.length}/${participantsWithoutCredential.length} presentes`);
 
             const total = Number(participantsWithoutCredential.length) || 0;
@@ -542,6 +543,12 @@ export default function PublicDashboardPage() {
                 color: '#6B7280'
             }
         }
+
+        console.log('🎫 Stats finais das credenciais:', {
+            totalCredenciais: Object.keys(stats).length,
+            credenciaisNomes: Object.keys(stats),
+            credenciaisCompletas: stats
+        });
 
         return stats
     }, [participantesDoDia, credentialsArray, hasCheckIn, selectedDay]);
@@ -572,7 +579,7 @@ export default function PublicDashboardPage() {
         });
     }, [allAttendanceData, selectedDay, shiftInfo, formatDateForAPI]);
 
-    // ✅ CORRIGIDO: Calcular estatísticas por empresa baseado em empresas filtradas pelo turno específico - IDENTICAL TO INTERNAL
+    // ✅ CORRIGIDO: Calcular estatísticas por empresa APENAS para participantes do dia selecionado
     const getCompanySummary = useCallback(() => {
         const stats: Record<string, { total: number; checkedIn: number; companyName: string }> = {}
 
@@ -581,7 +588,7 @@ export default function PublicDashboardPage() {
         console.log('🏢 Calculando stats das empresas para turno:', selectedDay);
         console.log('📊 Participantes do dia:', participantesDoDia.length);
 
-        // ✅ Simplificado: agrupar participantes por empresa diretamente
+        // ✅ SIMPLIFICADO: Agrupar APENAS participantes do dia por empresa
         const participantsByCompany: Record<string, any[]> = {};
 
         participantesDoDia.forEach((participant: any) => {
@@ -592,7 +599,7 @@ export default function PublicDashboardPage() {
             participantsByCompany[companyName].push(participant);
         });
 
-        // Calcular estatísticas para cada empresa
+        // ✅ Calcular estatísticas APENAS para empresas que têm participantes no dia
         Object.entries(participantsByCompany).forEach(([companyName, participants]) => {
             const checkedInParticipants = participants.filter((p: any) =>
                 hasCheckIn(p.id, selectedDay)
@@ -610,89 +617,13 @@ export default function PublicDashboardPage() {
             };
         });
 
-        console.log('📊 Total de empresas com participantes:', Object.keys(stats).length);
-
-        // ✅ Para cada empresa do turno, buscar participantes e calcular estatísticas
-        empresasDoTurno.forEach((empresa: any) => {
-            // Buscar participantes desta empresa no turno específico
-            const participantesEmpresa = participantesDoDia.filter((participant: any) =>
-                participant.company === empresa.nome
-            );
-
-            // Contar presenças válidas
-            const checkedInParticipants = participantesEmpresa.filter((p: any) => {
-                return hasCheckIn(p.id, selectedDay);
-            });
-
-            // Debug para verificação
-            console.log(`🏢 Empresa "${empresa.nome}" no turno:`, {
-                turnoSelecionado: selectedDay,
-                totalParticipantes: participantesEmpresa.length,
-                participantesPresentes: checkedInParticipants.length,
-                workDate: empresa.workDate,
-                workStage: empresa.workStage,
-                workPeriod: empresa.workPeriod
-            });
-
-            // ✅ CORRIGIDO: Sempre adicionar empresa, mesmo sem participantes
-            const total = Number(participantesEmpresa.length) || 0;
-            const checkedIn = Number(checkedInParticipants.length) || 0;
-
-            stats[empresa.nome] = {
-                total,
-                checkedIn,
-                companyName: empresa.nome || 'Empresa'
-            };
-        });
-
-        // ✅ Também incluir participantes com empresas que não estão registradas no sistema de empresas
-        const empresasRegistradas = empresasDoTurno.map((e: any) => e.nome);
-        const participantesSemEmpresaRegistrada = participantesDoDia.filter((participant: any) => {
-            return participant.company &&
-                participant.company.trim() !== '' &&
-                !empresasRegistradas.includes(participant.company);
-        });
-
-        if (participantesSemEmpresaRegistrada.length > 0) {
-            console.log('👥 Participantes com empresas não registradas:', {
-                quantidade: participantesSemEmpresaRegistrada.length,
-                empresas: [...new Set(participantesSemEmpresaRegistrada.map((p: any) => p.company))]
-            });
-
-            // Agrupar por empresa não registrada
-            const participantsByUnregisteredCompany = participantesSemEmpresaRegistrada.reduce((acc: any, participant: any) => {
-                const companyName = participant.company;
-                if (!acc[companyName]) {
-                    acc[companyName] = [];
-                }
-                acc[companyName].push(participant);
-                return acc;
-            }, {});
-
-            // Calcular stats para empresas não registradas
-            Object.entries(participantsByUnregisteredCompany).forEach(([companyName, participants]: [string, any]) => {
-                const checkedInParticipants = participants.filter((p: any) => {
-                    return hasCheckIn(p.id, selectedDay);
-                });
-
-                const total = Number(participants.length) || 0;
-                const checkedIn = Number(checkedInParticipants.length) || 0;
-
-                stats[companyName] = {
-                    total,
-                    checkedIn,
-                    companyName: companyName || 'Empresa'
-                };
-            });
-        }
-
         console.log('📊 Stats finais das empresas:', {
             totalEmpresas: Object.keys(stats).length,
             empresasNomes: Object.keys(stats),
             empresasCompletas: stats
         });
         return stats;
-    }, [participantesDoDia, hasCheckIn, selectedDay, shiftInfo, empresasDoTurno]);
+    }, [participantesDoDia, hasCheckIn, selectedDay]);
 
     // Função para obter ícone do período
     const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
@@ -985,25 +916,28 @@ export default function PublicDashboardPage() {
                 {/* KPIs */}
                 <div className="mb-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {/* Total de Participantes */}
+                        {/* ✅ CORRIGIDO: Total de Participantes DO DIA */}
                         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                             <CardContent className="p-6">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-blue-600 text-sm font-medium">Total Participantes</p>
-                                        <p className="text-3xl font-bold text-blue-900">{participantsArray.length}</p>
+                                        <p className="text-blue-600 text-sm font-medium">Participantes do Dia</p>
+                                        <p className="text-3xl font-bold text-blue-900">{participantesDoDia.length}</p>
+                                        <p className="text-xs text-blue-600">
+                                            de {participantsArray.length} total do evento
+                                        </p>
                                     </div>
                                     <Users className="w-8 h-8 text-blue-600" />
                                 </div>
                             </CardContent>
                         </Card>
 
-                        {/* Check-ins do Dia */}
+                        {/* ✅ CORRIGIDO: Check-ins do Dia Selecionado */}
                         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
                             <CardContent className="p-6">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-green-600 text-sm font-medium">Check-ins Hoje</p>
+                                        <p className="text-green-600 text-sm font-medium">Check-ins do Dia</p>
                                         <p className="text-3xl font-bold text-green-900">
                                             {totalCheckedInToday}
                                         </p>
@@ -1016,27 +950,33 @@ export default function PublicDashboardPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Credenciais Ativas */}
+                        {/* ✅ CORRIGIDO: Credenciais do Dia com Participantes */}
                         <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
                             <CardContent className="p-6">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-purple-600 text-sm font-medium">Credenciais Ativas</p>
-                                        <p className="text-3xl font-bold text-purple-900">{credentialsArray.length}</p>
+                                        <p className="text-purple-600 text-sm font-medium">Credenciais do Dia</p>
+                                        <p className="text-3xl font-bold text-purple-900">{credentialItems.length}</p>
+                                        <p className="text-xs text-purple-600">
+                                            de {credentialsArray.length} total no evento
+                                        </p>
                                     </div>
                                     <MapPin className="w-8 h-8 text-purple-600" />
                                 </div>
                             </CardContent>
                         </Card>
 
-                        {/* Empresas Participantes */}
+                        {/* ✅ CORRIGIDO: Empresas do Dia com Participantes */}
                         <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
                             <CardContent className="p-6">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-orange-600 text-sm font-medium">Empresas</p>
+                                        <p className="text-orange-600 text-sm font-medium">Empresas do Dia</p>
                                         <p className="text-3xl font-bold text-orange-900">
-                                            {Object.keys(companySummary).length}
+                                            {companyItems.length}
+                                        </p>
+                                        <p className="text-xs text-orange-600">
+                                            com participantes no turno
                                         </p>
                                     </div>
                                     <Building className="w-8 h-8 text-orange-600" />

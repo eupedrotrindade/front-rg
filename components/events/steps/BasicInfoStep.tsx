@@ -164,16 +164,16 @@ export function BasicInfoStep({ data, updateData, onValidationChange }: BasicInf
             <div className="space-y-3">
               {/* Banner Preview */}
               {(basicData.bannerUrl as string) && (
-                <div className="relative w-full h-32 rounded-lg overflow-hidden bg-gray-100">
+                <div className="relative w-32 h-32 rounded-lg overflow-hidden bg-gray-100 mx-auto">
                   <Image
                     src={basicData.bannerUrl as string}
                     alt="Banner do evento"
                     fill
-                    className="object-cover"
+                    className="object-contain"
                   />
                 </div>
               )}
-              
+
               <h3 className="text-lg font-semibold text-gray-900">{basicData.name as string}</h3>
               {(basicData.type as string) && (
                 <span className="inline-block px-3 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full">

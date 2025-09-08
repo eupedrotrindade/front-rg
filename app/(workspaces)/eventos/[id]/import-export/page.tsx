@@ -3237,14 +3237,7 @@ export default function ImportExportPage() {
                                                 <Download className="w-4 h-4 mr-2" />
                                                 🆕 Baixar Modelo Unificado (Recomendado)
                                             </Button>
-                                            <Button onClick={downloadLegacyTemplate} variant="outline" className="w-full bg-transparent text-xs">
-                                                <Download className="w-3 h-3 mr-2" />
-                                                Baixar Modelo Tradicional (CPF + RG separados)
-                                            </Button>
-                                            <div className="text-xs text-muted-foreground mt-2 p-2 bg-blue-50 rounded">
-                                                📝 <strong>Modelo Unificado:</strong> Use uma coluna &quot;cpf/rg&quot; para qualquer documento<br />
-                                                📝 <strong>Formatos aceitos:</strong> 123.456.789-01, MG-123.456.78, SP 987654
-                                            </div>
+
                                         </div>
                                     </CardContent>
                                 </Card>

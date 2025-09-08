@@ -15,6 +15,7 @@ interface ExportConfig {
 }
 
 interface ExportPDFData {
+  total_registros?: number;
   titulo: string;
   subtitulo?: string;
   tipo:
@@ -82,7 +83,7 @@ export const useExportPDF = () => {
             };
             subtitulo = subtitulos[data.tipo] ?? "Relatório de Eventos";
           }
-          
+
           doc.setFontSize(12);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(80, 80, 80);
@@ -121,28 +122,30 @@ export const useExportPDF = () => {
 
           // Fall back to data structure - filter out metadata fields
           if (!dados || dados.length === 0) return [];
-          
+
           // Find first staff record (not shift header, company header, or summary)
-          const firstStaffRecord = dados.find(record => 
-            record.isStaffRecord === true && 
-            !record.isShiftHeader && 
-            !record.isCompanyHeader && 
-            !record.isSummary
+          const firstStaffRecord = dados.find(
+            (record) =>
+              record.isStaffRecord === true &&
+              !record.isShiftHeader &&
+              !record.isCompanyHeader &&
+              !record.isSummary
           );
-          
+
           if (!firstStaffRecord) return Object.keys(columnMap);
-          
+
           // Filter out metadata fields and only include valid participant data columns
-          const validColumns = Object.keys(firstStaffRecord).filter(key => 
-            columnMap[key] && // Only include mapped columns
-            !key.startsWith('is') && // Exclude metadata flags
-            !key.startsWith('shift') && // Exclude shift metadata
-            !key.startsWith('company') && // Exclude company metadata
-            !key.startsWith('center') && // Exclude formatting metadata
-            !key.includes('PageBreak') && // Exclude page break metadata
-            !key.includes('Style') // Exclude style metadata
+          const validColumns = Object.keys(firstStaffRecord).filter(
+            (key) =>
+              columnMap[key] && // Only include mapped columns
+              !key.startsWith("is") && // Exclude metadata flags
+              !key.startsWith("shift") && // Exclude shift metadata
+              !key.startsWith("company") && // Exclude company metadata
+              !key.startsWith("center") && // Exclude formatting metadata
+              !key.includes("PageBreak") && // Exclude page break metadata
+              !key.includes("Style") // Exclude style metadata
           );
-          
+
           return validColumns.map((key) => columnMap[key] || key);
         };
 
@@ -158,21 +161,24 @@ export const useExportPDF = () => {
 
         // Get values from record in same order as headers
         let debugLogged = false;
-        const getRowValues = (record: Record<string, unknown>, headers: string[]): string[] => {
+        const getRowValues = (
+          record: Record<string, unknown>,
+          headers: string[]
+        ): string[] => {
           const columnMap: Record<string, string> = {
-            "Nome": "nome",
-            "CPF": "cpf", 
-            "Empresa": "empresa",
-            "Função": "funcao",
-            "Pulseira": "pulseira",
+            Nome: "nome",
+            CPF: "cpf",
+            Empresa: "empresa",
+            Função: "funcao",
+            Pulseira: "pulseira",
             "Tipo de Pulseira": "tipoPulseira",
             "Check-in": "checkIn",
             "Check-out": "checkOut",
             "Tempo Total": "tempoTotal",
-            "Status": "status",
+            Status: "status",
           };
 
-          const values = headers.map(header => {
+          const values = headers.map((header) => {
             const key = columnMap[header] || header.toLowerCase();
             const value = record[key];
             if (value === null || value === undefined) return "-";
@@ -188,9 +194,9 @@ export const useExportPDF = () => {
                 nome: record.nome,
                 cpf: record.cpf,
                 empresa: record.empresa,
-                isStaffRecord: record.isStaffRecord
+                isStaffRecord: record.isStaffRecord,
               },
-              mappedValues: values
+              mappedValues: values,
             });
             debugLogged = true;
           }
@@ -199,8 +205,12 @@ export const useExportPDF = () => {
         };
 
         // Verificar se os dados já vêm estruturados (com headers de empresa/turno)
-        const hasStructuredData = data.dados.some(item => 
-          item.isShiftHeader || item.isCompanyHeader || item.isStaffRecord || item.isSummary
+        const hasStructuredData = data.dados.some(
+          (item) =>
+            item.isShiftHeader ||
+            item.isCompanyHeader ||
+            item.isStaffRecord ||
+            item.isSummary
         );
 
         console.log("📄 PDF Debug:", {
@@ -208,15 +218,15 @@ export const useExportPDF = () => {
           isAgrupadoPorEmpresa,
           hasStructuredData,
           totalItems: data.dados.length,
-          firstItems: data.dados.slice(0, 5).map(item => ({
+          firstItems: data.dados.slice(0, 5).map((item) => ({
             isShiftHeader: !!item.isShiftHeader,
             isCompanyHeader: !!item.isCompanyHeader,
             isStaffRecord: !!item.isStaffRecord,
             isSummary: !!item.isSummary,
             empresa: item.empresa,
             nome: item.nome,
-            allKeys: Object.keys(item)
-          }))
+            allKeys: Object.keys(item),
+          })),
         });
 
         if (isAgrupadoPorEmpresa && !hasStructuredData) {
@@ -239,13 +249,17 @@ export const useExportPDF = () => {
 
           empresasOrdenadas.forEach((empresa) => {
             const participantes = participantesPorEmpresa.get(empresa)!;
-            const checkInCount = participantes.filter((p) => p.checkIn && p.checkIn !== "-").length;
+            const checkInCount = participantes.filter(
+              (p) => p.checkIn && p.checkIn !== "-"
+            ).length;
 
             linhas.push([
               {
-                content: String(`${empresa.toUpperCase()} (${checkInCount}/${
-                  participantes.length
-                })`),
+                content: String(
+                  `${empresa.toUpperCase()} (${checkInCount}/${
+                    participantes.length
+                  })`
+                ),
                 colSpan: colunas.length,
                 styles: {
                   fillColor: [138, 43, 138],
@@ -268,7 +282,7 @@ export const useExportPDF = () => {
         } else if (hasStructuredData) {
           // Dados já estruturados - usar diretamente
           colunas = getColumnHeaders(data.dados, data.columnConfig);
-          
+
           data.dados.forEach((item) => {
             if (item.isShiftHeader) {
               // Cabeçalho de turno (data + estágio + período)
@@ -292,7 +306,9 @@ export const useExportPDF = () => {
               // Cabeçalho de empresa
               linhas.push([
                 {
-                  content: String(`${item.companyName} (${item.checkInCount}/${item.totalCount})`),
+                  content: String(
+                    `${item.companyName} (${item.checkInCount}/${item.totalCount})`
+                  ),
                   colSpan: colunas.length,
                   styles: {
                     fillColor: [138, 43, 138],
@@ -315,7 +331,12 @@ export const useExportPDF = () => {
           // For non-grouped reports, also use dynamic columns
           colunas = getColumnHeaders(data.dados, data.columnConfig);
           linhas = data.dados
-            .filter(record => !record.isShiftHeader && !record.isCompanyHeader && !record.isSummary) // Filter out metadata
+            .filter(
+              (record) =>
+                !record.isShiftHeader &&
+                !record.isCompanyHeader &&
+                !record.isSummary
+            ) // Filter out metadata
             .map((record) => getRowValues(record, colunas));
         }
 
@@ -324,7 +345,7 @@ export const useExportPDF = () => {
           totalLinhas: linhas.length,
           firstLinhas: linhas.slice(0, 3),
           hasStructuredData,
-          isAgrupadoPorEmpresa
+          isAgrupadoPorEmpresa,
         });
 
         // Garantir que há pelo menos dados básicos para a tabela
@@ -340,13 +361,17 @@ export const useExportPDF = () => {
             linhas = data.dados.map((record) => {
               return [
                 record.nome || "-",
-                record.cpf || "-", 
+                record.cpf || "-",
                 record.funcao || "-",
                 record.checkIn || "-",
-                record.checkOut || "-"
+                record.checkOut || "-",
               ];
             });
-            console.log("🔄 Processando como dados simples:", linhas.length, "linhas");
+            console.log(
+              "🔄 Processando como dados simples:",
+              linhas.length,
+              "linhas"
+            );
           }
         }
 
@@ -413,25 +438,28 @@ export const useExportPDF = () => {
         }
 
         // Função para adicionar watermark em qualquer página
-        const addWatermarkToCurrentPage = (doc: any, watermarkBase64: string) => {
+        const addWatermarkToCurrentPage = (
+          doc: any,
+          watermarkBase64: string
+        ) => {
           const pageWidth = doc.internal.pageSize.width;
           const pageHeight = doc.internal.pageSize.height;
-          
+
           // Salvar estado gráfico
           doc.saveGraphicsState();
-          
+
           // Adicionar imagem como fundo
           doc.addImage(
             watermarkBase64,
             "JPEG",
             0, // x: começa na borda
-            0, // y: começa na borda  
+            0, // y: começa na borda
             pageWidth, // largura total
             pageHeight, // altura total
             undefined,
             "FAST"
           );
-          
+
           // Restaurar estado
           doc.restoreGraphicsState();
         };
@@ -490,7 +518,7 @@ export const useExportPDF = () => {
           didDrawPage: function (hookData) {
             // ====== HEADER APÓS A TABELA (TODAS AS PÁGINAS) ======
             const headerStartY = 30;
-            
+
             // Título do relatório com cor personalizada #610E5C
             doc.setFontSize(16);
             doc.setFont("helvetica", "bold");
@@ -519,7 +547,7 @@ export const useExportPDF = () => {
               };
               subtitulo = subtitulos[data.tipo] ?? "Relatório de Eventos";
             }
-            
+
             doc.setFontSize(12);
             doc.setFont("helvetica", "normal");
             doc.setTextColor(80, 80, 80);
@@ -530,12 +558,16 @@ export const useExportPDF = () => {
         // Watermark agora é aplicado via didDrawPage de forma consistente em todas as páginas
         // Primeira página: addWatermark() antes da tabela
         // Páginas 2+: addWatermarkToCurrentPage() no didDrawPage hook
-        console.log("📄 PDF gerado com", (doc as any).internal.pages.length - 1, "páginas");
+        console.log(
+          "📄 PDF gerado com",
+          (doc as any).internal.pages.length - 1,
+          "páginas"
+        );
 
         const finalY = (doc as any).lastAutoTable?.finalY || 100;
 
         // Adicionar informações do rodapé com total de registros
-        const totalRegistros = data.dados.length;
+        const totalRegistros = data.total_registros;
         const totalPaginas = (doc as any).internal.pages.length - 1;
 
         // Calcular posições do rodapé
