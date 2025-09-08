@@ -21,6 +21,8 @@ import { toast } from "sonner";
 import { createEventParticipant } from "@/features/eventos/actions/create-event-participant"
 import { useCredentials } from "@/features/eventos/api/query";
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas";
+import { useCredentialsByShift } from "@/features/eventos/api/query/use-credentials-by-shift";
+import { useEmpresasByShift } from "@/features/eventos/api/query/use-empresas-by-shift";
 import { Credential } from "@/features/eventos/types";
 
 interface ModalAdicionarStaffProps {
@@ -60,9 +62,53 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   const [novoStaff, setNovoStaff] = useState(initialStaff);
   const [isEmpresaPopoverOpen, setIsEmpresaPopoverOpen] = useState(false);
   const [isCredentialPopoverOpen, setIsCredentialPopoverOpen] = useState(false);
+  const [internalSelectedDay, setInternalSelectedDay] = useState<string>('');
+  const [isDaySelectionOpen, setIsDaySelectionOpen] = useState(false);
+  
+  // Use selectedDay prop if provided, otherwise use internal state
+  const effectiveSelectedDay = selectedDay || internalSelectedDay;
 
-  const { data: credentials = [] } = useCredentials({ eventId });
-  const { data: empresas = [] } = useEmpresasByEvent(eventId);
+  // Parse selectedDay to extract shift information
+  const parseSelectedDay = useCallback((dayId: string) => {
+    if (!dayId) return null;
+    const parts = dayId.split('-');
+    if (parts.length >= 5) {
+      return {
+        date: `${parts[0]}-${parts[1]}-${parts[2]}`,
+        stage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
+        period: parts[4] as 'diurno' | 'noturno' | 'dia_inteiro'
+      };
+    }
+    return null;
+  }, []);
+
+  const currentShiftInfo = parseSelectedDay(effectiveSelectedDay || '');
+  
+  // Use filtered hooks when we have shift info, fallback to all items
+  const { data: allCredentials = [] } = useCredentials({ eventId });
+  const { data: allEmpresas = [] } = useEmpresasByEvent(eventId);
+  
+  const { data: shiftCredentials = [] } = useCredentialsByShift({
+    eventId,
+    shiftId: effectiveSelectedDay,
+    workDate: currentShiftInfo?.date,
+    workStage: currentShiftInfo?.stage,
+    workPeriod: currentShiftInfo?.period,
+    enabled: !!currentShiftInfo
+  });
+  
+  const { data: shiftEmpresas = [] } = useEmpresasByShift({
+    eventId,
+    shiftId: effectiveSelectedDay,
+    workDate: currentShiftInfo?.date,
+    workStage: currentShiftInfo?.stage,
+    workPeriod: currentShiftInfo?.period,
+    enabled: !!currentShiftInfo
+  });
+  
+  // Use filtered data when available, otherwise fall back to all data
+  const credentials = currentShiftInfo && shiftCredentials.length > 0 ? shiftCredentials : allCredentials;
+  const empresas = currentShiftInfo && shiftEmpresas.length > 0 ? shiftEmpresas : allEmpresas;
 
   const formatCPF = (cpf: string): string => {
     const digits = cpf.replace(/\D/g, "");
@@ -76,7 +122,21 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   };
 
   const formatEventDate = useCallback((dateStr: string): string => {
-    const date = new Date(dateStr);
+    // Avoid timezone issues by parsing the date components directly
+    if (dateStr.includes('T')) {
+      const datePart = dateStr.split('T')[0];
+      const [year, month, day] = datePart.split('-');
+      return `${day}/${month}/${year}`;
+    }
+    
+    // If it's already in YYYY-MM-DD format
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateStr.split('-');
+      return `${day}/${month}/${year}`;
+    }
+    
+    // Fallback to original method for other formats
+    const date = new Date(dateStr + 'T12:00:00');
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
@@ -427,6 +487,11 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
   const handleSubmit = async () => {
     const { name, cpf, rg, funcao, empresa, tipo_credencial } = novoStaff;
 
+    if (!effectiveSelectedDay) {
+      toast.error("Por favor, selecione um turno de trabalho primeiro!");
+      return;
+    }
+
     if (!name.trim() || !funcao.trim() || !empresa.trim() || !tipo_credencial) {
       toast.error("Todos os campos obrigatórios devem ser preenchidos!");
       return;
@@ -504,6 +569,8 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
     setNovoStaff(initialStaff);
     setIsEmpresaPopoverOpen(false);
     setIsCredentialPopoverOpen(false);
+    setInternalSelectedDay('');
+    setIsDaySelectionOpen(false);
     onClose();
   };
 
@@ -512,18 +579,25 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
   // Automaticamente selecionar o dia quando o modal abrir
   useEffect(() => {
-    if (isOpen && selectedDay) {
+    if (isOpen && effectiveSelectedDay) {
       // Verificar se o shift ID selecionado existe nos turnos do evento
-      const selectedShiftExists = eventDays.some(shift => shift.id === selectedDay);
+      const selectedShiftExists = eventDays.some(shift => shift.id === effectiveSelectedDay);
 
-      if (selectedShiftExists && !novoStaff.daysWork.includes(selectedDay)) {
+      if (selectedShiftExists && !novoStaff.daysWork.includes(effectiveSelectedDay)) {
         setNovoStaff(prev => ({
           ...prev,
-          daysWork: [selectedDay]
+          daysWork: [effectiveSelectedDay]
         }));
       }
     }
-  }, [isOpen, selectedDay, eventDays, novoStaff.daysWork]);
+  }, [isOpen, effectiveSelectedDay, eventDays, novoStaff.daysWork]);
+  
+  // Reset internal state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setInternalSelectedDay('');
+    }
+  }, [isOpen]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -535,10 +609,10 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
           </DialogTitle>
           <DialogDescription className="space-y-2">
             <div>Preencha os dados do novo Staff</div>
-            {selectedDay && (
+            {effectiveSelectedDay && (
               <div className="flex items-center gap-2 text-sm font-medium text-purple-600 bg-purple-50 p-2 rounded-lg">
                 {(() => {
-                  const currentDay = eventDays.find(day => day.id === selectedDay);
+                  const currentDay = eventDays.find(day => day.id === effectiveSelectedDay);
                   if (currentDay) {
                     return (
                       <>
@@ -547,7 +621,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                       </>
                     );
                   }
-                  return <span>Dia selecionado: {selectedDay}</span>;
+                  return <span>Dia selecionado: {effectiveSelectedDay}</span>;
                 })()}
               </div>
             )}
@@ -560,6 +634,117 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Seleção de Turno (quando não pré-selecionado) */}
+          {!selectedDay && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-3">
+                <Calendar className="h-5 w-5 text-yellow-600" />
+                <h3 className="text-sm font-semibold text-yellow-800">
+                  📅 Primeiro, selecione o turno de trabalho:
+                </h3>
+              </div>
+              
+              <div className="mb-4">
+                <Popover open={isDaySelectionOpen} onOpenChange={setIsDaySelectionOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={isDaySelectionOpen}
+                      className="w-full justify-between bg-white border-yellow-300"
+                      disabled={loading}
+                    >
+                      {internalSelectedDay ? (
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const selectedShift = eventDays.find(d => d.id === internalSelectedDay);
+                            if (selectedShift) {
+                              return (
+                                <>
+                                  {getPeriodIcon(selectedShift.period)}
+                                  <span>{selectedShift.label}</span>
+                                </>
+                              );
+                            }
+                            return <span>{internalSelectedDay}</span>;
+                          })()} 
+                        </div>
+                      ) : (
+                        <span className="text-gray-500">Selecionar turno de trabalho</span>
+                      )}
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full max-w-md p-0 bg-white" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar turno..." />
+                      <CommandEmpty>Nenhum turno encontrado.</CommandEmpty>
+                      <CommandList>
+                        <CommandGroup>
+                          {eventDays.map((day) => (
+                            <CommandItem
+                              key={day.id}
+                              value={day.id}
+                              onSelect={(value) => {
+                                setInternalSelectedDay(value)
+                                setIsDaySelectionOpen(false)
+                                // Auto-select this shift in work days
+                                setNovoStaff(prev => ({
+                                  ...prev,
+                                  daysWork: [value]
+                                }))
+                              }}
+                              className="hover:bg-gray-100"
+                            >
+                              <div className="flex items-center gap-2 w-full">
+                                {getPeriodIcon(day.period)}
+                                <span className="flex-1">{day.label}</span>
+                                {internalSelectedDay === day.id && (
+                                  <Check className="h-4 w-4 text-primary" />
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              
+              <p className="text-xs text-yellow-700">
+                ⚠️ Selecione o turno para filtrar as empresas e credenciais disponíveis.
+              </p>
+            </div>
+          )}
+          
+          {/* Informação do turno atual */}
+          {effectiveSelectedDay && currentShiftInfo && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                {getPeriodIcon(currentShiftInfo.period)}
+                <h3 className="text-sm font-semibold text-blue-800">
+                  🎯 Adicionando Staff para o Turno:
+                </h3>
+              </div>
+              <div className="text-sm text-blue-700">
+                <span className="font-medium">
+                  {(() => {
+                    const [year, month, day] = currentShiftInfo.date.split('-');
+                    return `${day}/${month}/${year}`;
+                  })()} - 
+                  {currentShiftInfo.stage.toUpperCase()} - 
+                  {currentShiftInfo.period === 'diurno' ? 'DIURNO' : 
+                   currentShiftInfo.period === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO'}
+                </span>
+              </div>
+              <p className="text-xs text-blue-600 mt-2">
+                ⚠️ As credenciais e empresas foram filtradas para este turno específico.
+                O staff será automaticamente atribuído a este turno.
+              </p>
+            </div>
+          )}
+          
           {/* Campos básicos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -605,7 +790,14 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Empresa *</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium">Empresa *</label>
+                {currentShiftInfo && (
+                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                    🏢 Filtrado para o turno atual
+                  </span>
+                )}
+              </div>
               {empresasArray.length > 0 ? (
                 <Popover open={isEmpresaPopoverOpen} onOpenChange={setIsEmpresaPopoverOpen}>
                   <PopoverTrigger asChild>
@@ -667,7 +859,14 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
           {/* Tipo de Credencial */}
           <div>
-            <label className="block text-sm font-medium mb-2">Tipo de Credencial *</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium">Tipo de Credencial *</label>
+              {currentShiftInfo && (
+                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                  🗑️ Filtrado para o turno atual
+                </span>
+              )}
+            </div>
             {activeCredentials.length > 0 ? (
               <Popover open={isCredentialPopoverOpen} onOpenChange={setIsCredentialPopoverOpen}>
                 <PopoverTrigger asChild>
@@ -793,7 +992,7 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                     <p className="text-sm text-blue-800">
                       <strong>Turnos selecionados:</strong> {novoStaff.daysWork.length}
-                      {selectedDay && novoStaff.daysWork.includes(selectedDay) && (
+                      {effectiveSelectedDay && novoStaff.daysWork.includes(effectiveSelectedDay) && (
                         <span className="ml-2 text-green-600 font-medium">
                           (Turno atual selecionado automaticamente)
                         </span>
