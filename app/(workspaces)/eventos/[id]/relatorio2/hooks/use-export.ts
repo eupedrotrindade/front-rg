@@ -202,7 +202,8 @@ export function useExport({
       participants: ParticipantRecord[],
       config?: ExportConfig,
       selectedDay?: string,
-      reportType?: string
+      reportType?: string,
+      totalRegistros?: number
     ) => {
       const formattedData: any[] = [];
       let totalParticipants = 0;
@@ -484,8 +485,8 @@ export function useExport({
         });
       });
 
-      // ✅ CORRIGIDO: Contar apenas participantes no rodapé (não incluir linhas de empresa)
-      const actualStaffCount = formattedData.filter(item => item.isStaffRecord).length;
+      // ✅ CORRIGIDO: Usar total_registro do painel ou calcular se não fornecido
+      const actualStaffCount = totalRegistros ?? formattedData.filter(item => item.isStaffRecord).length;
       const actualCheckInsCount = formattedData.filter(item => item.isStaffRecord && item.checkIn !== "-").length;
 
       // Adicionar informações de resumo no final
@@ -561,7 +562,7 @@ export function useExport({
 
       return formattedData;
     },
-    [parseShiftInfo, eventDays, selectedReportType]
+    [parseShiftInfo, eventDays, selectedReportType, total_registro]
   );
 
   // Export all participants
@@ -579,7 +580,8 @@ export function useExport({
         participants,
         finalConfig,
         selectedDay,
-        selectedReportType
+        selectedReportType,
+        total_registro
       );
 
       // Usar título personalizado ou criar baseado no tipo de relatório e turno
@@ -666,6 +668,8 @@ export function useExport({
       eventName,
       selectedDay,
       selectedReportType,
+      selectedDays,
+      total_registro,
     ]
   );
 
@@ -693,7 +697,8 @@ export function useExport({
         companyParticipants,
         finalConfig,
         selectedDay,
-        selectedReportType
+        selectedReportType,
+        companyParticipants.length
       );
 
       // Usar título personalizado ou criar baseado no tipo de relatório e empresa
@@ -754,6 +759,7 @@ export function useExport({
       exportPDFMutation,
       selectedDay,
       selectedReportType,
+      selectedDays,
     ]
   );
 
@@ -889,7 +895,8 @@ export function useExport({
       participants,
       undefined,
       selectedDay,
-      selectedReportType
+      selectedReportType,
+      total_registro
     );
 
     return previewData.map((item) => ({
@@ -919,7 +926,7 @@ export function useExport({
       totalCount: item.totalCount,
       color: item.summaryColor,
     }));
-  }, [participants, selectedDay, convertToExportFormat]);
+  }, [participants, selectedDay, selectedReportType, convertToExportFormat, total_registro]);
 
   return {
     exportAll,
