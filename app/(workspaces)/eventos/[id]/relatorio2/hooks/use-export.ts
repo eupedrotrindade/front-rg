@@ -29,6 +29,7 @@ export function useExport({
   selectedDays,
   selectedReportType,
   eventDays,
+  total_registro,
 }: UseExportProps) {
   const exportPDFMutation = useExportPDF();
   const exportXLSXMutation = useExportXLSX();
