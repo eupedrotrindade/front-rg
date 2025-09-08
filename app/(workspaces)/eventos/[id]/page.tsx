@@ -1016,18 +1016,19 @@ export default function EventoDetalhesPage() {
     const participantsCountCache = useMemo(() => {
         const cache = new Map<string, number>();
 
-        // Calcular uma vez para todos os turnos
+        // Para cada turno, usar APENAS o shiftId exato (sem compatibilidade com daysWork)
         eventDays.forEach(day => {
-            let count = 0;
-            groupedParticipantsData.forEach(group => {
-                const hasShift = group.shifts.some(shift => (shift as any).shiftId === day.id)
-                if (hasShift) count++
-            })
-            cache.set(day.id, count);
+            // Buscar participantes específicos deste turno usando shiftId exato
+            const participantsForShift = participantsArray.filter(participant => {
+                // APENAS verificar se o participante tem este shiftId específico
+                return participant.shiftId === day.id;
+            });
+            
+            cache.set(day.id, participantsForShift.length);
         });
 
         return cache;
-    }, [groupedParticipantsData, eventDays]);
+    }, [participantsArray, eventDays]);
 
     // Função otimizada que usa cache - não recalcula
     const getParticipantsCountByShift = useCallback(

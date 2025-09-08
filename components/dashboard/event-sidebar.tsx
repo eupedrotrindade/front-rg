@@ -26,7 +26,8 @@ import {
     ChevronUp,
     FileText,
     BadgeIcon,
-    RefreshCcw
+    RefreshCcw,
+    Copy
 } from 'lucide-react'
 
 interface EventSidebarProps {
@@ -62,6 +63,12 @@ const EventSidebar = ({
             href: `/eventos/${eventId}`,
             icon: Users,
             description: 'Gestão de staff geral'
+        },
+        {
+            name: 'Replicação',
+            href: `/eventos/${eventId}/replicacao`,
+            icon: Copy,
+            description: 'Replicação de participantes entre turnos'
         },
         {
             name: 'Operadores',
