@@ -77,7 +77,7 @@ export const formatCpfInput = (value: string): string => {
 
 /**
  * Formata uma data para o padrão brasileiro (DD/MM/YYYY)
- * Evita problemas de fuso horário usando métodos UTC
+ * Evita problemas de fuso horário tratando strings YYYY-MM-DD diretamente
  * 
  * @param dateString - String de data no formato ISO (YYYY-MM-DD) ou Date object
  * @returns String formatada no padrão DD/MM/YYYY
@@ -85,12 +85,19 @@ export const formatCpfInput = (value: string): string => {
 export const formatDateToBR = (dateString: string | Date): string => {
   if (!dateString) return '';
   
-  const date = new Date(dateString);
+  // Se for string no formato YYYY-MM-DD, tratar diretamente
+  if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = dateString.split('-');
+    return `${day}/${month}/${year}`;
+  }
   
-  // Usar UTC para evitar problemas de fuso horário
-  const day = date.getUTCDate().toString().padStart(2, '0');
-  const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
-  const year = date.getUTCFullYear();
+  // Para outros formatos, usar Date com horário meio-dia para evitar problemas de timezone
+  const dateStr = typeof dateString === 'string' ? dateString : dateString.toISOString();
+  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00');
+  
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
   
   return `${day}/${month}/${year}`;
 };

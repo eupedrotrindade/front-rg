@@ -140,13 +140,13 @@ export function useParticipantReplication({
       return `${year}-${month}-${day}`;
     }
 
-    // Tenta converter usando Date
+    // Tenta converter usando Date (usando horário local para evitar problemas de timezone)
     try {
-      const date = new Date(dateStr);
+      const date = new Date(dateStr + 'T12:00:00'); // Adiciona horário para evitar problemas de timezone
       if (!isNaN(date.getTime())) {
-        const year = date.getUTCFullYear().toString();
-        const month = (date.getUTCMonth() + 1).toString().padStart(2, "0");
-        const day = date.getUTCDate().toString().padStart(2, "0");
+        const year = date.getFullYear().toString();
+        const month = (date.getMonth() + 1).toString().padStart(2, "0");
+        const day = date.getDate().toString().padStart(2, "0");
         return `${year}-${month}-${day}`;
       }
     } catch (error) {

@@ -21,6 +21,8 @@ import { toast } from "sonner";
 import { useUpdateEventParticipant } from "@/features/eventos/api/mutation/use-update-event-participant";
 import { useCredentials } from "@/features/eventos/api/query";
 import { useEmpresasByEvent } from "@/features/eventos/api/query/use-empresas";
+import { useCredentialsByShift } from "@/features/eventos/api/query/use-credentials-by-shift";
+import { useEmpresasByShift } from "@/features/eventos/api/query/use-empresas-by-shift";
 import { Credential, EventParticipant } from "@/features/eventos/types";
 
 interface ModalEditarStaffProps {
@@ -57,8 +59,47 @@ export default function ModalEditarStaff({
     daysWork: [] as string[]
   });
 
-  const { data: credentials = [] } = useCredentials({ eventId });
-  const { data: empresas = [] } = useEmpresasByEvent(eventId);
+  // Parse selectedDay to extract shift information
+  const parseSelectedDay = useCallback((dayId: string) => {
+    if (!dayId) return null;
+    const parts = dayId.split('-');
+    if (parts.length >= 5) {
+      return {
+        date: `${parts[0]}-${parts[1]}-${parts[2]}`,
+        stage: parts[3] as 'montagem' | 'evento' | 'desmontagem',
+        period: parts[4] as 'diurno' | 'noturno' | 'dia_inteiro'
+      };
+    }
+    return null;
+  }, []);
+
+  const currentShiftInfo = parseSelectedDay(selectedDay || '');
+  
+  // Use filtered hooks when we have shift info, fallback to all items
+  const { data: allCredentials = [] } = useCredentials({ eventId });
+  const { data: allEmpresas = [] } = useEmpresasByEvent(eventId);
+  
+  const { data: shiftCredentials = [] } = useCredentialsByShift({
+    eventId,
+    shiftId: selectedDay,
+    workDate: currentShiftInfo?.date,
+    workStage: currentShiftInfo?.stage,
+    workPeriod: currentShiftInfo?.period,
+    enabled: !!currentShiftInfo
+  });
+  
+  const { data: shiftEmpresas = [] } = useEmpresasByShift({
+    eventId,
+    shiftId: selectedDay,
+    workDate: currentShiftInfo?.date,
+    workStage: currentShiftInfo?.stage,
+    workPeriod: currentShiftInfo?.period,
+    enabled: !!currentShiftInfo
+  });
+  
+  // Use filtered data when available, otherwise fall back to all data
+  const credentials = currentShiftInfo && shiftCredentials.length > 0 ? shiftCredentials : allCredentials;
+  const empresas = currentShiftInfo && shiftEmpresas.length > 0 ? shiftEmpresas : allEmpresas;
   const updateParticipant = useUpdateEventParticipant();
 
   const formatCPF = (cpf: string): string => {
@@ -73,7 +114,21 @@ export default function ModalEditarStaff({
   };
 
   const formatEventDate = useCallback((dateStr: string): string => {
-    const date = new Date(dateStr);
+    // Avoid timezone issues by parsing the date components directly
+    if (dateStr.includes('T')) {
+      const datePart = dateStr.split('T')[0];
+      const [year, month, day] = datePart.split('-');
+      return `${day}/${month}/${year}`;
+    }
+    
+    // If it's already in YYYY-MM-DD format
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateStr.split('-');
+      return `${day}/${month}/${year}`;
+    }
+    
+    // Fallback to original method for other formats
+    const date = new Date(dateStr + 'T12:00:00');
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
@@ -177,7 +232,8 @@ export default function ModalEditarStaff({
         if (day && day.date && day.period) {
           try {
             const dateStr = formatEventDate(day.date);
-            const dateISO = new Date(day.date).toISOString().split('T')[0];
+            // Avoid timezone issues by handling date string directly
+            const dateISO = day.date.includes('T') ? day.date.split('T')[0] : day.date.split(' ')[0];
             const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando montagem (modal edit): ${dateStr} - ${periodLabel}`);
@@ -199,7 +255,8 @@ export default function ModalEditarStaff({
       const endDate = new Date(evento.setupEndDate);
       for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
         const dateStr = formatEventDate(date.toISOString());
-        const dateISO = date.toISOString().split('T')[0];
+        // Avoid timezone issues
+        const dateISO = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
         // Adicionar ambos os períodos (diurno e noturno) para cada data
         ['diurno', 'noturno'].forEach(period => {
@@ -225,7 +282,8 @@ export default function ModalEditarStaff({
         if (day && day.date && day.period) {
           try {
             const dateStr = formatEventDate(day.date);
-            const dateISO = new Date(day.date).toISOString().split('T')[0];
+            // Avoid timezone issues by handling date string directly
+            const dateISO = day.date.includes('T') ? day.date.split('T')[0] : day.date.split(' ')[0];
             const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando evento (modal edit): ${dateStr} - ${periodLabel}`);
@@ -247,7 +305,8 @@ export default function ModalEditarStaff({
       const endDate = new Date(evento.preparationEndDate);
       for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
         const dateStr = formatEventDate(date.toISOString());
-        const dateISO = date.toISOString().split('T')[0];
+        // Avoid timezone issues
+        const dateISO = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
         // Adicionar ambos os períodos (diurno e noturno) para cada data
         ['diurno', 'noturno'].forEach(period => {
@@ -273,7 +332,8 @@ export default function ModalEditarStaff({
         if (day && day.date && day.period) {
           try {
             const dateStr = formatEventDate(day.date);
-            const dateISO = new Date(day.date).toISOString().split('T')[0];
+            // Avoid timezone issues by handling date string directly
+            const dateISO = day.date.includes('T') ? day.date.split('T')[0] : day.date.split(' ')[0];
             const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
             console.log(`✅ Adicionando desmontagem (modal edit): ${dateStr} - ${periodLabel}`);
@@ -295,7 +355,8 @@ export default function ModalEditarStaff({
       const endDate = new Date(evento.finalizationEndDate);
       for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
         const dateStr = formatEventDate(date.toISOString());
-        const dateISO = date.toISOString().split('T')[0];
+        // Avoid timezone issues
+        const dateISO = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
         // Adicionar ambos os períodos (diurno e noturno) para cada data
         ['diurno', 'noturno'].forEach(period => {
@@ -325,13 +386,22 @@ export default function ModalEditarStaff({
   }, [evento, ensureArray, formatEventDate]);
 
   const toggleShift = useCallback((shiftId: string) => {
-    setStaffData(prev => ({
-      ...prev,
-      daysWork: prev.daysWork.includes(shiftId)
-        ? prev.daysWork.filter(d => d !== shiftId)
-        : [...prev.daysWork, shiftId].sort()
-    }));
-  }, []);
+    setStaffData(prev => {
+      // If we're in filtering mode and trying to deselect the current shift, prevent it
+      if (selectedDay && shiftId === selectedDay && prev.daysWork.includes(shiftId)) {
+        // Show a warning but don't remove the shift
+        console.warn('⚠️ Não é possível desmarcar o turno atual quando em modo de edição filtrada');
+        return prev;
+      }
+      
+      return {
+        ...prev,
+        daysWork: prev.daysWork.includes(shiftId)
+          ? prev.daysWork.filter(d => d !== shiftId)
+          : [...prev.daysWork, shiftId].sort()
+      };
+    });
+  }, [selectedDay]);
 
   const handleSubmit = async () => {
     if (!participant) {
@@ -420,9 +490,18 @@ export default function ModalEditarStaff({
     if (isOpen && participant) {
       console.log('🔧 Inicializando formulário de edição com participante:', participant);
       console.log('📅 Dias de trabalho do participante:', participant.daysWork);
+      console.log('📅 Dia selecionado atual:', selectedDay);
 
       // Preencher dados do formulário
-      const participantDaysWork = participant.daysWork || [];
+      let participantDaysWork = participant.daysWork || [];
+      
+      // If we have a selectedDay and it's not in the participant's days, add it
+      // This ensures the current context shift is always selected
+      if (selectedDay && !participantDaysWork.includes(selectedDay)) {
+        participantDaysWork = [selectedDay, ...participantDaysWork];
+        console.log('📅 Adicionado dia atual aos dias de trabalho:', selectedDay);
+      }
+      
       console.log('📅 Dias que serão pré-selecionados:', participantDaysWork);
 
       setStaffData({
@@ -435,7 +514,7 @@ export default function ModalEditarStaff({
         daysWork: participantDaysWork
       });
     }
-  }, [isOpen, participant]);
+  }, [isOpen, participant, selectedDay]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -496,7 +575,14 @@ export default function ModalEditarStaff({
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Empresa *</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium">Empresa *</label>
+                {currentShiftInfo && (
+                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                    🏢 Filtrado para o turno atual
+                  </span>
+                )}
+              </div>
               {empresasArray.length > 0 ? (
                 <Popover open={isEmpresaPopoverOpen} onOpenChange={setIsEmpresaPopoverOpen}>
                   <PopoverTrigger asChild>
@@ -558,7 +644,14 @@ export default function ModalEditarStaff({
 
           {/* Tipo de Credencial */}
           <div>
-            <label className="block text-sm font-medium mb-2">Tipo de Credencial *</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium">Tipo de Credencial *</label>
+              {currentShiftInfo && (
+                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                  🗑️ Filtrado para o turno atual
+                </span>
+              )}
+            </div>
             {activeCredentials.length > 0 ? (
               <Popover open={isCredentialPopoverOpen} onOpenChange={setIsCredentialPopoverOpen}>
                 <PopoverTrigger asChild>
@@ -650,6 +743,27 @@ export default function ModalEditarStaff({
               <Calendar className="w-4 h-4 inline mr-1" />
               Dias de Trabalho
             </label>
+            
+            {selectedDay && currentShiftInfo && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-800 font-medium mb-1">
+                  🎯 Turno Atual do Participante:
+                </p>
+                <div className="flex items-center gap-2">
+                  {getPeriodIcon(currentShiftInfo.period)}
+                  <span className="text-sm text-blue-700">
+                    {formatEventDate(currentShiftInfo.date)} - 
+                    {currentShiftInfo.stage.toUpperCase()} - 
+                    {currentShiftInfo.period === 'diurno' ? 'DIURNO' : 
+                     currentShiftInfo.period === 'noturno' ? 'NOTURNO' : 'DIA INTEIRO'}
+                  </span>
+                </div>
+                <p className="text-xs text-blue-600 mt-2">
+                  ⚠️ As credenciais e empresas foram filtradas para este turno específico.
+                  Outros turnos estão desabilitados para manter a consistência.
+                </p>
+              </div>
+            )}
 
             {hasDefinedShifts ? (
               <div className="space-y-4">
@@ -665,9 +779,16 @@ export default function ModalEditarStaff({
                   const stageLabel = stage === 'montagem' ? 'Montagem' :
                     stage === 'evento' ? 'Evento' :
                       stage === 'desmontagem' ? 'Desmontagem' : 'Finalização';
+                      
+                  const isCurrentStage = selectedDay && currentShiftInfo && 
+                    stage === currentShiftInfo.stage;
 
                   return (
-                    <div key={stage} className="border border-gray-200 rounded-lg p-3">
+                    <div key={stage} className={`border rounded-lg p-3 ${
+                      isCurrentStage 
+                        ? 'border-blue-300 bg-blue-50' 
+                        : 'border-gray-200 bg-white'
+                    }`}>
                       <h4 className="text-sm font-semibold mb-3 text-gray-700">{stageLabel}</h4>
                       {Object.entries(dateGroups).map(([date, shifts]) => {
                         return (
@@ -681,8 +802,14 @@ export default function ModalEditarStaff({
                                   variant={staffData.daysWork.includes(shift.id) ? "default" : "outline"}
                                   size="sm"
                                   onClick={() => toggleShift(shift.id)}
-                                  disabled={loading}
-                                  className="flex items-center gap-1 text-xs h-8"
+                                  disabled={loading || (selectedDay && shift.id !== selectedDay)}
+                                  className={`flex items-center gap-1 text-xs h-8 ${
+                                    selectedDay && shift.id === selectedDay 
+                                      ? 'ring-2 ring-blue-500 bg-blue-50' 
+                                      : selectedDay && shift.id !== selectedDay 
+                                        ? 'opacity-50 cursor-not-allowed' 
+                                        : ''
+                                  }`}
                                 >
                                   {getPeriodIcon(shift.period)}
                                   <span>

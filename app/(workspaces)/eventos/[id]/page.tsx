@@ -422,7 +422,7 @@ export default function EventoDetalhesPage() {
         currentItem: '',
         completed: false
     })
-    
+
     const [credentialCreationProgress, setCredentialCreationProgress] = useState<{
         current: number
         total: number
@@ -1023,12 +1023,12 @@ export default function EventoDetalhesPage() {
                 // APENAS verificar se o participante tem este shiftId específico
                 return participant.shiftId === day.id;
             });
-            
+
             cache.set(day.id, participantsForShift.length);
         });
 
         return cache;
-    }, [participantsArray, eventDays]);
+    }, [participantsArray, eventDays, parseShiftId, normalizeDate]);
 
     // Função otimizada que usa cache - não recalcula
     const getParticipantsCountByShift = useCallback(
@@ -2104,7 +2104,7 @@ export default function EventoDetalhesPage() {
                 windowStart: 0
             }
         })
-        
+
         // Resetar estados de progresso
         setCompanyCreationProgress({
             current: 0,
@@ -2112,7 +2112,7 @@ export default function EventoDetalhesPage() {
             currentItem: '',
             completed: false
         })
-        
+
         setCredentialCreationProgress({
             current: 0,
             total: 0,
@@ -2302,7 +2302,7 @@ export default function EventoDetalhesPage() {
             const targetShiftInfo = parseShiftId(targetDay)
 
             let processedCount = 0
-            
+
             // Inicializar progresso de criação de empresas
             setCompanyCreationProgress({
                 current: 0,
@@ -2331,14 +2331,14 @@ export default function EventoDetalhesPage() {
                                 onSuccess: () => {
                                     console.log(`✅ Empresa ${companyName} criada com sucesso`)
                                     processedCount++
-                                    
+
                                     // Atualizar progresso
                                     setCompanyCreationProgress(prev => ({
                                         ...prev,
                                         current: processedCount,
                                         currentItem: processedCount < needingCreation.length ? needingCreation[processedCount] : 'Finalizando...'
                                     }))
-                                    
+
                                     resolve()
                                 },
                                 onError: (error) => {
@@ -2366,7 +2366,7 @@ export default function EventoDetalhesPage() {
             }))
 
             console.log(`✅ ETAPA 3 CONCLUÍDA: ${processedCount} empresas criadas para o dia específico`)
-            
+
             // Marcar progresso como concluído
             setCompanyCreationProgress(prev => ({
                 ...prev,
@@ -2513,11 +2513,11 @@ export default function EventoDetalhesPage() {
             const targetShiftInfo = parseShiftId(targetDay)
 
             let processedCount = 0
-            
+
             // Criar apenas as credenciais que precisam ser criadas para este dia específico
             // Identificar credenciais únicas dos participantes que precisam ser criadas
             const uniqueCredentials = [...new Set(needingCreation)]
-            
+
             // Inicializar progresso de criação de credenciais
             setCredentialCreationProgress({
                 current: 0,
@@ -2557,14 +2557,14 @@ export default function EventoDetalhesPage() {
                                 onSuccess: () => {
                                     console.log(`✅ Credencial ${credentialName} criada com sucesso`)
                                     processedCount++
-                                    
+
                                     // Atualizar progresso
                                     setCredentialCreationProgress(prev => ({
                                         ...prev,
                                         current: processedCount,
                                         currentItem: processedCount < uniqueCredentials.length ? uniqueCredentials[processedCount] : 'Finalizando...'
                                     }))
-                                    
+
                                     resolve()
                                 },
                                 onError: (error) => {
@@ -2592,7 +2592,7 @@ export default function EventoDetalhesPage() {
             }))
 
             console.log(`✅ ETAPA 5 CONCLUÍDA: ${processedCount} credenciais criadas para o dia específico`)
-            
+
             // Marcar progresso como concluído
             setCredentialCreationProgress(prev => ({
                 ...prev,
@@ -5225,21 +5225,21 @@ export default function EventoDetalhesPage() {
                                                         {companyCreationProgress.completed ? 'Empresas criadas com sucesso!' : 'Criando empresas...'}
                                                     </span>
                                                 </div>
-                                                
+
                                                 {companyCreationProgress.total > 0 && (
                                                     <div className="space-y-2">
                                                         <div className="flex justify-between text-sm text-blue-700">
                                                             <span>Progresso: {companyCreationProgress.current}/{companyCreationProgress.total}</span>
                                                             <span>{Math.round((companyCreationProgress.current / companyCreationProgress.total) * 100)}%</span>
                                                         </div>
-                                                        
+
                                                         <div className="w-full bg-blue-200 rounded-full h-2">
-                                                            <div 
+                                                            <div
                                                                 className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
                                                                 style={{ width: `${(companyCreationProgress.current / companyCreationProgress.total) * 100}%` }}
                                                             ></div>
                                                         </div>
-                                                        
+
                                                         {!companyCreationProgress.completed && companyCreationProgress.currentItem && (
                                                             <div className="text-sm text-blue-600">
                                                                 Criando: <span className="font-medium">{companyCreationProgress.currentItem}</span>
@@ -5371,21 +5371,21 @@ export default function EventoDetalhesPage() {
                                                         {credentialCreationProgress.completed ? 'Credenciais criadas com sucesso!' : 'Criando credenciais...'}
                                                     </span>
                                                 </div>
-                                                
+
                                                 {credentialCreationProgress.total > 0 && (
                                                     <div className="space-y-2">
                                                         <div className="flex justify-between text-sm text-purple-700">
                                                             <span>Progresso: {credentialCreationProgress.current}/{credentialCreationProgress.total}</span>
                                                             <span>{Math.round((credentialCreationProgress.current / credentialCreationProgress.total) * 100)}%</span>
                                                         </div>
-                                                        
+
                                                         <div className="w-full bg-purple-200 rounded-full h-2">
-                                                            <div 
+                                                            <div
                                                                 className="bg-purple-600 h-2 rounded-full transition-all duration-300 ease-out"
                                                                 style={{ width: `${(credentialCreationProgress.current / credentialCreationProgress.total) * 100}%` }}
                                                             ></div>
                                                         </div>
-                                                        
+
                                                         {!credentialCreationProgress.completed && credentialCreationProgress.currentItem && (
                                                             <div className="text-sm text-purple-600">
                                                                 Criando: <span className="font-medium">{credentialCreationProgress.currentItem}</span>
