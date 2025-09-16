@@ -519,7 +519,7 @@ export default function EventoDetalhesPage() {
             ? eventos.find(e => String(e.id) === String(params.id))
             : undefined
 
-        // Debug temporário para verificar estrutura dos dados
+        // Debug detalhado para verificar estrutura dos dados
         if (foundEvent) {
             console.log('🔍 Evento encontrado:', {
                 id: foundEvent.id,
@@ -529,15 +529,14 @@ export default function EventoDetalhesPage() {
                 desmontagem: foundEvent.desmontagem,
                 montagemType: typeof foundEvent.montagem,
                 eventoType: typeof foundEvent.evento,
-                desmontagemType: typeof foundEvent.desmontagem,
-                // Campos legacy
-                setupStartDate: foundEvent.setupStartDate,
-                setupEndDate: foundEvent.setupEndDate,
-                preparationStartDate: foundEvent.preparationStartDate,
-                preparationEndDate: foundEvent.preparationEndDate,
-                finalizationStartDate: foundEvent.finalizationStartDate,
-                finalizationEndDate: foundEvent.finalizationEndDate
+                desmontagemType: typeof foundEvent.desmontagem
             })
+
+            // Debug específico das fases
+            console.log('🔧 Debug das fases do evento:')
+            console.log('📦 Montagem raw:', JSON.stringify(foundEvent.montagem, null, 2))
+            console.log('🎭 Evento raw:', JSON.stringify(foundEvent.evento, null, 2))
+            console.log('🔧 Desmontagem raw:', JSON.stringify(foundEvent.desmontagem, null, 2))
         }
 
         return foundEvent
@@ -643,7 +642,7 @@ export default function EventoDetalhesPage() {
         return []
     }, [])
 
-    // Função para gerar tabs dos dias do evento com suporte a turnos
+    // Função para gerar tabs dos dias do evento usando apenas a nova estrutura
     const getEventDays = useCallback((): Array<{
         id: string
         label: string
@@ -666,11 +665,12 @@ export default function EventoDetalhesPage() {
             period?: 'diurno' | 'noturno' | 'dia_inteiro'
         }> = []
 
-        // Usar a nova estrutura SimpleEventDay se disponível com suporte a turnos
-        const montagemData = ensureArray(evento.montagem)
-        console.log('🔧 Processando montagem:', montagemData)
-        if (montagemData.length > 0) {
-            montagemData.forEach(day => {
+        // Função helper para processar cada fase
+        const processPhaseData = (phaseData: any[], phaseType: 'montagem' | 'evento' | 'desmontagem', phaseLabel: string) => {
+            const data = ensureArray(phaseData)
+            console.log(`🔧 Processando ${phaseType}:`, data)
+
+            data.forEach(day => {
                 if (day && day.date && day.period) {
                     try {
                         const dateStr = formatEventDate(day.date)
@@ -680,171 +680,67 @@ export default function EventoDetalhesPage() {
                             : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
                         const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
 
-                        console.log(`✅ Adicionando montagem: ${dateStr} - ${periodLabel}`)
+                        console.log(`✅ Adicionando ${phaseType}: ${dateStr} - ${periodLabel}`)
                         days.push({
-                            id: `${dateISO}-montagem-${day.period}`,
-                            label: `${dateStr} (MONTAGEM - ${periodLabel})`,
+                            id: `${dateISO}-${phaseType}-${day.period}`,
+                            label: `${dateStr} (${phaseLabel.toUpperCase()} - ${periodLabel})`,
                             date: dateStr,
-                            type: 'montagem',
+                            type: phaseType,
                             period: day.period
                         })
                     } catch (error) {
-                        console.error('❌ Erro ao processar data da montagem:', day, error)
+                        console.error(`❌ Erro ao processar data da ${phaseType}:`, day, error)
                     }
                 }
             })
-        } else if (evento.setupStartDate && evento.setupEndDate) {
-            // Fallback para estrutura antiga com suporte a turnos
-            const startDate = new Date(evento.setupStartDate)
-            const endDate = new Date(evento.setupEndDate)
-            for (
-                let date = new Date(startDate);
-                date <= endDate;
-                date.setDate(date.getDate() + 1)
-            ) {
-                // ✅ CORREÇÃO: Usar UTC para evitar problemas de fuso horário
-                const year = date.getUTCFullYear()
-                const month = (date.getUTCMonth() + 1).toString().padStart(2, '0')
-                const day = date.getUTCDate().toString().padStart(2, '0')
-                const dateISO = `${year}-${month}-${day}`
-                const dateStr = `${day}/${month}/${year}`
-
-                    // Adicionar ambos os períodos (diurno e noturno) para cada data
-                    ; (['diurno', 'noturno'] as Array<'diurno' | 'noturno'>).forEach((period) => {
-                        const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno'
-                        const periodTyped = period as 'diurno' | 'noturno'
-                        days.push({
-                            id: `${dateISO}-montagem-${periodTyped}`,
-                            label: `${dateStr} (MONTAGEM - ${periodLabel})`,
-                            date: dateStr,
-                            type: 'montagem',
-                            period: periodTyped
-                        })
-                    })
-
-            }
         }
 
-        // Adicionar dias de Evento/evento com suporte a turnos
-        const eventoData = ensureArray(evento.evento)
-        console.log('🔧 Processando evento:', eventoData)
-        if (eventoData.length > 0) {
-            eventoData.forEach(day => {
-                if (day && day.date && day.period) {
-                    try {
-                        const dateStr = formatEventDate(day.date)
-                        // ✅ CORREÇÃO: Extrair dateISO diretamente da string para evitar problemas de fuso horário
-                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/)
-                            ? day.date.split('T')[0]
-                            : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
-                        const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
+        // Processar todas as fases na ordem correta
+        processPhaseData(evento.montagem, 'montagem', 'montagem')
+        processPhaseData(evento.evento, 'evento', 'evento')
+        processPhaseData(evento.desmontagem, 'desmontagem', 'desmontagem')
 
-                        console.log(`✅ Adicionando evento: ${dateStr} - ${periodLabel}`)
-                        days.push({
-                            id: `${dateISO}-evento-${day.period}`,
-                            label: `${dateStr} (EVENTO - ${periodLabel})`,
-                            date: dateStr,
-                            type: 'evento',
-                            period: day.period
-                        })
-                    } catch (error) {
-                        console.error('❌ Erro ao processar data do evento:', day, error)
-                    }
-                }
-            })
-        } else if (evento.preparationStartDate && evento.preparationEndDate) {
-            // Fallback para estrutura antiga com suporte a turnos
-            const startDate = new Date(evento.preparationStartDate)
-            const endDate = new Date(evento.preparationEndDate)
-            for (
-                let date = new Date(startDate);
-                date <= endDate;
-                date.setDate(date.getDate() + 1)
-            ) {
-                // ✅ CORREÇÃO: Usar UTC para evitar problemas de fuso horário
-                const year = date.getUTCFullYear()
-                const month = (date.getUTCMonth() + 1).toString().padStart(2, '0')
-                const day = date.getUTCDate().toString().padStart(2, '0')
-                const dateISO = `${year}-${month}-${day}`
-                const dateStr = `${day}/${month}/${year}`;
+        // Ordenar por data e período para garantir ordem cronológica
+        days.sort((a, b) => {
+            // Extrair dateISO do ID para ordenação
+            const dateA = a.id.split('-').slice(0, 3).join('-')
+            const dateB = b.id.split('-').slice(0, 3).join('-')
 
-                // Adicionar ambos os períodos (diurno e noturno) para cada data
-                (['diurno', 'noturno'] as Array<'diurno' | 'noturno'>).forEach(period => {
-                    const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno'
+            // Primeiro, ordenar por data
+            const dateCompare = dateA.localeCompare(dateB)
+            if (dateCompare !== 0) return dateCompare
 
-                    const periodTyped = period as 'diurno' | 'noturno'
-                    days.push({
-                        id: `${dateISO}-evento-${periodTyped}`,
-                        label: `${dateStr} (EVENTO - ${periodTyped === 'diurno' ? 'Diurno' : 'Noturno'})`,
-                        date: dateStr,
-                        type: 'evento',
-                        period: periodTyped
-                    })
+            // Se mesma data, ordenar por período (diurno antes de noturno)
+            const periodOrder = { 'diurno': 0, 'dia_inteiro': 1, 'noturno': 2 }
+            const periodA = a.period || 'diurno'
+            const periodB = b.period || 'diurno'
 
-                })
+            return (periodOrder[periodA] || 0) - (periodOrder[periodB] || 0)
+        })
+
+        // Debug detalhado para investigar o problema
+        console.log('🎯 Dias finais gerados (ordenados):', days)
+        console.log('🔍 Debug detalhado por tipo:')
+        console.log('📦 Montagem:', days.filter(d => d.type === 'montagem'))
+        console.log('🎭 Evento:', days.filter(d => d.type === 'evento'))
+        console.log('🔧 Desmontagem:', days.filter(d => d.type === 'desmontagem'))
+
+        // Verificar se há conflitos de data/período
+        const conflicts = new Map<string, any[]>()
+        days.forEach(day => {
+            const key = `${day.date}-${day.period}`
+            if (!conflicts.has(key)) {
+                conflicts.set(key, [])
             }
-        }
+            conflicts.get(key)!.push(day)
+        })
 
-        // Adicionar dias de finalização com suporte a turnos
-        const desmontagemData = ensureArray(evento.desmontagem)
-        console.log('🔧 Processando desmontagem:', desmontagemData)
-        if (desmontagemData.length > 0) {
-            desmontagemData.forEach(day => {
-                if (day && day.date && day.period) {
-                    try {
-                        const dateStr = formatEventDate(day.date)
-                        // ✅ CORREÇÃO: Extrair dateISO diretamente da string para evitar problemas de fuso horário
-                        const dateISO = day.date.match(/^\d{4}-\d{2}-\d{2}/)
-                            ? day.date.split('T')[0]
-                            : new Date(day.date + 'T12:00:00').toISOString().split('T')[0]
-                        const periodLabel = day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
-
-                        console.log(`✅ Adicionando desmontagem: ${dateStr} - ${periodLabel}`)
-                        days.push({
-                            id: `${dateISO}-desmontagem-${day.period}`,
-                            label: `${dateStr} (DESMONTAGEM - ${periodLabel})`,
-                            date: dateStr,
-                            type: 'desmontagem',
-                            period: day.period
-                        })
-                    } catch (error) {
-                        console.error('❌ Erro ao processar data da desmontagem:', day, error)
-                    }
-                }
-            })
-        } else if (evento.finalizationStartDate && evento.finalizationEndDate) {
-            // Fallback para estrutura antiga com suporte a turnos
-            const startDate = new Date(evento.finalizationStartDate)
-            const endDate = new Date(evento.finalizationEndDate)
-            for (
-                let date = new Date(startDate);
-                date <= endDate;
-                date.setDate(date.getDate() + 1)
-            ) {
-                // ✅ CORREÇÃO: Usar UTC para evitar problemas de fuso horário
-                const year = date.getUTCFullYear()
-                const month = (date.getUTCMonth() + 1).toString().padStart(2, '0')
-                const day = date.getUTCDate().toString().padStart(2, '0')
-                const dateISO = `${year}-${month}-${day}`
-                const dateStr = `${day}/${month}/${year}`;
-
-                // Adicionar ambos os períodos (diurno e noturno) para cada data
-                (['diurno', 'noturno'] as const).forEach((period) => {
-                    const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno'
-
-                    days.push({
-                        id: `${dateISO}-finalizacao-${period}`,
-                        label: `${dateStr} (FINALIZAÇÃO - ${periodLabel})`,
-                        date: dateStr,
-                        type: 'finalizacao',
-                        period: period
-                    })
-                })
-
+        conflicts.forEach((dayList, key) => {
+            if (dayList.length > 1) {
+                console.warn(`⚠️ Conflito detectado para ${key}:`, dayList)
             }
-        }
+        })
 
-        console.log('🎯 Dias finais gerados:', days)
         return days
     }, [evento, ensureArray])
 
@@ -907,7 +803,7 @@ export default function EventoDetalhesPage() {
                     return 'border-yellow-500 text-yellow-600 bg-yellow-50'
                 case 'evento':
                     return 'border-blue-500 text-blue-600 bg-blue-50'
-                case 'finalizacao':
+                case 'desmontagem':
                     return 'border-purple-500 text-purple-600 bg-purple-50'
                 default:
                     return 'border-purple-500 text-purple-600 bg-purple-50'
@@ -918,7 +814,7 @@ export default function EventoDetalhesPage() {
                     return 'hover:text-yellow-700 hover:border-yellow-300'
                 case 'evento':
                     return 'hover:text-blue-700 hover:border-blue-300'
-                case 'finalizacao':
+                case 'desmontagem':
                     return 'hover:text-purple-700 hover:border-purple-300'
                 default:
                     return 'hover:text-gray-700 hover:border-gray-300'
@@ -3805,8 +3701,8 @@ export default function EventoDetalhesPage() {
                                                         <span className="text-xs opacity-75">
                                                             {day.type === 'montagem' ? 'MONTAGEM' :
                                                                 day.type === 'evento' ? 'EVENTO' :
-                                                                    day.type === 'finalizacao' ? 'FINALIZAÇÃO' :
-                                                                        'EVENTO'}
+                                                                    day.type === 'desmontagem' ? 'DESMONTAGEM' :
+                                                                        day.type.toUpperCase()}
                                                         </span>
                                                         {day.period && (
                                                             <span className="text-xs opacity-60">
