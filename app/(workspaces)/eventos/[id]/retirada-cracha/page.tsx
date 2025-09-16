@@ -25,6 +25,7 @@ import {
   Badge as BadgeIcon,
   Download,
   Upload,
+  Loader2,
   History,
   Package,
   Sun,
@@ -53,6 +54,7 @@ import {
   useProcessBadgePickup
 } from '@/features/eventos/api/mutation/use-badge-pickup-mutations'
 import { BadgePickup } from '@/features/eventos/actions/badge-pickup'
+import { useExportPDF } from "@/features/eventos/api/mutation/use-export-pdf"
 
 export default function RetiradaCrachaPage() {
   const params = useParams()
@@ -114,6 +116,7 @@ export default function RetiradaCrachaPage() {
   const updateBadgePickupMutation = useUpdateBadgePickup()
   const deleteBadgePickupMutation = useDeleteBadgePickup()
   const processBadgePickupMutation = useProcessBadgePickup()
+  const exportPDFMutation = useExportPDF()
 
   // Buscar dados do evento
   const evento = useMemo(() => {
@@ -151,7 +154,8 @@ export default function RetiradaCrachaPage() {
               return
             }
 
-            const formattedDate = dateObj.toISOString().split('T')[0]
+            // Corrigir timezone usando T12:00:00.000Z para evitar datas invertidas
+            const formattedDate = new Date(item.date + 'T12:00:00.000Z').toISOString().split('T')[0]
             const period = item.period || 'dia_inteiro'
 
             const periodLabel = period === 'diurno' ? '☀️ Diurno' :
@@ -161,7 +165,8 @@ export default function RetiradaCrachaPage() {
 
             days.push({
               id: shiftId,
-              label: `${stageName} - ${formattedDate} (${periodLabel})`,
+              // Formatar data em DD/MM/YYYY para exibição
+              label: `${stageName} - ${new Date(item.date + 'T12:00:00.000Z').toLocaleDateString('pt-BR')} (${periodLabel})`,
               date: formattedDate,
               type: stage,
               period: period as 'diurno' | 'noturno' | 'dia_inteiro'
@@ -719,6 +724,46 @@ OBSERVAÇÕES:
     })
   }
 
+  // Função para exportar relatório PDF
+  const handleExportPDF = () => {
+    if (!evento || filteredBadges.length === 0) {
+      toast.error('Não há dados para exportar')
+      return
+    }
+
+    // Preparar dados para exportação
+    const exportData = filteredBadges.map(badge => {
+      const dayInfo = eventDays.find(day => day.id === badge.shiftId)
+      return {
+        nome: badge.nome || '',
+        cpf: badge.cpf || '',
+        empresa: badge.empresa || '',
+        turno: dayInfo?.label || badge.shiftId || '',
+        status: badge.status === 'pendente' ? 'Pendente' : 'Retirado',
+        tipoRetirada: badge.status === 'retirada'
+          ? (badge.isSelfPickup ? 'Próprio' : 'Terceiro')
+          : '',
+        quemRetirou: !badge.isSelfPickup && badge.status === 'retirada'
+          ? (badge.pickedUpBy || '')
+          : '',
+        empresaRetirou: !badge.isSelfPickup && badge.status === 'retirada'
+          ? (badge.pickerCompany || '')
+          : '',
+        dataRetirada: badge.updatedAt && badge.status === 'retirada'
+          ? new Date(badge.updatedAt).toLocaleDateString('pt-BR')
+          : '',
+      }
+    })
+
+    const titulo = `Relatório de Retirada de Crachás - ${evento.name}`
+
+    exportPDFMutation.mutate({
+      titulo,
+      tipo: "retiradaCrachas",
+      dados: exportData
+    })
+  }
+
   const getStatusBadge = (status: string, isSelfPickup?: boolean) => {
     if (status === 'pendente') {
       return (
@@ -777,8 +822,17 @@ OBSERVAÇÕES:
               <Upload className="h-4 w-4 mr-2" />
               Importar Excel
             </Button>
-            <Button variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPDF}
+              disabled={exportPDFMutation.isPending || filteredBadges.length === 0}
+            >
+              {exportPDFMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
               Exportar
             </Button>
             <Button onClick={() => setIsModalOpen(true)}>
@@ -868,13 +922,47 @@ OBSERVAÇÕES:
                 <SelectTrigger className="w-64">
                   <SelectValue placeholder="Todos os turnos" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-w-lg">
                   <SelectItem value="all">Todos os turnos</SelectItem>
-                  {eventDays.map(day => (
-                    <SelectItem key={day.id} value={day.id}>
-                      {day.label}
-                    </SelectItem>
-                  ))}
+                  {eventDays.map(day => {
+                    const stageColors = {
+                      montagem: { text: 'text-blue-800', badge: 'bg-blue-100' },
+                      evento: { text: 'text-green-800', badge: 'bg-green-100' },
+                      desmontagem: { text: 'text-orange-800', badge: 'bg-orange-100' }
+                    }
+                    const colors = stageColors[day.type as keyof typeof stageColors] || stageColors.evento
+
+                    return (
+                      <SelectItem key={day.id} value={day.id}>
+                        <div className="flex items-center gap-2 w-full">
+                          {/* Badge da etapa */}
+                          <span className={`${colors.badge} ${colors.text} px-2 py-1 rounded-full text-xs font-medium uppercase`}>
+                            {day.type}
+                          </span>
+                          {/* Ícone do período */}
+                          <div className="flex items-center gap-1">
+                            {day.period === 'diurno' && <Sun className="h-3 w-3 text-yellow-500" />}
+                            {day.period === 'noturno' && <Moon className="h-3 w-3 text-blue-600" />}
+                            {day.period === 'dia_inteiro' && (
+                              <div className="flex gap-0.5">
+                                <Sun className="h-2.5 w-2.5 text-yellow-500" />
+                                <Moon className="h-2.5 w-2.5 text-blue-600" />
+                              </div>
+                            )}
+                            <span className="text-xs text-gray-600">
+                              {day.period === 'diurno' ? 'Diurno' :
+                                day.period === 'noturno' ? 'Noturno' :
+                                  'Dia Inteiro'}
+                            </span>
+                          </div>
+                          {/* Data formatada */}
+                          <span className="text-sm font-medium text-gray-900 ml-auto">
+                            {new Date(day.date + 'T12:00:00.000Z').toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
               <div className="flex items-center space-x-2">
@@ -1084,12 +1172,46 @@ OBSERVAÇÕES:
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o turno" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {eventDays.map(day => (
-                      <SelectItem key={day.id} value={day.id}>
-                        {day.label}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="max-w-lg">
+                    {eventDays.map(day => {
+                      const stageColors = {
+                        montagem: { text: 'text-blue-800', badge: 'bg-blue-100' },
+                        evento: { text: 'text-green-800', badge: 'bg-green-100' },
+                        desmontagem: { text: 'text-orange-800', badge: 'bg-orange-100' }
+                      }
+                      const colors = stageColors[day.type as keyof typeof stageColors] || stageColors.evento
+
+                      return (
+                        <SelectItem key={day.id} value={day.id}>
+                          <div className="flex items-center gap-2 w-full">
+                            {/* Badge da etapa */}
+                            <span className={`${colors.badge} ${colors.text} px-2 py-1 rounded-full text-xs font-medium uppercase`}>
+                              {day.type}
+                            </span>
+                            {/* Ícone do período */}
+                            <div className="flex items-center gap-1">
+                              {day.period === 'diurno' && <Sun className="h-3 w-3 text-yellow-500" />}
+                              {day.period === 'noturno' && <Moon className="h-3 w-3 text-blue-600" />}
+                              {day.period === 'dia_inteiro' && (
+                                <div className="flex gap-0.5">
+                                  <Sun className="h-2.5 w-2.5 text-yellow-500" />
+                                  <Moon className="h-2.5 w-2.5 text-blue-600" />
+                                </div>
+                              )}
+                              <span className="text-xs text-gray-600">
+                                {day.period === 'diurno' ? 'Diurno' :
+                                  day.period === 'noturno' ? 'Noturno' :
+                                    'Dia Inteiro'}
+                              </span>
+                            </div>
+                            {/* Data formatada */}
+                            <span className="text-sm font-medium text-gray-900 ml-auto">
+                              {new Date(day.date + 'T12:00:00.000Z').toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -1217,12 +1339,46 @@ OBSERVAÇÕES:
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o turno para todas as entradas" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {eventDays.map(day => (
-                      <SelectItem key={day.id} value={day.id}>
-                        {day.label}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="max-w-lg">
+                    {eventDays.map(day => {
+                      const stageColors = {
+                        montagem: { text: 'text-blue-800', badge: 'bg-blue-100' },
+                        evento: { text: 'text-green-800', badge: 'bg-green-100' },
+                        desmontagem: { text: 'text-orange-800', badge: 'bg-orange-100' }
+                      }
+                      const colors = stageColors[day.type as keyof typeof stageColors] || stageColors.evento
+
+                      return (
+                        <SelectItem key={day.id} value={day.id}>
+                          <div className="flex items-center gap-2 w-full">
+                            {/* Badge da etapa */}
+                            <span className={`${colors.badge} ${colors.text} px-2 py-1 rounded-full text-xs font-medium uppercase`}>
+                              {day.type}
+                            </span>
+                            {/* Ícone do período */}
+                            <div className="flex items-center gap-1">
+                              {day.period === 'diurno' && <Sun className="h-3 w-3 text-yellow-500" />}
+                              {day.period === 'noturno' && <Moon className="h-3 w-3 text-blue-600" />}
+                              {day.period === 'dia_inteiro' && (
+                                <div className="flex gap-0.5">
+                                  <Sun className="h-2.5 w-2.5 text-yellow-500" />
+                                  <Moon className="h-2.5 w-2.5 text-blue-600" />
+                                </div>
+                              )}
+                              <span className="text-xs text-gray-600">
+                                {day.period === 'diurno' ? 'Diurno' :
+                                  day.period === 'noturno' ? 'Noturno' :
+                                    'Dia Inteiro'}
+                              </span>
+                            </div>
+                            {/* Data formatada */}
+                            <span className="text-sm font-medium text-gray-900 ml-auto">
+                              {new Date(day.date + 'T12:00:00.000Z').toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -1426,19 +1582,71 @@ OBSERVAÇÕES:
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto border rounded-lg p-3">
-                    {eventDays.map((day) => (
-                      <div key={day.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`shift-${day.id}`}
-                          checked={selectedShifts.includes(day.id)}
-                          onCheckedChange={() => toggleShiftSelection(day.id)}
-                        />
-                        <Label htmlFor={`shift-${day.id}`} className="text-sm flex-1 cursor-pointer">
-                          {day.label}
-                        </Label>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto border rounded-lg p-4">
+                    {eventDays.map((day) => {
+                      const isSelected = selectedShifts.includes(day.id)
+                      const stageColors = {
+                        montagem: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', badge: 'bg-blue-100' },
+                        evento: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', badge: 'bg-green-100' },
+                        desmontagem: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-800', badge: 'bg-orange-100' }
+                      }
+                      const colors = stageColors[day.type as keyof typeof stageColors] || stageColors.evento
+
+                      return (
+                        <div
+                          key={day.id}
+                          className={`border rounded-lg p-3 transition-all cursor-pointer hover:shadow-sm ${isSelected
+                            ? `${colors.bg} ${colors.border} ring-2 ring-offset-1 ring-opacity-50`
+                            : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          onClick={() => toggleShiftSelection(day.id)}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <Checkbox
+                              id={`shift-${day.id}`}
+                              checked={isSelected}
+                              onCheckedChange={() => toggleShiftSelection(day.id)}
+                              className="pointer-events-none"
+                            />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                {/* Badge da etapa */}
+                                <span
+                                  className={`${colors.badge} ${colors.text} px-2 py-1 rounded-full text-xs font-medium uppercase`}
+                                >
+                                  {day.type}
+                                </span>
+                                {/* Ícone do período */}
+                                <div className="flex items-center gap-1">
+                                  {day.period === 'diurno' && <Sun className="h-4 w-4 text-yellow-500" />}
+                                  {day.period === 'noturno' && <Moon className="h-4 w-4 text-blue-600" />}
+                                  {day.period === 'dia_inteiro' && (
+                                    <div className="flex gap-0.5">
+                                      <Sun className="h-3 w-3 text-yellow-500" />
+                                      <Moon className="h-3 w-3 text-blue-600" />
+                                    </div>
+                                  )}
+                                  <span className="text-xs text-gray-600 ml-1">
+                                    {day.period === 'diurno' ? 'Diurno' :
+                                      day.period === 'noturno' ? 'Noturno' :
+                                        'Dia Inteiro'}
+                                  </span>
+                                </div>
+                              </div>
+                              {/* Data formatada */}
+                              <div className="text-sm font-medium text-gray-900">
+                                {new Date(day.date + 'T12:00:00.000Z').toLocaleDateString('pt-BR', {
+                                  weekday: 'long',
+                                  day: '2-digit',
+                                  month: 'long',
+                                  year: 'numeric'
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
 
                   {selectedShifts.length > 0 && (
@@ -1650,10 +1858,10 @@ OBSERVAÇÕES:
 
                         {!selectedBadgeForView.isSelfPickup && (
                           <>
-                            {selectedBadgeForView.nome && (
+                            {selectedBadgeForView.pickedUpBy && (
                               <div>
                                 <Label className="text-xs text-gray-500">Quem retirou</Label>
-                                <p className="text-sm text-gray-900">{selectedBadgeForView.nome}</p>
+                                <p className="text-sm text-gray-900">{selectedBadgeForView.pickedUpBy}</p>
                               </div>
                             )}
                             {selectedBadgeForView.pickerCompany && (

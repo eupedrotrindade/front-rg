@@ -16,6 +16,7 @@ import { getEmpresa } from "@/features/eventos/actions/get-empresas"
 import { getEvent } from "@/features/eventos/actions/get-event"
 
 import { updateEventParticipant } from "@/features/eventos/actions/update-event-participant"
+import { getMovementCredentialByParticipant } from "@/features/eventos/actions/movement-credentials"
 import { useImportRequestsByEmpresa } from "@/features/eventos/api/query/use-import-requests"
 import type { Empresa, EventParticipant, Event, ImportRequest, EventAttendance, Credential } from "@/features/eventos/types"
 import { apiClient } from "@/lib/api-client"
@@ -116,6 +117,9 @@ export default function PublicEmpresaPage() {
     // Dialog states
     const [showColumnDialog, setShowColumnDialog] = useState(false)
 
+    // Estado para armazenar os códigos das pulseiras dos participantes
+    const [participantWristbandCodes, setParticipantWristbandCodes] = useState<Map<string, string>>(new Map())
+
     const { user } = useClerk()
     const isClerkUser = !!user
 
@@ -168,7 +172,7 @@ export default function PublicEmpresaPage() {
     // Hook para buscar credenciais do evento
     const { data: credentials = [] } = useCredentialsByEvent(eventId)
 
-    // Função para formatar data para o formato esperado pela API (DD-MM-YYYY)
+    // Função para formatar data para o formato esperado pela API (DD-MM-YYYY) - corrigida timezone
     const formatDateForAPI = (dateString: string) => {
         if (!dateString) return ''
 
@@ -179,10 +183,11 @@ export default function PublicEmpresaPage() {
 
         // Se está no formato ISO (YYYY-MM-DD)
         try {
-            const date = new Date(dateString)
-            const day = date.getDate().toString().padStart(2, '0')
-            const month = (date.getMonth() + 1).toString().padStart(2, '0')
-            const year = date.getFullYear()
+            // Usar UTC para evitar problemas de timezone
+            const date = new Date(dateString + 'T12:00:00.000Z')
+            const day = date.getUTCDate().toString().padStart(2, '0')
+            const month = (date.getUTCMonth() + 1).toString().padStart(2, '0')
+            const year = date.getUTCFullYear()
             return `${day}-${month}-${year}`
         } catch {
             return dateString
@@ -202,7 +207,7 @@ export default function PublicEmpresaPage() {
 
             return {
                 dateISO: `${year}-${month}-${day}`,
-                dateFormatted: formatDate(`${year}-${month}-${day}T00:00:00`),
+                dateFormatted: formatDate(`${year}-${month}-${day}`),
                 stage,
                 period
             };
@@ -211,7 +216,7 @@ export default function PublicEmpresaPage() {
         // Fallback para formato simples (apenas data)
         return {
             dateISO: shiftId,
-            dateFormatted: formatDate(shiftId + 'T00:00:00'),
+            dateFormatted: formatDate(shiftId),
             stage: 'evento',
             period: 'diurno' as const
         };
@@ -231,17 +236,92 @@ export default function PublicEmpresaPage() {
         shiftInfo ? shiftInfo.period : ''
     );
 
-    // Preparar dados para exportação
-    const prepareExportData = () => {
+    // Filtrar e ordenar participantes para a tabela
+    const filteredAndSortedParticipants = React.useMemo(() => {
+        let filtered = participantsByDay
+
+        // Aplicar busca por nome/CPF
+        if (searchTerm.trim()) {
+            const term = searchTerm.toUpperCase().trim()
+            filtered = filtered.filter(p => {
+                const name = p.name?.toUpperCase() || ''
+                const cpf = p.cpf?.replace(/\D/g, '') || ''
+                const searchCpf = term.replace(/\D/g, '')
+                return name.includes(term) || cpf.includes(searchCpf)
+            })
+        }
+
+        // Aplicar filtros
+        if (filtros.funcao && filtros.funcao !== '') {
+            filtered = filtered.filter(p => p.role === filtros.funcao)
+        }
+
+        if (filtros.status && filtros.status !== 'all') {
+            filtered = filtered.filter(p => {
+                const attendanceStatus = participantsAttendanceStatus.get(p.id)
+                if (filtros.status === 'present') {
+                    return attendanceStatus?.checkIn !== null
+                } else if (filtros.status === 'absent') {
+                    return attendanceStatus?.checkIn === null
+                }
+                return true
+            })
+        }
+
+        // Aplicar ordenação
+        if (ordenacao.campo) {
+            filtered.sort((a, b) => {
+                let aVal: string = ''
+                let bVal: string = ''
+
+                switch (ordenacao.campo) {
+                    case 'name':
+                        aVal = a.name || ''
+                        bVal = b.name || ''
+                        break
+                    case 'cpf':
+                        aVal = a.cpf || ''
+                        bVal = b.cpf || ''
+                        break
+                    case 'role':
+                        aVal = a.role || ''
+                        bVal = b.role || ''
+                        break
+                    case 'company':
+                        aVal = a.company || ''
+                        bVal = b.company || ''
+                        break
+                    default:
+                        return 0
+                }
+
+                if (ordenacao.direcao === 'asc') {
+                    return aVal.localeCompare(bVal)
+                } else {
+                    return bVal.localeCompare(aVal)
+                }
+            })
+        }
+
+        return filtered
+    }, [participantsByDay, searchTerm, filtros, ordenacao, participantsAttendanceStatus])
+
+    // Preparar dados para exportação (memoizado para reagir às mudanças dos códigos das pulseiras)
+    const exportData = React.useMemo(() => {
         return filteredAndSortedParticipants.map((participant) => {
             const attendanceStatus = participantsAttendanceStatus.get(participant.id)
             const credential = credentials.find(c => c.id === participant.credentialId)
+
+            // Obter número da pulseira do movement credential
+            const wristbandCode = participantWristbandCodes.get(participant.id);
+            const numeroPulseira = wristbandCode || participant.braceletNumber || `#${participant.id.slice(-4).toUpperCase()}`
 
             return {
                 nome: participant.name?.toUpperCase() || '',
                 cpf: participant.cpf || '',
                 empresa: participant.company?.toUpperCase() || '',
                 funcao: participant.role?.toUpperCase() || '',
+                numeroPulseira: numeroPulseira,
                 pulseira: credential?.nome || '',
                 tipoPulseira: credential?.nome || '',
                 checkIn: attendanceStatus?.checkIn || null,
@@ -252,13 +332,13 @@ export default function PublicEmpresaPage() {
                         attendanceStatus.checkIn ? 'Presente' : 'Pendente'
             }
         })
-    }
+    }, [filteredAndSortedParticipants, participantsAttendanceStatus, credentials, participantWristbandCodes])
 
     // Função para abrir dialog de exportação PDF
     const handleExportPDFClick = () => {
         if (!empresa || !event) return
 
-        if (filteredAndSortedParticipants.length === 0) {
+        if (exportData.length === 0) {
             toast.error("Nenhum participante para exportar")
             return
         }
@@ -270,16 +350,21 @@ export default function PublicEmpresaPage() {
     const exportPDF = (config: ExportConfig) => {
         if (!empresa || !event) return
 
-        const exportData = prepareExportData()
-
         if (exportData.length === 0) {
             toast.error("Nenhum participante para exportar")
             return
         }
 
+        // Preparar título detalhado com informações do evento, empresa e data
+        const dadosTurno = selectedDay && shiftInfo ?
+            `${shiftInfo.dateFormatted} - ${shiftInfo.stage.toUpperCase()} - ${shiftInfo.period === 'diurno' ? 'Diurno' : shiftInfo.period === 'noturno' ? 'Noturno' : shiftInfo.period === 'dia_inteiro' ? 'Dia Inteiro' : 'Diurno'}` :
+            'Todos os turnos'
+
+        const tituloCompleto = `${event.name}\n${empresa.nome} - ${dadosTurno}`
+
         exportPDFMutation.mutate(
             {
-                titulo: `Relatório de Presença - ${empresa.nome}`,
+                titulo: tituloCompleto,
                 tipo: "filtroEmpresa",
                 dados: exportData,
                 columnConfig: config,
@@ -289,6 +374,12 @@ export default function PublicEmpresaPage() {
                     funcao: "all_functions",
                     status: "",
                     tipoCredencial: "all_credentials"
+                },
+                // Configurações adicionais para layout horizontal
+                layoutConfig: {
+                    orientation: 'landscape', // PDF em formato paisagem
+                    showLogo: true, // Mostrar logo da RG
+                    logoPath: '/assets/logo-rg-black.png' // Caminho para logo preta
                 }
             },
             {
@@ -306,11 +397,12 @@ export default function PublicEmpresaPage() {
     const exportXLSX = () => {
         if (!empresa || !event) return
 
-        const exportData = prepareExportData().map(p => ({
+        const excelData = exportData.map(p => ({
             nome: p.nome,
             cpf: p.cpf,
             funcao: p.funcao || "",
             empresa: p.empresa,
+            numeroPulseira: p.numeroPulseira,
             tipoPulseira: p.tipoPulseira,
             pulseira: p.pulseira,
             checkIn: p.checkIn || "",
@@ -321,14 +413,14 @@ export default function PublicEmpresaPage() {
             cadastradoPor: "Sistema"
         }))
 
-        if (exportData.length === 0) {
+        if (excelData.length === 0) {
             toast.error("Nenhum participante para exportar")
             return
         }
 
         exportXLSXMutation.mutate({
             titulo: `Relatorio_Empresa_${empresa.nome.replace(/\s+/g, '_')}`,
-            dados: exportData,
+            dados: excelData,
             filtros: {
                 dia: selectedDay ? formatDate(selectedDay) : "all",
                 empresa: empresa.nome,
@@ -421,6 +513,35 @@ export default function PublicEmpresaPage() {
         }
     }, [attendanceData])
 
+    // Função para buscar códigos das pulseiras dos participantes
+    const fetchParticipantWristbandCodes = React.useCallback(async (participants: EventParticipant[]) => {
+        if (!eventId || participants.length === 0) return
+
+        const codesMap = new Map<string, string>()
+
+        // Buscar códigos em paralelo para melhor performance
+        const promises = participants.map(async (participant) => {
+            try {
+                const movementCredential = await getMovementCredentialByParticipant(eventId, participant.id)
+                if (movementCredential?.data?.code) {
+                    codesMap.set(participant.id, movementCredential.data.code)
+                }
+            } catch (error) {
+                console.warn(`Erro ao buscar código da pulseira para participante ${participant.id}:`, error)
+            }
+        })
+
+        await Promise.allSettled(promises)
+        setParticipantWristbandCodes(codesMap)
+    }, [eventId])
+
+    // Buscar códigos das pulseiras quando os participantes forem carregados
+    React.useEffect(() => {
+        if (participants.length > 0) {
+            fetchParticipantWristbandCodes(participants)
+        }
+    }, [participants, fetchParticipantWristbandCodes])
+
     useEffect(() => {
         const decoded = decodeToken(token)
         if (!decoded) {
@@ -438,14 +559,28 @@ export default function PublicEmpresaPage() {
         fetchEmpresaData(decoded.empresaId, decoded.eventId)
     }, [token])
 
-    // Função para formatar data
+    // Função para formatar data (corrigida para evitar problemas de timezone)
     const formatDate = (dateString: string) => {
-        const date = new Date(dateString)
-        return date.toLocaleDateString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        })
+        if (!dateString) return ''
+
+        try {
+            // Se já está no formato brasileiro, retornar
+            if (dateString.includes('/')) {
+                return dateString
+            }
+
+            // Para datas ISO (YYYY-MM-DD), usar UTC para evitar timezone
+            const date = new Date(dateString + 'T12:00:00.000Z')
+            return date.toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                timeZone: 'UTC'
+            })
+        } catch (error) {
+            console.warn('Erro ao formatar data:', dateString, error)
+            return dateString
+        }
     }
 
     // Função para gerar dias do evento usando nova estrutura
@@ -477,17 +612,23 @@ export default function PublicEmpresaPage() {
                 // Processar cada item do array
                 dataArray.forEach(item => {
                     if (item && item.date) {
-                        const dateISO = new Date(item.date).toISOString().split('T')[0]; // YYYY-MM-DD para ID
-                        const formattedDate = formatDate(item.date);
+                        // Garantir formato ISO correto e evitar problemas de timezone
+                        let dateISO = item.date
+                        if (typeof item.date === 'string' && !item.date.includes('T')) {
+                            dateISO = item.date // Já deve estar no formato YYYY-MM-DD
+                        } else {
+                            dateISO = new Date(item.date + 'T12:00:00.000Z').toISOString().split('T')[0]
+                        }
+                        const formattedDate = formatDate(dateISO);
 
                         // Usar período do item se disponível, senão calcular baseado na hora
                         let period: 'diurno' | 'noturno' | 'dia_inteiro';
                         if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
                             period = item.period;
                         } else {
-                            // Fallback: calcular baseado na hora
-                            const dateObj = new Date(item.date);
-                            const hour = dateObj.getHours();
+                            // Fallback: calcular baseado na hora (usando UTC para evitar timezone)
+                            const dateObj = new Date(item.date + (item.date.includes('T') ? '' : 'T12:00:00.000Z'));
+                            const hour = dateObj.getUTCHours();
                             period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
                         }
 
@@ -514,13 +655,13 @@ export default function PublicEmpresaPage() {
         if (event.evento) processEventArray(event.evento, 'evento', 'EVENTO');
         if (event.desmontagem) processEventArray(event.desmontagem, 'desmontagem', 'DESMONTAGEM');
 
-        // Fallback para estrutura antiga (manter compatibilidade)
+        // Fallback para estrutura antiga (manter compatibilidade) - corrigido timezone
         if (event.setupStartDate && event.setupEndDate && (!event.montagem || (Array.isArray(event.montagem) && event.montagem.length === 0))) {
-            const startDate = new Date(event.setupStartDate);
-            const endDate = new Date(event.setupEndDate);
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatDate(date.toISOString());
+            const startDate = new Date(event.setupStartDate + 'T12:00:00.000Z');
+            const endDate = new Date(event.setupEndDate + 'T12:00:00.000Z');
+            for (let date = new Date(startDate); date <= endDate; date.setUTCDate(date.getUTCDate() + 1)) {
                 const dateISO = date.toISOString().split('T')[0];
+                const dateStr = formatDate(dateISO);
 
                 days.push({
                     id: `${dateISO}-montagem-diurno`,
@@ -533,11 +674,11 @@ export default function PublicEmpresaPage() {
         }
 
         if (event.preparationStartDate && event.preparationEndDate && (!event.evento || (Array.isArray(event.evento) && event.evento.length === 0))) {
-            const startDate = new Date(event.preparationStartDate);
-            const endDate = new Date(event.preparationEndDate);
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatDate(date.toISOString());
+            const startDate = new Date(event.preparationStartDate + 'T12:00:00.000Z');
+            const endDate = new Date(event.preparationEndDate + 'T12:00:00.000Z');
+            for (let date = new Date(startDate); date <= endDate; date.setUTCDate(date.getUTCDate() + 1)) {
                 const dateISO = date.toISOString().split('T')[0];
+                const dateStr = formatDate(dateISO);
 
                 days.push({
                     id: `${dateISO}-evento-diurno`,
@@ -550,11 +691,11 @@ export default function PublicEmpresaPage() {
         }
 
         if (event.finalizationStartDate && event.finalizationEndDate && (!event.desmontagem || (Array.isArray(event.desmontagem) && event.desmontagem.length === 0))) {
-            const startDate = new Date(event.finalizationStartDate);
-            const endDate = new Date(event.finalizationEndDate);
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                const dateStr = formatDate(date.toISOString());
+            const startDate = new Date(event.finalizationStartDate + 'T12:00:00.000Z');
+            const endDate = new Date(event.finalizationEndDate + 'T12:00:00.000Z');
+            for (let date = new Date(startDate); date <= endDate; date.setUTCDate(date.getUTCDate() + 1)) {
                 const dateISO = date.toISOString().split('T')[0];
+                const dateStr = formatDate(dateISO);
 
                 days.push({
                     id: `${dateISO}-desmontagem-diurno`,
@@ -566,10 +707,11 @@ export default function PublicEmpresaPage() {
             }
         }
 
-        // Ordenar dias cronologicamente
+        // Ordenar dias cronologicamente (corrigido timezone)
         days.sort((a, b) => {
-            const dateA = new Date(a.date.split('/').reverse().join('-'));
-            const dateB = new Date(b.date.split('/').reverse().join('-'));
+            // Converter data brasileira (DD/MM/YYYY) para formato ISO (YYYY-MM-DD) para comparação
+            const dateA = new Date(a.date.split('/').reverse().join('-') + 'T12:00:00.000Z');
+            const dateB = new Date(b.date.split('/').reverse().join('-') + 'T12:00:00.000Z');
             return dateA.getTime() - dateB.getTime();
         });
 
@@ -640,12 +782,13 @@ export default function PublicEmpresaPage() {
         }
     }
 
-    // Função para converter data ISO para formato brasileiro
+    // Função para converter data ISO para formato brasileiro (corrigida timezone)
     const convertIsoToBrazilian = (isoDate: string) => {
         if (!isoDate) return ''
         try {
-            const date = new Date(isoDate)
-            return date.toLocaleDateString('pt-BR')
+            // Usar UTC para evitar problemas de timezone
+            const date = new Date(isoDate + (isoDate.includes('T') ? '' : 'T12:00:00.000Z'))
+            return date.toLocaleDateString('pt-BR', { timeZone: 'UTC' })
         } catch {
             return isoDate
         }
@@ -705,75 +848,6 @@ export default function PublicEmpresaPage() {
         return filtered
     }, [participants, selectedDay])
 
-    // Filtrar e ordenar participantes para a tabela
-    const filteredAndSortedParticipants = React.useMemo(() => {
-        let filtered = participantsByDay
-
-        // Aplicar busca por nome/CPF
-        if (searchTerm.trim()) {
-            const term = searchTerm.toUpperCase().trim()
-            filtered = filtered.filter(p => {
-                const name = p.name?.toUpperCase() || ''
-                const cpf = p.cpf?.replace(/\D/g, '') || ''
-                const searchCpf = term.replace(/\D/g, '')
-                return name.includes(term) || cpf.includes(searchCpf)
-            })
-        }
-
-        // Aplicar filtros
-        if (filtros.funcao && filtros.funcao !== '') {
-            filtered = filtered.filter(p => p.role === filtros.funcao)
-        }
-
-        if (filtros.status && filtros.status !== 'all') {
-            filtered = filtered.filter(p => {
-                const attendanceStatus = participantsAttendanceStatus.get(p.id)
-                if (filtros.status === 'present') {
-                    return attendanceStatus?.checkIn !== null
-                } else if (filtros.status === 'absent') {
-                    return attendanceStatus?.checkIn === null
-                }
-                return true
-            })
-        }
-
-        // Aplicar ordenação
-        if (ordenacao.campo) {
-            filtered.sort((a, b) => {
-                let aVal: string = ''
-                let bVal: string = ''
-
-                switch (ordenacao.campo) {
-                    case 'name':
-                        aVal = a.name || ''
-                        bVal = b.name || ''
-                        break
-                    case 'cpf':
-                        aVal = a.cpf || ''
-                        bVal = b.cpf || ''
-                        break
-                    case 'role':
-                        aVal = a.role || ''
-                        bVal = b.role || ''
-                        break
-                    case 'company':
-                        aVal = a.company || ''
-                        bVal = b.company || ''
-                        break
-                    default:
-                        return 0
-                }
-
-                if (ordenacao.direcao === 'asc') {
-                    return aVal.localeCompare(bVal)
-                } else {
-                    return bVal.localeCompare(aVal)
-                }
-            })
-        }
-
-        return filtered
-    }, [participantsByDay, searchTerm, filtros, ordenacao, participantsAttendanceStatus])
 
     // Obter valores únicos para filtros
     const uniqueValues = React.useMemo(() => {
@@ -1225,7 +1299,7 @@ export default function PublicEmpresaPage() {
                         <div className="text-right">
                             <p className="text-sm text-gray-500">Acesso Público</p>
                             <p className="text-xs text-gray-400">
-                                Expira em {formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())}
+                                Expira em {formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])}
                             </p>
                             {isClerkUser && (
                                 <div className="mt-2">
@@ -1584,26 +1658,33 @@ export default function PublicEmpresaPage() {
                                                                                 </Badge>
                                                                             </TableCell>
                                                                             <TableCell>
-                                                                                {isClerkUser ? (
-                                                                                    <div className="flex items-center space-x-2">
-                                                                                        <Badge variant="outline" className="font-mono text-xs">
-                                                                                            {(() => {
-                                                                                                const credential = credentials.find(c => c.id === participant.credentialId);
-                                                                                                return credential ? credential.nome : 'N/A';
-                                                                                            })()}
-                                                                                        </Badge>
+                                                                                <div className="flex flex-col gap-1">
+                                                                                    {/* Número da Pulseira */}
+                                                                                    <div className="text-sm font-bold text-gray-900">
+                                                                                        {(() => {
+                                                                                            // Buscar código real do movement credential
+                                                                                            const wristbandCode = participantWristbandCodes.get(participant.id);
+                                                                                            if (wristbandCode) {
+                                                                                                return wristbandCode;
+                                                                                            }
+
+                                                                                            // Usar o campo braceletNumber se disponível
+                                                                                            if (participant.braceletNumber) {
+                                                                                                return participant.braceletNumber;
+                                                                                            }
+
+                                                                                            // Fallback: usar os últimos 4 caracteres do ID do participante
+                                                                                            return `#${participant.id.slice(-4).toUpperCase()}`;
+                                                                                        })()}
                                                                                     </div>
-                                                                                ) : (
-                                                                                    <div className="flex items-center space-x-2">
-                                                                                        <Badge variant="outline" className="font-mono text-xs">
-                                                                                            {(() => {
-                                                                                                // Buscar credencial do participante
-                                                                                                const credential = credentials.find(c => c.id === participant.credentialId);
-                                                                                                return credential ? credential.nome : 'N/A';
-                                                                                            })()}
-                                                                                        </Badge>
-                                                                                    </div>
-                                                                                )}
+                                                                                    {/* Tipo da Credencial */}
+                                                                                    <Badge variant="outline" className="font-mono text-xs w-fit">
+                                                                                        {(() => {
+                                                                                            const credential = credentials.find(c => c.id === participant.credentialId);
+                                                                                            return credential ? credential.nome : 'N/A';
+                                                                                        })()}
+                                                                                    </Badge>
+                                                                                </div>
                                                                             </TableCell>
                                                                             <TableCell className="px-4 py-2">
                                                                                 {(() => {

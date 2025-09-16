@@ -914,33 +914,6 @@ export default function RadiosPage() {
                                 />
                                 <span className="text-sm text-gray-600">Apenas ativos</span>
                             </label>
-
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="sm">
-                                        <Download className="w-4 h-4 mr-2" />
-                                        Exportar PDF
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-48">
-                                    <DropdownMenuItem onClick={() => handleExportPDF()}>
-                                        <Download className="w-4 h-4 mr-2" />
-                                        Relatório Geral
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleExportPDF('montagem')}>
-                                        <Settings className="w-4 h-4 mr-2" />
-                                        Apenas Montagem
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleExportPDF('evento')}>
-                                        <Clock className="w-4 h-4 mr-2" />
-                                        Apenas Evento
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleExportPDF('desmontagem')}>
-                                        <X className="w-4 h-4 mr-2" />
-                                        Apenas Desmontagem
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
                         </div>
                     </div>
                 </div>
@@ -1177,9 +1150,7 @@ export default function RadiosPage() {
                     <AlertDialogContent className="max-w-md bg-white text-gray-800 max-h-[80vh] overflow-y-auto">
                         <AlertDialogHeader>
                             <AlertDialogTitle>Nova Atribuição de Rádios</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                Atribuir rádios do estágio {selectedStage?.toUpperCase()} para o período de {selectedDay}
-                            </AlertDialogDescription>
+
                         </AlertDialogHeader>
 
                         <div className="space-y-4 py-4">

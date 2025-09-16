@@ -21,6 +21,7 @@ import { EventVehicle } from '@/features/eventos/actions/create-event-vehicle'
 import ModalNovoVeiculo from '@/components/operador/modalNovoVeiculo'
 import ModalHistoricoVeiculo from '@/components/operador/modalHistoricoVeiculo'
 import { useExcelExportImport } from '@/hooks/use-excel-export-import'
+import { useExportPDF } from "@/features/eventos/api/mutation/use-export-pdf"
 
 export default function VagasPage() {
     const params = useParams()
@@ -45,6 +46,9 @@ export default function VagasPage() {
 
     // Hook para exportar/importar Excel
     const { exportToExcel, importFromExcel, isExporting, isImporting } = useExcelExportImport()
+
+    // Hook para exportar PDF
+    const exportPDFMutation = useExportPDF()
 
     // Queries
     const { data: eventos = [] } = useEventos()
@@ -102,8 +106,8 @@ export default function VagasPage() {
                 // Processar cada item do array
                 dataArray.forEach(item => {
                     if (item && item.date) {
-                        // Garantir que a data está no formato correto
-                        const dateObj = new Date(item.date);
+                        // Garantir que a data está no formato correto (com timezone fix)
+                        const dateObj = new Date(item.date + 'T12:00:00.000Z');
                         if (isNaN(dateObj.getTime())) {
                             console.warn(`Data inválida encontrada: ${item.date}`);
                             return;
@@ -122,7 +126,7 @@ export default function VagasPage() {
                         }
 
                         // Criar ID único baseado na data e período
-                        const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
+                        const dayId = `${new Date(item.date + 'T12:00:00.000Z').toISOString().split('T')[0]}-${stage}-${period}`;
 
                         const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
@@ -487,20 +491,27 @@ export default function VagasPage() {
     const retrieveVehicleMutation = useRetrieveEventVehicle()
 
     // Função para obter cor da tab baseada no tipo
+    // Cores das etapas (stage colors) melhoradas
+    const stageColors = {
+        montagem: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', badge: 'bg-blue-100' },
+        evento: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', badge: 'bg-green-100' },
+        desmontagem: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-800', badge: 'bg-orange-100' }
+    }
+
     const getTabColor = useCallback((type: string, isActive: boolean) => {
         if (isActive) {
             switch (type) {
                 case 'montagem':
                 case 'setup':
-                    return 'border-orange-500 text-orange-600 bg-orange-50'
+                    return 'border-blue-500 text-blue-600 bg-blue-50'
                 case 'evento':
                 case 'event':
                 case 'preparation':
-                    return 'border-blue-500 text-blue-600 bg-blue-50'
+                    return 'border-green-500 text-green-600 bg-green-50'
                 case 'desmontagem':
                 case 'teardown':
                 case 'finalization':
-                    return 'border-red-500 text-red-600 bg-red-50'
+                    return 'border-orange-500 text-orange-600 bg-orange-50'
                 default:
                     return 'border-gray-500 text-gray-600 bg-gray-50'
             }
@@ -508,29 +519,29 @@ export default function VagasPage() {
             switch (type) {
                 case 'montagem':
                 case 'setup':
-                    return 'hover:text-orange-700 hover:border-orange-300'
+                    return 'hover:text-blue-700 hover:border-blue-300'
                 case 'evento':
                 case 'event':
                 case 'preparation':
-                    return 'hover:text-blue-700 hover:border-blue-300'
+                    return 'hover:text-green-700 hover:border-green-300'
                 case 'desmontagem':
                 case 'teardown':
                 case 'finalization':
-                    return 'hover:text-red-700 hover:border-red-300'
+                    return 'hover:text-orange-700 hover:border-orange-300'
                 default:
                     return 'hover:text-gray-700 hover:border-gray-300'
             }
         }
     }, [])
 
-    // Função para obter ícone do período
+    // Função para obter ícone do período com cores melhoradas
     const getPeriodIcon = useCallback((period?: 'diurno' | 'noturno' | 'dia_inteiro') => {
         if (period === 'diurno') {
-            return <Sun className="h-3 w-3 text-yellow-500" />;
+            return <Sun className="h-3 w-3 text-amber-500" />;
         } else if (period === 'noturno') {
-            return <Moon className="h-3 w-3 text-blue-500" />;
+            return <Moon className="h-3 w-3 text-indigo-500" />;
         } else if (period === 'dia_inteiro') {
-            return <Clock className="h-3 w-3 text-purple-500" />;
+            return <Clock className="h-3 w-3 text-violet-500" />;
         }
         return null;
     }, [])
@@ -819,6 +830,46 @@ export default function VagasPage() {
     }
 
     // Funções de importar/exportar
+    const handleExportPDF = () => {
+        if (!filteredVeiculos || filteredVeiculos.length === 0) {
+            toast.error('Não há dados para exportar');
+            return;
+        }
+
+        // Preparar dados para exportação PDF
+        const exportData = filteredVeiculos.map(veiculo => {
+            const dayInfo = eventDays.find(day => day.id === veiculo.shiftId);
+
+            return {
+                empresa: veiculo.empresa || '',
+                modelo: veiculo.modelo || '',
+                placa: veiculo.placa || '',
+                tipo_credencial: veiculo.tipo_de_credencial || '',
+                turno: dayInfo?.label || veiculo.shiftId || '',
+                status: veiculo.retirada === 'retirada' ? 'Retirada' : 'Pendente',
+                data_retirada: veiculo.retrievalDate ? new Date(veiculo.retrievalDate).toLocaleString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }) : '',
+                retirado_por: veiculo.retrievedBy || '',
+                tipo_retirada: veiculo.retrievalType === 'self' ? 'Próprio' :
+                              veiculo.retrievalType === 'third_party' ? 'Terceiro' : '',
+                documento_terceiro: veiculo.thirdPartyDocument || '',
+                observacoes: veiculo.observacoes || ''
+            };
+        });
+
+        // Executar exportação
+        exportPDFMutation.mutate({
+            titulo: `Relatório de Estacionamento - ${evento?.name || 'Evento'}`,
+            tipo: "estacionamento",
+            dados: exportData
+        });
+    };
+
     const handleExportVeiculos = async () => {
         try {
             // Preparar dados para exportação (formato simplificado sem dados de turno)
@@ -1142,13 +1193,13 @@ export default function VagasPage() {
                             </Button>
 
                             <Button
-                                onClick={handleExportVeiculos}
-                                disabled={isExporting || filteredVeiculos.length === 0}
+                                onClick={handleExportPDF}
+                                disabled={exportPDFMutation.isPending || filteredVeiculos.length === 0}
                                 variant="outline"
                                 className="border-green-500 text-green-600 hover:bg-green-50"
                             >
                                 <Download className="w-4 h-4 mr-2" />
-                                {isExporting ? 'Exportando...' : 'Exportar'}
+                                {exportPDFMutation.isPending ? 'Exportando...' : 'Exportar PDF'}
                             </Button>
 
                             <div className="relative">
@@ -1227,7 +1278,7 @@ export default function VagasPage() {
                                         <div className="flex flex-col items-center gap-1">
                                             <div className="flex items-center gap-1">
                                                 <span className="text-xs font-medium">
-                                                    {day.label.split(' ')[0]}
+                                                    {new Date(day.date + 'T12:00:00.000Z').toLocaleDateString('pt-BR')}
                                                 </span>
                                                 {getPeriodIcon(day.period)}
                                             </div>

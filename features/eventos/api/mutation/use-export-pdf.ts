@@ -28,10 +28,12 @@ interface ExportPDFData {
     | "tempo"
     | "filtroEmpresa"
     | "tipoCredencial"
-    | "cadastradoPor";
+    | "cadastradoPor"
+    | "retiradaCrachas"
+    | "estacionamento";
   dados: Record<string, unknown>[];
   columnConfig?: ExportConfig;
-  filtros: {
+  filtros?: {
     dia?: string;
     empresa?: string;
     funcao?: string;
@@ -80,6 +82,8 @@ export const useExportPDF = () => {
               filtroEmpresa: "Relatório por Empresa",
               tipoCredencial: "Relatório por Tipo de Credencial",
               cadastradoPor: "Relatório por Cadastrado Por",
+              retiradaCrachas: "Relatório de Retirada Crachas",
+              estacionamento: "Relatório do estacionamento",
             };
             subtitulo = subtitulos[data.tipo] ?? "Relatório de Eventos";
           }

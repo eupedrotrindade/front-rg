@@ -658,7 +658,7 @@ export default function Painel() {
           id: dayId,
           label: `${dateStr} (MONTAGEM - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
           date: dateStr,
-          type: 'setup',
+          type: 'montagem',
           period: item.period,
         })
       })
@@ -685,7 +685,7 @@ export default function Painel() {
           id: dayId,
           label: `${dateStr} (${eventLabel} - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
           date: dateStr,
-          type: 'preparation',
+          type: 'evento',
           period: item.period,
         })
       })
@@ -707,7 +707,7 @@ export default function Painel() {
           id: dayId,
           label: `${dateStr} (DESMONTAGEM - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
           date: dateStr,
-          type: 'finalization',
+          type: 'desmontagem',
           period: item.period,
         })
       })
@@ -899,13 +899,13 @@ export default function Painel() {
         let phaseItems: { date: string; period: string }[] = []
 
         switch (phase) {
-          case 'preparacao':
+          case 'evento':
             phaseItems = evento.evento || []
             break
           case 'montagem':
             phaseItems = evento.montagem || []
             break
-          case 'finalizacao':
+          case 'desmontagem':
             phaseItems = evento.desmontagem || []
             break
           default:

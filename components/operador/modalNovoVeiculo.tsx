@@ -147,7 +147,7 @@ export default function ModalNovoVeiculo({
 
   return (
     <AlertDialog open={isOpen} onOpenChange={handleClose}>
-      <AlertDialogContent className="max-w-4xl bg-white text-gray-800 max-h-[70vh] overflow-y-auto">
+      <AlertDialogContent className="max-w-4xl bg-white text-gray-800 max-h-[85vh] overflow-y-auto">
         <AlertDialogHeader>
           <AlertDialogTitle>{isEditing ? "Editar Veículo" : "Nova Retirada de Veículo"}</AlertDialogTitle>
           <AlertDialogDescription>
@@ -237,13 +237,16 @@ export default function ModalNovoVeiculo({
                   id="shiftId"
                   value={formData.shiftId}
                   onChange={(e) => handleInputChange("shiftId", e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 max-h-48 overflow-y-auto"
                   disabled={isLoading}
+                  size={eventDays.length > 8 ? 8 : 1}
                 >
                   <option value="">Selecione um turno do evento</option>
                   {eventDays.map((day) => (
                     <option key={day.id} value={day.id}>
-                      {day.label}
+                      {new Date(day.date + 'T12:00:00.000Z').toLocaleDateString('pt-BR')} - {day.type === 'montagem' || day.type === 'setup' ? 'MONTAGEM' :
+                        day.type === 'evento' || day.type === 'event' || day.type === 'preparation' ? 'EVENTO' :
+                        day.type === 'desmontagem' || day.type === 'teardown' || day.type === 'finalization' ? 'DESMONTAGEM' : 'EVENTO'} - {day.period === 'diurno' ? 'Diurno' : day.period === 'noturno' ? 'Noturno' : 'Dia Inteiro'}
                     </option>
                   ))}
                 </select>
