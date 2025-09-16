@@ -228,13 +228,13 @@ const OperatorList = () => {
                             onChange={e => setEditCpf(e.target.value)}
                             disabled={editLoading}
                         />
-                        <Input
+                        {/* <Input
                             placeholder="Nova senha (opcional)"
                             type="password"
                             value={editSenha}
                             onChange={e => setEditSenha(e.target.value)}
                             disabled={editLoading}
-                        />
+                        /> */}
                         <div>
                             <div className="font-semibold mb-1 text-sm">Eventos vinculados</div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded p-2 bg-zinc-950">

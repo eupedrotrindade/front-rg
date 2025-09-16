@@ -16,7 +16,8 @@ import {
   Settings,
   LogOut,
   Bell,
-  Search
+  Search,
+  ArrowLeft
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { UserButton, useUser } from '@clerk/nextjs'
@@ -31,24 +32,20 @@ export const AdminHeader = () => {
           <h1 className="text-xl font-bold text-gray-900">
             RG Admin
           </h1>
-          <Badge className="bg-purple-100 text-purple-700 border-purple-200">
-            <Shield className="h-3 w-3 mr-1" />
-            Painel Administrativo
-          </Badge>
+
         </div>
-        
+        <Button onClick={() => { window.location.href = "/eventos" }}>
+          <ArrowLeft></ArrowLeft> Voltar para página de eventos
+        </Button>
         <div className="flex items-center gap-4">
           {user && (
             <div className="text-right">
-              <p className="text-sm font-medium text-gray-900">
-                {user.fullName || `${user.firstName} ${user.lastName}` || 'Administrador'}
-              </p>
               <p className="text-xs text-gray-500">
                 {user.primaryEmailAddress?.emailAddress || 'Email não disponível'}
               </p>
             </div>
           )}
-          <UserButton 
+          <UserButton
             appearance={{
               elements: {
                 avatarBox: "h-8 w-8"

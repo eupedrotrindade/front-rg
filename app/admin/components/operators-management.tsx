@@ -488,7 +488,7 @@ export const OperatorsManagement = () => {
               />
             </div>
 
-            <div>
+            {/* <div>
               <Label htmlFor="edit-senha">Nova Senha (deixe vazio para manter atual)</Label>
               <Input
                 id="edit-senha"
@@ -497,7 +497,7 @@ export const OperatorsManagement = () => {
                 onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))}
                 placeholder="Digite a nova senha"
               />
-            </div>
+            </div> */}
 
             <div>
               <Label htmlFor="edit-id_events">Eventos (IDs separados por vírgula)</Label>

@@ -1122,7 +1122,7 @@ export default function OperadoresPage() {
     // Função para obter ações do operador apenas para este evento
     const getOperatorEventActions = (operator: Operator) => {
         if (!operator.acoes || !Array.isArray(operator.acoes)) return []
-        
+
         return operator.acoes.filter((action: any) => action.eventId === eventId)
     }
 
@@ -1726,14 +1726,14 @@ export default function OperadoresPage() {
                                                         <div
                                                             key={index}
                                                             className={`flex items-center gap-2 p-2 rounded border ${shift.status === 'deactivated'
-                                                                    ? 'bg-gray-50 border-gray-200'
-                                                                    : 'bg-blue-50 border-blue-200'
+                                                                ? 'bg-gray-50 border-gray-200'
+                                                                : 'bg-blue-50 border-blue-200'
                                                                 }`}
                                                         >
                                                             {getPeriodIcon(shift.period)}
                                                             <span className={`text-sm ${shift.status === 'deactivated'
-                                                                    ? 'text-gray-600'
-                                                                    : 'text-blue-800'
+                                                                ? 'text-gray-600'
+                                                                : 'text-blue-800'
                                                                 }`}>
                                                                 {shift.label}
                                                                 {shift.status === 'deactivated' && (
@@ -1812,7 +1812,7 @@ export default function OperadoresPage() {
                                         className="text-gray-900"
                                     />
                                 </div>
-                                <div className="text-gray-900">
+                                {/* <div className="text-gray-900">
                                     <label className="block text-sm font-medium text-gray-900 mb-1">Senha</label>
                                     <Input
                                         type="password"
@@ -1820,7 +1820,7 @@ export default function OperadoresPage() {
                                         onChange={(e) => setEditForm(prev => ({ ...prev, senha: e.target.value }))}
                                         className="text-gray-900"
                                     />
-                                </div>
+                                </div> */}
                             </div>
 
                             {/* Seleção de Dias do Evento */}
