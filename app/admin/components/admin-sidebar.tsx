@@ -120,9 +120,7 @@ export const Sidebar = () => {
                       <span className="text-sm font-medium">{item.title}</span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {item.description}
-                  </p>
+
                 </div>
 
               </Button>

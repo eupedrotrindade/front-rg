@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { useAllCoordenadores } from "@/features/eventos/api/query/use-coordenadores"
+import { useDeleteUser } from "@/features/eventos/api/mutation/use-delete-user"
 import { Coordenador } from "@/features/eventos/types"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
@@ -48,6 +49,9 @@ const AdminUsuariosPage = () => {
 
   // Usar hook de coordenadores (que são os usuários)
   const { data: usuarios = [], isLoading, error, refetch } = useAllCoordenadores()
+
+  // Hook para deletar usuário
+  const deleteUserMutation = useDeleteUser()
 
   // Debug: Log dos dados recebidos
   React.useEffect(() => {
@@ -85,10 +89,6 @@ const AdminUsuariosPage = () => {
     }
   }, [usuarios])
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
-  }
-
   const formatName = (user: Coordenador) => {
     return `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Nome não disponível'
   }
@@ -98,8 +98,20 @@ const AdminUsuariosPage = () => {
   }
 
   const handleDeleteUser = (user: Coordenador) => {
-    if (confirm(`Tem certeza que deseja remover o usuário ${formatName(user)}?`)) {
-      toast.success(`Usuário ${formatName(user)} removido com sucesso`)
+    const userConfirmed = confirm(`⚠️ ATENÇÃO: EXCLUSÃO PERMANENTE
+
+Tem certeza que deseja DELETAR COMPLETAMENTE o usuário:
+${formatName(user)} (${user.email})
+
+Esta ação irá:
+• Remover o usuário do sistema Clerk
+• Apagar todos os dados do usuário
+• Esta ação NÃO PODE ser desfeita
+
+Digite 'DELETAR' se tem certeza absoluta:`)
+
+    if (userConfirmed && window.prompt("Digite 'DELETAR' para confirmar:") === 'DELETAR') {
+      deleteUserMutation.mutate(user.id)
     }
   }
 
@@ -285,14 +297,13 @@ const AdminUsuariosPage = () => {
                 <TableHead>Usuário</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Eventos</TableHead>
-                <TableHead>Cadastro</TableHead>
                 <TableHead>Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={4} className="text-center py-8">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Carregando usuários...
@@ -301,13 +312,13 @@ const AdminUsuariosPage = () => {
                 </TableRow>
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-red-600">
+                  <TableCell colSpan={4} className="text-center py-8 text-red-600">
                     Erro ao carregar usuários: {error.message}
                   </TableCell>
                 </TableRow>
               ) : filteredUsuarios.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={4} className="text-center py-8">
                     {search ? `Nenhum usuário encontrado para "${search}"` : 'Nenhum usuário cadastrado'}
                   </TableCell>
                 </TableRow>
@@ -350,9 +361,6 @@ const AdminUsuariosPage = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {formatDate(usuario.createdAt)}
-                    </TableCell>
-                    <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm">
@@ -367,9 +375,19 @@ const AdminUsuariosPage = () => {
                           <DropdownMenuItem
                             onClick={() => handleDeleteUser(usuario)}
                             className="text-red-600"
+                            disabled={deleteUserMutation.isPending}
                           >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Remover
+                            {deleteUserMutation.isPending ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Removendo...
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Remover
+                              </>
+                            )}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
