@@ -236,11 +236,64 @@ export default function PublicEmpresaPage() {
         shiftInfo ? shiftInfo.period : ''
     );
 
+    // Filtrar participantes por dia selecionado
+    const participantsByDay = React.useMemo(() => {
+        if (!selectedDay) {
+            return participants
+        }
+
+        // Debug: verificar estrutura dos dados
+        console.log("🔍 Dia selecionado:", selectedDay)
+        console.log("🔍 Exemplo de participante:", participants[0]?.daysWork)
+
+        // Filtrar participantes que trabalham no turno selecionado
+        const filtered = participants.filter(p => {
+            // Verificar se o participante trabalha neste turno específico usando shiftId
+            if (p.shiftId === selectedDay) {
+                return true
+            }
+
+            // Verificação alternativa: comparar componentes individuais
+            const shiftInfo = parseShiftId(selectedDay)
+            const participantDate = p.workDate
+            const participantStage = p.workStage
+            const participantPeriod = p.workPeriod
+
+            // Comparar data, stage e período
+            const dateMatch = participantDate === shiftInfo.dateISO
+            const stageMatch = participantStage === shiftInfo.stage
+            const periodMatch =
+                participantPeriod === shiftInfo.period ||
+                participantPeriod === 'dia_inteiro' ||
+                (participantPeriod === 'diurno' && shiftInfo.period === 'diurno') ||
+                (participantPeriod === 'noturno' && shiftInfo.period === 'noturno')
+
+            const matches = dateMatch && stageMatch && periodMatch
+
+            console.log(`👤 ${p.name}:`, {
+                participantShiftId: p.shiftId,
+                selectedDay,
+                participantDate,
+                participantStage,
+                participantPeriod,
+                shiftInfo,
+                dateMatch,
+                stageMatch,
+                periodMatch,
+                matches
+            })
+
+            return matches
+        })
+
+        console.log("📊 Participantes filtrados por dia:", filtered.length)
+        return filtered
+    }, [participants, selectedDay])
+
     // Filtrar e ordenar participantes para a tabela
     const filteredAndSortedParticipants = React.useMemo(() => {
         let filtered = participantsByDay
 
-        // Aplicar busca por nome/CPF
         if (searchTerm.trim()) {
             const term = searchTerm.toUpperCase().trim()
             filtered = filtered.filter(p => {
@@ -251,7 +304,6 @@ export default function PublicEmpresaPage() {
             })
         }
 
-        // Aplicar filtros
         if (filtros.funcao && filtros.funcao !== '') {
             filtered = filtered.filter(p => p.role === filtros.funcao)
         }
@@ -268,7 +320,6 @@ export default function PublicEmpresaPage() {
             })
         }
 
-        // Aplicar ordenação
         if (ordenacao.campo) {
             filtered.sort((a, b) => {
                 let aVal: string = ''
@@ -314,7 +365,7 @@ export default function PublicEmpresaPage() {
 
             // Obter número da pulseira do movement credential
             const wristbandCode = participantWristbandCodes.get(participant.id);
-            const numeroPulseira = wristbandCode || participant.braceletNumber || `#${participant.id.slice(-4).toUpperCase()}`
+            const numeroPulseira = wristbandCode || `#${participant.id.slice(-4).toUpperCase()}`
 
             return {
                 nome: participant.name?.toUpperCase() || '',
@@ -375,12 +426,7 @@ export default function PublicEmpresaPage() {
                     status: "",
                     tipoCredencial: "all_credentials"
                 },
-                // Configurações adicionais para layout horizontal
-                layoutConfig: {
-                    orientation: 'landscape', // PDF em formato paisagem
-                    showLogo: true, // Mostrar logo da RG
-                    logoPath: '/assets/logo-rg-black.png' // Caminho para logo preta
-                }
+
             },
             {
                 onSuccess: () => {
@@ -794,59 +840,6 @@ export default function PublicEmpresaPage() {
         }
     }
 
-    // Filtrar participantes por dia selecionado
-    const participantsByDay = React.useMemo(() => {
-        if (!selectedDay) {
-            return participants
-        }
-
-        // Debug: verificar estrutura dos dados
-        console.log("🔍 Dia selecionado:", selectedDay)
-        console.log("🔍 Exemplo de participante:", participants[0]?.daysWork)
-
-        // Filtrar participantes que trabalham no turno selecionado
-        const filtered = participants.filter(p => {
-            // Verificar se o participante trabalha neste turno específico usando shiftId
-            if (p.shiftId === selectedDay) {
-                return true
-            }
-
-            // Verificação alternativa: comparar componentes individuais
-            const shiftInfo = parseShiftId(selectedDay)
-            const participantDate = p.workDate
-            const participantStage = p.workStage
-            const participantPeriod = p.workPeriod
-
-            // Comparar data, stage e período
-            const dateMatch = participantDate === shiftInfo.dateISO
-            const stageMatch = participantStage === shiftInfo.stage
-            const periodMatch =
-                participantPeriod === shiftInfo.period ||
-                participantPeriod === 'dia_inteiro' ||
-                (participantPeriod === 'diurno' && shiftInfo.period === 'diurno') ||
-                (participantPeriod === 'noturno' && shiftInfo.period === 'noturno')
-
-            const matches = dateMatch && stageMatch && periodMatch
-
-            console.log(`👤 ${p.name}:`, {
-                participantShiftId: p.shiftId,
-                selectedDay,
-                participantDate,
-                participantStage,
-                participantPeriod,
-                shiftInfo,
-                dateMatch,
-                stageMatch,
-                periodMatch,
-                matches
-            })
-
-            return matches
-        })
-
-        console.log("📊 Participantes filtrados por dia:", filtered.length)
-        return filtered
-    }, [participants, selectedDay])
 
 
     // Obter valores únicos para filtros
@@ -1662,18 +1655,8 @@ export default function PublicEmpresaPage() {
                                                                                     {/* Número da Pulseira */}
                                                                                     <div className="text-sm font-bold text-gray-900">
                                                                                         {(() => {
-                                                                                            // Buscar código real do movement credential
                                                                                             const wristbandCode = participantWristbandCodes.get(participant.id);
-                                                                                            if (wristbandCode) {
-                                                                                                return wristbandCode;
-                                                                                            }
-
-                                                                                            // Usar o campo braceletNumber se disponível
-                                                                                            if (participant.braceletNumber) {
-                                                                                                return participant.braceletNumber;
-                                                                                            }
-
-                                                                                            // Fallback: usar os últimos 4 caracteres do ID do participante
+                                                                                            if (wristbandCode) return wristbandCode;
                                                                                             return `#${participant.id.slice(-4).toUpperCase()}`;
                                                                                         })()}
                                                                                     </div>

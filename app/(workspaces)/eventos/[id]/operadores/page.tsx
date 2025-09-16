@@ -114,7 +114,7 @@ export default function OperadoresPage() {
 
     // Estados para a aba de ações
     const [activeTab, setActiveTab] = useState("operadores")
-    const [actionsFilter, setActionsFilter] = useState({ busca: "", tipo: "all-types", operador: "all-operators" })
+    const [actionsFilter, setActionsFilter] = useState({ busca: "", tipo: "all-types", operador: "all-operators", data: "all-dates" })
     const [allActions, setAllActions] = useState<any[]>([])
     const [loadingActions, setLoadingActions] = useState(false)
 
@@ -1151,25 +1151,66 @@ export default function OperadoresPage() {
         return actions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     }, [operadores, eventId])
 
-    // Função para filtrar ações
+    // Função para filtrar ações com busca inteligente
     const filteredActions = useMemo(() => {
         let filtered = collectAllActions
 
+        // Filtro por busca inteligente
         if (actionsFilter.busca) {
-            filtered = filtered.filter(action =>
-                action.operadorNome?.toLowerCase().includes(actionsFilter.busca.toLowerCase()) ||
-                action.credencial?.toLowerCase().includes(actionsFilter.busca.toLowerCase()) ||
-                action.pulseira?.toLowerCase().includes(actionsFilter.busca.toLowerCase()) ||
-                action.type?.toLowerCase().includes(actionsFilter.busca.toLowerCase())
-            )
+            const searchTerm = actionsFilter.busca.trim()
+            const numericDigits = searchTerm.replace(/\D/g, '')
+
+            filtered = filtered.filter(action => {
+                // Busca por nome do staff (letras)
+                if (/[a-zA-ZÀ-ÿ]/.test(searchTerm)) {
+                    const staffName = action.staffName?.toLowerCase() || ''
+                    if (staffName.includes(searchTerm.toLowerCase())) {
+                        return true
+                    }
+                }
+
+                // Busca por pulseira (1-4 dígitos numéricos)
+                if (numericDigits.length >= 1 && numericDigits.length <= 4) {
+                    const pulseira = action.pulseira?.toLowerCase() || ''
+                    if (pulseira.includes(numericDigits)) {
+                        return true
+                    }
+                }
+
+                // Busca por CPF/RG do staff (5+ dígitos numéricos)
+                if (numericDigits.length >= 5) {
+                    const staffCpf = action.staffCpf?.replace(/\D/g, '') || ''
+                    if (staffCpf.includes(numericDigits)) {
+                        return true
+                    }
+                }
+
+                // Fallback para busca geral (compatibilidade com busca existente)
+                return (
+                    action.operadorNome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    action.credencial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    action.type?.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+            })
         }
 
+        // Filtro por tipo de ação
         if (actionsFilter.tipo && actionsFilter.tipo !== "all-types") {
             filtered = filtered.filter(action => action.type === actionsFilter.tipo)
         }
 
+        // Filtro por operador
         if (actionsFilter.operador && actionsFilter.operador !== "all-operators") {
             filtered = filtered.filter(action => action.operadorId === actionsFilter.operador)
+        }
+
+        // Filtro por data específica
+        if (actionsFilter.data && actionsFilter.data !== "all-dates") {
+            filtered = filtered.filter(action => {
+                if (!action.timestamp) return false
+                const actionDate = new Date(action.timestamp).toLocaleDateString('pt-BR')
+                return actionDate === actionsFilter.data
+            })
         }
 
         return filtered
@@ -1179,6 +1220,20 @@ export default function OperadoresPage() {
     const uniqueActionTypes = useMemo(() => {
         const types = new Set(collectAllActions.map(action => action.type))
         return Array.from(types).sort()
+    }, [collectAllActions])
+
+    // Função para obter datas únicas de ações
+    const uniqueActionDates = useMemo(() => {
+        const dates = new Set(collectAllActions
+            .filter(action => action.timestamp)
+            .map(action => new Date(action.timestamp).toLocaleDateString('pt-BR'))
+        )
+        return Array.from(dates).sort((a, b) => {
+            // Ordenar as datas do mais recente para o mais antigo
+            const dateA = a.split('/').reverse().join('-')
+            const dateB = b.split('/').reverse().join('-')
+            return dateB.localeCompare(dateA)
+        })
     }, [collectAllActions])
 
     // Função para formatar timestamp
@@ -1512,10 +1567,10 @@ export default function OperadoresPage() {
                             <div className="flex flex-wrap gap-4">
                                 <div className="flex-1 min-w-[200px]">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Buscar ações
+                                        Buscar ações (staff)
                                     </label>
                                     <Input
-                                        placeholder="Digite para buscar..."
+                                        placeholder="Nome, CPF (5+ dígitos) ou pulseira (1-4 dígitos)..."
                                         value={actionsFilter.busca}
                                         onChange={(e) => setActionsFilter(prev => ({ ...prev, busca: e.target.value }))}
                                     />
@@ -1556,8 +1611,26 @@ export default function OperadoresPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="min-w-[200px]">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Data Específica
+                                    </label>
+                                    <Select value={actionsFilter.data} onValueChange={(value) => setActionsFilter(prev => ({ ...prev, data: value }))}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Todas as datas" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all-dates">Todas as datas</SelectItem>
+                                            {uniqueActionDates.map((date) => (
+                                                <SelectItem key={date} value={date}>
+                                                    {date}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 <div className="flex items-end">
-                                    <Button variant="outline" onClick={() => setActionsFilter({ busca: "", tipo: "all-types", operador: "all-operators" })}>
+                                    <Button variant="outline" onClick={() => setActionsFilter({ busca: "", tipo: "all-types", operador: "all-operators", data: "all-dates" })}>
                                         Limpar Filtros
                                     </Button>
                                 </div>
