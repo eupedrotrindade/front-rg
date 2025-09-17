@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Edit, Trash2, Search, Calendar, Clock, Wrench, Truck, Sun, Moon, Check, X, Building, MoreHorizontal, Copy } from "lucide-react";
 import { toast } from "sonner";
-import { formatEventDate } from "@/lib/utils";
+import { formatEventDate, getCurrentDateISO } from "@/lib/utils";
 import Link from "next/link";
 import { CredentialForm } from "./credential-form";
 
@@ -129,99 +129,91 @@ export const CredentialsDashboard = () => {
   const { data: eventData } = useEventos({ id: eventId });
   const event = Array.isArray(eventData) ? null : eventData as Event;
 
+  // Helper function to ensure array format
+  const ensureArray = (data: any): any[] => {
+    if (!data) return []
+    if (Array.isArray(data)) return data
+    if (typeof data === 'string') {
+      try {
+        const parsed = JSON.parse(data)
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
+      }
+    }
+    return []
+  }
+
   // Gerar dias disponíveis baseado no evento (similar ao empresas)
   const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> => {
     if (!event) return []
 
     const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> = []
+    const currentDate = new Date()
 
     // Função helper para processar arrays de dados do evento
     const processEventArray = (eventData: any, stage: string, stageName: string) => {
-      if (!eventData) return;
+      const dataArray = ensureArray(eventData)
 
-      try {
-        let dataArray: any[] = [];
+      dataArray.forEach(item => {
+        if (item && item.date) {
+          // Extract date string directly to avoid timezone shifts
+          const dateStr = typeof item.date === 'string' ? item.date : item.date.toISOString ? item.date.toISOString().split('T')[0] : String(item.date)
+          const formattedDate = formatEventDate(dateStr)
 
-        // Se for string JSON, fazer parse
-        if (typeof eventData === 'string') {
-          dataArray = JSON.parse(eventData);
-        }
-        // Se já for array, usar diretamente
-        else if (Array.isArray(eventData)) {
-          dataArray = eventData;
-        }
-        else {
-          return;
-        }
-
-        // Processar cada item do array
-        dataArray.forEach(item => {
-          if (item && item.date) {
-            const dateObj = new Date(item.date);
-            if (isNaN(dateObj.getTime())) {
-              console.warn(`Data inválida encontrada: ${item.date}`);
-              return;
-            }
-
-            const formattedDate = formatEventDate(dateObj.toISOString());
-
-            // Usar período do item se disponível
-            let period: 'diurno' | 'noturno' | 'dia_inteiro';
-            if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
-              period = item.period;
-            } else {
-              // Fallback: calcular baseado na hora
-              const hour = dateObj.getHours();
-              period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
-            }
-
-            // Criar ID único baseado na data e período
-            const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
-
-            const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
-
-            days.push({
-              id: dayId,
-              label: `${formattedDate} (${stageName} - ${periodLabel})`,
-              date: formattedDate,
-              type: stage,
-              period
-            });
+          // Usar período do item se disponível
+          let period: 'diurno' | 'noturno' | 'dia_inteiro'
+          if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
+            period = item.period
+          } else {
+            // Fallback para período diurno
+            period = 'diurno'
           }
-        });
-      } catch (error) {
-        console.warn(`Erro ao processar dados do evento para stage ${stage}:`, error);
-      }
-    };
+
+          // Criar ID único baseado na data e período usando string direta
+          const dayId = `${dateStr.split('T')[0]}-${stage}-${period}`
+
+          const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro'
+
+          days.push({
+            id: dayId,
+            label: `${formattedDate} (${stageName} - ${periodLabel})`,
+            date: formattedDate,
+            type: stage,
+            period
+          })
+        }
+      })
+    }
 
     // Processar nova estrutura do evento
     if ('montagem' in event) {
-      processEventArray((event as any).montagem, 'montagem', 'MONTAGEM');
+      processEventArray((event as any).montagem, 'montagem', 'MONTAGEM')
     }
     if ('evento' in event) {
-      processEventArray((event as any).evento, 'evento', 'EVENTO');
+      processEventArray((event as any).evento, 'evento', 'EVENTO')
     }
     if ('desmontagem' in event) {
-      processEventArray((event as any).desmontagem, 'desmontagem', 'DESMONTAGEM');
+      processEventArray((event as any).desmontagem, 'desmontagem', 'DESMONTAGEM')
     }
 
-    // Ordenar dias cronologicamente
+    // Ordenar dias cronologicamente usando comparação de string
     days.sort((a, b) => {
-      const dateA = new Date(a.id.split('-')[0]);
-      const dateB = new Date(b.id.split('-')[0]);
+      const dateA = a.id.split('-')[0]
+      const dateB = b.id.split('-')[0]
 
-      if (dateA.getTime() === dateB.getTime()) {
-        const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
-        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
+      if (dateA === dateB) {
+        const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 }
+        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 }
 
-        const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
-        if (typeComparison !== 0) return typeComparison;
+        const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder]
+        if (typeComparison !== 0) return typeComparison
 
-        return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder];
+        return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder]
       }
 
-      return dateA.getTime() - dateB.getTime();
-    });
+      return dateA.localeCompare(dateB)
+    })
 
     return days
   }, [event])
