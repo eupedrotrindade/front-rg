@@ -225,23 +225,38 @@ export default function EventoConfiguracoesPage() {
             eventId={eventId}
             eventName={evento?.name || "Configurações"}
         >
-            <div className="p-8">
+            <div className="p-8 bg-gray-50 min-h-screen">
                 {/* Header */}
                 <div className="mb-8">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                                Configurações do Evento
-                            </h1>
-                            <p className="text-gray-600">
-                                {evento ? `Gerencie as configurações do evento "${evento.name}"` : "Gerencie as configurações deste evento"}
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-blue-600">
-                                <Settings className="h-3 w-3 mr-1" />
-                                Configurações
-                            </Badge>
+                    <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                            <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="p-2 bg-blue-100 rounded-lg">
+                                        <Settings className="h-6 w-6 text-blue-600" />
+                                    </div>
+                                    <h1 className="text-3xl font-bold text-gray-900">
+                                        Configurações do Evento
+                                    </h1>
+                                </div>
+                                <p className="text-gray-600 text-lg">
+                                    {evento ? `Gerencie as configurações do evento "${evento.name}"` : "Gerencie as configurações deste evento"}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 px-3 py-1">
+                                    <Settings className="h-4 w-4 mr-2" />
+                                    Configurações
+                                </Badge>
+                                {evento && (
+                                    <Badge variant="outline" className={`px-3 py-1 ${
+                                        evento.isActive ? 'text-green-600 border-green-200 bg-green-50' : 'text-gray-600 border-gray-200 bg-gray-50'
+                                    }`}>
+                                        <div className={`w-2 h-2 rounded-full mr-2 ${evento.isActive ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                        {evento.isActive ? 'Ativo' : 'Inativo'}
+                                    </Badge>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -249,144 +264,258 @@ export default function EventoConfiguracoesPage() {
                 {/* Configurações */}
                 <div className="space-y-6">
                     {/* Informações Básicas */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Calendar className="h-5 w-5" />
+                    <Card className="border-l-4 border-l-green-500 shadow-sm">
+                        <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50">
+                            <CardTitle className="flex items-center gap-2 text-gray-800">
+                                <Calendar className="h-5 w-5 text-green-600" />
                                 Informações Básicas
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <CardContent className="space-y-6 p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Nome do Evento *</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Nome do Evento *</label>
                                     <Input
                                         value={configuracoes.name}
                                         onChange={(e) => setConfiguracoes(prev => ({ ...prev, name: e.target.value }))}
                                         placeholder="Nome do evento"
                                         required
+                                        className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Tipo do Evento</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">ID do Evento</label>
+                                    <div className="relative">
+                                        <Input
+                                            value={eventId}
+                                            readOnly
+                                            className="bg-gray-50 border-gray-300 text-gray-600 cursor-text pr-10"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(eventId)
+                                                toast.success("ID copiado!")
+                                            }}
+                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                        >
+                                            <FileText className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo do Evento</label>
                                     <Input
                                         value={configuracoes.type}
                                         onChange={(e) => setConfiguracoes(prev => ({ ...prev, type: e.target.value }))}
                                         placeholder="Ex: Conferência, Show, Workshop"
+                                        className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Data de Início *</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Data de Início *</label>
                                     <Input
                                         type="date"
                                         value={configuracoes.startDate}
                                         onChange={(e) => setConfiguracoes(prev => ({ ...prev, startDate: e.target.value }))}
                                         required
+                                        className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Data de Fim *</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Data de Fim *</label>
                                     <Input
                                         type="date"
                                         value={configuracoes.endDate}
                                         onChange={(e) => setConfiguracoes(prev => ({ ...prev, endDate: e.target.value }))}
                                         required
+                                        className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Local do Evento *</label>
-                                    <Input
-                                        value={configuracoes.venue}
-                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, venue: e.target.value }))}
-                                        placeholder="Local do evento"
-                                        required
-                                    />
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Local do Evento *</label>
+                                    <div className="relative">
+                                        <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                        <Input
+                                            value={configuracoes.venue}
+                                            onChange={(e) => setConfiguracoes(prev => ({ ...prev, venue: e.target.value }))}
+                                            placeholder="Local do evento"
+                                            required
+                                            className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Endereço Completo</label>
-                                <Input
-                                    value={configuracoes.address}
-                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, address: e.target.value }))}
-                                    placeholder="Endereço completo do local"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Descrição</label>
-                                <Textarea
-                                    value={configuracoes.description}
-                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, description: e.target.value }))}
-                                    placeholder="Descrição detalhada do evento"
-                                    rows={3}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Link de Inscrição</label>
-                                <Input
-                                    type="url"
-                                    value={configuracoes.registrationLink}
-                                    onChange={(e) => setConfiguracoes(prev => ({ ...prev, registrationLink: e.target.value }))}
-                                    placeholder="https://exemplo.com/inscricao"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Banner do Evento</label>
-                                <BannerUpload
-                                    value={configuracoes.bannerUrl}
-                                    onChange={(url) => setConfiguracoes(prev => ({ ...prev, bannerUrl: url }))}
-                                    eventId={eventId}
-                                    maxSize={5}
-                                />
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Endereço Completo</label>
+                                    <div className="relative">
+                                        <Users className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
+                                        <Input
+                                            value={configuracoes.address}
+                                            onChange={(e) => setConfiguracoes(prev => ({ ...prev, address: e.target.value }))}
+                                            placeholder="Endereço completo do local"
+                                            className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Descrição</label>
+                                    <Textarea
+                                        value={configuracoes.description}
+                                        onChange={(e) => setConfiguracoes(prev => ({ ...prev, description: e.target.value }))}
+                                        placeholder="Descrição detalhada do evento"
+                                        rows={4}
+                                        className="border-gray-300 focus:border-blue-500 focus:ring-blue-500 resize-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Link de Inscrição</label>
+                                    <div className="relative">
+                                        <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                        <Input
+                                            type="url"
+                                            value={configuracoes.registrationLink}
+                                            onChange={(e) => setConfiguracoes(prev => ({ ...prev, registrationLink: e.target.value }))}
+                                            placeholder="https://exemplo.com/inscricao"
+                                            className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                                    <label className="block text-sm font-semibold text-gray-700 mb-3">Banner do Evento</label>
+                                    <BannerUpload
+                                        value={configuracoes.bannerUrl}
+                                        onChange={(url) => setConfiguracoes(prev => ({ ...prev, bannerUrl: url }))}
+                                        eventId={eventId}
+                                        maxSize={5}
+                                    />
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
 
                     {/* Configurações do Status */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Shield className="h-5 w-5" />
+                    <Card className="border-l-4 border-l-blue-500">
+                        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50">
+                            <CardTitle className="flex items-center gap-2 text-gray-800">
+                                <Shield className="h-5 w-5 text-blue-600" />
                                 Configurações de Status e Visibilidade
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Status do Evento</label>
+                        <CardContent className="space-y-6 p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Status do Evento</label>
                                     <Select value={configuracoes.status} onValueChange={(value: "active" | "closed" | "canceled" | "draft") => setConfiguracoes(prev => ({ ...prev, status: value }))}>
-                                        <SelectTrigger>
+                                        <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="active">Ativo</SelectItem>
-                                            <SelectItem value="draft">Rascunho</SelectItem>
-                                            <SelectItem value="closed">Encerrado</SelectItem>
-                                            <SelectItem value="canceled">Cancelado</SelectItem>
+                                            <SelectItem value="active" className="flex items-center">
+                                                <span className="flex items-center gap-2">
+                                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                    Ativo
+                                                </span>
+                                            </SelectItem>
+                                            <SelectItem value="draft" className="flex items-center">
+                                                <span className="flex items-center gap-2">
+                                                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                                    Rascunho
+                                                </span>
+                                            </SelectItem>
+                                            <SelectItem value="closed" className="flex items-center">
+                                                <span className="flex items-center gap-2">
+                                                    <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                                                    Encerrado
+                                                </span>
+                                            </SelectItem>
+                                            <SelectItem value="canceled" className="flex items-center">
+                                                <span className="flex items-center gap-2">
+                                                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                                    Cancelado
+                                                </span>
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Visibilidade</label>
+
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Visibilidade</label>
                                     <Select value={configuracoes.visibility} onValueChange={(value: "public" | "private" | "restricted") => setConfiguracoes(prev => ({ ...prev, visibility: value }))}>
-                                        <SelectTrigger>
+                                        <SelectTrigger className="border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="private">Privado</SelectItem>
-                                            <SelectItem value="public">Público</SelectItem>
-                                            <SelectItem value="restricted">Restrito</SelectItem>
+                                            <SelectItem value="private" className="flex items-center">
+                                                <span className="flex items-center gap-2">
+                                                    <EyeOff className="w-4 h-4 text-gray-500" />
+                                                    Privado
+                                                </span>
+                                            </SelectItem>
+                                            <SelectItem value="public" className="flex items-center">
+                                                <span className="flex items-center gap-2">
+                                                    <Eye className="w-4 h-4 text-green-500" />
+                                                    Público
+                                                </span>
+                                            </SelectItem>
+                                            <SelectItem value="restricted" className="flex items-center">
+                                                <span className="flex items-center gap-2">
+                                                    <Shield className="w-4 h-4 text-yellow-500" />
+                                                    Restrito
+                                                </span>
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Evento Ativo</label>
-                                        <p className="text-xs text-gray-500">Habilitar o evento no sistema</p>
+
+                                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <label className="block text-sm font-semibold text-gray-700">Evento Ativo</label>
+                                            <p className="text-xs text-gray-500">Habilitar o evento no sistema</p>
+                                        </div>
+                                        <div className="flex items-center">
+                                            <Switch
+                                                checked={configuracoes.isActive}
+                                                onCheckedChange={(checked) => setConfiguracoes(prev => ({ ...prev, isActive: checked }))}
+                                                className="data-[state=checked]:bg-blue-600"
+                                            />
+                                        </div>
                                     </div>
-                                    <Switch
-                                        checked={configuracoes.isActive}
-                                        onCheckedChange={(checked) => setConfiguracoes(prev => ({ ...prev, isActive: checked }))}
-                                    />
+                                </div>
+                            </div>
+
+                            {/* Status Indicator */}
+                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-3 h-3 rounded-full ${
+                                        configuracoes.status === 'active' ? 'bg-green-500' :
+                                        configuracoes.status === 'draft' ? 'bg-yellow-500' :
+                                        configuracoes.status === 'closed' ? 'bg-gray-500' :
+                                        'bg-red-500'
+                                    }`}></div>
+                                    <div className="flex-1">
+                                        <p className="text-sm font-medium text-gray-700">
+                                            Status Atual: <span className="capitalize">{
+                                                configuracoes.status === 'active' ? 'Ativo' :
+                                                configuracoes.status === 'draft' ? 'Rascunho' :
+                                                configuracoes.status === 'closed' ? 'Encerrado' :
+                                                'Cancelado'
+                                            }</span>
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            Visibilidade: {
+                                                configuracoes.visibility === 'public' ? 'Público' :
+                                                configuracoes.visibility === 'private' ? 'Privado' :
+                                                'Restrito'
+                                            } • Sistema: {configuracoes.isActive ? 'Ativo' : 'Inativo'}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </CardContent>
@@ -394,41 +523,44 @@ export default function EventoConfiguracoesPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="mt-8 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                        <Button
-                            variant="outline"
-                            onClick={handleReset}
-                            className="flex items-center gap-2"
-                        >
-                            <AlertTriangle className="h-4 w-4" />
-                            Redefinir
-                        </Button>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => window.history.back()}
-                        >
-                            Cancelar
-                        </Button>
-                        <Button
-                            onClick={handleSave}
-                            disabled={isLoading || updateEventoMutation.isPending}
-                            className="flex items-center gap-2"
-                        >
-                            {(isLoading || updateEventoMutation.isPending) ? (
-                                <>
-                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                    Salvando...
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="h-4 w-4" />
-                                    Salvar Configurações
-                                </>
-                            )}
-                        </Button>
+                <div className="mt-8 bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center space-x-3">
+                            <Button
+                                variant="outline"
+                                onClick={handleReset}
+                                className="flex items-center gap-2 border-orange-300 text-orange-700 hover:bg-orange-50 hover:border-orange-400"
+                            >
+                                <AlertTriangle className="h-4 w-4" />
+                                Redefinir
+                            </Button>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                            <Button
+                                variant="outline"
+                                onClick={() => window.history.back()}
+                                className="border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400"
+                            >
+                                Cancelar
+                            </Button>
+                            <Button
+                                onClick={handleSave}
+                                disabled={isLoading || updateEventoMutation.isPending}
+                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 shadow-md hover:shadow-lg transition-all duration-200"
+                            >
+                                {(isLoading || updateEventoMutation.isPending) ? (
+                                    <>
+                                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                        Salvando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="h-4 w-4" />
+                                        Salvar Configurações
+                                    </>
+                                )}
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>
