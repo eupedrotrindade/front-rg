@@ -51,7 +51,7 @@ import { useEventAttendanceByEventAndDate } from '@/features/eventos/api/query/u
 import { useEventParticipantsByEvent } from '@/features/eventos/api/query/use-event-participants-by-event'
 import type { EventParticipant } from '@/features/eventos/types'
 import apiClient from '@/lib/api-client'
-import { formatEventDate } from '@/lib/utils'
+import { formatEventDate, getCurrentDateISO } from '@/lib/utils'
 
 import {
   Calendar,
@@ -347,19 +347,16 @@ export default function Painel() {
       return result
     }
 
-    // Se é uma data JavaScript, converte para dd-mm-yyyy
-    try {
-      const date = new Date(dateStr)
-      if (!isNaN(date.getTime())) {
-        const day = date.getDate().toString().padStart(2, '0')
-        const month = (date.getMonth() + 1).toString().padStart(2, '0')
-        const year = date.getFullYear().toString()
+    // Se é uma data ISO, extrai apenas a parte da data
+    if (dateStr.includes('T')) {
+      dateStr = dateStr.split('T')[0]
+      // Reprocessa se agora está no formato yyyy-mm-dd
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [year, month, day] = dateStr.split('-')
         const result = `${day}-${month}-${year}`;
-        console.log('✅ Data JavaScript convertida de', dateStr, 'para', result);
+        console.log('✅ Data ISO convertida de', dateStr, 'para', result);
         return result
       }
-    } catch (error) {
-      console.error('❌ Erro ao converter data para API:', dateStr, error)
     }
 
     console.log('⚠️ formatDateForAPI retornando valor original:', dateStr);
@@ -426,31 +423,34 @@ export default function Painel() {
     (dateStr: string): boolean => {
       if (!evento || Array.isArray(evento)) return false
 
-      let inputDate: Date
+      let inputDateStr: string
       if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
         const [day, month, year] = dateStr.split('/')
-        inputDate = new Date(
-          Number.parseInt(year),
-          Number.parseInt(month) - 1,
-          Number.parseInt(day),
-        )
+        inputDateStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      } else if (dateStr.includes('T')) {
+        inputDateStr = dateStr.split('T')[0]
       } else {
-        inputDate = new Date(dateStr)
+        inputDateStr = dateStr
       }
 
-      if (isNaN(inputDate.getTime())) return false
-
-      // Usar os arrays montagem, evento, desmontagem
+      // Usar os arrays montagem, evento, desmontagem com strings
       const allEventDates = [
-        ...(evento.montagem || []).map(item => new Date(item.date)),
-        ...(evento.evento || []).map(item => new Date(item.date)),
-        ...(evento.desmontagem || []).map(item => new Date(item.date))
+        ...(evento.montagem || []).map(item => {
+          const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+          return dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+        }),
+        ...(evento.evento || []).map(item => {
+          const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+          return dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+        }),
+        ...(evento.desmontagem || []).map(item => {
+          const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+          return dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+        })
       ]
 
-      return allEventDates.some(eventDate => {
-        eventDate.setHours(0, 0, 0, 0)
-        inputDate.setHours(0, 0, 0, 0)
-        return inputDate.getTime() === eventDate.getTime()
+      return allEventDates.some(eventDateStr => {
+        return inputDateStr === eventDateStr
       })
     },
     [evento],
@@ -471,9 +471,10 @@ export default function Painel() {
           if (/^\d{2}\/\d{2}\/\d{4}$/.test(day)) {
             formattedDate = day
           } else {
-            const date = new Date(day)
-            if (!isNaN(date.getTime())) {
-              formattedDate = date.toLocaleDateString('pt-BR')
+            // Tentar converter de ISO ou outro formato para dd/mm/yyyy
+            if (day.includes('-') && day.length === 10) {
+              const [year, month, dayOfMonth] = day.split('-')
+              formattedDate = `${dayOfMonth}/${month}/${year}`
             } else {
               formattedDate = day
             }
@@ -505,7 +506,15 @@ export default function Painel() {
 
     // Processar montagem
     if (evento.montagem && evento.montagem.length > 0) {
-      const dates = evento.montagem.map(item => new Date(item.date).toLocaleDateString('pt-BR'))
+      const dates = evento.montagem.map(item => {
+        const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+        const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+        if (cleanDate.includes('-') && cleanDate.length === 10) {
+          const [year, month, day] = cleanDate.split('-')
+          return `${day}/${month}/${year}`
+        }
+        return cleanDate
+      })
       const uniqueDates = [...new Set(dates)].sort()
       if (uniqueDates.length === 1) {
         periods.push(`Montagem: ${uniqueDates[0]}`)
@@ -516,7 +525,15 @@ export default function Painel() {
 
     // Processar evento
     if (evento.evento && evento.evento.length > 0) {
-      const dates = evento.evento.map(item => new Date(item.date).toLocaleDateString('pt-BR'))
+      const dates = evento.evento.map(item => {
+        const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+        const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+        if (cleanDate.includes('-') && cleanDate.length === 10) {
+          const [year, month, day] = cleanDate.split('-')
+          return `${day}/${month}/${year}`
+        }
+        return cleanDate
+      })
       const uniqueDates = [...new Set(dates)].sort()
       const hasSetup = evento.montagem && evento.montagem.length > 0
       const hasFinalization = evento.desmontagem && evento.desmontagem.length > 0
@@ -531,7 +548,15 @@ export default function Painel() {
 
     // Processar desmontagem
     if (evento.desmontagem && evento.desmontagem.length > 0) {
-      const dates = evento.desmontagem.map(item => new Date(item.date).toLocaleDateString('pt-BR'))
+      const dates = evento.desmontagem.map(item => {
+        const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+        const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+        if (cleanDate.includes('-') && cleanDate.length === 10) {
+          const [year, month, day] = cleanDate.split('-')
+          return `${day}/${month}/${year}`
+        }
+        return cleanDate
+      })
       const uniqueDates = [...new Set(dates)].sort()
       if (uniqueDates.length === 1) {
         periods.push(`Desmontagem: ${uniqueDates[0]}`)
@@ -571,12 +596,18 @@ export default function Painel() {
       return `${day}/${month}/${year}`
     }
 
-    // Se é uma data JavaScript, converte para dd/mm/yyyy
-    try {
-      const date = new Date(dateStr)
-      if (!isNaN(date.getTime())) {
-        return formatEventDate(dateStr)
+    // Se contém timestamp ISO, extrair apenas a data
+    if (dateStr.includes('T')) {
+      const isoDate = dateStr.split('T')[0]
+      if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+        const [year, month, day] = isoDate.split('-')
+        return `${day}/${month}/${year}`
       }
+    }
+
+    // Tentar usar formatEventDate para conversão segura
+    try {
+      return formatEventDate(dateStr)
     } catch (error) {
       console.error('Erro ao converter data:', dateStr, error)
     }
@@ -597,7 +628,7 @@ export default function Painel() {
 
       return {
         dateISO: `${year}-${month}-${day}`,
-        dateFormatted: formatEventDate(`${year}-${month}-${day}T00:00:00`),
+        dateFormatted: formatEventDate(`${year}-${month}-${day}`),
         stage,
         period
       };
@@ -605,7 +636,7 @@ export default function Painel() {
 
     // Fallback para formato simples (apenas data)
     try {
-      const dateFormatted = formatEventDate(shiftId.includes('T') ? shiftId : shiftId + 'T00:00:00');
+      const dateFormatted = formatEventDate(shiftId.split('T')[0]);
       return {
         dateISO: shiftId,
         dateFormatted,
@@ -622,6 +653,21 @@ export default function Painel() {
       };
     }
   }, []);
+
+  // Helper function to ensure array format
+  const ensureArray = (data: any): any[] => {
+    if (!data) return []
+    if (Array.isArray(data)) return data
+    if (typeof data === 'string') {
+      try {
+        const parsed = JSON.parse(data)
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
+      }
+    }
+    return []
+  }
 
   const getEventDays = useCallback((): Array<{
     id: string
@@ -643,90 +689,78 @@ export default function Painel() {
     // Usar os arrays montagem, evento, desmontagem do JSON
 
     // Processar montagem
-    if (evento.montagem && Array.isArray(evento.montagem)) {
-      console.log('🔧 Processando montagem:', evento.montagem)
-      evento.montagem.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
-        // Usar a data ISO diretamente sem conversões desnecessárias
-        const isoDate = item.date // YYYY-MM-DD
-        const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
-        const dateStr = date.toLocaleDateString('pt-BR')
+    const montagemArray = ensureArray(evento.montagem)
+    montagemArray.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
+      // Extract date string directly to avoid timezone shifts
+      const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+      const formattedDate = formatEventDate(dateStr)
 
-        const dayId = `${isoDate}-montagem-${item.period}`
-        console.log('✅ Adicionando montagem:', { dayId, dateStr, item })
+      const dayId = `${dateStr.split('T')[0]}-montagem-${item.period}`
 
-        days.push({
-          id: dayId,
-          label: `${dateStr} (MONTAGEM - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
-          date: dateStr,
-          type: 'montagem',
-          period: item.period,
-        })
+      days.push({
+        id: dayId,
+        label: `${formattedDate} (MONTAGEM - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
+        date: formattedDate,
+        type: 'montagem',
+        period: item.period,
       })
-    }
+    })
 
     // Processar evento
-    if (evento.evento && Array.isArray(evento.evento)) {
-      console.log('🔧 Processando evento:', evento.evento)
-      const hasSetup = evento.montagem && evento.montagem.length > 0
-      const hasFinalization = evento.desmontagem && evento.desmontagem.length > 0
-      const isOnlyEventDay = !hasSetup && !hasFinalization
-      const eventLabel = isOnlyEventDay ? 'DIA DO EVENTO' : 'EVENTO'
+    const eventoArray = ensureArray(evento.evento)
+    const hasSetup = montagemArray.length > 0
+    const hasFinalization = ensureArray(evento.desmontagem).length > 0
+    const isOnlyEventDay = !hasSetup && !hasFinalization
+    const eventLabel = isOnlyEventDay ? 'DIA DO EVENTO' : 'EVENTO'
 
-      evento.evento.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
-        // Usar a data ISO diretamente sem conversões desnecessárias
-        const isoDate = item.date // YYYY-MM-DD
-        const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
-        const dateStr = date.toLocaleDateString('pt-BR')
+    eventoArray.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
+      // Extract date string directly to avoid timezone shifts
+      const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+      const formattedDate = formatEventDate(dateStr)
 
-        const dayId = `${isoDate}-evento-${item.period}`
-        console.log('✅ Adicionando evento:', { dayId, dateStr, item })
+      const dayId = `${dateStr.split('T')[0]}-evento-${item.period}`
 
-        days.push({
-          id: dayId,
-          label: `${dateStr} (${eventLabel} - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
-          date: dateStr,
-          type: 'evento',
-          period: item.period,
-        })
+      days.push({
+        id: dayId,
+        label: `${formattedDate} (${eventLabel} - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
+        date: formattedDate,
+        type: 'evento',
+        period: item.period,
       })
-    }
+    })
 
     // Processar desmontagem
-    if (evento.desmontagem && Array.isArray(evento.desmontagem)) {
-      console.log('🔧 Processando desmontagem:', evento.desmontagem)
-      evento.desmontagem.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
-        // Usar a data ISO diretamente sem conversões desnecessárias
-        const isoDate = item.date // YYYY-MM-DD
-        const date = new Date(item.date + 'T12:00:00') // Forçar meio-dia para evitar timezone
-        const dateStr = date.toLocaleDateString('pt-BR')
+    const desmontagemArray = ensureArray(evento.desmontagem)
+    desmontagemArray.forEach((item: { date: string; period: 'diurno' | 'noturno' | 'dia_inteiro' }) => {
+      // Extract date string directly to avoid timezone shifts
+      const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+      const formattedDate = formatEventDate(dateStr)
 
-        const dayId = `${isoDate}-desmontagem-${item.period}`
-        console.log('✅ Adicionando desmontagem:', { dayId, dateStr, item })
+      const dayId = `${dateStr.split('T')[0]}-desmontagem-${item.period}`
 
-        days.push({
-          id: dayId,
-          label: `${dateStr} (DESMONTAGEM - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
-          date: dateStr,
-          type: 'desmontagem',
-          period: item.period,
-        })
+      days.push({
+        id: dayId,
+        label: `${formattedDate} (DESMONTAGEM - ${item.period === 'dia_inteiro' ? 'DIA INTEIRO' : item.period.toUpperCase()})`,
+        date: formattedDate,
+        type: 'desmontagem',
+        period: item.period,
       })
-    }
+    })
 
-    // Ordenar por data e período
+    // Ordenar por data e período usando comparação de string
     const sortedDays = days.sort((a, b) => {
-      const dateA = new Date(a.date.split('/').reverse().join('-'))
-      const dateB = new Date(b.date.split('/').reverse().join('-'))
+      const dateA = a.id.split('-')[0]
+      const dateB = b.id.split('-')[0]
 
-      if (dateA.getTime() === dateB.getTime()) {
+      if (dateA === dateB) {
         // Se mesma data, ordenar por período (diurno, noturno, dia_inteiro)
-        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
-        const aPeriodOrder = periodOrder[a.period as keyof typeof periodOrder] ?? 999;
-        const bPeriodOrder = periodOrder[b.period as keyof typeof periodOrder] ?? 999;
-        return aPeriodOrder - bPeriodOrder;
+        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 }
+        const aPeriodOrder = periodOrder[a.period as keyof typeof periodOrder] ?? 999
+        const bPeriodOrder = periodOrder[b.period as keyof typeof periodOrder] ?? 999
+        return aPeriodOrder - bPeriodOrder
       }
 
-      return dateA.getTime() - dateB.getTime()
+      return dateA.localeCompare(dateB)
     })
 
     // Dias gerados silently para performance
@@ -800,22 +834,22 @@ export default function Painel() {
   const getTabColor = useCallback((type: string, isActive: boolean) => {
     if (isActive) {
       switch (type) {
-        case 'setup':
+        case 'montagem':
           return 'border-yellow-500 text-yellow-600 bg-yellow-50'
-        case 'preparation':
+        case 'evento':
           return 'border-blue-500 text-blue-600 bg-blue-50'
-        case 'finalization':
+        case 'desmontagem':
           return 'border-purple-500 text-purple-600 bg-purple-50'
         default:
-          return 'border-purple-500 text-purple-600 bg-purple-50'
+          return 'border-blue-500 text-blue-600 bg-blue-50'
       }
     } else {
       switch (type) {
-        case 'setup':
+        case 'montagem':
           return 'hover:text-yellow-700 hover:border-yellow-300'
-        case 'preparation':
+        case 'evento':
           return 'hover:text-blue-700 hover:border-blue-300'
-        case 'finalization':
+        case 'desmontagem':
           return 'hover:text-purple-700 hover:border-purple-300'
         default:
           return 'hover:text-gray-700 hover:border-gray-300'
@@ -831,28 +865,28 @@ export default function Painel() {
         !evento ||
         Array.isArray(evento)
       ) {
-        return { setup: [], preparation: [], finalization: [] }
+        return { montagem: [], evento: [], desmontagem: [] }
       }
 
       const categorized = {
-        setup: [] as string[],
-        preparation: [] as string[],
-        finalization: [] as string[],
+        montagem: [] as string[],
+        evento: [] as string[],
+        desmontagem: [] as string[],
       }
 
       participant.daysWork.forEach(day => {
-        const dayDate = new Date(day.split('/').reverse().join('-'))
-        dayDate.setHours(0, 0, 0, 0)
+        // Converter dia para formato YYYY-MM-DD para comparação
+        const dayFormatted = day.includes('/') ? day.split('/').reverse().join('-') : day
 
         // Verificar montagem
         if (evento.montagem && evento.montagem.length > 0) {
           const isSetupDay = evento.montagem.some(item => {
-            const itemDate = new Date(item.date)
-            itemDate.setHours(0, 0, 0, 0)
-            return dayDate.getTime() === itemDate.getTime()
+            const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+            const itemDateFormatted = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+            return dayFormatted === itemDateFormatted
           })
           if (isSetupDay) {
-            categorized.setup.push(day)
+            categorized.montagem.push(day)
             return
           }
         }
@@ -860,12 +894,12 @@ export default function Painel() {
         // Verificar evento
         if (evento.evento && evento.evento.length > 0) {
           const isEventDay = evento.evento.some(item => {
-            const itemDate = new Date(item.date)
-            itemDate.setHours(0, 0, 0, 0)
-            return dayDate.getTime() === itemDate.getTime()
+            const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+            const itemDateFormatted = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+            return dayFormatted === itemDateFormatted
           })
           if (isEventDay) {
-            categorized.preparation.push(day)
+            categorized.evento.push(day)
             return
           }
         }
@@ -873,12 +907,12 @@ export default function Painel() {
         // Verificar desmontagem
         if (evento.desmontagem && evento.desmontagem.length > 0) {
           const isFinalizationDay = evento.desmontagem.some(item => {
-            const itemDate = new Date(item.date)
-            itemDate.setHours(0, 0, 0, 0)
-            return dayDate.getTime() === itemDate.getTime()
+            const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+            const itemDateFormatted = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+            return dayFormatted === itemDateFormatted
           })
           if (isFinalizationDay) {
-            categorized.finalization.push(day)
+            categorized.desmontagem.push(day)
             return
           }
         }
@@ -913,8 +947,17 @@ export default function Painel() {
         }
 
         phaseItems.forEach(item => {
-          const date = new Date(item.date)
-          const formattedDate = date.toLocaleDateString('pt-BR')
+          const dateStr = typeof item.date === 'string' ? item.date : (item.date as any)?.toISOString ? (item.date as any).toISOString().split('T')[0] : String(item.date)
+          const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+          let formattedDate: string
+
+          if (cleanDate.includes('-') && cleanDate.length === 10) {
+            const [year, month, day] = cleanDate.split('-')
+            formattedDate = `${day}/${month}/${year}`
+          } else {
+            formattedDate = cleanDate
+          }
+
           if (!availableDates.includes(formattedDate)) {
             availableDates.push(formattedDate)
           }
@@ -993,10 +1036,10 @@ export default function Painel() {
     return Object.values(columnFilters).some(filters => filters.length > 0)
   }, [columnFilters])
 
-  // Função utilitária para converter dd/mm/yyyy para Date
-  const dataBRtoDate = (dataStr: string): Date => {
+  // Função utilitária para converter dd/mm/yyyy para formato ISO string
+  const dataBRtoISO = (dataStr: string): string => {
     const [dia, mes, ano] = dataStr.split('/')
-    return new Date(Number(ano), Number(mes) - 1, Number(dia))
+    return `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`
   }
 
   // Retorna apenas as datas atribuídas ao operador logado
@@ -1014,9 +1057,9 @@ export default function Painel() {
       const dias = getEventDays()
       console.log('🔍 Todos os dias retornados quando sem shifts:', dias.length, dias.map(d => ({ id: d.id, label: d.label })))
       dias.sort((a, b) => {
-        const dateA = dataBRtoDate(a.date)
-        const dateB = dataBRtoDate(b.date)
-        return dateA.getTime() - dateB.getTime()
+        const dateA = dataBRtoISO(a.date)
+        const dateB = dataBRtoISO(b.date)
+        return dateA.localeCompare(dateB)
       })
       return dias
     }
@@ -1049,9 +1092,9 @@ export default function Painel() {
 
     // Ordena as datas
     diasDisponiveis.sort((a, b) => {
-      const dateA = dataBRtoDate(a.date)
-      const dateB = dataBRtoDate(b.date)
-      return dateA.getTime() - dateB.getTime()
+      const dateA = dataBRtoISO(a.date)
+      const dateB = dataBRtoISO(b.date)
+      return dateA.localeCompare(dateB)
     })
 
     console.log('🎯 Dias finais disponíveis para o operador:', diasDisponiveis.map(d => ({ id: d.id, label: d.label })))
@@ -2179,7 +2222,7 @@ export default function Painel() {
       // Criar objeto base com campos obrigatórios
       const baseAction = {
         type: actionData.type,
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentDateISO() + 'T' + new Date().toTimeString().split(' ')[0] + 'Z',
         tabela: 'operadores', // Propriedade obrigatória para o backend
       }
 
@@ -2375,10 +2418,8 @@ export default function Painel() {
     }
     setLoading(true)
     try {
-      const today = new Date()
-      const day = String(today.getDate()).padStart(2, '0')
-      const month = String(today.getMonth() + 1).padStart(2, '0')
-      const year = today.getFullYear()
+      const todayISO = getCurrentDateISO()
+      const [year, month, day] = todayISO.split('-')
       const todayFormatted = `${day}-${month}-${year}`
 
       const dateToUse = selectedDateForAction
@@ -2411,7 +2452,7 @@ export default function Painel() {
       }
 
       // Atualizar estado local imediatamente
-      const currentTime = new Date().toISOString()
+      const currentTime = getCurrentDateISO() + 'T' + new Date().toTimeString().split(' ')[0] + 'Z'
       const newStatus = {
         checkIn: currentTime,
         checkOut: null,
@@ -2473,10 +2514,8 @@ export default function Painel() {
     }
     setLoading(true)
     try {
-      const today = new Date()
-      const day = String(today.getDate()).padStart(2, '0')
-      const month = String(today.getMonth() + 1).padStart(2, '0')
-      const year = today.getFullYear()
+      const todayISO = getCurrentDateISO()
+      const [year, month, day] = todayISO.split('-')
       const todayFormatted = `${day}-${month}-${year}`
 
       const dateToUse = selectedDateForAction
@@ -2497,7 +2536,7 @@ export default function Painel() {
       })
 
       // Atualizar estado local imediatamente
-      const currentTime = new Date().toISOString()
+      const currentTime = getCurrentDateISO() + 'T' + new Date().toTimeString().split(' ')[0] + 'Z'
       const currentStatus = participantsAttendanceStatus.get(
         participantAction.id,
       )
@@ -3080,9 +3119,9 @@ export default function Painel() {
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <span className="text-xs opacity-75">
-                                    {day.type === 'setup' ? 'MONTAGEM' :
-                                      day.type === 'preparation' ? 'EVENTO' :
-                                        day.type === 'finalization' ? 'DESMONTAGEM' :
+                                    {day.type === 'montagem' ? 'MONTAGEM' :
+                                      day.type === 'evento' ? 'EVENTO' :
+                                        day.type === 'desmontagem' ? 'DESMONTAGEM' :
                                           'EVENTO'}
                                   </span>
                                   {day.period && (
@@ -3377,7 +3416,7 @@ export default function Painel() {
                                   {status.checkIn ? (
                                     <>
                                       <div className="text-sm text-gray-900">
-                                        {new Date(status.checkIn).toLocaleDateString('pt-BR')}
+                                        {formatEventDate(status.checkIn)}
                                       </div>
                                       <div className="text-xs text-gray-600">
                                         {new Date(status.checkIn).toLocaleTimeString('pt-BR', {
@@ -3401,7 +3440,7 @@ export default function Painel() {
                                   {status.checkOut ? (
                                     <>
                                       <div className="text-sm text-gray-900">
-                                        {new Date(status.checkOut).toLocaleDateString('pt-BR')}
+                                        {formatEventDate(status.checkOut)}
                                       </div>
                                       <div className="text-xs text-gray-600">
                                         {new Date(status.checkOut).toLocaleTimeString('pt-BR', {
