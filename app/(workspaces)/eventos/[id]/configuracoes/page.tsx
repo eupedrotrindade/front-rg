@@ -143,73 +143,6 @@ export default function EventoConfiguracoesPage() {
     const [isLoading, setIsLoading] = useState(false)
 
     // Função para parsear dias do evento (handles JSON strings) com normalização de data
-    const parseEventDays = useCallback((data: any) => {
-        console.log('🔍 parseEventDays recebeu:', { data, type: typeof data })
-
-        let parsedDays: any[] = []
-
-        if (!data) {
-            console.log('⚠️ Dados vazios ou nulos')
-            return []
-        }
-
-        if (Array.isArray(data)) {
-            console.log('✅ Dados já são array')
-            parsedDays = data
-        } else if (typeof data === 'string' && data.trim().startsWith('[')) {
-            try {
-                parsedDays = JSON.parse(data)
-                console.log('✅ String JSON parseada com sucesso')
-            } catch (error) {
-                console.error('❌ Erro ao parsear JSON:', error)
-                return []
-            }
-        } else if (typeof data === 'string' && data.trim() === '') {
-            console.log('⚠️ String vazia')
-            return []
-        } else if (typeof data === 'object' && data !== null) {
-            console.log('⚠️ Objeto inesperado, tentando converter')
-            // Se for um objeto, tentar extrair propriedades
-            if (data.length !== undefined) {
-                // Se tem propriedade length, pode ser array-like
-                parsedDays = Array.from(data)
-            } else {
-                console.warn('⚠️ Tipo de dados não reconhecido:', typeof data, data)
-                return []
-            }
-        } else {
-            console.warn('⚠️ Tipo de dados não suportado:', typeof data, data)
-            return []
-        }
-
-        // Validar se realmente é array
-        if (!Array.isArray(parsedDays)) {
-            console.error('❌ Resultado não é array:', parsedDays)
-            return []
-        }
-
-        // Normalizar datas para evitar problemas de timezone
-        const normalizedDays = parsedDays.map((day, index) => {
-            if (!day || typeof day !== 'object') {
-                console.warn(`⚠️ Dia ${index} inválido:`, day)
-                return null
-            }
-
-            const normalizedDay = {
-                ...day,
-                date: day.date ? (
-                    // Se a data inclui horário, extrair apenas a parte da data
-                    day.date.includes && day.date.includes('T') ? day.date.split('T')[0] : day.date
-                ) : day.date
-            }
-
-            console.log(`✅ Dia ${index} normalizado:`, { original: day, normalized: normalizedDay })
-            return normalizedDay
-        }).filter(Boolean) // Remove entradas nulas
-
-        console.log('🎯 Resultado final do parseEventDays:', normalizedDays)
-        return normalizedDays
-    }, [])
 
     // Atualizar configurações quando evento mudar
     React.useEffect(() => {
@@ -249,10 +182,64 @@ export default function EventoConfiguracoesPage() {
                 isActive: evento.isActive ?? true
             })
 
+            // Função local para parsing dos dias (evitar dependência de useCallback)
+            const parseEventDaysLocal = (data: any) => {
+                console.log('🔄 parseEventDaysLocal chamado com:', data)
+
+                if (!data) {
+                    console.log('❌ Dados vazios, retornando array vazio')
+                    return []
+                }
+
+                let parsedDays: any[] = []
+
+                if (Array.isArray(data)) {
+                    console.log('✅ Dados já são array:', data)
+                    parsedDays = data
+                } else if (typeof data === 'string' && data.trim().startsWith('[')) {
+                    try {
+                        console.log('🔧 Fazendo parse de string JSON:', data)
+                        parsedDays = JSON.parse(data)
+                        console.log('✅ Parse bem-sucedido:', parsedDays)
+                    } catch (error) {
+                        console.error('❌ Erro no parse JSON:', error)
+                        return []
+                    }
+                } else {
+                    console.log('❌ Formato não suportado:', typeof data, data)
+                    return []
+                }
+
+                if (!Array.isArray(parsedDays)) {
+                    console.log('❌ Resultado não é array:', parsedDays)
+                    return []
+                }
+
+                const normalizedDays = parsedDays.map((day, index) => {
+                    if (!day || typeof day !== 'object') {
+                        console.log(`⚠️ Dia ${index} inválido:`, day)
+                        return null
+                    }
+
+                    const normalizedDay = {
+                        ...day,
+                        date: day.date ? (
+                            day.date.includes && day.date.includes('T') ? day.date.split('T')[0] : day.date
+                        ) : day.date
+                    }
+
+                    console.log(`✅ Dia ${index} normalizado:`, { original: day, normalized: normalizedDay })
+                    return normalizedDay
+                }).filter(Boolean)
+
+                console.log('🎯 Resultado final:', normalizedDays)
+                return normalizedDays
+            }
+
             // Carregar dias do evento com log detalhado
-            const montagemDays = parseEventDays((evento as any).montagem)
-            const eventoDays = parseEventDays((evento as any).evento)
-            const desmontagemDays = parseEventDays((evento as any).desmontagem)
+            const montagemDays = parseEventDaysLocal((evento as any).montagem)
+            const eventoDays = parseEventDaysLocal((evento as any).evento)
+            const desmontagemDays = parseEventDaysLocal((evento as any).desmontagem)
 
             console.log('🔍 Dias do evento processados:', {
                 montagem: montagemDays,
@@ -260,13 +247,22 @@ export default function EventoConfiguracoesPage() {
                 desmontagem: desmontagemDays
             })
 
-            setEventDays({
-                montagem: montagemDays,
-                evento: eventoDays,
-                desmontagem: desmontagemDays
+            setEventDays(prevEventDays => {
+                const newEventDays = {
+                    montagem: montagemDays,
+                    evento: eventoDays,
+                    desmontagem: desmontagemDays
+                };
+
+                // Evitar atualizações desnecessárias comparando o conteúdo
+                if (JSON.stringify(prevEventDays) === JSON.stringify(newEventDays)) {
+                    return prevEventDays;
+                }
+
+                return newEventDays;
             })
         }
-    }, [evento, parseEventDays])
+    }, [evento])
 
     // Função para obter limites de data dos dias do evento
     const getDateBoundaries = useCallback((days: SimpleEventDay[]) => {
@@ -291,7 +287,13 @@ export default function EventoConfiguracoesPage() {
 
     // Handler para mudanças nos dias do evento
     const handleEventDaysChange = useCallback((days: { montagem: SimpleEventDay[]; evento: SimpleEventDay[]; desmontagem: SimpleEventDay[] }) => {
-        setEventDays(days)
+        setEventDays(prevDays => {
+            // Evitar atualizações desnecessárias comparando o conteúdo
+            if (JSON.stringify(prevDays) === JSON.stringify(days)) {
+                return prevDays;
+            }
+            return days;
+        });
     }, [])
 
     const handleSave = async () => {
@@ -402,10 +404,42 @@ export default function EventoConfiguracoesPage() {
                     isActive: evento.isActive ?? true
                 })
 
+                // Função local para parsing dos dias
+                const parseEventDaysLocal = (data: any) => {
+                    if (!data) return []
+
+                    let parsedDays: any[] = []
+
+                    if (Array.isArray(data)) {
+                        parsedDays = data
+                    } else if (typeof data === 'string' && data.trim().startsWith('[')) {
+                        try {
+                            parsedDays = JSON.parse(data)
+                        } catch (error) {
+                            console.error('❌ Erro no parse JSON:', error)
+                            return []
+                        }
+                    } else {
+                        return []
+                    }
+
+                    if (!Array.isArray(parsedDays)) return []
+
+                    return parsedDays.map((day) => {
+                        if (!day || typeof day !== 'object') return null
+                        return {
+                            ...day,
+                            date: day.date ? (
+                                day.date.includes && day.date.includes('T') ? day.date.split('T')[0] : day.date
+                            ) : day.date
+                        }
+                    }).filter(Boolean)
+                }
+
                 // Redefinir dias do evento
-                const resetMontagemDays = parseEventDays((evento as any).montagem)
-                const resetEventoDays = parseEventDays((evento as any).evento)
-                const resetDesmontagemDays = parseEventDays((evento as any).desmontagem)
+                const resetMontagemDays = parseEventDaysLocal((evento as any).montagem)
+                const resetEventoDays = parseEventDaysLocal((evento as any).evento)
+                const resetDesmontagemDays = parseEventDaysLocal((evento as any).desmontagem)
 
                 console.log('🔄 Redefinindo dias do evento:', {
                     montagem: resetMontagemDays,

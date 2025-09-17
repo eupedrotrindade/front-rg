@@ -55,25 +55,33 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
     desmontagem: initialData?.desmontagem || []
   });
 
+  // Track if update is from props (to prevent onChange callback)
+  const isUpdatingFromProps = React.useRef(false);
+
   // Update state when initialData changes
   React.useEffect(() => {
     if (initialData) {
       console.log('🔄 SimpleEventDaysManager recebeu novos initialData:', initialData)
-      setEventDays({
+
+      const newData = {
         montagem: initialData.montagem || [],
         evento: initialData.evento || [],
         desmontagem: initialData.desmontagem || []
+      };
+
+      // Only update if the data actually changed
+      setEventDays(prevData => {
+        if (JSON.stringify(prevData) === JSON.stringify(newData)) {
+          console.log('🔄 Dados iguais, não atualizando')
+          return prevData;
+        }
+
+        console.log('🔄 Dados diferentes, atualizando')
+        isUpdatingFromProps.current = true; // Mark as prop update
+        return newData;
       });
     }
   }, [initialData]);
-
-  // Prevent calling onChange when setting initial data
-  const [isInitialLoad, setIsInitialLoad] = React.useState(true);
-  React.useEffect(() => {
-    if (initialData && isInitialLoad) {
-      setIsInitialLoad(false);
-    }
-  }, [initialData, isInitialLoad]);
 
   // Form state for adding new days
   const [newDayForm, setNewDayForm] = useState<{
@@ -86,19 +94,24 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
     period: ''
   });
 
-  // Call onChange when data changes
+  // Call onChange when data changes (but not from props)
   const prevDataRef = React.useRef<string>('');
   React.useEffect(() => {
-    if (onChange && !isInitialLoad) {
-      const currentDataString = JSON.stringify(eventDays);
+    const currentDataString = JSON.stringify(eventDays);
 
-      // Only call onChange if data actually changed
-      if (prevDataRef.current !== currentDataString) {
-        prevDataRef.current = currentDataString;
-        onChange(eventDays);
-      }
+    // If this is a prop update, just update the ref and return
+    if (isUpdatingFromProps.current) {
+      prevDataRef.current = currentDataString;
+      isUpdatingFromProps.current = false; // Reset flag
+      return;
     }
-  }, [eventDays, onChange, isInitialLoad]);
+
+    // Only call onChange if data actually changed and it's from user action
+    if (onChange && prevDataRef.current !== currentDataString) {
+      prevDataRef.current = currentDataString;
+      onChange(eventDays);
+    }
+  }, [eventDays, onChange]);
 
   const handleAddDay = () => {
     if (!newDayForm.phase || !newDayForm.date) {
