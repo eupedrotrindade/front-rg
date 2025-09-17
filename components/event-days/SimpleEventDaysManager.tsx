@@ -55,6 +55,26 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
     desmontagem: initialData?.desmontagem || []
   });
 
+  // Update state when initialData changes
+  React.useEffect(() => {
+    if (initialData) {
+      console.log('🔄 SimpleEventDaysManager recebeu novos initialData:', initialData)
+      setEventDays({
+        montagem: initialData.montagem || [],
+        evento: initialData.evento || [],
+        desmontagem: initialData.desmontagem || []
+      });
+    }
+  }, [initialData]);
+
+  // Prevent calling onChange when setting initial data
+  const [isInitialLoad, setIsInitialLoad] = React.useState(true);
+  React.useEffect(() => {
+    if (initialData && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [initialData, isInitialLoad]);
+
   // Form state for adding new days
   const [newDayForm, setNewDayForm] = useState<{
     phase: EventPhase | '';
@@ -69,16 +89,16 @@ export default function SimpleEventDaysManager({ initialData, onChange, classNam
   // Call onChange when data changes
   const prevDataRef = React.useRef<string>('');
   React.useEffect(() => {
-    if (onChange) {
+    if (onChange && !isInitialLoad) {
       const currentDataString = JSON.stringify(eventDays);
-      
+
       // Only call onChange if data actually changed
       if (prevDataRef.current !== currentDataString) {
         prevDataRef.current = currentDataString;
         onChange(eventDays);
       }
     }
-  }, [eventDays, onChange]);
+  }, [eventDays, onChange, isInitialLoad]);
 
   const handleAddDay = () => {
     if (!newDayForm.phase || !newDayForm.date) {

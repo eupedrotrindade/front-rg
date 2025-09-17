@@ -29,6 +29,9 @@ import { toast } from "sonner"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import { useUpdateEvento } from "@/features/eventos/api/mutation/use-update-evento"
 import EventLayout from "@/components/dashboard/dashboard-layout"
+import SimpleEventDaysManager from '@/components/event-days/SimpleEventDaysManager'
+import { SimpleEventDay } from '@/public/types/simple-event-days'
+import { getCurrentDateISO } from '@/lib/utils'
 
 export default function EventoConfiguracoesPage() {
     const params = useParams()
@@ -37,22 +40,41 @@ export default function EventoConfiguracoesPage() {
 
     // Buscar dados do evento com tratamento robusto
     const evento = useMemo(() => {
+        console.log('🔍 Todos os eventos recebidos:', eventos)
+        console.log('🔍 Procurando evento com ID:', eventId)
+
         const foundEvent = Array.isArray(eventos)
             ? eventos.find((e) => String(e.id) === String(eventId))
             : undefined
 
-        // Debug temporário para verificar estrutura dos dados
+        // Debug detalhado para verificar estrutura dos dados
         if (foundEvent) {
             console.log('🔍 Evento encontrado em configurações:', {
                 id: foundEvent.id,
                 name: foundEvent.name,
+                description: foundEvent.description,
+                startDate: foundEvent.startDate,
+                endDate: foundEvent.endDate,
+                venue: foundEvent.venue,
+                address: foundEvent.address,
+                status: foundEvent.status,
+                visibility: foundEvent.visibility,
+                type: foundEvent.type,
+                categories: foundEvent.categories,
+                registrationLink: foundEvent.registrationLink,
+                bannerUrl: foundEvent.bannerUrl,
+                isActive: foundEvent.isActive,
                 montagem: foundEvent.montagem,
                 evento: foundEvent.evento,
                 desmontagem: foundEvent.desmontagem,
                 montagemType: typeof foundEvent.montagem,
                 eventoType: typeof foundEvent.evento,
-                desmontagemType: typeof foundEvent.desmontagem
+                desmontagemType: typeof foundEvent.desmontagem,
+                todasAsPropriedades: Object.keys(foundEvent)
             })
+        } else {
+            console.log('❌ Evento não encontrado com ID:', eventId)
+            console.log('🔍 IDs disponíveis:', Array.isArray(eventos) ? eventos.map(e => e.id) : 'eventos não é array')
         }
 
         return foundEvent
@@ -107,28 +129,170 @@ export default function EventoConfiguracoesPage() {
         isActive: true
     })
 
+    // Estados para dias do evento
+    const [eventDays, setEventDays] = useState<{
+        montagem: SimpleEventDay[];
+        evento: SimpleEventDay[];
+        desmontagem: SimpleEventDay[];
+    }>({
+        montagem: [],
+        evento: [],
+        desmontagem: []
+    })
+
     const [isLoading, setIsLoading] = useState(false)
+
+    // Função para parsear dias do evento (handles JSON strings) com normalização de data
+    const parseEventDays = useCallback((data: any) => {
+        console.log('🔍 parseEventDays recebeu:', { data, type: typeof data })
+
+        let parsedDays: any[] = []
+
+        if (!data) {
+            console.log('⚠️ Dados vazios ou nulos')
+            return []
+        }
+
+        if (Array.isArray(data)) {
+            console.log('✅ Dados já são array')
+            parsedDays = data
+        } else if (typeof data === 'string' && data.trim().startsWith('[')) {
+            try {
+                parsedDays = JSON.parse(data)
+                console.log('✅ String JSON parseada com sucesso')
+            } catch (error) {
+                console.error('❌ Erro ao parsear JSON:', error)
+                return []
+            }
+        } else if (typeof data === 'string' && data.trim() === '') {
+            console.log('⚠️ String vazia')
+            return []
+        } else if (typeof data === 'object' && data !== null) {
+            console.log('⚠️ Objeto inesperado, tentando converter')
+            // Se for um objeto, tentar extrair propriedades
+            if (data.length !== undefined) {
+                // Se tem propriedade length, pode ser array-like
+                parsedDays = Array.from(data)
+            } else {
+                console.warn('⚠️ Tipo de dados não reconhecido:', typeof data, data)
+                return []
+            }
+        } else {
+            console.warn('⚠️ Tipo de dados não suportado:', typeof data, data)
+            return []
+        }
+
+        // Validar se realmente é array
+        if (!Array.isArray(parsedDays)) {
+            console.error('❌ Resultado não é array:', parsedDays)
+            return []
+        }
+
+        // Normalizar datas para evitar problemas de timezone
+        const normalizedDays = parsedDays.map((day, index) => {
+            if (!day || typeof day !== 'object') {
+                console.warn(`⚠️ Dia ${index} inválido:`, day)
+                return null
+            }
+
+            const normalizedDay = {
+                ...day,
+                date: day.date ? (
+                    // Se a data inclui horário, extrair apenas a parte da data
+                    day.date.includes && day.date.includes('T') ? day.date.split('T')[0] : day.date
+                ) : day.date
+            }
+
+            console.log(`✅ Dia ${index} normalizado:`, { original: day, normalized: normalizedDay })
+            return normalizedDay
+        }).filter(Boolean) // Remove entradas nulas
+
+        console.log('🎯 Resultado final do parseEventDays:', normalizedDays)
+        return normalizedDays
+    }, [])
 
     // Atualizar configurações quando evento mudar
     React.useEffect(() => {
         if (evento) {
+            console.log('🔍 Carregando dados do evento:', {
+                id: evento.id,
+                name: evento.name,
+                startDate: evento.startDate,
+                endDate: evento.endDate,
+                venue: evento.venue,
+                address: evento.address,
+                status: evento.status,
+                visibility: evento.visibility,
+                type: evento.type,
+                categories: evento.categories,
+                registrationLink: evento.registrationLink,
+                bannerUrl: evento.bannerUrl,
+                isActive: evento.isActive,
+                montagem: (evento as any).montagem,
+                evento_days: (evento as any).evento,
+                desmontagem: (evento as any).desmontagem
+            })
+
             setConfiguracoes({
                 name: evento.name || "",
                 description: evento.description || "",
-                startDate: evento.startDate ? new Date(evento.startDate).toISOString().split('T')[0] : "",
-                endDate: evento.endDate ? new Date(evento.endDate).toISOString().split('T')[0] : "",
+                startDate: evento.startDate ? evento.startDate.includes('T') ? evento.startDate.split('T')[0] : evento.startDate : "",
+                endDate: evento.endDate ? evento.endDate.includes('T') ? evento.endDate.split('T')[0] : evento.endDate : "",
                 venue: evento.venue || "",
                 address: evento.address || "",
                 status: evento.status || "draft",
                 visibility: evento.visibility || "private",
                 type: evento.type || "",
-                categories: evento.categories || [],
+                categories: Array.isArray(evento.categories) ? evento.categories : [],
                 registrationLink: evento.registrationLink || "",
                 bannerUrl: evento.bannerUrl || "",
                 isActive: evento.isActive ?? true
             })
+
+            // Carregar dias do evento com log detalhado
+            const montagemDays = parseEventDays((evento as any).montagem)
+            const eventoDays = parseEventDays((evento as any).evento)
+            const desmontagemDays = parseEventDays((evento as any).desmontagem)
+
+            console.log('🔍 Dias do evento processados:', {
+                montagem: montagemDays,
+                evento: eventoDays,
+                desmontagem: desmontagemDays
+            })
+
+            setEventDays({
+                montagem: montagemDays,
+                evento: eventoDays,
+                desmontagem: desmontagemDays
+            })
         }
-    }, [evento])
+    }, [evento, parseEventDays])
+
+    // Função para obter limites de data dos dias do evento
+    const getDateBoundaries = useCallback((days: SimpleEventDay[]) => {
+        if (days.length === 0) return { start: null, end: null }
+
+        const sortedDays = days.sort((a, b) => {
+            // Normalizar datas para comparação
+            const dateA = a.date.includes('T') ? a.date.split('T')[0] : a.date
+            const dateB = b.date.includes('T') ? b.date.split('T')[0] : b.date
+            return new Date(dateA).getTime() - new Date(dateB).getTime()
+        })
+
+        // Retornar datas normalizadas
+        const startDate = sortedDays[0].date.includes('T') ? sortedDays[0].date.split('T')[0] : sortedDays[0].date
+        const endDate = sortedDays[sortedDays.length - 1].date.includes('T') ? sortedDays[sortedDays.length - 1].date.split('T')[0] : sortedDays[sortedDays.length - 1].date
+
+        return {
+            start: startDate,
+            end: endDate
+        }
+    }, [])
+
+    // Handler para mudanças nos dias do evento
+    const handleEventDaysChange = useCallback((days: { montagem: SimpleEventDay[]; evento: SimpleEventDay[]; desmontagem: SimpleEventDay[] }) => {
+        setEventDays(days)
+    }, [])
 
     const handleSave = async () => {
         if (!evento?.id) {
@@ -153,12 +317,34 @@ export default function EventoConfiguracoesPage() {
 
         setIsLoading(true)
         try {
+            // Calcular limites das datas dos eventos
+            const eventBoundaries = getDateBoundaries(eventDays.evento)
+            const montagemBoundaries = getDateBoundaries(eventDays.montagem)
+            const desmontagemBoundaries = getDateBoundaries(eventDays.desmontagem)
+
+            const allEventDays = [
+                ...eventDays.montagem,
+                ...eventDays.evento,
+                ...eventDays.desmontagem
+            ]
+
             const updateData = {
                 id: evento.id,
                 name: configuracoes.name.trim(),
                 description: configuracoes.description?.trim() || undefined,
-                startDate: configuracoes.startDate,
-                endDate: configuracoes.endDate,
+
+                // Datas principais do evento
+                startDate: eventBoundaries.start || configuracoes.startDate,
+                endDate: eventBoundaries.end || configuracoes.endDate,
+
+                // Datas de montagem
+                setupStartDate: montagemBoundaries.start || undefined,
+                setupEndDate: montagemBoundaries.end || undefined,
+
+                // Datas de desmontagem
+                finalizationStartDate: desmontagemBoundaries.start || undefined,
+                finalizationEndDate: desmontagemBoundaries.end || undefined,
+
                 venue: configuracoes.venue.trim(),
                 address: configuracoes.address?.trim() || undefined,
                 status: configuracoes.status,
@@ -167,7 +353,24 @@ export default function EventoConfiguracoesPage() {
                 categories: configuracoes.categories.filter(c => c.trim()),
                 registrationLink: configuracoes.registrationLink?.trim() || undefined,
                 bannerUrl: configuracoes.bannerUrl?.trim() || undefined,
-                isActive: configuracoes.isActive
+                isActive: configuracoes.isActive,
+
+                // Estrutura dos dias do evento - normalizar datas para garantir formato consistente
+                montagem: eventDays.montagem.map(day => ({
+                    ...day,
+                    date: day.date.includes('T') ? day.date.split('T')[0] : day.date
+                })),
+                evento: eventDays.evento.map(day => ({
+                    ...day,
+                    date: day.date.includes('T') ? day.date.split('T')[0] : day.date
+                })),
+                desmontagem: eventDays.desmontagem.map(day => ({
+                    ...day,
+                    date: day.date.includes('T') ? day.date.split('T')[0] : day.date
+                })),
+
+                // Metadados
+                totalDays: allEventDays.length
             }
 
             await updateEventoMutation.mutateAsync(updateData)
@@ -181,21 +384,41 @@ export default function EventoConfiguracoesPage() {
     const handleReset = () => {
         if (confirm("Tem certeza que deseja redefinir todas as configurações para os valores originais?")) {
             if (evento) {
+                console.log('🔄 Redefinindo dados para valores originais do evento:', evento)
+
                 setConfiguracoes({
                     name: evento.name || "",
                     description: evento.description || "",
-                    startDate: evento.startDate ? new Date(evento.startDate).toISOString().split('T')[0] : "",
-                    endDate: evento.endDate ? new Date(evento.endDate).toISOString().split('T')[0] : "",
+                    startDate: evento.startDate ? evento.startDate.includes('T') ? evento.startDate.split('T')[0] : evento.startDate : "",
+                    endDate: evento.endDate ? evento.endDate.includes('T') ? evento.endDate.split('T')[0] : evento.endDate : "",
                     venue: evento.venue || "",
                     address: evento.address || "",
                     status: evento.status || "draft",
                     visibility: evento.visibility || "private",
                     type: evento.type || "",
-                    categories: evento.categories || [],
+                    categories: Array.isArray(evento.categories) ? evento.categories : [],
                     registrationLink: evento.registrationLink || "",
                     bannerUrl: evento.bannerUrl || "",
                     isActive: evento.isActive ?? true
                 })
+
+                // Redefinir dias do evento
+                const resetMontagemDays = parseEventDays((evento as any).montagem)
+                const resetEventoDays = parseEventDays((evento as any).evento)
+                const resetDesmontagemDays = parseEventDays((evento as any).desmontagem)
+
+                console.log('🔄 Redefinindo dias do evento:', {
+                    montagem: resetMontagemDays,
+                    evento: resetEventoDays,
+                    desmontagem: resetDesmontagemDays
+                })
+
+                setEventDays({
+                    montagem: resetMontagemDays,
+                    evento: resetEventoDays,
+                    desmontagem: resetDesmontagemDays
+                })
+
                 toast.success("Configurações redefinidas para os valores originais!")
             }
         }
@@ -395,6 +618,97 @@ export default function EventoConfiguracoesPage() {
                                         maxSize={5}
                                     />
                                 </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Configuração de Dias e Turnos */}
+                    <Card className="border-l-4 border-l-purple-500 shadow-sm">
+                        <CardHeader className="bg-gradient-to-r from-purple-50 to-violet-50">
+                            <CardTitle className="flex items-center gap-2 text-gray-800">
+                                <Calendar className="h-5 w-5 text-purple-600" />
+                                Configuração de Dias e Turnos
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6 p-6">
+                            {/* Header Info */}
+                            <Card className="bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200">
+                                <CardContent className="p-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                                            <span className="text-gray-700">
+                                                <strong>Montagem:</strong> Preparação (Diurno/Noturno)
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                            <span className="text-gray-700">
+                                                <strong>Evento:</strong> Execução (Diurno/Noturno/Dia Inteiro)
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                                            <span className="text-gray-700">
+                                                <strong>Desmontagem:</strong> Finalização (Diurno/Noturno)
+                                            </span>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Simple Event Days Manager */}
+                            <SimpleEventDaysManager
+                                initialData={eventDays}
+                                onChange={handleEventDaysChange}
+                            />
+
+                            {/* Summary */}
+                            {(eventDays.montagem.length > 0 || eventDays.evento.length > 0 || eventDays.desmontagem.length > 0) && (
+                                <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+                                    <CardContent className="p-4">
+                                        <div className="flex items-center space-x-2 mb-3">
+                                            <Calendar className="w-5 h-5 text-purple-600" />
+                                            <span className="font-medium text-purple-800">Resumo das Datas Configuradas</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                            <div>
+                                                <span className="font-medium text-gray-700">Montagem:</span>
+                                                <div className="text-yellow-700">
+                                                    {eventDays.montagem.length === 0
+                                                        ? 'Não configurada'
+                                                        : `${eventDays.montagem.length} dia(s)`
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span className="font-medium text-gray-700">Evento:</span>
+                                                <div className="text-blue-700">
+                                                    {eventDays.evento.length === 0
+                                                        ? 'Não configurado'
+                                                        : `${eventDays.evento.length} dia(s)`
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span className="font-medium text-gray-700">Desmontagem:</span>
+                                                <div className="text-purple-700">
+                                                    {eventDays.desmontagem.length === 0
+                                                        ? 'Não configurada'
+                                                        : `${eventDays.desmontagem.length} dia(s)`
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Required Notice */}
+                            <div className="flex items-center justify-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <p className="text-sm text-yellow-800">
+                                    <span className="font-medium">Importante:</span> Configure pelo menos um dia para a execução do evento
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
