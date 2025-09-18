@@ -3722,7 +3722,7 @@ export default function EventoDetalhesPage() {
                                                     <Button
                                                         size="sm"
                                                         variant="outline"
-                                                        onClick={() => router.push(`eventos/${evento?.id}/replicacao`)}
+                                                        onClick={() => router.push(`/eventos/${evento?.id}/replicacao`)}
 
                                                         className="text-xs h-6 px-2 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
                                                     >
