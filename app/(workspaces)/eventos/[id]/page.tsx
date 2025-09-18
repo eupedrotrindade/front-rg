@@ -1455,17 +1455,17 @@ export default function EventoDetalhesPage() {
     const abrirCheckin = useCallback(
         async (participant: EventParticipant) => {
             const attendanceRecord = getAttendanceRecord(participant.id, selectedDay)
-            
+
             if (attendanceRecord && attendanceRecord.checkIn) {
                 // Se já fez check-in, abrir em modo de edição
                 setIsEditingAttendance(true)
                 setCurrentAttendanceId(attendanceRecord.id)
-                
+
                 // Pré-preencher os campos com os dados existentes
                 const checkinDateTime = new Date(attendanceRecord.checkIn)
                 setEditCheckinDate(checkinDateTime.toISOString().split('T')[0])
                 setEditCheckinTime(checkinDateTime.toTimeString().split(' ')[0].slice(0, 5))
-                
+
                 if (attendanceRecord.checkOut) {
                     const checkoutDateTime = new Date(attendanceRecord.checkOut)
                     setEditCheckoutDate(checkoutDateTime.toISOString().split('T')[0])
@@ -1522,12 +1522,12 @@ export default function EventoDetalhesPage() {
                 // Se já fez check-out, abrir em modo de edição usando o mesmo modal
                 setIsEditingAttendance(true)
                 setCurrentAttendanceId(attendanceRecord.id)
-                
+
                 // Pré-preencher os campos com os dados existentes
                 const checkinDateTime = new Date(attendanceRecord.checkIn!)
                 setEditCheckinDate(checkinDateTime.toISOString().split('T')[0])
                 setEditCheckinTime(checkinDateTime.toTimeString().split(' ')[0].slice(0, 5))
-                
+
                 const checkoutDateTime = new Date(attendanceRecord.checkOut)
                 setEditCheckoutDate(checkoutDateTime.toISOString().split('T')[0])
                 setEditCheckoutTime(checkoutDateTime.toTimeString().split(' ')[0].slice(0, 5))
@@ -3722,21 +3722,14 @@ export default function EventoDetalhesPage() {
                                                     <Button
                                                         size="sm"
                                                         variant="outline"
-                                                        onClick={() => handleOpenStepReplication(day.id)}
-                                                        disabled={replicatingStaff === day.id}
+                                                        onClick={() => router.push(`eventos/${evento?.id}/replicacao`)}
+
                                                         className="text-xs h-6 px-2 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
                                                     >
-                                                        {replicatingStaff === day.id ? (
-                                                            <>
-                                                                <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1"></div>
-                                                                Replicando...
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <Users className="w-3 h-3 mr-1" />
-                                                                Replicar Participantes
-                                                            </>
-                                                        )}
+
+                                                        <Users className="w-3 h-3 mr-1" />
+                                                        Replicar Participantes
+
                                                     </Button>
                                                 </div>
                                             )}
@@ -4178,7 +4171,7 @@ export default function EventoDetalhesPage() {
                             {isEditingAttendance ? 'Editar Presença' : 'Realizar Check-in'}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                            {isEditingAttendance 
+                            {isEditingAttendance
                                 ? 'Edite os dados de presença do participante. Você pode alterar datas, horários e código da pulseira.'
                                 : 'Realize o check-in do participante. O código da pulseira é opcional.'
                             }
@@ -4219,7 +4212,7 @@ export default function EventoDetalhesPage() {
                                         />
                                     </div>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
