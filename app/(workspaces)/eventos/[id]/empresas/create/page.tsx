@@ -238,7 +238,7 @@ export default function CreateEmpresaPage() {
                         throw new Error(`Dados incompletos para o dia selecionado`)
                     }
 
-                    const workDate = availableDay.id.split('-')[0] // Apenas a data (YYYY-MM-DD)
+                    const workDate = availableDay.id.split('-').slice(0, 3).join('-') // Apenas a data (YYYY-MM-DD)
 
                     // Validar se a data é válida
                     if (!workDate || workDate.length !== 10) {
@@ -257,7 +257,7 @@ export default function CreateEmpresaPage() {
                 }
 
                 // Fallback case - garantir que todos os campos estão preenchidos
-                const fallbackDate = typeof day === 'string' && day.includes('-') ? day.split('-')[0] : day
+                const fallbackDate = typeof day === 'string' && day.includes('-') ? day.split('-').slice(0, 3).join('-') : day
                 return {
                     ...empresaDataBase,
                     shiftId: `${fallbackDate}-evento-diurno`,
