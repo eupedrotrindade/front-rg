@@ -4019,7 +4019,15 @@ export default function Painel() {
               onClose={() => setPopupNovoStaff(false)}
               evento={evento}
               operadorInfo={operadorInfo}
-              existingParticipants={participantsData.map(p => ({ id: p.id, name: p.name, cpf: p.cpf ?? '', role: p.role, company: p.company }))}
+              existingParticipants={participantsData.map(p => ({
+                id: p.id,
+                name: p.name,
+                cpf: p.cpf ?? '',
+                role: p.role,
+                company: p.company,
+                shiftId: p.shiftId,
+                daysWork: p.daysWork
+              }))}
               onSuccess={async () => {
                 // Recarregar dados se necessário
                 await refetchParticipants();

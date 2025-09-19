@@ -44,6 +44,8 @@ interface ModalAdicionarStaffProps {
     cpf: string;
     role?: string;
     company?: string;
+    shiftId?: string;
+    daysWork?: string[];
   }>;
 }
 
@@ -515,13 +517,26 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
       return;
     }
 
-    // Validação de documento duplicado (CPF ou RG)
+    // Validação de documento duplicado (CPF ou RG) apenas no mesmo shift/turno
     let documentoExistente = false;
     let tipoDocumento = "";
 
+    // Filtrar apenas participantes do mesmo shift para validação
+    const participantesDoMesmoShift = existingParticipants.filter(participant => {
+      // Se o participante tem shiftId, verificar se é o mesmo shift
+      if ((participant as any).shiftId) {
+        return novoStaff.daysWork.includes((participant as any).shiftId);
+      }
+      // Se não tem shiftId, usar daysWork para comparar
+      if ((participant as any).daysWork && Array.isArray((participant as any).daysWork)) {
+        return (participant as any).daysWork.some((day: string) => novoStaff.daysWork.includes(day));
+      }
+      return false;
+    });
+
     if (hasCpf) {
       const cpfLimpo = cpf.trim().replace(/\D/g, '');
-      documentoExistente = existingParticipants.some(
+      documentoExistente = participantesDoMesmoShift.some(
         participant => participant.cpf && participant.cpf.trim().replace(/\D/g, '') === cpfLimpo
       );
       tipoDocumento = "CPF";
@@ -529,14 +544,14 @@ export default function ModalAdicionarStaff({ isOpen, onClose, eventId, selected
 
     if (!documentoExistente && hasRg) {
       const rgLimpo = rg.trim().replace(/\D/g, '');
-      documentoExistente = existingParticipants.some(
+      documentoExistente = participantesDoMesmoShift.some(
         participant => (participant as any).rg && (participant as any).rg.trim().replace(/\D/g, '') === rgLimpo
       );
       tipoDocumento = "RG";
     }
 
     if (documentoExistente) {
-      toast.error(`Já existe um staff cadastrado com este ${tipoDocumento}!`);
+      toast.error(`Já existe um staff cadastrado com este ${tipoDocumento} no mesmo turno/período!`);
       return;
     }
 
