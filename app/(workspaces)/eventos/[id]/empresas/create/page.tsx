@@ -82,8 +82,16 @@ export default function CreateEmpresaPage() {
                     console.log(`🔍 Processando item ${index} de ${stage}:`, item);
 
                     if (item && item.date) {
-                        // Garantir que a data está no formato correto
-                        const dateObj = new Date(item.date);
+                        // Garantir que a data está no formato correto sem conversão de timezone
+                        let dateString = item.date;
+
+                        // Se for uma string de data, garantir que mantenha a data local
+                        if (typeof dateString === 'string' && dateString.includes('T')) {
+                            // Extrair apenas a parte da data (YYYY-MM-DD) para evitar timezone issues
+                            dateString = dateString.split('T')[0];
+                        }
+
+                        const dateObj = new Date(dateString + 'T00:00:00');
                         if (isNaN(dateObj.getTime())) {
                             console.warn(`⚠️ Data inválida encontrada em ${stage}[${index}]:`, item.date);
                             return;
@@ -102,7 +110,7 @@ export default function CreateEmpresaPage() {
                         }
 
                         // Criar ID único baseado na data e período
-                        const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
+                        const dayId = `${dateString}-${stage}-${period}`;
 
                         console.log(`✅ Adicionando dia: ${dayId} (período: ${period})`);
 
@@ -175,6 +183,7 @@ export default function CreateEmpresaPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
+        // Validações obrigatórias
         if (!formData.nome.trim()) {
             toast.error("Nome da empresa é obrigatório")
             return
@@ -182,6 +191,17 @@ export default function CreateEmpresaPage() {
 
         if (!formData.days || formData.days.length === 0) {
             toast.error("Selecione pelo menos um dia/turno")
+            return
+        }
+
+        // Validar se todos os dias selecionados têm informações completas
+        const invalidDays = formData.days.filter(dayId => {
+            const availableDay = availableDays.find(d => d.id === dayId)
+            return !availableDay || !availableDay.type || !availableDay.period
+        })
+
+        if (invalidDays.length > 0) {
+            toast.error("Alguns dias selecionados não têm informações completas de tipo ou período")
             return
         }
 
@@ -212,24 +232,48 @@ export default function CreateEmpresaPage() {
                 }
 
                 if (availableDay) {
+                    // Validar campos obrigatórios
+                    if (!availableDay.id || !availableDay.type || !availableDay.period) {
+                        console.error(`❌ Dados incompletos para o dia ${day}:`, availableDay)
+                        throw new Error(`Dados incompletos para o dia selecionado`)
+                    }
+
+                    const workDate = availableDay.id.split('-')[0] // Apenas a data (YYYY-MM-DD)
+
+                    // Validar se a data é válida
+                    if (!workDate || workDate.length !== 10) {
+                        console.error(`❌ Data inválida extraída de ${availableDay.id}:`, workDate)
+                        throw new Error(`Data de trabalho inválida`)
+                    }
+
                     return {
                         ...empresaDataBase,
-                        // Usar as novas colunas individuais
+                        // Campos obrigatórios preenchidos
                         shiftId: availableDay.id,
-                        workDate: availableDay.id.split('-').slice(0, 3).join('-'),
+                        workDate: workDate,
                         workStage: availableDay.type as 'montagem' | 'evento' | 'desmontagem',
                         workPeriod: availableDay.period as 'diurno' | 'noturno'
                     }
                 }
 
+                // Fallback case - garantir que todos os campos estão preenchidos
+                const fallbackDate = typeof day === 'string' && day.includes('-') ? day.split('-')[0] : day
                 return {
                     ...empresaDataBase,
-                    shiftId: `${day}-evento-diurno`,
-                    workDate: day,
+                    shiftId: `${fallbackDate}-evento-diurno`,
+                    workDate: fallbackDate,
                     workStage: 'evento' as const,
                     workPeriod: 'diurno' as const
                 }
             }) || []
+
+            // Validação final - garantir que todos os dados obrigatórios estão presentes
+            empresasToCreate.forEach((empresa, index) => {
+                if (!empresa.shiftId || !empresa.workDate || !empresa.workStage || !empresa.workPeriod || !empresa.days) {
+                    console.error(`❌ Empresa ${index} com dados incompletos:`, empresa)
+                    throw new Error(`Dados obrigatórios faltando na empresa ${index + 1}`)
+                }
+            })
 
             console.log('🏢 Criando empresas por turno:', empresasToCreate)
 
