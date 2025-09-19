@@ -872,7 +872,7 @@ export default function PublicDashboardPage() {
                         <div className="flex-1">
                             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 flex items-center gap-2">
                                 <Activity className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
-                                <span className="hidden sm:inline">Dashboard - {selectedEvent?.name || 'Evento'}</span>
+                                <span className="hidden sm:inline">Dashboard - {evento?.name}</span>
                                 <span className="sm:hidden">Dashboard</span>
                             </h1>
                             <p className="text-sm sm:text-base text-gray-600 mt-1">
