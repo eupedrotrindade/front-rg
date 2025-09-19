@@ -42,12 +42,12 @@ export default function CreateEmpresaPage() {
     const { data: event } = useEventos({ id: eventId })
 
     // Função para gerar dias do evento
-    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> => {
+    const getEventDays = useCallback((): Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> => {
         if (!event) return []
 
         // console.log('🔍 Gerando dias do evento:', event);
 
-        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' }> = []
+        const days: Array<{ id: string; label: string; date: string; type: string; period?: 'diurno' | 'noturno' | 'dia_inteiro' }> = []
 
         // Função helper para processar arrays de dados do evento
         const processEventArray = (eventData: any, stage: string, stageName: string) => {
@@ -99,12 +99,15 @@ export default function CreateEmpresaPage() {
 
                         const formattedDate = formatEventDate(dateObj.toISOString());
 
-                        // Usar o período do item se disponível, senão calcular
-                        let period: 'diurno' | 'noturno';
-                        if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
+                        // Definir período baseado no tipo do evento
+                        let period: 'diurno' | 'noturno' | 'dia_inteiro';
+                        if (stage === 'evento') {
+                            // Para eventos, sempre usar 'dia_inteiro'
+                            period = 'dia_inteiro';
+                        } else if (item.period && (item.period === 'diurno' || item.period === 'noturno')) {
                             period = item.period;
                         } else {
-                            // Fallback: calcular baseado na hora
+                            // Fallback: calcular baseado na hora para montagem/desmontagem
                             const hour = dateObj.getHours();
                             period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
                         }
@@ -116,7 +119,7 @@ export default function CreateEmpresaPage() {
 
                         days.push({
                             id: dayId,
-                            label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : 'Noturno'})`,
+                            label: `${formattedDate} (${stageName} - ${period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro'})`,
                             date: formattedDate,
                             type: stage,
                             period
@@ -252,7 +255,7 @@ export default function CreateEmpresaPage() {
                         shiftId: availableDay.id,
                         workDate: workDate,
                         workStage: availableDay.type as 'montagem' | 'evento' | 'desmontagem',
-                        workPeriod: availableDay.period as 'diurno' | 'noturno'
+                        workPeriod: availableDay.period as 'diurno' | 'noturno' | 'dia_inteiro'
                     }
                 }
 
@@ -260,10 +263,10 @@ export default function CreateEmpresaPage() {
                 const fallbackDate = typeof day === 'string' && day.includes('-') ? day.split('-').slice(0, 3).join('-') : day
                 return {
                     ...empresaDataBase,
-                    shiftId: `${fallbackDate}-evento-diurno`,
+                    shiftId: `${fallbackDate}-evento-dia_inteiro`,
                     workDate: fallbackDate,
                     workStage: 'evento' as const,
-                    workPeriod: 'diurno' as const
+                    workPeriod: 'dia_inteiro' as const
                 }
             }) || []
 
@@ -511,8 +514,10 @@ export default function CreateEmpresaPage() {
                                                         </Badge>
                                                         <Badge
                                                             variant="outline"
-                                                            className={`text-xs flex items-center gap-1 ${day.period === 'diurno' ? 'border-yellow-500 text-yellow-700' :
-                                                                'border-indigo-500 text-indigo-700'
+                                                            className={`text-xs flex items-center gap-1 ${
+                                                                day.period === 'diurno' ? 'border-yellow-500 text-yellow-700' :
+                                                                day.period === 'noturno' ? 'border-indigo-500 text-indigo-700' :
+                                                                'border-purple-500 text-purple-700'
                                                                 }`}
                                                         >
                                                             {day.period === 'diurno' ? (
@@ -520,10 +525,15 @@ export default function CreateEmpresaPage() {
                                                                     <Sun className="h-3 w-3" />
                                                                     Diurno
                                                                 </>
-                                                            ) : (
+                                                            ) : day.period === 'noturno' ? (
                                                                 <>
                                                                     <Moon className="h-3 w-3" />
                                                                     Noturno
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Calendar className="h-3 w-3" />
+                                                                    Dia Inteiro
                                                                 </>
                                                             )}
                                                         </Badge>
