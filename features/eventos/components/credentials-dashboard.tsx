@@ -197,22 +197,24 @@ export const CredentialsDashboard = () => {
       processEventArray((event as any).desmontagem, 'desmontagem', 'DESMONTAGEM')
     }
 
-    // Ordenar dias cronologicamente usando comparação de string
+    // Ordenar dias agrupando por etapa (tipo) primeiro, depois por data, depois por período
     days.sort((a, b) => {
+      // 1. Prioridade: agrupar por TIPO (montagem → evento → desmontagem)
+      const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 }
+      const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder]
+      
+      if (typeComparison !== 0) return typeComparison
+
+      // 2. Dentro do mesmo tipo, ordenar por DATA
       const dateA = a.id.split('-')[0]
       const dateB = b.id.split('-')[0]
+      const dateComparison = dateA.localeCompare(dateB)
+      
+      if (dateComparison !== 0) return dateComparison
 
-      if (dateA === dateB) {
-        const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 }
-        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 }
-
-        const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder]
-        if (typeComparison !== 0) return typeComparison
-
-        return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder]
-      }
-
-      return dateA.localeCompare(dateB)
+      // 3. Dentro da mesma data e tipo, ordenar por PERÍODO
+      const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 }
+      return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder]
     })
 
     return days
