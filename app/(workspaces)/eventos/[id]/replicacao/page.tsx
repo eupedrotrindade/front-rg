@@ -124,6 +124,11 @@ export default function ParticipantReplicationPage() {
     // Hook para gerenciar dias do evento
     const { eventDays, parseShiftId } = useEventDays(evento)
 
+    // Definir título da página
+    useEffect(() => {
+        document.title = "Replicação - Painel Administrativo"
+    }, [])
+
     // Mutations para replicação
     const createEmpresaMutation = useCreateEmpresa()
     const createCredentialMutation = useCreateCredential()
@@ -558,7 +563,17 @@ export default function ParticipantReplicationPage() {
                                 name: participant.name,
                                 cpf: participant.cpf,
                                 rg: participant.rg,
+                                email: participant.email,
+                                phone: participant.phone,
+                                role: participant.role,
                                 company: participant.company,
+                                hasDocument: participant.hasDocument,
+                                shirtSize: participant.shirtSize,
+                                notes: "",
+                                photo: participant.photo,
+                                documentPhoto: participant.documentPhoto,
+                                wristbandId: participant.wristbandId,
+                                staffId: participant.staffId,
                                 eventId: participant.eventId,
                                 credentialId: mappedCredentialId,
                                 daysWork: [selectedTargetDay],

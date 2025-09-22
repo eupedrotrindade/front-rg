@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import * as XLSX from 'xlsx';
+import * as XLSX from "xlsx";
 
 interface ExportXLSXData {
   titulo: string;
@@ -22,41 +22,39 @@ export const useExportXLSX = () => {
         // Função para formatar data no formato: 2025-08-09 10:40:10+00
         const formatTimestamp = (dateValue: any): string => {
           if (!dateValue) return "";
-          
+
           try {
             let date: Date;
-            
+
             // Se já é um timestamp (número), cria Date
-            if (typeof dateValue === 'number') {
+            if (typeof dateValue === "number") {
               date = new Date(dateValue);
             }
             // Se é uma string de data, converte para Date
-            else if (typeof dateValue === 'string') {
+            else if (typeof dateValue === "string") {
               date = new Date(dateValue);
             }
             // Se é um objeto Date, usa diretamente
             else if (dateValue instanceof Date) {
               date = dateValue;
-            }
-            else {
+            } else {
               return "";
             }
-            
+
             // Verifica se a data é válida
             if (isNaN(date.getTime())) {
               return "";
             }
-            
+
             // Formatar no padrão: 2025-08-09 10:40:10+00
             const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            const seconds = String(date.getSeconds()).padStart(2, '0');
-            
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDate()).padStart(2, "0");
+            const hours = String(date.getHours()).padStart(2, "0");
+            const minutes = String(date.getMinutes()).padStart(2, "0");
+            const seconds = String(date.getSeconds()).padStart(2, "0");
+
             return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}+00`;
-            
           } catch (error) {
             console.warn("Erro ao formatar timestamp:", dateValue, error);
             return "";
@@ -65,17 +63,17 @@ export const useExportXLSX = () => {
 
         // Mapear os dados para o formato XLS com as colunas específicas
         const xlsData = data.dados.map((item) => ({
-          nome: item.nome || "",
-          cpf: item.cpf || "",
-          funcao: item.funcao || "",
-          empresa: item.empresa || "",
-          tipo_credencial: item.tipoPulseira || "",
-          pulseira_codigo: item.pulseira || "",
+          nome: item.nome || "N/A",
+          cpf: item.cpf || "N/A",
+          funcao: item.funcao || "N/A",
+          empresa: item.empresa || "N/A",
+          tipo_credencial: item.tipoPulseira || "N/A",
+          pulseira_codigo: item.numeroPulseira || "N/A",
           checkin_timestamp: formatTimestamp(item.checkIn), // Formato: 2025-08-09 10:40:10+00
           checkout_timestamp: formatTimestamp(item.checkOut), // Formato: 2025-08-09 10:40:10+00
-          tempo_total: item.tempoTotal || "",
+          tempo_total: item.tempoTotal || "N/A",
           pulseira_trocada: item.pulseiraTrocada || "Não", // Campo padrão
-          status: item.status || "",
+          status: item.status || "N/A",
           cadastrado_por: item.cadastradoPor || "Sistema", // Campo padrão
         }));
 
@@ -98,14 +96,17 @@ export const useExportXLSX = () => {
           { wch: 15 }, // status
           { wch: 20 }, // cadastrado_por
         ];
-        worksheet['!cols'] = columnWidths;
+        worksheet["!cols"] = columnWidths;
 
         // Adicionar worksheet ao workbook
         XLSX.utils.book_append_sheet(workbook, worksheet, "Relatório");
 
         // Gerar nome do arquivo
         const agora = new Date();
-        const nomeArquivo = `${data.titulo.replace(/[^a-zA-Z0-9]/g, "_")}_${agora.getTime()}.xlsx`;
+        const nomeArquivo = `${data.titulo.replace(
+          /[^a-zA-Z0-9]/g,
+          "_"
+        )}_${agora.getTime()}.xlsx`;
 
         // Fazer download do arquivo
         XLSX.writeFile(workbook, nomeArquivo);

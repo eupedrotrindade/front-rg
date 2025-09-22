@@ -293,6 +293,7 @@ export default function PublicEmpresaPage() {
 
     // Filtrar e ordenar participantes para a tabela
     const filteredAndSortedParticipants = React.useMemo(() => {
+        console.log("🔍 DEBUG filteredAndSortedParticipants - participantsByDay:", participantsByDay.map(p => ({ id: p.id, name: p.name, role: p.role })));
         let filtered = participantsByDay
 
         if (searchTerm.trim()) {
@@ -368,6 +369,7 @@ export default function PublicEmpresaPage() {
             })
         }
 
+        console.log("🔍 DEBUG - participantes finais com roles:", filtered.map(p => ({ id: p.id, name: p.name, role: p.role })));
         return filtered
     }, [participantsByDay, searchTerm, filtros, ordenacao, participantsAttendanceStatus, credentials])
 
@@ -379,13 +381,13 @@ export default function PublicEmpresaPage() {
 
             // Obter número da pulseira do movement credential
             const wristbandCode = participantWristbandCodes.get(participant.id);
-            const numeroPulseira = wristbandCode || `#${participant.id.slice(-4).toUpperCase()}`
+            const numeroPulseira = wristbandCode || ''
 
             return {
                 nome: participant.name?.toUpperCase() || '',
                 cpf: participant.cpf || '',
                 empresa: participant.company?.toUpperCase() || '',
-                funcao: participant.role?.toUpperCase() || '',
+                funcao: participant.role || '',
                 numeroPulseira: numeroPulseira,
                 pulseira: credential?.nome || '',
                 tipoPulseira: credential?.nome || '',
@@ -452,7 +454,7 @@ export default function PublicEmpresaPage() {
             }
         )
     }
-
+    console.log("EXCELLLLL", exportData)
     // Função para exportar XLSX
     const exportXLSX = () => {
         if (!empresa || !event) return
@@ -462,7 +464,8 @@ export default function PublicEmpresaPage() {
             cpf: p.cpf,
             funcao: p.funcao || "",
             empresa: p.empresa,
-            numeroPulseira: p.numeroPulseira,
+            codigo: p.numeroPulseira, // Campo principal para código da pulseira
+            numeroPulseira: p.numeroPulseira,  // Manter compatibilidade
             tipoPulseira: p.tipoPulseira,
             pulseira: p.pulseira,
             checkIn: p.checkIn || "",
@@ -539,6 +542,18 @@ export default function PublicEmpresaPage() {
                 p.company?.toUpperCase() === empresa.nome?.toUpperCase()
             )
             console.log("👥 Participantes da empresa filtrados:", empresaParticipants.length)
+
+            // Debug: verificar estrutura do role
+            if (empresaParticipants.length > 0) {
+                console.log("🔍 Exemplo de participante com roles:", {
+                    id: empresaParticipants[0].id,
+                    name: empresaParticipants[0].name,
+                    role: empresaParticipants[0].role,
+                    company: empresaParticipants[0].company,
+                    keys: Object.keys(empresaParticipants[0])
+                })
+            }
+
             setParticipants(empresaParticipants)
         }
     }, [participantsData, empresa])
@@ -1699,7 +1714,13 @@ export default function PublicEmpresaPage() {
                                                                             </TableCell>
                                                                             <TableCell>
                                                                                 <Badge variant="secondary">
-                                                                                    {participant.role || 'Colaborador'}
+                                                                                    {(() => {
+                                                                                        console.log(`🔍 Role do participante ${participant.name}:`, participant.role, typeof participant.role);
+                                                                                        // Teste: forçar exibir se há role
+
+                                                                                        return ` ${participant.role || "N/A"}`;
+
+                                                                                    })()}
                                                                                 </Badge>
                                                                             </TableCell>
                                                                             <TableCell>
@@ -1708,8 +1729,7 @@ export default function PublicEmpresaPage() {
                                                                                     <div className="text-sm font-bold text-gray-900">
                                                                                         {(() => {
                                                                                             const wristbandCode = participantWristbandCodes.get(participant.id);
-                                                                                            if (wristbandCode) return wristbandCode;
-                                                                                            return `#${participant.id.slice(-4).toUpperCase()}`;
+                                                                                            return wristbandCode || '-';
                                                                                         })()}
                                                                                     </div>
                                                                                     {/* Tipo da Credencial */}
@@ -2287,12 +2307,25 @@ export default function PublicEmpresaPage() {
                                                         </TableCell>
                                                         <TableCell>
                                                             <Badge variant="secondary">
-                                                                {participant.role || 'Colaborador'}
+                                                                {(() => {
+                                                                    console.log(`🔍 Role do participante MODAL ${participant.name}:`, participant.role, typeof participant.role);
+
+                                                                    return ` ${participant.role || "N/A"}`;
+
+                                                                })()}
                                                             </Badge>
                                                         </TableCell>
                                                         <TableCell>
-                                                            <div className="flex items-center space-x-2">
-                                                                <Badge variant="outline" className="font-mono text-xs">
+                                                            <div className="flex flex-col gap-1">
+                                                                {/* Número da Pulseira */}
+                                                                <div className="text-sm font-bold text-gray-900">
+                                                                    {(() => {
+                                                                        const wristbandCode = participantWristbandCodes.get(participant.id);
+                                                                        return wristbandCode || '-';
+                                                                    })()}
+                                                                </div>
+                                                                {/* Tipo da Credencial */}
+                                                                <Badge variant="outline" className="font-mono text-xs w-fit">
                                                                     {(() => {
                                                                         const credential = credentials.find(c => c.id === participant.credentialId);
                                                                         return credential ? credential.nome : 'N/A';

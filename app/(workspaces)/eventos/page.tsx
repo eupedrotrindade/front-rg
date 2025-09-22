@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useState } from 'react';
 import { useUser } from "@clerk/nextjs";
 import { Event as EventType } from "@/features/eventos/types"
+import { useEffect } from 'react';
 import { useDeleteEvento } from "@/features/eventos/api/mutation/use-delete-evento"
 import { toast } from "sonner"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
@@ -28,6 +29,11 @@ const EventosPage = () => {
     const [deletingEvent, setDeletingEvent] = useState<EventType | null>(null)
     const { mutate: deleteEvento, isPending: isDeleting } = useDeleteEvento()
     const { user } = useUser()
+
+    // Definir título da página
+    useEffect(() => {
+        document.title = "Eventos - Painel Administrativo"
+    }, [])
 
     // Controle de acesso baseado no metadata do Clerk
     const getUserRole = () => {

@@ -23,6 +23,11 @@ const OperatorPage = () => {
         }
     }, [operator, section])
 
+    // Definir título da página
+    useEffect(() => {
+        document.title = "Operador - Painel Administrativo"
+    }, [])
+
     const handleLogout = () => {
         localStorage.removeItem("operador")
         router.replace("/")
