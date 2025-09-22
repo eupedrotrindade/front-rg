@@ -34,7 +34,7 @@ const menuItems = [
 
   },
   {
-    title: "Usuários",
+    title: "Usuários/coordenadores",
     href: "/admin/usuarios",
     icon: Users,
     description: "Gerenciar usuários do sistema",
@@ -77,18 +77,7 @@ const menuItems = [
   }
 ]
 
-const alertItems = [
-  {
-    title: "Problemas Críticos",
-    count: 2,
-    color: "bg-red-100 text-red-700 border-red-200"
-  },
-  {
-    title: "Avisos",
-    count: 5,
-    color: "bg-amber-100 text-amber-700 border-amber-200"
-  }
-]
+
 
 export const Sidebar = () => {
   const pathname = usePathname()

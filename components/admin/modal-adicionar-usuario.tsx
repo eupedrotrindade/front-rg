@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import React, { useState } from 'react'
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Loader2, User, Mail, Lock, Shield, Calendar } from "lucide-react"
+import { Loader2, User, Mail, Lock, Shield, Calendar, Plus, Trash2 } from "lucide-react"
 import { useCreateCoordenador } from "@/features/eventos/api/mutation/use-create-coordenador"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
 import { Event } from "@/features/eventos/types"
@@ -41,8 +42,8 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
     firstName: '',
     lastName: '',
     password: '',
-    role: 'coordenador' as 'coordenador' | 'coordenador_geral',
-    eventId: '',
+    systemRole: 'none' as 'admin' | 'coordenador-geral' | 'none',
+    eventos: [] as Array<{ eventId: string }>,
   })
 
   const { mutate: createCoordenador, isPending } = useCreateCoordenador()
@@ -54,9 +55,27 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
       firstName: '',
       lastName: '',
       password: '',
-      role: 'coordenador',
-      eventId: '',
+      systemRole: 'none',
+      eventos: [],
     })
+  }
+
+  const handleAddEvento = () => {
+    setFormData({
+      ...formData,
+      eventos: [...formData.eventos, { eventId: '' }]
+    })
+  }
+
+  const handleRemoveEvento = (index: number) => {
+    const novosEventos = formData.eventos.filter((_, i) => i !== index)
+    setFormData({ ...formData, eventos: novosEventos })
+  }
+
+  const handleEventoChange = (index: number, eventId: string) => {
+    const novosEventos = [...formData.eventos]
+    novosEventos[index] = { eventId }
+    setFormData({ ...formData, eventos: novosEventos })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -64,11 +83,23 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
 
     // Validações
     if (!formData.email || !formData.firstName || !formData.lastName || !formData.password) {
-      return // Validação já é feita pelo HTML required
+      toast.error('❌ Todos os campos obrigatórios devem ser preenchidos')
+      return
     }
 
-    if (!formData.eventId) {
-      return // Validação já é feita pelo disabled no botão
+    // Validação de coordenador para evento específico ou role geral
+    if (formData.systemRole === 'none' && formData.eventos.length === 0) {
+      toast.error('❌ Defina um role do sistema ou associe a pelo menos um evento')
+      return
+    }
+
+    // Validação de eventos (se tiver eventos, todos devem ter ID preenchido)
+    if (formData.eventos.length > 0) {
+      const eventosInvalidos = formData.eventos.some(ev => !ev.eventId.trim())
+      if (eventosInvalidos) {
+        toast.error('❌ Todos os eventos associados devem ser selecionados')
+        return
+      }
     }
 
     // Validação do Clerk: mínimo 8 caracteres e pelo menos 1 caractere especial
@@ -81,17 +112,48 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
     // Validação de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(formData.email)) {
-      return // Validação já é feita pelo HTML type="email"
+      toast.error('❌ Email deve ter um formato válido')
+      return
     }
 
-    // Buscar nome do evento
-    const eventoSelecionado = Array.isArray(eventos) 
-      ? eventos.find((evento: Event) => evento.id === formData.eventId)
-      : null
+    // Preparar dados para envio
+    let dadosCompletos: any = {
+      email: formData.email,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      password: formData.password,
+    }
 
-    const dadosCompletos = {
-      ...formData,
-      nome_evento: eventoSelecionado?.name || 'Evento não encontrado'
+    // Se for um coordenador de evento específico (coordenador comum)
+    if (formData.eventos.length > 0 && formData.systemRole === 'none') {
+      const primeiroEvento = formData.eventos[0]
+      const eventoSelecionado = Array.isArray(eventos)
+        ? eventos.find((evento: Event) => evento.id === primeiroEvento.eventId)
+        : null
+
+      // Coordenadores associados a eventos específicos são sempre 'coordenador' (comum)
+      dadosCompletos = {
+        ...dadosCompletos,
+        role: 'coordenador' as 'coordenador' | 'coordenador_geral',
+        eventId: primeiroEvento.eventId,
+        nome_evento: eventoSelecionado?.name || 'Evento não encontrado'
+      }
+    } else {
+      // Para masters e coordenadores gerais (acesso global)
+      dadosCompletos = {
+        ...dadosCompletos,
+        systemRole: formData.systemRole === 'none' ? undefined : formData.systemRole,
+        eventos: formData.eventos.map(evento => {
+          const eventoSelecionado = Array.isArray(eventos)
+            ? eventos.find((ev: Event) => ev.id === evento.eventId)
+            : null
+          return {
+            id: evento.eventId,
+            role: 'coordenador_geral', // Fixo como coordenador_geral para coordenadores gerais
+            nome_evento: eventoSelecionado?.name || 'Evento não encontrado'
+          }
+        })
+      }
     }
 
     createCoordenador(dadosCompletos, {
@@ -99,7 +161,7 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
         toast.success(`✅ Usuário ${formData.firstName} ${formData.lastName} criado com sucesso!`)
         resetForm()
         onOpenChange(false)
-        onUserCreated?.() // Atualizar a lista de usuários
+        onUserCreated?.()
       }
     })
   }
@@ -111,14 +173,14 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            Adicionar Novo Usuário Coordenador
+            Adicionar Novo Usuário
           </DialogTitle>
           <DialogDescription>
-            Crie uma nova conta de coordenador no sistema. Todos os campos são obrigatórios.
+            Crie uma nova conta no sistema. Defina o tipo de usuário e suas permissões.
           </DialogDescription>
         </DialogHeader>
 
@@ -190,78 +252,136 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
             </p>
           </div>
 
-          {/* Função/Role */}
+          {/* Role do Sistema */}
           <div>
             <Label className="flex items-center gap-2">
               <Shield className="h-4 w-4" />
-              Função *
+              Role do Sistema
             </Label>
-            <Select 
-              value={formData.role} 
-              onValueChange={(value: 'coordenador' | 'coordenador_geral') => 
-                setFormData({ ...formData, role: value })
+            <Select
+              value={formData.systemRole}
+              onValueChange={(value: 'admin' | 'coordenador-geral' | 'none') =>
+                setFormData({ ...formData, systemRole: value })
               }
               disabled={isPending}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Selecione a função" />
+                <SelectValue placeholder="Selecione um role (opcional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="coordenador">Coordenador</SelectItem>
-                <SelectItem value="coordenador_geral">Coordenador Geral</SelectItem>
+                <SelectItem value="none">Sem role específico</SelectItem>
+                <SelectItem value="admin">Master (Admin)</SelectItem>
+                <SelectItem value="coordenador-geral">Coordenador Geral</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-gray-500 mt-1">
+              <strong>Masters:</strong> Acesso total ao sistema<br />
+              <strong>Coordenadores Gerais:</strong> Podem gerenciar todos os eventos<br />
+              <strong>Sem role:</strong> Para coordenadores de eventos específicos
+            </p>
           </div>
 
-          {/* Evento */}
-          <div>
-            <Label className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Evento Associado *
-            </Label>
-            <Select 
-              value={formData.eventId} 
-              onValueChange={(value) => setFormData({ ...formData, eventId: value })}
-              disabled={isPending || loadingEventos}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um evento" />
-              </SelectTrigger>
-              <SelectContent>
-                {loadingEventos ? (
-                  <SelectItem value="" disabled>
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Carregando eventos...
+          {/* Eventos Associados */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Eventos Específicos (Coordenador Comum)
+              </Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddEvento}
+                disabled={isPending}
+                className="h-8 px-3"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Adicionar Evento
+              </Button>
+            </div>
+
+            {formData.eventos.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4 border rounded-lg bg-gray-50">
+                Nenhum evento associado. Use "Adicionar Evento" para criar um <strong>Coordenador Comum</strong> (acesso limitado a eventos específicos).
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {formData.eventos.map((evento, index) => (
+                  <div key={index} className="flex gap-2 items-end p-3 border rounded-lg bg-gray-50">
+                    <div className="flex-1">
+                      <Label>Evento</Label>
+                      <Select
+                        value={evento.eventId}
+                        onValueChange={(value) => handleEventoChange(index, value)}
+                        disabled={isPending || loadingEventos}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um evento" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {loadingEventos ? (
+                            <SelectItem value="loading" disabled>
+                              <div className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Carregando eventos...
+                              </div>
+                            </SelectItem>
+                          ) : Array.isArray(eventos) && eventos.length > 0 ? (
+                            eventos.map((evt: Event) => (
+                              <SelectItem key={evt.id} value={evt.id}>
+                                {evt.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-events" disabled>
+                              Nenhum evento disponível
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </SelectItem>
-                ) : Array.isArray(eventos) && eventos.length > 0 ? (
-                  eventos.map((evento: Event) => (
-                    <SelectItem key={evento.id} value={evento.id}>
-                      {evento.name}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="" disabled>
-                    Nenhum evento disponível
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+
+                    <div className="flex flex-col items-center justify-end">
+                      <Label className="text-xs text-gray-500 mb-1">Role Fixo</Label>
+                      <div className="h-10 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md flex items-center">
+                        <span className="text-sm font-medium text-blue-800">Coordenador</span>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRemoveEvento(index)}
+                      disabled={isPending}
+                      className="h-10 px-3 text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs text-gray-500">
+              <strong>Importante:</strong> Usuários associados a eventos específicos são <strong>Coordenadores Comuns</strong>.
+              Para Coordenadores Gerais (acesso a todos os eventos), use apenas o "Role do Sistema" acima.
+            </p>
           </div>
 
           <DialogFooter className="gap-2">
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               onClick={handleCancel}
               disabled={isPending}
             >
               Cancelar
             </Button>
-            <Button 
-              type="submit" 
-              disabled={isPending || loadingEventos || !formData.eventId}
+            <Button
+              type="submit"
+              disabled={isPending || loadingEventos}
             >
               {isPending ? (
                 <>

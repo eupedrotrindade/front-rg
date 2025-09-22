@@ -189,18 +189,7 @@ const AdminEventosPage = () => {
           <p className="text-gray-600 mt-2">Administre todos os eventos do sistema</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleImportEvents}>
-            <Upload className="h-4 w-4 mr-2" />
-            Importar
-          </Button>
-          <Button variant="outline" onClick={handleExportEvents}>
-            <Download className="h-4 w-4 mr-2" />
-            Exportar
-          </Button>
-          <Button onClick={() => router.push('/eventos/criar')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Evento
-          </Button>
+
         </div>
       </div>
 

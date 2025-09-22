@@ -40,11 +40,14 @@ import { Coordenador } from "@/features/eventos/types"
 import { toast } from "sonner"
 import { useQueryClient } from "@tanstack/react-query"
 import ModalAdicionarUsuario from "@/components/admin/modal-adicionar-usuario"
+import ModalEditarUsuario from "@/components/admin/modal-editar-usuario"
 import Image from 'next/image'
 
 const AdminUsuariosPage = () => {
   const [search, setSearch] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<Coordenador | null>(null)
   const queryClient = useQueryClient()
 
   // Usar hook de coordenadores (que são os usuários)
@@ -74,27 +77,58 @@ const AdminUsuariosPage = () => {
     )
   }, [usuarios, search])
 
-  // Estatísticas dos usuários
-  const usuarioStats = useMemo(() => {
-    const totalUsuarios = usuarios.length
-    const usuariosComEventos = usuarios.filter(user =>
+  // Classificar usuários por tipo
+  const usuariosPorTipo = useMemo(() => {
+    const masters = usuarios.filter(user => user.metadata?.role === 'admin')
+    const coordenadoresGerais = usuarios.filter(user => user.metadata?.role === 'coordenador-geral')
+    const coordenadoresEventos = usuarios.filter(user =>
       user.metadata?.eventos && user.metadata.eventos.length > 0
-    ).length
-    const usuariosSemEventos = totalUsuarios - usuariosComEventos
+    )
+    const semRole = usuarios.filter(user =>
+      !user.metadata?.role && (!user.metadata?.eventos || user.metadata.eventos.length === 0)
+    )
 
     return {
-      total: totalUsuarios,
-      comEventos: usuariosComEventos,
-      semEventos: usuariosSemEventos
+      masters,
+      coordenadoresGerais,
+      coordenadoresEventos,
+      semRole,
+      total: usuarios.length
     }
   }, [usuarios])
+
+  // Estatísticas dos usuários
+  const usuarioStats = useMemo(() => {
+    return {
+      total: usuarios.length,
+      masters: usuariosPorTipo.masters.length,
+      coordenadoresGerais: usuariosPorTipo.coordenadoresGerais.length,
+      coordenadoresEventos: usuariosPorTipo.coordenadoresEventos.length,
+      semRole: usuariosPorTipo.semRole.length
+    }
+  }, [usuarios, usuariosPorTipo])
 
   const formatName = (user: Coordenador) => {
     return `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Nome não disponível'
   }
 
-  const handleViewUser = (user: Coordenador) => {
-    toast.info(`Visualizando usuário: ${formatName(user)}`)
+  const getUserRole = (user: Coordenador) => {
+    if (user.metadata?.role === 'admin') return 'Master'
+    if (user.metadata?.role === 'coordenador-geral') return 'Coordenador Geral'
+    if (user.metadata?.eventos && user.metadata.eventos.length > 0) return 'Coordenador de Evento'
+    return 'Sem Role'
+  }
+
+  const getUserRoleColor = (user: Coordenador) => {
+    if (user.metadata?.role === 'admin') return 'bg-red-100 text-red-800'
+    if (user.metadata?.role === 'coordenador-geral') return 'bg-blue-100 text-blue-800'
+    if (user.metadata?.eventos && user.metadata.eventos.length > 0) return 'bg-green-100 text-green-800'
+    return 'bg-gray-100 text-gray-800'
+  }
+
+  const handleEditUser = (user: Coordenador) => {
+    setSelectedUser(user)
+    setEditModalOpen(true)
   }
 
   const handleDeleteUser = (user: Coordenador) => {
@@ -131,6 +165,133 @@ Digite 'DELETAR' se tem certeza absoluta:`)
     await handleRefresh()
   }
 
+  const handleUserUpdated = async () => {
+    // Atualizar lista automaticamente após edição
+    await handleRefresh()
+    setEditModalOpen(false)
+    setSelectedUser(null)
+  }
+
+  // Função para renderizar seção de usuários
+  const renderUserSection = (title: string, users: Coordenador[], sectionId: string) => {
+    if (users.length === 0) return null
+
+    const filteredUsers = users.filter(user =>
+      formatName(user).toLowerCase().includes(search.toLowerCase()) ||
+      user.email?.toLowerCase().includes(search.toLowerCase()) ||
+      user.id?.includes(search)
+    )
+
+    if (filteredUsers.length === 0 && search) return null
+
+    return (
+      <Card key={sectionId} className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            {sectionId === 'masters' && <Shield className="h-5 w-5 text-red-600" />}
+            {sectionId === 'coordenadoresGerais' && <UserCheck className="h-5 w-5 text-blue-600" />}
+            {sectionId === 'coordenadoresEventos' && <Calendar className="h-5 w-5 text-green-600" />}
+            {sectionId === 'semRole' && <Users className="h-5 w-5 text-gray-600" />}
+            {title} ({filteredUsers.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Usuário</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Role/Eventos</TableHead>
+                <TableHead>Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.map((usuario) => (
+                <TableRow key={usuario.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      {usuario.imageUrl ? (
+                        <Image
+                          src={usuario.imageUrl}
+                          alt={formatName(usuario)}
+                          width={50}
+                          height={50}
+                          className="h-8 w-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                          <ImageIcon className="h-4 w-4 text-gray-400" />
+                        </div>
+                      )}
+                      <div>
+                        <div className="font-medium">{formatName(usuario)}</div>
+                        <div className="text-sm text-gray-500">ID: {usuario.id}</div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-gray-400" />
+                      {usuario.email}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-2">
+                      <Badge className={getUserRoleColor(usuario)}>
+                        {getUserRole(usuario)}
+                      </Badge>
+                      {usuario.metadata?.eventos && usuario.metadata.eventos.length > 0 && (
+                        <div className="text-xs text-gray-600">
+                          {usuario.metadata.eventos.map(evento => evento.nome_evento).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => handleEditUser(usuario)}
+                          disabled={true}
+                          className="text-gray-400"
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Editar (Em breve)
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleDeleteUser(usuario)}
+                          className="text-red-600"
+                          disabled={deleteUserMutation.isPending}
+                        >
+                          {deleteUserMutation.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Removendo...
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Remover
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -163,55 +324,13 @@ Digite 'DELETAR' se tem certeza absoluta:`)
           </div>
         </div>
 
-        {/* Card explicativo */}
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-blue-800">
-              <Shield className="h-5 w-5" />
-              Sistema de Coordenadores
-            </CardTitle>
-            <CardDescription className="text-blue-700">
-              Gerenciamento de usuários coordenadores que podem gerenciar eventos
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div className="space-y-2">
-                <h4 className="font-medium text-blue-800">Funcionalidades:</h4>
-                <ul className="space-y-1 text-blue-700">
-                  <li className="flex items-center gap-2">
-                    <UserCheck className="h-4 w-4" />
-                    Visualizar coordenadores registrados
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Monitorar eventos associados
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Verificar data de cadastro
-                  </li>
-                </ul>
-              </div>
-              <div className="space-y-2">
-                <h4 className="font-medium text-blue-800">Dados Disponíveis:</h4>
-                <ul className="space-y-1 text-blue-700">
-                  <li>• Nome e sobrenome</li>
-                  <li>• Email de acesso</li>
-                  <li>• Foto de perfil</li>
-                  <li>• Eventos associados</li>
-                  <li>• Data de cadastro</li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+
 
 
       </div>
 
       {/* Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -228,10 +347,10 @@ Digite 'DELETAR' se tem certeza absoluta:`)
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Com Eventos</p>
-                <p className="text-2xl font-bold text-green-600">{usuarioStats.comEventos}</p>
+                <p className="text-sm font-medium text-gray-600">Masters</p>
+                <p className="text-2xl font-bold text-red-600">{usuarioStats.masters}</p>
               </div>
-              <UserCheck className="h-8 w-8 text-green-600" />
+              <Shield className="h-8 w-8 text-red-600" />
             </div>
           </CardContent>
         </Card>
@@ -240,10 +359,10 @@ Digite 'DELETAR' se tem certeza absoluta:`)
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Sem Eventos</p>
-                <p className="text-2xl font-bold text-orange-600">{usuarioStats.semEventos}</p>
+                <p className="text-sm font-medium text-gray-600">Coord. Gerais</p>
+                <p className="text-2xl font-bold text-blue-600">{usuarioStats.coordenadoresGerais}</p>
               </div>
-              <Calendar className="h-8 w-8 text-orange-600" />
+              <UserCheck className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
@@ -252,156 +371,117 @@ Digite 'DELETAR' se tem certeza absoluta:`)
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Status</p>
-                <p className="text-2xl font-bold text-blue-600">
-                  {isLoading ? '...' : 'Online'}
-                </p>
+                <p className="text-sm font-medium text-gray-600">Coord. Eventos</p>
+                <p className="text-2xl font-bold text-green-600">{usuarioStats.coordenadoresEventos}</p>
               </div>
-              <Shield className="h-8 w-8 text-blue-600" />
+              <Calendar className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Sem Role</p>
+                <p className="text-2xl font-bold text-orange-600">{usuarioStats.semRole}</p>
+              </div>
+              <Users className="h-8 w-8 text-orange-600" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tabela de usuários */}
+      {/* Busca Global */}
       <Card>
-        <CardHeader>
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Lista de Usuários Coordenadores
-            </CardTitle>
-            <CardDescription>
-              Gerencie os coordenadores do sistema
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* Busca */}
-          <div className="flex items-center gap-4 mb-6">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
-                placeholder="Buscar por nome, email ou ID..."
+                placeholder="Buscar por nome, email ou ID em todas as seções..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
               />
             </div>
           </div>
-
-          {/* Tabela */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Usuário</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Eventos</TableHead>
-                <TableHead>Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
-                    <div className="flex items-center justify-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Carregando usuários...
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : error ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-red-600">
-                    Erro ao carregar usuários: {error.message}
-                  </TableCell>
-                </TableRow>
-              ) : filteredUsuarios.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
-                    {search ? `Nenhum usuário encontrado para "${search}"` : 'Nenhum usuário cadastrado'}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredUsuarios.map((usuario) => (
-                  <TableRow key={usuario.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        {usuario.imageUrl ? (
-                          <Image
-                            src={usuario.imageUrl}
-                            alt={formatName(usuario)}
-                            width={50}
-                            height={50}
-                            className="h-8 w-8 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                            <ImageIcon className="h-4 w-4 text-gray-400" />
-                          </div>
-                        )}
-                        <div>
-                          <div className="font-medium">{formatName(usuario)}</div>
-                          <div className="text-sm text-gray-500">ID: {usuario.id}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-gray-400" />
-                        {usuario.email}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-gray-400" />
-                        <Badge variant="secondary">
-                          {usuario.metadata?.eventos?.length || 0} eventos
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteUser(usuario)}
-                            className="text-red-600"
-                            disabled={deleteUserMutation.isPending}
-                          >
-                            {deleteUserMutation.isPending ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Removendo...
-                              </>
-                            ) : (
-                              <>
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Remover
-                              </>
-                            )}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
         </CardContent>
       </Card>
+
+      {/* Seções de Usuários */}
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-8">
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando usuários...
+            </div>
+          </CardContent>
+        </Card>
+      ) : error ? (
+        <Card>
+          <CardContent className="p-8">
+            <div className="text-center text-red-600">
+              Erro ao carregar usuários: {error.message}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {/* Masters */}
+          {renderUserSection('Masters (Administradores)', usuariosPorTipo.masters, 'masters')}
+
+          {/* Coordenadores Gerais */}
+          {renderUserSection('Coordenadores Gerais', usuariosPorTipo.coordenadoresGerais, 'coordenadoresGerais')}
+
+          {/* Coordenadores de Eventos */}
+          {renderUserSection('Coordenadores de Eventos', usuariosPorTipo.coordenadoresEventos, 'coordenadoresEventos')}
+
+          {/* Usuários sem Role */}
+          {renderUserSection('Usuários sem Role Definido', usuariosPorTipo.semRole, 'semRole')}
+
+          {/* Mensagem quando não há usuários */}
+          {usuarioStats.total === 0 && (
+            <Card>
+              <CardContent className="p-8">
+                <div className="text-center text-gray-500">
+                  Nenhum usuário cadastrado no sistema
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mensagem quando busca não retorna resultados */}
+          {search && usuarioStats.total > 0 &&
+            !usuariosPorTipo.masters.some(u => formatName(u).toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase()) || u.id?.includes(search)) &&
+            !usuariosPorTipo.coordenadoresGerais.some(u => formatName(u).toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase()) || u.id?.includes(search)) &&
+            !usuariosPorTipo.coordenadoresEventos.some(u => formatName(u).toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase()) || u.id?.includes(search)) &&
+            !usuariosPorTipo.semRole.some(u => formatName(u).toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase()) || u.id?.includes(search)) && (
+              <Card>
+                <CardContent className="p-8">
+                  <div className="text-center text-gray-500">
+                    Nenhum usuário encontrado para &quot;{search}&quot;
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+        </div>
+      )}
 
       {/* Modal para adicionar usuário */}
       <ModalAdicionarUsuario
         open={modalOpen}
         onOpenChange={setModalOpen}
         onUserCreated={handleUserCreated}
+      />
+
+      {/* Modal para editar usuário */}
+      <ModalEditarUsuario
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        user={selectedUser}
+        onUserUpdated={handleUserUpdated}
       />
     </div>
   )

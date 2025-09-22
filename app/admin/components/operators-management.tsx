@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,6 +56,7 @@ import {
 } from "lucide-react"
 import { Operator } from "@/features/operadores/types"
 import { useOperators } from "@/features/operadores/api/query/use-operators"
+import { useDefaultPassword } from "@/features/configuracoes/api/query/use-configuracoes-gerais"
 import { toast } from "sonner"
 
 interface OperatorFormData {
@@ -68,6 +69,7 @@ interface OperatorFormData {
 export const OperatorsManagement = () => {
   // Usar hook real do sistema
   const { data: operators = [], isLoading, error } = useOperators()
+  const { data: defaultPassword, isLoading: loadingDefaultPassword } = useDefaultPassword()
 
   const [search, setSearch] = useState("")
   const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null)
@@ -79,6 +81,16 @@ export const OperatorsManagement = () => {
     cpf: "",
     senha: ""
   })
+
+  // Automaticamente preencher senha padrão quando modal de criação abrir
+  useEffect(() => {
+    if (createOperatorOpen && defaultPassword && !loadingDefaultPassword) {
+      setFormData(prev => ({
+        ...prev,
+        senha: defaultPassword
+      }))
+    }
+  }, [createOperatorOpen, defaultPassword, loadingDefaultPassword])
 
   // Filtrar operadores baseado na busca
   const filteredOperators = useMemo(() => {
@@ -433,24 +445,38 @@ export const OperatorsManagement = () => {
             </div>
 
             <div>
-              <Label htmlFor="senha">Senha</Label>
+              <Label htmlFor="senha">Senha Padrão</Label>
               <Input
                 id="senha"
                 type="password"
                 value={formData.senha}
-                onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))}
-                placeholder="Digite a senha"
+                readOnly
+                disabled={loadingDefaultPassword}
+                className="bg-gray-50 cursor-not-allowed"
+                placeholder={loadingDefaultPassword ? "Carregando senha padrão..." : "Senha padrão do sistema"}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                {loadingDefaultPassword
+                  ? "Carregando senha padrão das configurações..."
+                  : "Senha padrão configurada no sistema será usada automaticamente"
+                }
+              </p>
             </div>
 
             {/* Campo id_events removido da criação - operadores são criados sem eventos atribuídos */}
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setCreateOperatorOpen(false)}>
+              <Button variant="outline" onClick={() => {
+                setCreateOperatorOpen(false)
+                setFormData({ nome: "", cpf: "", senha: "" })
+              }}>
                 Cancelar
               </Button>
-              <Button onClick={handleCreateOperator}>
-                Criar Operador
+              <Button
+                onClick={handleCreateOperator}
+                disabled={loadingDefaultPassword || !formData.nome.trim() || !formData.cpf.trim() || !formData.senha}
+              >
+                {loadingDefaultPassword ? "Carregando..." : "Criar Operador"}
               </Button>
             </div>
           </div>
