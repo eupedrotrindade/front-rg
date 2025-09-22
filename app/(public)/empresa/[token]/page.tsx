@@ -753,12 +753,22 @@ export default function PublicEmpresaPage() {
             }
         }
 
-        // Ordenar dias cronologicamente (corrigido timezone)
+        // Ordenar dias por: 1) tipo (montagem → evento → desmontagem), 2) data, 3) período (diurno → noturno)
         days.sort((a, b) => {
-            // Converter data brasileira (DD/MM/YYYY) para formato ISO (YYYY-MM-DD) para comparação
+            // 1. Prioridade por tipo/etapa
+            const typeOrder: Record<string, number> = { 'montagem': 1, 'evento': 2, 'desmontagem': 3 };
+            const typeComparison = (typeOrder[a.type] || 0) - (typeOrder[b.type] || 0);
+            if (typeComparison !== 0) return typeComparison;
+
+            // 2. Ordenar por data (converter data brasileira DD/MM/YYYY para comparação)
             const dateA = new Date(a.date.split('/').reverse().join('-') + 'T12:00:00.000Z');
             const dateB = new Date(b.date.split('/').reverse().join('-') + 'T12:00:00.000Z');
-            return dateA.getTime() - dateB.getTime();
+            const dateComparison = dateA.getTime() - dateB.getTime();
+            if (dateComparison !== 0) return dateComparison;
+
+            // 3. Ordenar por período dentro da mesma data (diurno → dia_inteiro → noturno)
+            const periodOrder: Record<'diurno' | 'dia_inteiro' | 'noturno', number> = { 'diurno': 1, 'dia_inteiro': 2, 'noturno': 3 };
+            return (periodOrder[a.period as 'diurno' | 'dia_inteiro' | 'noturno'] || 0) - (periodOrder[b.period as 'diurno' | 'dia_inteiro' | 'noturno'] || 0);
         });
 
         return days;
@@ -1410,14 +1420,14 @@ export default function PublicEmpresaPage() {
                                     <Users className="h-4 w-4" />
                                     <span>Colaboradores</span>
                                 </TabsTrigger>
-                                <TabsTrigger value="importar" className="flex items-center justify-center space-x-2 p-4 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white rounded-md">
+                                {/* <TabsTrigger value="importar" className="flex items-center justify-center space-x-2 p-4 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white rounded-md">
                                     <Upload className="h-4 w-4" />
                                     <span>Importar</span>
                                 </TabsTrigger>
                                 <TabsTrigger value="historico" className="flex items-center justify-center space-x-2 p-4 data-[state=active]:bg-[#610e5c] data-[state=active]:text-white rounded-md">
                                     <FileText className="h-4 w-4" />
                                     <span>Histórico</span>
-                                </TabsTrigger>
+                                </TabsTrigger> */}
                             </TabsList>
 
                             {/* Aba Colaboradores */}
