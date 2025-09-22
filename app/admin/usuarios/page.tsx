@@ -368,10 +368,7 @@ Digite 'DELETAR' se tem certeza absoluta:`)
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewUser(usuario)}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            Visualizar
-                          </DropdownMenuItem>
+
                           <DropdownMenuItem
                             onClick={() => handleDeleteUser(usuario)}
                             className="text-red-600"

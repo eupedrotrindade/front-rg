@@ -62,21 +62,21 @@ const normalizeDate = (dateStr: string): string => {
 const getTextColor = (backgroundColor: string): string => {
   // Remove # se existir
   const hex = backgroundColor.replace('#', '')
-  
+
   // Se a cor for muito curta ou inválida, usar preto como padrão
   if (hex.length !== 6) {
     return 'text-black'
   }
-  
+
   // Converter hex para RGB
   const r = parseInt(hex.substr(0, 2), 16)
   const g = parseInt(hex.substr(2, 2), 16)
   const b = parseInt(hex.substr(4, 2), 16)
-  
+
   // Calcular luminância usando a fórmula padrão
   // https://en.wikipedia.org/wiki/Relative_luminance
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  
+
   // Se a luminância for alta (cor clara), usar texto preto
   // Se a luminância for baixa (cor escura), usar texto branco
   return luminance > 0.5 ? 'text-black' : 'text-white'
@@ -237,7 +237,7 @@ const ParticipantRow = React.memo<{
         <div className="col-span-1 hidden lg:block">
           <div className="space-y-1">
             {credentialInfo ? (
-              <span 
+              <span
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium uppercase ${getTextColor(credentialInfo.cor)}`}
                 style={{ backgroundColor: credentialInfo.cor }}
               >
@@ -458,35 +458,10 @@ const VirtualizedParticipantsTable: React.FC<
                 <User className="w-8 h-8 text-gray-400" />
               </div>
               <p className="text-lg font-semibold text-gray-700 mb-2">
-                Nenhum participante encontrado para {(() => {
-                  // Função para extrair informações do shift ID para display mais amigável
-                  const parseShiftForDisplay = (shiftId: string) => {
-                    const parts = shiftId.split('-');
-                    if (parts.length >= 5) {
-                      const year = parts[0];
-                      const month = parts[1];
-                      const day = parts[2];
-                      const stage = parts[3];
-                      const period = parts[4] as 'diurno' | 'noturno';
-
-                      const date = new Date(`${year}-${month}-${day}`);
-                      const dateFormatted = date.toLocaleDateString('pt-BR');
-                      const stageLabel = stage === 'montagem' ? 'Montagem' :
-                        stage === 'evento' ? 'Evento' :
-                          stage === 'desmontagem' ? 'Desmontagem' : stage;
-                      const periodLabel = period === 'diurno' ? 'Diurno' : 'Noturno';
-
-                      return `${dateFormatted} (${stageLabel} - ${periodLabel})`;
-                    }
-                    return shiftId;
-                  };
-
-                  return parseShiftForDisplay(currentSelectedDay);
-                })()}
+                Nenhum participante neste turno
               </p>
               <p className="text-sm text-gray-500">
-                Adicione participantes com dias de trabalho definidos ou ajuste os
-                filtros
+                Não há participantes cadastrados para este turno. Adicione participantes ou selecione outro turno.
               </p>
             </div>
           </div>

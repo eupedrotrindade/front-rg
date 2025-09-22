@@ -3824,35 +3824,7 @@ export default function EventoDetalhesPage() {
                         </div>
                     )}
 
-                    {/* Mensagem quando não há dados para mostrar */}
-                    {!isTableLoading && currentSelectedDay && filteredParticipants.length === 0 && (
-                        <div className="flex items-center justify-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                            <div className="text-center">
-                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <User className="w-8 h-8 text-gray-400" />
-                                </div>
-                                <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                                    {hasActiveFilters ? 'Nenhum resultado encontrado' : 'Nenhum participante neste turno'}
-                                </h3>
-                                <p className="text-gray-500 text-sm max-w-md">
-                                    {hasActiveFilters
-                                        ? 'Tente ajustar os filtros de busca para encontrar participantes.'
-                                        : 'Não há participantes cadastrados para este turno. Adicione participantes ou selecione outro turno.'}
-                                </p>
-                                {hasActiveFilters && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={clearFilters}
-                                        className="mt-4"
-                                    >
-                                        <X className="w-4 h-4 mr-2" />
-                                        Limpar Filtros
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                    )}
+
                 </div>
             </div>
 
