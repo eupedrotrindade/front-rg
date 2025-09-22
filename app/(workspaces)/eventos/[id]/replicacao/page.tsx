@@ -375,6 +375,8 @@ export default function ParticipantReplicationPage() {
             const targetShiftInfo = parseShiftId(selectedTargetDay)
             const normalizeStage = (s: any): 'montagem' | 'evento' | 'desmontagem' =>
                 s === 'montagem' || s === 'evento' || s === 'desmontagem' ? s : 'evento'
+            const normalizePeriod = (p: any): 'diurno' | 'noturno' | 'dia_inteiro' =>
+                p === 'diurno' || p === 'noturno' || p === 'dia_inteiro' ? p : 'dia_inteiro'
             const stageForRequests = normalizeStage(targetShiftInfo.stage)
 
             // Mapa de credenciais (chave -> id no turno de destino)
@@ -413,7 +415,7 @@ export default function ParticipantReplicationPage() {
                                 shiftId: selectedTargetDay,
                                 workDate: targetShiftInfo.dateISO,
                                 workStage: stageForRequests,
-                                workPeriod: targetShiftInfo.period
+                                workPeriod: normalizePeriod(targetShiftInfo.period)
                             }
 
                             await createEmpresaMutation.mutateAsync(empresaData)
@@ -476,7 +478,7 @@ export default function ParticipantReplicationPage() {
                                 shiftId: selectedTargetDay,
                                 workDate: targetShiftInfo.dateISO,
                                 workStage: stageForRequests,
-                                workPeriod: targetShiftInfo.period,
+                                workPeriod: normalizePeriod(targetShiftInfo.period),
                                 isActive: true
                             }
 
@@ -563,7 +565,7 @@ export default function ParticipantReplicationPage() {
                                 shiftId: selectedTargetDay,
                                 workDate: targetShiftInfo.dateISO,
                                 workStage: stageForRequests,
-                                workPeriod: targetShiftInfo.period
+                                workPeriod: normalizePeriod(targetShiftInfo.period)
                             }
 
                             await createParticipantMutation.mutateAsync(participantData)
