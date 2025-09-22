@@ -459,12 +459,40 @@ export default function PublicEmpresaPage() {
         if (!dateString) return ""
 
         try {
-            const date = new Date(dateString)
+            console.log('🔄 Formatando data:', dateString)
+
+            // Normalizar o formato da data para ISO
+            let normalizedDate = dateString.trim()
+
+            // Diferentes formatos que podem vir do banco:
+            // "2025-09-22 11:03:38+00" -> "2025-09-22T11:03:38.000Z"
+            if (normalizedDate.includes('+00') && !normalizedDate.includes('T')) {
+                normalizedDate = normalizedDate.replace(' ', 'T').replace('+00', '.000Z')
+            }
+            // "2025-09-22 11:03:38-03" -> "2025-09-22T11:03:38.000-03:00"
+            else if (normalizedDate.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}$/)) {
+                const parts = normalizedDate.split(' ')
+                const datePart = parts[0]
+                const timePart = parts[1].substring(0, 8)
+                const tzPart = parts[1].substring(8)
+                normalizedDate = `${datePart}T${timePart}.000${tzPart}:00`
+            }
+            // "2025-09-22 11:03:38" sem timezone -> assumir UTC
+            else if (normalizedDate.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+                normalizedDate = normalizedDate.replace(' ', 'T') + '.000Z'
+            }
+
+            console.log('✅ Data normalizada:', normalizedDate)
+            const date = new Date(normalizedDate)
+
             // Verificar se a data é válida
-            if (isNaN(date.getTime())) return ""
+            if (isNaN(date.getTime())) {
+                console.error('❌ Data inválida:', dateString, '-> normalizada:', normalizedDate)
+                return ""
+            }
 
             // Formatar no padrão brasileiro: DD/MM/AAAA HH:MM:SS
-            return date.toLocaleString('pt-BR', {
+            const formatted = date.toLocaleString('pt-BR', {
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric',
@@ -473,8 +501,12 @@ export default function PublicEmpresaPage() {
                 second: '2-digit',
                 timeZone: 'America/Sao_Paulo'
             })
+
+            console.log('📅 Resultado formatado:', formatted)
+            return formatted
+
         } catch (error) {
-            console.error('Erro ao formatar data:', error)
+            console.error('❌ Erro ao formatar data:', dateString, error)
             return ""
         }
     }
@@ -484,22 +516,38 @@ export default function PublicEmpresaPage() {
     const exportXLSX = () => {
         if (!empresa || !event) return
 
-        const excelData = exportData.map(p => ({
-            nome: p.nome,
-            cpf: p.cpf,
-            funcao: p.funcao || "",
-            empresa: p.empresa,
-            codigo: p.numeroPulseira, // Campo principal para código da pulseira
-            numeroPulseira: p.numeroPulseira,  // Manter compatibilidade
-            tipoPulseira: p.tipoPulseira,
-            pulseira: p.pulseira,
-            checkIn: formatDateTimeBR(p.checkIn),
-            checkOut: formatDateTimeBR(p.checkOut),
-            tempoTotal: p.tempoTotal,
-            status: p.status,
-            pulseiraTrocada: "Não",
-            cadastradoPor: "Sistema"
-        }))
+        const excelData = exportData.map(p => {
+            const formattedCheckIn = formatDateTimeBR(p.checkIn)
+            const formattedCheckOut = formatDateTimeBR(p.checkOut)
+
+            // Debug log para verificar formatação
+            if (p.checkIn || p.checkOut) {
+                console.log('📅 Formatando datas:', {
+                    nome: p.nome,
+                    checkInOriginal: p.checkIn,
+                    checkInFormatado: formattedCheckIn,
+                    checkOutOriginal: p.checkOut,
+                    checkOutFormatado: formattedCheckOut
+                })
+            }
+
+            return {
+                nome: p.nome,
+                cpf: p.cpf,
+                funcao: p.funcao || "",
+                empresa: p.empresa,
+                codigo: p.numeroPulseira, // Campo principal para código da pulseira
+                numeroPulseira: p.numeroPulseira,  // Manter compatibilidade
+                tipoPulseira: p.tipoPulseira,
+                pulseira: p.pulseira,
+                checkIn: formattedCheckIn,
+                checkOut: formattedCheckOut,
+                tempoTotal: p.tempoTotal,
+                status: p.status,
+                pulseiraTrocada: "Não",
+                cadastradoPor: "Sistema"
+            }
+        })
 
         if (excelData.length === 0) {
             toast.error("Nenhum participante para exportar")

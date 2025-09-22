@@ -19,7 +19,7 @@ export const useExportXLSX = () => {
   return useMutation({
     mutationFn: async (data: ExportXLSXData) => {
       try {
-        // Função para formatar data no formato: 2025-08-09 10:40:10+00
+        // Função para formatar data no padrão brasileiro: DD/MM/AAAA HH:MM:SS
         const formatTimestamp = (dateValue: any): string => {
           if (!dateValue) return "";
 
@@ -32,7 +32,27 @@ export const useExportXLSX = () => {
             }
             // Se é uma string de data, converte para Date
             else if (typeof dateValue === "string") {
-              date = new Date(dateValue);
+              // Normalizar diferentes formatos de string
+              let normalizedDate = dateValue.trim();
+
+              // "2025-09-22 11:03:38+00" -> "2025-09-22T11:03:38.000Z"
+              if (normalizedDate.includes('+00') && !normalizedDate.includes('T')) {
+                normalizedDate = normalizedDate.replace(' ', 'T').replace('+00', '.000Z');
+              }
+              // "2025-09-22 11:03:38-03" -> "2025-09-22T11:03:38.000-03:00"
+              else if (normalizedDate.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}$/)) {
+                const parts = normalizedDate.split(' ');
+                const datePart = parts[0];
+                const timePart = parts[1].substring(0, 8);
+                const tzPart = parts[1].substring(8);
+                normalizedDate = `${datePart}T${timePart}.000${tzPart}:00`;
+              }
+              // "2025-09-22 11:03:38" sem timezone -> assumir UTC
+              else if (normalizedDate.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+                normalizedDate = normalizedDate.replace(' ', 'T') + '.000Z';
+              }
+
+              date = new Date(normalizedDate);
             }
             // Se é um objeto Date, usa diretamente
             else if (dateValue instanceof Date) {
@@ -46,15 +66,17 @@ export const useExportXLSX = () => {
               return "";
             }
 
-            // Formatar no padrão: 2025-08-09 10:40:10+00
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, "0");
-            const day = String(date.getDate()).padStart(2, "0");
-            const hours = String(date.getHours()).padStart(2, "0");
-            const minutes = String(date.getMinutes()).padStart(2, "0");
-            const seconds = String(date.getSeconds()).padStart(2, "0");
+            // Formatar no padrão brasileiro: DD/MM/AAAA HH:MM:SS
+            return date.toLocaleString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              timeZone: 'America/Sao_Paulo'
+            });
 
-            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}+00`;
           } catch (error) {
             console.warn("Erro ao formatar timestamp:", dateValue, error);
             return "";
@@ -69,8 +91,8 @@ export const useExportXLSX = () => {
           empresa: item.empresa || "N/A",
           tipo_credencial: item.tipoPulseira || "N/A",
           pulseira_codigo: item.numeroPulseira || "N/A",
-          checkin_timestamp: formatTimestamp(item.checkIn), // Formato: 2025-08-09 10:40:10+00
-          checkout_timestamp: formatTimestamp(item.checkOut), // Formato: 2025-08-09 10:40:10+00
+          checkin_timestamp: formatTimestamp(item.checkIn), // Formato: DD/MM/AAAA HH:MM:SS (Brasil)
+          checkout_timestamp: formatTimestamp(item.checkOut), // Formato: DD/MM/AAAA HH:MM:SS (Brasil)
           tempo_total: item.tempoTotal || "N/A",
           pulseira_trocada: item.pulseiraTrocada || "Não", // Campo padrão
           status: item.status || "N/A",
