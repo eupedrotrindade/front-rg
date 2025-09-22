@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Upload,
   Image as ImageIcon,
@@ -14,7 +15,8 @@ import {
   Loader2,
   Check,
   AlertTriangle,
-  Images
+  Images,
+  Trash2
 } from 'lucide-react'
 import Image from 'next/image'
 import { toast } from 'sonner'
@@ -41,6 +43,12 @@ export function BannerUpload({
   const [availableBanners, setAvailableBanners] = useState<Array<{ name: string; url: string; size: number; createdAt: string }>>([])
   const [loadingGallery, setLoadingGallery] = useState(false)
   const [selectedFromGallery, setSelectedFromGallery] = useState<string>('')
+  const [showUploadSuccess, setShowUploadSuccess] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<{show: boolean, bannerName: string, bannerUrl: string}>({
+    show: false,
+    bannerName: '',
+    bannerUrl: ''
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Carregar galeria automaticamente quando o componente for montado
@@ -148,6 +156,24 @@ export function BannerUpload({
       if (result) {
         onChange(result.url)
         onPathChange?.(result.path)
+
+        // Atualizar a galeria com a nova imagem
+        const newBanner = {
+          name: result.path,
+          url: result.url,
+          size: file.size,
+          createdAt: new Date().toISOString()
+        }
+
+        // Adicionar na primeira posição da galeria
+        setAvailableBanners(prev => [newBanner, ...prev])
+
+        // Auto-selecionar a nova imagem
+        setSelectedFromGallery(result.url)
+
+        // Mostrar estado de sucesso
+        setShowUploadSuccess(true)
+
         toast.success('Banner enviado com sucesso!')
       } else {
         toast.error('Erro ao enviar banner')
@@ -191,6 +217,45 @@ export function BannerUpload({
     }
   }
 
+  const handleDeleteFromGallery = (bannerName: string, bannerUrl: string) => {
+    setConfirmDelete({
+      show: true,
+      bannerName,
+      bannerUrl
+    })
+  }
+
+  const confirmDeleteBanner = async () => {
+    try {
+      const { bannerName, bannerUrl } = confirmDelete
+
+      // Extrair path do nome do arquivo
+      const pathFromName = bannerName
+      await deleteEventBanner(pathFromName)
+
+      // Remover da lista local
+      setAvailableBanners(prev => prev.filter(banner => banner.name !== bannerName))
+
+      // Se era o banner selecionado, limpar seleção
+      if (selectedFromGallery === bannerUrl) {
+        setSelectedFromGallery('')
+      }
+
+      // Se era o banner atual do evento, limpar também
+      if (value === bannerUrl) {
+        onChange('')
+        onPathChange?.('')
+      }
+
+      toast.success('Banner excluído da galeria!')
+    } catch (error) {
+      console.error('Erro ao excluir banner:', error)
+      toast.error('Erro ao excluir banner da galeria')
+    } finally {
+      setConfirmDelete({ show: false, bannerName: '', bannerUrl: '' })
+    }
+  }
+
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     const file = event.dataTransfer.files[0]
@@ -216,9 +281,18 @@ export function BannerUpload({
       </Label>
 
       <Tabs defaultValue="upload" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="upload">Enviar Novo</TabsTrigger>
-          <TabsTrigger value="gallery" onClick={loadAvailableBanners}>
+        <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg">
+          <TabsTrigger
+            value="upload"
+            className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=inactive]:text-gray-600 data-[state=inactive]:bg-transparent transition-all duration-200"
+          >
+            Enviar Novo
+          </TabsTrigger>
+          <TabsTrigger
+            value="gallery"
+            onClick={loadAvailableBanners}
+            className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=inactive]:text-gray-600 data-[state=inactive]:bg-transparent transition-all duration-200"
+          >
             Galeria {availableBanners.length > 0 && `(${availableBanners.length})`}
           </TabsTrigger>
         </TabsList>
@@ -253,51 +327,104 @@ export function BannerUpload({
           {/* Área de upload */}
           <Card>
             <CardContent className="p-6">
-              <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${disabled
-                  ? 'border-gray-200 bg-gray-50'
-                  : 'border-purple-300 hover:border-purple-400 hover:bg-purple-50'
-                  }`}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  disabled={disabled || uploading}
-                />
-
-                {uploading ? (
-                  <div className="space-y-2">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto text-purple-600" />
-                    <p className="text-sm text-gray-600">Enviando banner...</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <Upload className="w-12 h-12 mx-auto text-purple-400" />
-                    <div>
-                      <p className="text-lg font-medium text-gray-700">
-                        Arraste uma imagem ou clique para selecionar
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Formatos: JPEG, PNG, WebP, GIF • Máximo: {maxSize}MB
-                      </p>
+              {showUploadSuccess ? (
+                /* Estado de sucesso após upload */
+                <div className="space-y-6">
+                  <div className="text-center space-y-4">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                      <Check className="w-8 h-8 text-green-600" />
                     </div>
+                    <div>
+                      <p className="text-lg font-medium text-green-600">Banner enviado com sucesso!</p>
+                      <p className="text-sm text-gray-500">Sua imagem está disponível na galeria</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 justify-center">
                     <Button
                       variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => {
+                        setShowUploadSuccess(false)
+                        fileInputRef.current?.click()
+                      }}
                       disabled={disabled}
-                      className="mx-auto"
                     >
                       <Upload className="w-4 h-4 mr-2" />
-                      Selecionar Arquivo
+                      Adicionar Mais Imagens
+                    </Button>
+                    <Button
+                      onClick={() => setShowUploadSuccess(false)}
+                      className="bg-purple-600 hover:bg-purple-700"
+                    >
+                      <Images className="w-4 h-4 mr-2" />
+                      Ver Galeria
                     </Button>
                   </div>
-                )}
-              </div>
+
+                  {/* Input escondido para adicionar mais imagens */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    disabled={disabled || uploading}
+                  />
+                </div>
+              ) : (
+                /* Área de upload normal */
+                <div
+                  className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${disabled || uploading
+                    ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                    : 'border-purple-300 hover:border-purple-400 hover:bg-purple-50'
+                    }`}
+                  onDrop={uploading ? undefined : handleDrop}
+                  onDragOver={uploading ? undefined : handleDragOver}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    disabled={disabled || uploading}
+                  />
+
+                  {uploading ? (
+                    <div className="space-y-4">
+                      <Loader2 className="w-12 h-12 animate-spin mx-auto text-purple-600" />
+                      <div className="space-y-2">
+                        <p className="text-lg font-medium text-purple-600">Enviando banner...</p>
+                        <p className="text-sm text-gray-500">Por favor, aguarde enquanto processamos sua imagem</p>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="bg-purple-600 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <Upload className="w-12 h-12 mx-auto text-purple-400" />
+                      <div>
+                        <p className="text-lg font-medium text-gray-700">
+                          Arraste uma imagem ou clique para selecionar
+                        </p>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Formatos: JPEG, PNG, WebP, GIF • Máximo: {maxSize}MB
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={disabled || uploading}
+                        className="mx-auto"
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Selecionar Arquivo
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -370,6 +497,7 @@ export function BannerUpload({
                             e.currentTarget.style.display = 'none'
                           }}
                         />
+
                         {selectedFromGallery === banner.url && (
                           <div className="absolute inset-0 bg-purple-500 bg-opacity-20 rounded flex items-center justify-center">
                             <div className="bg-purple-600 rounded-full p-1">
@@ -379,11 +507,25 @@ export function BannerUpload({
                         )}
                       </div>
 
-                      {/* Informações do arquivo */}
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-gray-800 truncate" title={banner.name}>
-                          {banner.name.length > 25 ? `${banner.name.substring(0, 25)}...` : banner.name}
-                        </p>
+                      {/* Informações do arquivo com botão de excluir */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-gray-800 truncate flex-1" title={banner.name}>
+                            {banner.name.length > 18 ? `${banner.name.substring(0, 18)}...` : banner.name}
+                          </p>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="h-6 w-6 p-0 bg-red-500 hover:bg-red-600 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteFromGallery(banner.name, banner.url)
+                            }}
+                            disabled={disabled}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
                         <div className="flex justify-between items-center">
                           <span className="text-xs text-gray-500">
                             {formatFileSize(banner.size)}
@@ -427,6 +569,50 @@ export function BannerUpload({
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog open={confirmDelete.show} onOpenChange={(open) => !open && setConfirmDelete({ show: false, bannerName: '', bannerUrl: '' })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              Confirmar Exclusão
+            </DialogTitle>
+            <DialogDescription>
+              Esta ação não pode ser desfeita. O banner será permanentemente removido da galeria.
+            </DialogDescription>
+          </DialogHeader>
+
+          {confirmDelete.bannerName && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Trash2 className="w-5 h-5 text-red-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-red-800">Banner a ser excluído:</p>
+                  <p className="text-sm text-red-600 mt-1 break-all">{confirmDelete.bannerName}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDelete({ show: false, bannerName: '', bannerUrl: '' })}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteBanner}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Excluir Permanentemente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
