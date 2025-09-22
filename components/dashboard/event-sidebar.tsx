@@ -29,6 +29,7 @@ import {
     RefreshCcw,
     Copy
 } from 'lucide-react'
+import { useUser } from '@clerk/nextjs'
 
 interface EventSidebarProps {
     eventId?: string
@@ -50,7 +51,10 @@ const EventSidebar = ({
     const router = useRouter()
     const pathname = usePathname()
     const { data: eventos = [] } = useEventos()
-
+    const { user } = useUser()
+    const getUserRole = () => {
+        return user?.publicMetadata?.role as string
+    }
     const navigationItems = [
         {
             name: 'Dashboard',
@@ -82,12 +86,12 @@ const EventSidebar = ({
             icon: CreditCard,
             description: 'Gestão de credenciais'
         },
-        {
+        getUserRole() === "admin" ? {
             name: 'Coordenadores',
             href: `/eventos/${eventId}/coordenadores`,
             icon: UserCog,
             description: 'Gestão de coordenadores'
-        },
+        } : undefined,
         {
             name: 'Rádio Comunicador',
             href: `/eventos/${eventId}/radios`,
@@ -125,12 +129,12 @@ const EventSidebar = ({
             description: 'Relatórios e análises'
 
         },
-        {
+        getUserRole() === "admin" ? {
             name: 'Configuracoes',
             href: `/eventos/${eventId}/configuracoes`,
             icon: Settings,
             description: 'Configurações gerais'
-        }
+        } : undefined
         ,
         // { name: "RG sincronização", href: `/eventos/${eventId}/rg-sync`, icon: RefreshCcw, description: 'Sincronização de dados CRED - RH' }
         // {
@@ -149,6 +153,7 @@ const EventSidebar = ({
         router.push(`/eventos/${newEventId}`)
         onMobileClose()
     }
+
 
     return (
         <div className={`fixed inset-y-0 left-0 z-50 bg-white shadow-lg transform transition-all duration-300 ease-in-out ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -250,6 +255,9 @@ const EventSidebar = ({
                 {/* Navigation */}
                 <nav className="flex-1 px-4 py-6 space-y-2">
                     {navigationItems.map((item) => {
+                        if (item == undefined) {
+                            return
+                        }
                         const Icon = item.icon
                         const isActive = isActiveRoute(item.href)
 
