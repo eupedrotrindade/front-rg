@@ -427,36 +427,16 @@ const AdminEventosPage = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEventDetails(evento)}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              Ver Detalhes
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEventView(evento)}>
-                              <Calendar className="h-4 w-4 mr-2" />
-                              Abrir Evento
-                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleEventEdit(evento)}>
                               <Edit className="h-4 w-4 mr-2" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEventConfig(evento)}>
-                              <Settings className="h-4 w-4 mr-2" />
-                              Configurações
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDuplicateEvent(evento)}>
-                              <Copy className="h-4 w-4 mr-2" />
-                              Duplicar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleArchiveEvent(evento)}>
-                              <Archive className="h-4 w-4 mr-2" />
-                              Arquivar
+                              Editar Evento
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => handleDeleteEvent(evento)}
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Excluir
+                              Excluir Evento
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

@@ -257,11 +257,9 @@ Digite 'DELETAR' se tem certeza absoluta:`)
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
                           onClick={() => handleEditUser(usuario)}
-                          disabled={true}
-                          className="text-gray-400"
                         >
                           <Eye className="h-4 w-4 mr-2" />
-                          Editar (Em breve)
+                          Editar
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleDeleteUser(usuario)}

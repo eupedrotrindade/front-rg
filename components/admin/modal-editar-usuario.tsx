@@ -132,7 +132,6 @@ const ModalEditarUsuario: React.FC<ModalEditarUsuarioProps> = ({
 
     updateUser(dadosAtualizacao, {
       onSuccess: () => {
-        toast.success(`✅ Usuário ${formData.firstName} ${formData.lastName} atualizado com sucesso!`)
         resetForm()
         onOpenChange(false)
         onUserUpdated?.()

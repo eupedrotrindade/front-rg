@@ -57,24 +57,24 @@ const menuItems = [
   //   icon: BarChart3,
   //   description: "Relatórios e estatísticas"
   // },
-  {
-    title: "Auditoria",
-    href: "/admin/auditoria",
-    icon: Shield,
-    description: "Logs de auditoria e segurança"
-  },
+  // {
+  //   title: "Auditoria",
+  //   href: "/admin/auditoria",
+  //   icon: Shield,
+  //   description: "Logs de auditoria e segurança"
+  // },
   // {
   //   title: "Sistema",
   //   href: "/admin/sistema",
   //   icon: Database,
   //   description: "Configurações do sistema"
   // },
-  {
-    title: "Documentação",
-    href: "/admin/documentacao",
-    icon: FileText,
-    description: "Documentação e ajuda"
-  }
+  // {
+  //   title: "Documentação",
+  //   href: "/admin/documentacao",
+  //   icon: FileText,
+  //   description: "Documentação e ajuda"
+  // }
 ]
 
 
