@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -240,8 +241,8 @@ const ModalEditarUsuario: React.FC<ModalEditarUsuarioProps> = ({
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-500 mt-1">
-                <strong>Masters:</strong> Acesso total ao sistema<br/>
-                <strong>Coordenadores Gerais:</strong> Podem gerenciar todos os eventos<br/>
+                <strong>Masters:</strong> Acesso total ao sistema<br />
+                <strong>Coordenadores Gerais:</strong> Podem gerenciar todos os eventos<br />
                 <strong>Sem role:</strong> Para coordenadores de eventos específicos
               </p>
             </div>
@@ -266,7 +267,7 @@ const ModalEditarUsuario: React.FC<ModalEditarUsuarioProps> = ({
 
             {formData.eventos.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-4 border rounded-lg bg-gray-50">
-                Nenhum evento associado. Use "Adicionar Evento" para tornar este usuário um <strong>Coordenador Comum</strong> (acesso limitado a eventos específicos).
+                Nenhum evento associado. Use  &quot;Adicionar Evento &quot; para tornar este usuário um <strong>Coordenador Comum</strong> (acesso limitado a eventos específicos).
               </p>
             ) : (
               <div className="space-y-3">

@@ -303,7 +303,7 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
 
             {formData.eventos.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-4 border rounded-lg bg-gray-50">
-                Nenhum evento associado. Use "Adicionar Evento" para criar um <strong>Coordenador Comum</strong> (acesso limitado a eventos específicos).
+                Nenhum evento associado. Use &quot;Adicionar Evento&quot; para criar um <strong>Coordenador Comum</strong> (acesso limitado a eventos específicos).
               </p>
             ) : (
               <div className="space-y-3">
@@ -366,7 +366,7 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
 
             <p className="text-xs text-gray-500">
               <strong>Importante:</strong> Usuários associados a eventos específicos são <strong>Coordenadores Comuns</strong>.
-              Para Coordenadores Gerais (acesso a todos os eventos), use apenas o "Role do Sistema" acima.
+              Para Coordenadores Gerais (acesso a todos os eventos), use apenas o  &quot;Role do Sistema &quot; acima.
             </p>
           </div>
 
