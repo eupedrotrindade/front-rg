@@ -35,7 +35,7 @@ const EventosPage = () => {
     }
 
     const getUserEventos = () => {
-        return user?.publicMetadata?.eventos as Array<{id: string, role: string, nome_evento: string}>
+        return user?.publicMetadata?.eventos as Array<{ id: string, role: string, nome_evento: string }>
     }
 
     const isAdmin = () => {
@@ -226,7 +226,7 @@ const EventosPage = () => {
                 {/* Grid de Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {/* Card de Criação */}
-                    <Card className="cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 border-2 border-dashed border-purple-300 bg-purple-50 hover:bg-purple-100 group" onClick={() => { window.location.href = `${window.origin}/eventos/criar` }}>
+                    {canAccessGeneralPanel() && (<Card className="cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 border-2 border-dashed border-purple-300 bg-purple-50 hover:bg-purple-100 group" onClick={() => { window.location.href = `${window.origin}/eventos/criar` }}>
                         <CardContent className="flex flex-col items-center justify-center p-6 min-h-[360px] ">
                             <div className="rounded-full bg-purple-800 p-4 mb-6 group-hover:scale-110 transition-transform">
                                 <Plus className="h-8 w-8 text-white" />
@@ -236,7 +236,7 @@ const EventosPage = () => {
                                 Comece um novo projeto e configure seu workspace personalizado
                             </p>
                         </CardContent>
-                    </Card>
+                    </Card>)}
 
                     {/* Cards dos Eventos */}
                     {hasEventos &&
@@ -250,7 +250,7 @@ const EventosPage = () => {
                                 >
                                     {/* Área da imagem com fundo roxo */}
                                     <div className="relative bg-transparent aspect-square p-8">
-                                        <div className="absolute top-4 right-4">
+                                        {canAccessGeneralPanel() && (<div className="absolute top-4 right-4">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button
@@ -285,7 +285,7 @@ const EventosPage = () => {
                                                     </DropdownMenuItem> */}
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
-                                        </div>
+                                        </div>)}
 
                                         <div className="w-full h-full flex items-center justify-center">
                                             {evento.bannerUrl ? (
