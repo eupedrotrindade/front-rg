@@ -71,8 +71,11 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
       return // Validação já é feita pelo disabled no botão
     }
 
-    if (formData.password.length < 6) {
-      return // Validação já é feita pelo HTML minLength
+    // Validação do Clerk: mínimo 8 caracteres e pelo menos 1 caractere especial
+    const passwordRegex = /^(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])(.{8,})$/
+    if (!passwordRegex.test(formData.password)) {
+      toast.error('❌ A senha deve ter pelo menos 8 caracteres e conter pelo menos 1 caractere especial (!@#$%^&*)')
+      return
     }
 
     // Validação de email
@@ -175,15 +178,15 @@ const ModalAdicionarUsuario: React.FC<ModalAdicionarUsuarioProps> = ({
             <Input
               id="password"
               type="password"
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo 8 caracteres com 1 especial"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               disabled={isPending}
-              minLength={6}
+              minLength={8}
               required
             />
             <p className="text-xs text-gray-500 mt-1">
-              A senha deve ter pelo menos 6 caracteres
+              A senha deve ter pelo menos 8 caracteres e 1 caractere especial (!@#$%^&*)
             </p>
           </div>
 
