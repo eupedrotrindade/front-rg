@@ -747,20 +747,23 @@ export default function Painel() {
       })
     })
 
-    // Ordenar por data e período usando comparação de string
+    // Ordenar por etapa (montagem → evento → desmontagem), depois por data e depois por período (diurno → dia_inteiro → noturno)
     const sortedDays = days.sort((a, b) => {
-      const dateA = a.id.split('-')[0]
-      const dateB = b.id.split('-')[0]
+      const stageOrder: Record<string, number> = { montagem: 0, evento: 1, desmontagem: 2 }
+      const periodOrder: Record<string, number> = { diurno: 0, dia_inteiro: 1, noturno: 2 }
 
-      if (dateA === dateB) {
-        // Se mesma data, ordenar por período (diurno, noturno, dia_inteiro)
-        const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 }
-        const aPeriodOrder = periodOrder[a.period as keyof typeof periodOrder] ?? 999
-        const bPeriodOrder = periodOrder[b.period as keyof typeof periodOrder] ?? 999
-        return aPeriodOrder - bPeriodOrder
-      }
+      const stageA = stageOrder[a.type] ?? 99
+      const stageB = stageOrder[b.type] ?? 99
+      if (stageA !== stageB) return stageA - stageB
 
-      return dateA.localeCompare(dateB)
+      const dateA = a.id.split('-').slice(0, 3).join('-')
+      const dateB = b.id.split('-').slice(0, 3).join('-')
+      const dateCompare = dateA.localeCompare(dateB)
+      if (dateCompare !== 0) return dateCompare
+
+      const aPeriodOrder = periodOrder[String(a.period)] ?? 0
+      const bPeriodOrder = periodOrder[String(b.period)] ?? 0
+      return aPeriodOrder - bPeriodOrder
     })
 
     // Dias gerados silently para performance
@@ -1056,10 +1059,21 @@ export default function Painel() {
       console.log('🔍 Operador sem ID ou sem shifts atribuídos, mostrando todos os dias')
       const dias = getEventDays()
       console.log('🔍 Todos os dias retornados quando sem shifts:', dias.length, dias.map(d => ({ id: d.id, label: d.label })))
+      const stageOrder: Record<string, number> = { montagem: 0, evento: 1, desmontagem: 2 }
+      const periodOrder: Record<string, number> = { diurno: 0, dia_inteiro: 1, noturno: 2 }
       dias.sort((a, b) => {
-        const dateA = dataBRtoISO(a.date)
-        const dateB = dataBRtoISO(b.date)
-        return dateA.localeCompare(dateB)
+        const stageA = stageOrder[a.type] ?? 99
+        const stageB = stageOrder[b.type] ?? 99
+        if (stageA !== stageB) return stageA - stageB
+
+        const dateA = a.id.split('-').slice(0, 3).join('-')
+        const dateB = b.id.split('-').slice(0, 3).join('-')
+        const dateCompare = dateA.localeCompare(dateB)
+        if (dateCompare !== 0) return dateCompare
+
+        const periodA = String(a.period)
+        const periodB = String(b.period)
+        return (periodOrder[periodA] ?? 0) - (periodOrder[periodB] ?? 0)
       })
       return dias
     }
@@ -1090,11 +1104,22 @@ export default function Painel() {
       return dayIncluded
     })
 
-    // Ordena as datas
+    // Ordena agrupando por etapa e período (diurno → dia_inteiro → noturno)
+    const stageOrder: Record<string, number> = { montagem: 0, evento: 1, desmontagem: 2 }
+    const periodOrder: Record<string, number> = { diurno: 0, dia_inteiro: 1, noturno: 2 }
     diasDisponiveis.sort((a, b) => {
-      const dateA = dataBRtoISO(a.date)
-      const dateB = dataBRtoISO(b.date)
-      return dateA.localeCompare(dateB)
+      const stageA = stageOrder[a.type] ?? 99
+      const stageB = stageOrder[b.type] ?? 99
+      if (stageA !== stageB) return stageA - stageB
+
+      const dateA = a.id.split('-').slice(0, 3).join('-')
+      const dateB = b.id.split('-').slice(0, 3).join('-')
+      const dateCompare = dateA.localeCompare(dateB)
+      if (dateCompare !== 0) return dateCompare
+
+      const periodA = String(a.period)
+      const periodB = String(b.period)
+      return (periodOrder[periodA] ?? 0) - (periodOrder[periodB] ?? 0)
     })
 
     console.log('🎯 Dias finais disponíveis para o operador:', diasDisponiveis.map(d => ({ id: d.id, label: d.label })))

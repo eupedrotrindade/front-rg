@@ -700,22 +700,23 @@ export default function EventoDetalhesPage() {
         processPhaseData(evento.evento, 'evento', 'evento')
         processPhaseData(evento.desmontagem, 'desmontagem', 'desmontagem')
 
-        // Ordenar por data e período para garantir ordem cronológica
+        // Ordenar por etapa (montagem → evento → desmontagem), depois por data, depois por período (diurno → dia_inteiro → noturno)
         days.sort((a, b) => {
-            // Extrair dateISO do ID para ordenação
+            const stageOrder = { 'montagem': 0, 'evento': 1, 'desmontagem': 2 } as Record<string, number>
+            const periodOrder = { 'diurno': 0, 'dia_inteiro': 1, 'noturno': 2 } as Record<string, number>
+
+            const stageA = stageOrder[a.type] ?? 99
+            const stageB = stageOrder[b.type] ?? 99
+            if (stageA !== stageB) return stageA - stageB
+
             const dateA = a.id.split('-').slice(0, 3).join('-')
             const dateB = b.id.split('-').slice(0, 3).join('-')
-
-            // Primeiro, ordenar por data
             const dateCompare = dateA.localeCompare(dateB)
             if (dateCompare !== 0) return dateCompare
 
-            // Se mesma data, ordenar por período (diurno antes de noturno)
-            const periodOrder = { 'diurno': 0, 'dia_inteiro': 1, 'noturno': 2 }
-            const periodA = a.period || 'diurno'
-            const periodB = b.period || 'diurno'
-
-            return (periodOrder[periodA] || 0) - (periodOrder[periodB] || 0)
+            const periodA = (a.period || 'diurno') as 'diurno' | 'dia_inteiro' | 'noturno'
+            const periodB = (b.period || 'diurno') as 'diurno' | 'dia_inteiro' | 'noturno'
+            return (periodOrder[periodA] ?? 0) - (periodOrder[periodB] ?? 0)
         })
 
         // Debug detalhado para investigar o problema
