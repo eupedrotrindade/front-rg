@@ -11,6 +11,7 @@ import EventoEditDialog from "@/features/eventos/components/evento-edit-dialog"
 import Image from "next/image"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useState } from 'react';
+import { useUser } from "@clerk/nextjs";
 import { Event as EventType } from "@/features/eventos/types"
 import { useDeleteEvento } from "@/features/eventos/api/mutation/use-delete-evento"
 import { toast } from "sonner"
@@ -26,6 +27,39 @@ const EventosPage = () => {
     const [editingEvent, setEditingEvent] = useState<EventType | null>(null)
     const [deletingEvent, setDeletingEvent] = useState<EventType | null>(null)
     const { mutate: deleteEvento, isPending: isDeleting } = useDeleteEvento()
+    const { user } = useUser()
+
+    // Controle de acesso baseado no metadata do Clerk
+    const getUserRole = () => {
+        return user?.publicMetadata?.role as string
+    }
+
+    const getUserEventos = () => {
+        return user?.publicMetadata?.eventos as Array<{id: string, role: string, nome_evento: string}>
+    }
+
+    const isAdmin = () => {
+        return getUserRole() === "admin"
+    }
+
+    const isCoordenadorGeral = () => {
+        return getUserRole() === "coordenador-geral"
+    }
+
+    const hasEventAccess = (eventoId: string) => {
+        // Admin e coordenador-geral podem ver todos os eventos
+        if (isAdmin() || isCoordenadorGeral()) return true
+
+        const userEventos = getUserEventos()
+        if (!userEventos || !Array.isArray(userEventos)) return true // fallback para usuários sem metadata
+
+        return userEventos.some(evento => evento.id === eventoId)
+    }
+
+    const canAccessGeneralPanel = () => {
+        // Apenas admin pode acessar o painel geral
+        return isAdmin()
+    }
 
     const handleEventClick = (evento: EventType) => {
         router.push(`/eventos/${evento.id}`)
@@ -158,11 +192,13 @@ const EventosPage = () => {
     const hasEventos = Array.isArray(eventos) && eventos.length > 0
 
     const eventosOrdenados = hasEventos
-        ? [...(eventos as EventType[])].sort((a, b) => {
-            const aDate = new Date(a.createdAt ?? a.startDate ?? 0).getTime()
-            const bDate = new Date(b.createdAt ?? b.startDate ?? 0).getTime()
-            return bDate - aDate
-        })
+        ? [...(eventos as EventType[])]
+            .filter(evento => hasEventAccess(evento.id)) // Filtrar eventos baseado no acesso do usuário
+            .sort((a, b) => {
+                const aDate = new Date(a.createdAt ?? a.startDate ?? 0).getTime()
+                const bDate = new Date(b.createdAt ?? b.startDate ?? 0).getTime()
+                return bDate - aDate
+            })
         : []
 
     return (
@@ -180,10 +216,13 @@ const EventosPage = () => {
 
 
                 </div>
-                <div className="w-full flex flex-col justify-center items-center">
-                    <Button className="hover:bg-purple-900 bg-purple-800" onClick={() => { window.location.href = "/admin/eventos" }}>
-                        Acessar Painel Geral
-                    </Button></div>
+                {canAccessGeneralPanel() && (
+                    <div className="w-full flex flex-col justify-center items-center">
+                        <Button className="hover:bg-purple-900 bg-purple-800" onClick={() => { window.location.href = "/admin/eventos" }}>
+                            Acessar Painel Geral
+                        </Button>
+                    </div>
+                )}
                 {/* Grid de Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {/* Card de Criação */}

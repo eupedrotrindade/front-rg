@@ -45,18 +45,18 @@ const menuItems = [
     icon: UserCheck,
     description: "Gerenciar operadores e coordenadores"
   },
-  {
-    title: "Staff Gerais",
-    href: "/admin/staff-gerais",
-    icon: UsersRound,
-    description: "Visualização completa de todos os participantes"
-  },
-  {
-    title: "Relatórios",
-    href: "/admin/relatorios",
-    icon: BarChart3,
-    description: "Relatórios e estatísticas"
-  },
+  // {
+  //   title: "Staff Gerais",
+  //   href: "/admin/staff-gerais",
+  //   icon: UsersRound,
+  //   description: "Visualização completa de todos os participantes"
+  // },
+  // {
+  //   title: "Relatórios",
+  //   href: "/admin/relatorios",
+  //   icon: BarChart3,
+  //   description: "Relatórios e estatísticas"
+  // },
   {
     title: "Auditoria",
     href: "/admin/auditoria",

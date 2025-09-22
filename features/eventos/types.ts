@@ -153,8 +153,8 @@ export type Credential = {
   // Propriedades de shift expandidas diretamente no tipo
   shiftId: string;
   workDate: string; // YYYY-MM-DD
-  workStage: 'montagem' | 'evento' | 'desmontagem';
-  workPeriod: 'diurno' | 'noturno' | 'dia_inteiro';
+  workStage: "montagem" | "evento" | "desmontagem";
+  workPeriod: "diurno" | "noturno" | "dia_inteiro";
   isActive?: boolean;
   isDistributed?: boolean;
   createdAt?: string;
@@ -169,8 +169,8 @@ export type CreateCredentialRequest = {
   // Propriedades de shift expandidas
   shiftId: string;
   workDate: string; // YYYY-MM-DD
-  workStage: 'montagem' | 'evento' | 'desmontagem';
-  workPeriod: 'diurno' | 'noturno' | 'dia_inteiro';
+  workStage: "montagem" | "evento" | "desmontagem";
+  workPeriod: "diurno" | "noturno" | "dia_inteiro";
   isActive?: boolean;
   isDistributed?: boolean;
 };
@@ -265,6 +265,7 @@ export type Coordenador = {
   lastName: string;
   imageUrl: string;
   createdAt: string;
+  publicMetadata: any;
   metadata: {
     eventos?: Array<{
       role: string;

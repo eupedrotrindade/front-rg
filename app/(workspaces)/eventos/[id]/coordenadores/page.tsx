@@ -14,7 +14,6 @@ import { toast } from "sonner"
 import { Loader2, Plus, Search, Edit, Trash2, User, Mail, Calendar, Users } from "lucide-react"
 import EventLayout from "@/components/dashboard/dashboard-layout"
 import { useEventos } from "@/features/eventos/api/query/use-eventos"
-import { useCoordenadoresByEvent } from "@/features/eventos/api/query/use-coordenadores-by-event"
 import { useAllCoordenadores } from "@/features/eventos/api/query/use-coordenadores"
 import { useCreateCoordenador, useAssignCoordenador, useUpdateCoordenador, useDeleteCoordenador } from "@/features/eventos/api/mutation"
 import Image from "next/image"
@@ -26,6 +25,14 @@ export interface Coordenador {
     lastName: string
     imageUrl: string
     createdAt: string
+    publicMetadata?: {
+        role?: string
+        eventos?: Array<{
+            role: string
+            id: string
+            nome_evento: string
+        }>
+    }
     metadata: {
         eventos?: Array<{
             role: string
@@ -45,7 +52,7 @@ export default function CoordenadoresPage() {
     const params = useParams()
     const eventId = params.id as string
     const { data: eventos = [] } = useEventos()
-    const { data: coordenadores = [], isLoading } = useCoordenadoresByEvent({ eventId })
+    const { data: allCoordenadores = [], isLoading: loadingAllCoordenadores } = useAllCoordenadores()
 
     const [searchTerm, setSearchTerm] = useState("")
     const [nomeEvento, setNomeEvento] = useState("")
@@ -71,7 +78,30 @@ export default function CoordenadoresPage() {
         role: "coordenador"
     })
 
-    const { data: allCoordenadores = [], isLoading: loadingAllCoordenadores } = useAllCoordenadores()
+    // Separar coordenadores-gerais dos coordenadores específicos do evento
+    const coordenadoresGerais = useMemo(() => {
+        return allCoordenadores.filter(coord => {
+            return coord.publicMetadata?.role === 'coordenador-geral' || coord.publicMetadata?.role === 'admin'
+        })
+    }, [allCoordenadores])
+
+    const eventoCoordenadores = useMemo(() => {
+        return allCoordenadores.filter(coord => {
+            // Não incluir coordenadores-gerais ou admins na lista de coordenadores do evento
+            if (coord.publicMetadata?.role === 'coordenador-geral' || coord.publicMetadata?.role === 'admin') return false
+            // Verificar se tem eventos específicos para este evento
+            return coord.publicMetadata?.eventos?.some((ev: { id: string }) => ev.id === eventId) ||
+                coord.metadata?.eventos?.some(ev => ev.id === eventId)
+        })
+    }, [allCoordenadores, eventId])
+
+    const availableUsers = useMemo(() => {
+        return allCoordenadores.filter(user => {
+            // Não permitir adicionar admin ou coordenador-geral como coordenador normal
+            if (user.publicMetadata?.role === 'admin' || user.publicMetadata?.role === 'coordenador-geral') return false
+            return !eventoCoordenadores.some(coord => coord.id === user.id)
+        })
+    }, [allCoordenadores, eventoCoordenadores])
 
     // Hooks de mutation
     const createCoordenadorMutation = useCreateCoordenador()
@@ -142,8 +172,17 @@ export default function CoordenadoresPage() {
         }
     }, [evento])
 
-    // Filtrar coordenadores
-    const filteredCoordenadores = (coordenadores || []).filter((coordenador: Coordenador) => {
+    // Filtrar coordenadores do evento (excluindo coordenadores-gerais)
+    const filteredCoordenadores = eventoCoordenadores.filter((coordenador: Coordenador) => {
+        const fullName = `${coordenador.firstName} ${coordenador.lastName}`.toLowerCase()
+        const email = coordenador.email.toLowerCase()
+        const searchLower = searchTerm.toLowerCase()
+
+        return fullName.includes(searchLower) || email.includes(searchLower)
+    })
+
+    // Filtrar coordenadores-gerais para busca
+    const filteredCoordenadoresGerais = coordenadoresGerais.filter((coordenador: Coordenador) => {
         const fullName = `${coordenador.firstName} ${coordenador.lastName}`.toLowerCase()
         const email = coordenador.email.toLowerCase()
         const searchLower = searchTerm.toLowerCase()
@@ -156,6 +195,16 @@ export default function CoordenadoresPage() {
         if (!createForm.email || !createForm.firstName || !createForm.lastName || !createForm.password) {
             toast.error("Preencha todos os campos obrigatórios")
             return
+        }
+
+        // Verificar se o usuário já existe e tem role global
+        const existingUser = allCoordenadores.find(coord => coord.email === createForm.email)
+        if (existingUser) {
+            const metadata = existingUser.publicMetadata as { role?: string }
+            if (metadata?.role === 'admin' || metadata?.role === 'coordenador-geral') {
+                toast.error(`Este usuário já possui a função global de ${metadata.role}`)
+                return
+            }
         }
 
         createCoordenadorMutation.mutate({
@@ -189,6 +238,13 @@ export default function CoordenadoresPage() {
         const selectedCoordenador = (allCoordenadores || []).find(c => c.id === assignForm.coordenadorId)
         if (!selectedCoordenador) {
             toast.error("Coordenador não encontrado")
+            return
+        }
+
+        // Verificar se o usuário já tem role global
+        const metadata = selectedCoordenador.publicMetadata as { role?: string }
+        if (metadata?.role === 'admin' || metadata?.role === 'coordenador-geral') {
+            toast.error(`Este usuário já possui a função global de ${metadata.role} e não pode ser atribuído como coordenador normal`)
             return
         }
 
@@ -352,16 +408,84 @@ export default function CoordenadoresPage() {
                     </div>
                 </div>
 
-                {/* Tabela de coordenadores */}
+                {/* Seção Coordenadores-Gerais */}
+                {filteredCoordenadoresGerais.length > 0 && (
+                    <Card className="mb-6">
+                        <CardHeader>
+                            <CardTitle>Coordenadores-Gerais</CardTitle>
+                            <CardDescription>
+                                Coordenadores com acesso a todos os eventos
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Nome</TableHead>
+                                        <TableHead>Email</TableHead>
+                                        <TableHead>Função</TableHead>
+                                        <TableHead>Data de Criação</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredCoordenadoresGerais.map((coordenador) => (
+                                        <TableRow key={coordenador.id}>
+                                            <TableCell>
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="relative">
+                                                        {coordenador.imageUrl ? (
+                                                            <Image
+                                                                src={coordenador.imageUrl}
+                                                                alt={`${coordenador.firstName} ${coordenador.lastName}`}
+                                                                width={40}
+                                                                height={40}
+                                                                className="rounded-full"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                                                                <User className="h-5 w-5 text-gray-500" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-medium">
+                                                            {coordenador.firstName} {coordenador.lastName}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex items-center space-x-2">
+                                                    <Mail className="h-4 w-4 text-gray-400" />
+                                                    <span>{coordenador.email}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="default" className="bg-blue-600">
+                                                    {(coordenador.publicMetadata as { role?: string })?.role || "coordenador-geral"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {new Date(coordenador.createdAt).toLocaleDateString('pt-BR')}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Tabela de coordenadores do evento */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Lista de Coordenadores</CardTitle>
+                        <CardTitle>Coordenadores do Evento</CardTitle>
                         <CardDescription>
-                            Coordenadores atribuídos a este evento
+                            Coordenadores específicos atribuídos a este evento
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        {isLoading ? (
+                        {loadingAllCoordenadores ? (
                             <div className="flex items-center justify-center h-32">
                                 <Loader2 className="h-6 w-6 animate-spin" />
                             </div>
@@ -553,7 +677,7 @@ export default function CoordenadoresPage() {
                                         <SelectValue placeholder="Selecione um coordenador" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {allCoordenadores.map((coordenador) => (
+                                        {availableUsers.map((coordenador) => (
                                             <SelectItem key={coordenador.id} value={coordenador.id}>
                                                 {coordenador.firstName} {coordenador.lastName} ({coordenador.email})
                                             </SelectItem>
