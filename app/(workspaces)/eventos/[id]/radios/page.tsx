@@ -175,27 +175,21 @@ export default function RadiosPage() {
                 // Processar cada item do array
                 dataArray.forEach(item => {
                     if (item && item.date) {
-                        // Garantir que a data está no formato correto
-                        const dateObj = new Date(item.date);
-                        if (isNaN(dateObj.getTime())) {
-                            console.warn(`Data inválida encontrada: ${item.date}`);
-                            return;
-                        }
+                        // Extract date string directly to avoid timezone shifts
+                        const dateStr = typeof item.date === 'string' ? item.date : item.date.toISOString ? item.date.toISOString().split('T')[0] : String(item.date)
+                        const formattedDate = formatEventDate(dateStr + 'T00:00:00')
 
-                        const formattedDate = formatEventDate(dateObj.toISOString());
-
-                        // Usar período do item se disponível, senão calcular baseado na hora
+                        // Usar período do item se disponível
                         let period: 'diurno' | 'noturno' | 'dia_inteiro';
                         if (item.period && (item.period === 'diurno' || item.period === 'noturno' || item.period === 'dia_inteiro')) {
                             period = item.period;
                         } else {
-                            // Fallback: calcular baseado na hora
-                            const hour = dateObj.getHours();
-                            period = (hour >= 6 && hour < 18) ? 'diurno' : 'noturno';
+                            // Fallback para período diurno
+                            period = 'diurno';
                         }
 
-                        // Criar ID único baseado na data e período
-                        const dayId = `${dateObj.toISOString().split('T')[0]}-${stage}-${period}`;
+                        // Criar ID único baseado na data e período usando string direta
+                        const dayId = `${dateStr.split('T')[0]}-${stage}-${period}`;
 
                         const periodLabel = period === 'diurno' ? 'Diurno' : period === 'noturno' ? 'Noturno' : 'Dia Inteiro';
 
@@ -211,7 +205,7 @@ export default function RadiosPage() {
             } catch (error) {
                 console.warn(`Erro ao processar dados do evento para stage ${stage}:`, error);
             }
-        };
+        };;
 
         // Processar nova estrutura do evento
         processEventArray(evento.montagem, 'montagem', 'MONTAGEM');
@@ -287,24 +281,24 @@ export default function RadiosPage() {
             }
         }
 
-        // Ordenar dias cronologicamente
+        // Ordenar dias agrupando por etapa (tipo) primeiro, depois por data, depois por período
         days.sort((a, b) => {
-            // Extrair a data do ID para ordenação mais confiável
-            const dateA = new Date(a.id.split('-')[0]);
-            const dateB = new Date(b.id.split('-')[0]);
+            // 1. Prioridade: agrupar por TIPO (montagem → evento → desmontagem)
+            const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 }
+            const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder]
 
-            if (dateA.getTime() === dateB.getTime()) {
-                // Se for o mesmo dia, ordenar por tipo e período
-                const typeOrder = { montagem: 0, evento: 1, desmontagem: 2 };
-                const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 };
+            if (typeComparison !== 0) return typeComparison
 
-                const typeComparison = typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
-                if (typeComparison !== 0) return typeComparison;
+            // 2. Dentro do mesmo tipo, ordenar por DATA
+            const dateA = a.id.split('-')[0]
+            const dateB = b.id.split('-')[0]
+            const dateComparison = dateA.localeCompare(dateB)
 
-                return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder];
-            }
+            if (dateComparison !== 0) return dateComparison
 
-            return dateA.getTime() - dateB.getTime();
+            // 3. Dentro da mesma data e tipo, ordenar por PERÍODO
+            const periodOrder = { diurno: 0, noturno: 1, dia_inteiro: 2 }
+            return periodOrder[a.period as keyof typeof periodOrder] - periodOrder[b.period as keyof typeof periodOrder]
         });
 
         return days
