@@ -454,6 +454,31 @@ export default function PublicEmpresaPage() {
             }
         )
     }
+    // Função para formatar data/hora no padrão brasileiro
+    const formatDateTimeBR = (dateString: string | null) => {
+        if (!dateString) return ""
+
+        try {
+            const date = new Date(dateString)
+            // Verificar se a data é válida
+            if (isNaN(date.getTime())) return ""
+
+            // Formatar no padrão brasileiro: DD/MM/AAAA HH:MM:SS
+            return date.toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                timeZone: 'America/Sao_Paulo'
+            })
+        } catch (error) {
+            console.error('Erro ao formatar data:', error)
+            return ""
+        }
+    }
+
     console.log("EXCELLLLL", exportData)
     // Função para exportar XLSX
     const exportXLSX = () => {
@@ -468,8 +493,8 @@ export default function PublicEmpresaPage() {
             numeroPulseira: p.numeroPulseira,  // Manter compatibilidade
             tipoPulseira: p.tipoPulseira,
             pulseira: p.pulseira,
-            checkIn: p.checkIn || "",
-            checkOut: p.checkOut || "",
+            checkIn: formatDateTimeBR(p.checkIn),
+            checkOut: formatDateTimeBR(p.checkOut),
             tempoTotal: p.tempoTotal,
             status: p.status,
             pulseiraTrocada: "Não",
