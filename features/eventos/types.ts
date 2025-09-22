@@ -265,8 +265,8 @@ export type Coordenador = {
   lastName: string;
   imageUrl: string;
   createdAt: string;
-  publicMetadata: any;
   metadata: {
+    role?: string;
     eventos?: Array<{
       role: string;
       id: string;

@@ -25,15 +25,8 @@ export interface Coordenador {
     lastName: string
     imageUrl: string
     createdAt: string
-    publicMetadata?: {
+    metadata?: {
         role?: string
-        eventos?: Array<{
-            role: string
-            id: string
-            nome_evento: string
-        }>
-    }
-    metadata: {
         eventos?: Array<{
             role: string
             id: string
@@ -81,16 +74,16 @@ export default function CoordenadoresPage() {
     // Separar coordenadores-gerais dos coordenadores específicos do evento
     const coordenadoresGerais = useMemo(() => {
         return allCoordenadores.filter(coord => {
-            return coord.publicMetadata?.role === 'coordenador-geral' || coord.publicMetadata?.role === 'admin'
+            return coord.metadata?.role === 'coordenador-geral' || coord.metadata?.role === 'admin'
         })
     }, [allCoordenadores])
 
     const eventoCoordenadores = useMemo(() => {
         return allCoordenadores.filter(coord => {
             // Não incluir coordenadores-gerais ou admins na lista de coordenadores do evento
-            if (coord.publicMetadata?.role === 'coordenador-geral' || coord.publicMetadata?.role === 'admin') return false
+            if (coord.metadata?.role === 'coordenador-geral' || coord.metadata?.role === 'admin') return false
             // Verificar se tem eventos específicos para este evento
-            return coord.publicMetadata?.eventos?.some((ev: { id: string }) => ev.id === eventId) ||
+            return coord.metadata?.eventos?.some((ev: { id: string }) => ev.id === eventId) ||
                 coord.metadata?.eventos?.some(ev => ev.id === eventId)
         })
     }, [allCoordenadores, eventId])
@@ -98,7 +91,7 @@ export default function CoordenadoresPage() {
     const availableUsers = useMemo(() => {
         return allCoordenadores.filter(user => {
             // Não permitir adicionar admin ou coordenador-geral como coordenador normal
-            if (user.publicMetadata?.role === 'admin' || user.publicMetadata?.role === 'coordenador-geral') return false
+            if (user.metadata?.role === 'admin' || user.metadata?.role === 'coordenador-geral') return false
             return !eventoCoordenadores.some(coord => coord.id === user.id)
         })
     }, [allCoordenadores, eventoCoordenadores])
@@ -200,7 +193,7 @@ export default function CoordenadoresPage() {
         // Verificar se o usuário já existe e tem role global
         const existingUser = allCoordenadores.find(coord => coord.email === createForm.email)
         if (existingUser) {
-            const metadata = existingUser.publicMetadata as { role?: string }
+            const metadata = existingUser.metadata as { role?: string }
             if (metadata?.role === 'admin' || metadata?.role === 'coordenador-geral') {
                 toast.error(`Este usuário já possui a função global de ${metadata.role}`)
                 return
@@ -242,7 +235,7 @@ export default function CoordenadoresPage() {
         }
 
         // Verificar se o usuário já tem role global
-        const metadata = selectedCoordenador.publicMetadata as { role?: string }
+        const metadata = selectedCoordenador.metadata as { role?: string }
         if (metadata?.role === 'admin' || metadata?.role === 'coordenador-geral') {
             toast.error(`Este usuário já possui a função global de ${metadata.role} e não pode ser atribuído como coordenador normal`)
             return
@@ -462,7 +455,7 @@ export default function CoordenadoresPage() {
                                             </TableCell>
                                             <TableCell>
                                                 <Badge variant="default" className="bg-blue-600">
-                                                    {(coordenador.publicMetadata as { role?: string })?.role || "coordenador-geral"}
+                                                    {(coordenador.metadata as { role?: string })?.role || "coordenador-geral"}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
