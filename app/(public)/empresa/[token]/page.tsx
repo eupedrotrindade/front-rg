@@ -88,7 +88,8 @@ export default function PublicEmpresaPage() {
     const [filtros, setFiltros] = useState({
         empresa: '',
         funcao: '',
-        status: 'all' // all, present, absent
+        status: 'all', // all, present, absent, finalized
+        tipoPulseira: ''
     })
     const [ordenacao, setOrdenacao] = useState<{
         campo: string
@@ -308,15 +309,28 @@ export default function PublicEmpresaPage() {
             filtered = filtered.filter(p => p.role === filtros.funcao)
         }
 
+        if (filtros.empresa && filtros.empresa !== '') {
+            filtered = filtered.filter(p => p.company === filtros.empresa)
+        }
+
         if (filtros.status && filtros.status !== 'all') {
             filtered = filtered.filter(p => {
                 const attendanceStatus = participantsAttendanceStatus.get(p.id)
                 if (filtros.status === 'present') {
-                    return attendanceStatus?.checkIn !== null
+                    return attendanceStatus?.checkIn !== null && attendanceStatus?.checkOut === null
                 } else if (filtros.status === 'absent') {
                     return attendanceStatus?.checkIn === null
+                } else if (filtros.status === 'finalized') {
+                    return attendanceStatus?.checkIn !== null && attendanceStatus?.checkOut !== null
                 }
                 return true
+            })
+        }
+
+        if (filtros.tipoPulseira && filtros.tipoPulseira !== '') {
+            filtered = filtered.filter(p => {
+                const credential = credentials.find(c => c.id === p.credentialId)
+                return credential?.nome === filtros.tipoPulseira
             })
         }
 
@@ -355,7 +369,7 @@ export default function PublicEmpresaPage() {
         }
 
         return filtered
-    }, [participantsByDay, searchTerm, filtros, ordenacao, participantsAttendanceStatus])
+    }, [participantsByDay, searchTerm, filtros, ordenacao, participantsAttendanceStatus, credentials])
 
     // Preparar dados para exportação (memoizado para reagir às mudanças dos códigos das pulseiras)
     const exportData = React.useMemo(() => {
@@ -855,9 +869,12 @@ export default function PublicEmpresaPage() {
     // Obter valores únicos para filtros
     const uniqueValues = React.useMemo(() => {
         return {
-            funcoes: [...new Set(participantsByDay.map(p => p.role).filter(Boolean))].sort()
+            funcoes: [...new Set(participantsByDay.map(p => p.role).filter(Boolean))].sort(),
+            empresas: [...new Set(participantsByDay.map(p => p.company).filter(Boolean))].sort(),
+            tiposPulseira: [...new Set(credentials.map(c => c.nome).filter(Boolean))].sort(),
+            statusOptions: ['all', 'present', 'absent', 'finalized'] // Adicionando "finalized" para quem fez check-in e check-out
         }
-    }, [participantsByDay])
+    }, [participantsByDay, credentials])
 
     // Função para formatar CPF
     const formatCPF = (cpf: string) => {
@@ -1486,6 +1503,18 @@ export default function PublicEmpresaPage() {
                                                                 </SelectContent>
                                                             </Select>
 
+                                                            <Select value={filtros.empresa || "all"} onValueChange={(value) => setFiltros(prev => ({ ...prev, empresa: value === "all" ? "" : value }))}>
+                                                                <SelectTrigger className="w-48">
+                                                                    <SelectValue placeholder="Todas as empresas" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="all">Todas as empresas</SelectItem>
+                                                                    {uniqueValues.empresas.map((empresa) => (
+                                                                        <SelectItem key={empresa} value={empresa}>{empresa}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+
                                                             <Select value={filtros.status} onValueChange={(value) => setFiltros(prev => ({ ...prev, status: value }))}>
                                                                 <SelectTrigger className="w-48">
                                                                     <SelectValue placeholder="Status de presença" />
@@ -1494,16 +1523,29 @@ export default function PublicEmpresaPage() {
                                                                     <SelectItem value="all">Todos os status</SelectItem>
                                                                     <SelectItem value="present">Presentes</SelectItem>
                                                                     <SelectItem value="absent">Pendentes</SelectItem>
+                                                                    <SelectItem value="finalized">Finalizados</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
 
-                                                            {(searchTerm || filtros.funcao || filtros.status !== 'all') && (
+                                                            <Select value={filtros.tipoPulseira || "all"} onValueChange={(value) => setFiltros(prev => ({ ...prev, tipoPulseira: value === "all" ? "" : value }))}>
+                                                                <SelectTrigger className="w-48">
+                                                                    <SelectValue placeholder="Tipo de pulseira" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="all">Todos os tipos</SelectItem>
+                                                                    {uniqueValues.tiposPulseira.map((tipo) => (
+                                                                        <SelectItem key={tipo} value={tipo}>{tipo}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+
+                                                            {(searchTerm || filtros.funcao || filtros.empresa || filtros.status !== 'all' || filtros.tipoPulseira) && (
                                                                 <Button
                                                                     variant="outline"
                                                                     size="sm"
                                                                     onClick={() => {
                                                                         setSearchTerm('')
-                                                                        setFiltros({ empresa: '', funcao: '', status: 'all' })
+                                                                        setFiltros({ empresa: '', funcao: '', status: 'all', tipoPulseira: '' })
                                                                     }}
                                                                 >
                                                                     <X className="h-4 w-4 mr-2" />
@@ -2100,6 +2142,18 @@ export default function PublicEmpresaPage() {
                                         </SelectContent>
                                     </Select>
 
+                                    <Select value={filtros.empresa || "all"} onValueChange={(value) => setFiltros(prev => ({ ...prev, empresa: value === "all" ? "" : value }))}>
+                                        <SelectTrigger className="w-48">
+                                            <SelectValue placeholder="Todas as empresas" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todas as empresas</SelectItem>
+                                            {uniqueValues.empresas.map((empresa) => (
+                                                <SelectItem key={empresa} value={empresa}>{empresa}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
                                     <Select value={filtros.status} onValueChange={(value) => setFiltros(prev => ({ ...prev, status: value }))}>
                                         <SelectTrigger className="w-48">
                                             <SelectValue placeholder="Status de presença" />
@@ -2108,16 +2162,29 @@ export default function PublicEmpresaPage() {
                                             <SelectItem value="all">Todos os status</SelectItem>
                                             <SelectItem value="present">Presentes</SelectItem>
                                             <SelectItem value="absent">Pendentes</SelectItem>
+                                            <SelectItem value="finalized">Finalizados</SelectItem>
                                         </SelectContent>
                                     </Select>
 
-                                    {(searchTerm || filtros.funcao || filtros.status !== 'all') && (
+                                    <Select value={filtros.tipoPulseira || "all"} onValueChange={(value) => setFiltros(prev => ({ ...prev, tipoPulseira: value === "all" ? "" : value }))}>
+                                        <SelectTrigger className="w-48">
+                                            <SelectValue placeholder="Tipo de pulseira" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todos os tipos</SelectItem>
+                                            {uniqueValues.tiposPulseira.map((tipo) => (
+                                                <SelectItem key={tipo} value={tipo}>{tipo}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
+                                    {(searchTerm || filtros.funcao || filtros.empresa || filtros.status !== 'all' || filtros.tipoPulseira) && (
                                         <Button
                                             variant="outline"
                                             size="sm"
                                             onClick={() => {
                                                 setSearchTerm('')
-                                                setFiltros({ empresa: '', funcao: '', status: 'all' })
+                                                setFiltros({ empresa: '', funcao: '', status: 'all', tipoPulseira: '' })
                                             }}
                                         >
                                             <X className="h-4 w-4 mr-2" />
