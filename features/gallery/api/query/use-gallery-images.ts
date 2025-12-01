@@ -9,9 +9,17 @@ const SUPABASE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET;
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY;
 
 const fetchAllGalleryImages = async (): Promise<GalleryImage[]> => {
+  // ✅ VALIDAÇÃO: Garantir que variáveis estão definidas
+  if (!SUPABASE_API_URL || !SUPABASE_BUCKET || !SUPABASE_KEY) {
+    throw new Error(
+      "Variáveis de ambiente do Supabase não configuradas. Verifique NEXT_PUBLIC_SUPABASE_API_URL, NEXT_PUBLIC_SUPABASE_BUCKET e NEXT_PUBLIC_SUPABASE_KEY"
+    );
+  }
+
   try {
+    // ✅ CORRIGIDO: Usar variável de ambiente ao invés de URL hardcoded
     const { data } = await axios.get(
-      "https://qiclatzqkndxalcvxuze.supabase.co/storage/v1/object/list/galeria",
+      `${SUPABASE_API_URL}/storage/v1/object/list/${SUPABASE_BUCKET}`,
       {
         headers: {
           Authorization: `Bearer ${SUPABASE_KEY}`,
